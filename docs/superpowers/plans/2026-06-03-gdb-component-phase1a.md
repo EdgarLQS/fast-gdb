@@ -1026,10 +1026,10 @@ Expected: 5 个测试全部 PASS。
 
 Expected: 32 个测试全部 PASS（原有 27 + 新增 5）。
 
-- [ ] **Step 4: 确认 GDB问题修改/ 无变更**
+- [ ] **Step 4: 确认 gdb_error_handle/ 无变更**
 
 ```bash
-cd .. && git status "../GDB问题修改/" 2>&1
+cd .. && git status "../gdb_error_handle/" 2>&1
 ```
 
 Expected: 无任何变更。

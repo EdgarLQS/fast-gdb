@@ -1,7 +1,7 @@
 /**
  * GDB 教程 - Google Test 共享 Fixture
  *
- * 与 GDB问题修改/ 中的 fixture 类似，但更简洁，
+ * 与 gdb_error_handle/ 中的 fixture 类似，但更简洁，
  * 聚焦于教学验证而非问题复现。
  */
 
