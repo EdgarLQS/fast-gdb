@@ -587,3 +587,231 @@ TEST_F(WriterTest, T_W08_PointZ) {
     GDALClose(ds);
     std::cout << "[T_W08] PointZ: " << N << " 3D features verified\n";
 }
+
+// ── 辅助：创建含 Z 的 .gdb 并返回 writer ──
+static bool create_z_gdb(GdbTableWriter& writer, const std::string& gdb_path,
+                         const std::string& layer_name, int ogr_geom_type,
+                         const std::vector<WriterField>& fields) {
+    GDALDriver* driver = GetGDALDriverManager()->GetDriverByName("OpenFileGDB");
+    if (!driver) return false;
+
+    GDALDataset* ds = driver->Create(gdb_path.c_str(), 0, 0, 0, GDT_Unknown, nullptr);
+    if (!ds) return false;
+
+    OGRLayer* layer = ds->CreateLayer(layer_name.c_str(), nullptr,
+                                       static_cast<OGRwkbGeometryType>(ogr_geom_type), nullptr);
+    if (!layer) { GDALClose(ds); return false; }
+
+    for (const auto& f : fields) {
+        OGRFieldDefn ogr_f(f.name.c_str(), OFTString);
+        if (f.type == FieldType::Float64) ogr_f.SetType(OFTReal);
+        else if (f.type == FieldType::Int64) ogr_f.SetType(OFTInteger64);
+        layer->CreateField(&ogr_f);
+    }
+    GDALClose(ds);
+
+    return writer.open_existing(gdb_path, layer_name);
+}
+
+// ── T_W09: PolylineZ（3D 线）──
+TEST_F(WriterTest, T_W09_PolylineZ) {
+    std::vector<WriterField> fields = {{"name", FieldType::String, true, 100}};
+    GdbTableWriter writer;
+    ASSERT_TRUE(create_z_gdb(writer, gdb_path(), "lines3d", wkbLineString25D, fields));
+
+    auto& ser = writer.geometry_serializer();
+    const int N = 2;
+    for (int i = 0; i < N; ++i) {
+        // 4 点线段，各有不同 Z
+        std::vector<GeomPoint> line = {
+            {100.0 + i, 200.0 + i}, {101.0 + i, 201.0 + i},
+            {102.0 + i, 200.5 + i}, {103.0 + i, 201.5 + i},
+        };
+        std::vector<double> zvals = {10.0, 20.0, 30.0, 40.0};
+
+        ser.set_lines({line});
+        ser.set_z_values(zvals);
+        ser.serialize(GeomType::PolylineZ);
+
+        writer.begin_row();
+        writer.append_string(0, "line3d_" + std::to_string(i));
+        writer.append_geometry(1);
+        writer.end_row();
+    }
+    writer.close();
+    ASSERT_EQ(writer.row_count(), static_cast<uint64_t>(N));
+
+    GDALDataset* ds = (GDALDataset*)GDALOpenEx(
+        gdb_path().c_str(), GDAL_OF_VECTOR, nullptr, nullptr, nullptr);
+    ASSERT_NE(ds, nullptr);
+    OGRLayer* layer = ds->GetLayer(0);
+    ASSERT_EQ(layer->GetFeatureCount(), N);
+
+    layer->ResetReading();
+    for (int i = 0; i < N; ++i) {
+        OGRFeature* feat = layer->GetNextFeature();
+        ASSERT_NE(feat, nullptr);
+        OGRGeometry* geom = feat->GetGeometryRef();
+        ASSERT_NE(geom, nullptr);
+        EXPECT_TRUE(wkbHasZ(geom->getGeometryType()));
+
+        // 验证 Z 值（第一个点 Z=10, 第二个=20, ...）
+        OGRLineString* ls = nullptr;
+        int gt = wkbFlatten(geom->getGeometryType());
+        if (gt == wkbLineString) ls = (OGRLineString*)geom;
+        else if (gt == wkbMultiLineString) {
+            OGRMultiLineString* mls = (OGRMultiLineString*)geom;
+            ls = (OGRLineString*)mls->getGeometryRef(0);
+        }
+        ASSERT_NE(ls, nullptr);
+        EXPECT_NEAR(ls->getZ(0), 10.0, 1.0);
+        EXPECT_NEAR(ls->getZ(1), 20.0, 1.0);
+        EXPECT_NEAR(ls->getZ(2), 30.0, 1.0);
+        EXPECT_NEAR(ls->getZ(3), 40.0, 1.0);
+
+        OGRFeature::DestroyFeature(feat);
+    }
+    GDALClose(ds);
+    std::cout << "[T_W09] PolylineZ: " << N << " features verified\n";
+}
+
+// ── T_W10: PolygonZ（3D 面）──
+TEST_F(WriterTest, T_W10_PolygonZ) {
+    std::vector<WriterField> fields = {{"name", FieldType::String, true, 100}};
+    GdbTableWriter writer;
+    ASSERT_TRUE(create_z_gdb(writer, gdb_path(), "polys3d", wkbPolygon25D, fields));
+
+    auto& ser = writer.geometry_serializer();
+    const int N = 2;
+    for (int i = 0; i < N; ++i) {
+        double x = 100.0 + i * 10;
+        double y = 200.0 + i * 10;
+        std::vector<GeomPoint> ring = {
+            {x, y}, {x+5, y}, {x+5, y+5}, {x, y+5}, {x, y}
+        };
+        // Z 值：底面=0, 逐渐升高
+        std::vector<double> zvals = {0.0, 0.0, 5.0, 5.0, 0.0};
+
+        ser.set_rings({ring});
+        ser.set_z_values(zvals);
+        ser.serialize(GeomType::PolygonZ);
+
+        writer.begin_row();
+        writer.append_string(0, "poly3d_" + std::to_string(i));
+        writer.append_geometry(1);
+        writer.end_row();
+    }
+    writer.close();
+    ASSERT_EQ(writer.row_count(), static_cast<uint64_t>(N));
+
+    GDALDataset* ds = (GDALDataset*)GDALOpenEx(
+        gdb_path().c_str(), GDAL_OF_VECTOR, nullptr, nullptr, nullptr);
+    ASSERT_NE(ds, nullptr);
+    OGRLayer* layer = ds->GetLayer(0);
+    ASSERT_EQ(layer->GetFeatureCount(), N);
+
+    layer->ResetReading();
+    for (int i = 0; i < N; ++i) {
+        OGRFeature* feat = layer->GetNextFeature();
+        ASSERT_NE(feat, nullptr);
+        OGRGeometry* geom = feat->GetGeometryRef();
+        ASSERT_NE(geom, nullptr);
+        EXPECT_TRUE(wkbHasZ(geom->getGeometryType()));
+
+        OGRFeature::DestroyFeature(feat);
+    }
+    GDALClose(ds);
+    std::cout << "[T_W10] PolygonZ: " << N << " features verified\n";
+}
+
+// ── T_W11: MultiPointZ（3D 多点）──
+TEST_F(WriterTest, T_W11_MultiPointZ) {
+    std::vector<WriterField> fields = {{"id", FieldType::Float64, true, 0}};
+    GdbTableWriter writer;
+    ASSERT_TRUE(create_z_gdb(writer, gdb_path(), "mp3d", wkbMultiPoint25D, fields));
+
+    auto& ser = writer.geometry_serializer();
+    const int N = 2;
+    for (int i = 0; i < N; ++i) {
+        std::vector<GeomPoint> pts;
+        std::vector<double> zvals;
+        for (int j = 0; j < 4; ++j) {
+            pts.push_back({100.0 + i + j * 0.1, 200.0 + i + j * 0.1});
+            zvals.push_back(50.0 + j * 10);
+        }
+        ser.set_points(pts);
+        ser.set_z_values(zvals);
+        ser.serialize(GeomType::MultiPointZ);
+
+        writer.begin_row();
+        writer.append_f64(0, static_cast<double>(i + 1));
+        writer.append_geometry(1);
+        writer.end_row();
+    }
+    writer.close();
+    ASSERT_EQ(writer.row_count(), static_cast<uint64_t>(N));
+
+    GDALDataset* ds = (GDALDataset*)GDALOpenEx(
+        gdb_path().c_str(), GDAL_OF_VECTOR, nullptr, nullptr, nullptr);
+    ASSERT_NE(ds, nullptr);
+    OGRLayer* layer = ds->GetLayer(0);
+    ASSERT_EQ(layer->GetFeatureCount(), N);
+
+    layer->ResetReading();
+    for (int i = 0; i < N; ++i) {
+        OGRFeature* feat = layer->GetNextFeature();
+        ASSERT_NE(feat, nullptr);
+        OGRGeometry* geom = feat->GetGeometryRef();
+        ASSERT_NE(geom, nullptr);
+        EXPECT_TRUE(wkbHasZ(geom->getGeometryType()));
+        EXPECT_EQ(wkbFlatten(geom->getGeometryType()), wkbMultiPoint);
+
+        OGRMultiPoint* mp = geom->toMultiPoint();
+        EXPECT_EQ(mp->getNumGeometries(), 4u);
+        // 验证第一个点 Z
+        OGRPoint* pt0 = (OGRPoint*)mp->getGeometryRef(0);
+        EXPECT_NEAR(pt0->getZ(), 50.0, 1.0);
+
+        OGRFeature::DestroyFeature(feat);
+    }
+    GDALClose(ds);
+    std::cout << "[T_W11] MultiPointZ: " << N << " features verified\n";
+}
+
+// ── T_W12: PointM（带 M 度量值的点）──
+TEST_F(WriterTest, T_W12_PointM) {
+    std::vector<WriterField> fields = {{"name", FieldType::String, true, 100}};
+    GdbTableWriter writer;
+    // wkbPointM = wkbPoint | wkbMFlag (0x40000000)
+    // GDAL 没有直接的 wkbPointM，用 wkbPoint25D 创建再让 GDAL 处理
+    // 简化：用 PointZ 测试 M 值的写入机制
+    // 实际 M 支持需要特殊图层创建选项
+    ASSERT_TRUE(create_z_gdb(writer, gdb_path(), "ptm", wkbPoint25D, fields));
+
+    auto& ser = writer.geometry_serializer();
+    const int N = 3;
+    for (int i = 0; i < N; ++i) {
+        ser.set_point({121.47 + i * 0.01, 31.23 + i * 0.01});
+        // 同时设 Z 和 M（通过 PointZM）
+        ser.set_z_values({100.0 + i * 10});
+        ser.set_m_values({500.0 + i * 100});
+        ser.serialize(GeomType::PointZM);
+
+        writer.begin_row();
+        writer.append_string(0, "ptzm_" + std::to_string(i));
+        writer.append_geometry(1);
+        writer.end_row();
+    }
+    writer.close();
+    ASSERT_EQ(writer.row_count(), static_cast<uint64_t>(N));
+
+    // GDAL 回读验证（GDAL 可能读为 3D 点）
+    GDALDataset* ds = (GDALDataset*)GDALOpenEx(
+        gdb_path().c_str(), GDAL_OF_VECTOR, nullptr, nullptr, nullptr);
+    ASSERT_NE(ds, nullptr);
+    OGRLayer* layer = ds->GetLayer(0);
+    EXPECT_EQ(layer->GetFeatureCount(), N);
+
+    GDALClose(ds);
+    std::cout << "[T_W12] PointZM: " << N << " features written\n";
+}
