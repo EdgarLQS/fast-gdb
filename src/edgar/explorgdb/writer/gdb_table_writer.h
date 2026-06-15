@@ -112,7 +112,7 @@ public:
     // ── 控制 ──
 
     // 获取几何序列化器（用于在 end_row 前准备几何数据）
-    PolygonSerializer& geometry_serializer() { return geom_serializer_; }
+    GeometrySerializer& geometry_serializer() { return geom_serializer_; }
 
     // 手动刷盘（通常不需要，close() 时自动刷盘）
     void flush();
@@ -178,10 +178,12 @@ private:
 
     // 几何坐标系参数（从几何字段描述符提取）
     double xorig_ = 0, yorig_ = 0, xyscale_ = 0;
+    double zorig_ = 0, zscale_ = 1;
+    double morig_ = 0, mscale_ = 1;
 
     // 组件
     RowBuffer row_buffer_;
-    PolygonSerializer geom_serializer_;
+    GeometrySerializer geom_serializer_;
     TablxWriter tablx_writer_;
 
     // 写缓冲区（减少 I/O 系统调用次数）

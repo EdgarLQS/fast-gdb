@@ -157,7 +157,7 @@ bool GdbTableWriter::open_existing(const std::string& gdb_path, const std::strin
     }
 
     // 初始化 GeometrySerializer
-    geom_serializer_.reset(xorig_, yorig_, xyscale_);
+    geom_serializer_.reset(xorig_, yorig_, xyscale_, zorig_, zscale_, morig_, mscale_);
 
     is_open_ = true;
     return true;
@@ -184,8 +184,20 @@ bool GdbTableWriter::discover_table_layout() {
 
     // 2. 对每个 .gdbtable，解析字段描述符，找到匹配 layer_name 的表
     for (const auto& tpath : table_files) {
-        // 跳过系统表（a00000000）
-        if (tpath.find("a00000000") != std::string::npos) continue;
+        // 跳过系统表（a00000000 ~ a00000007）
+        // 系统表固定占前 8 个（索引 0-7）：
+        //   0=GDB_SystemCatalog, 1=GDB_ItemTypes, 2=GDB_Datasets,
+        //   3=GDB_ItemRelationshipTypes, 4=GDB_Items, 5=GDB_ItemRelationships,
+        //   6=GDB_DatasetRelationships, 7=GDB_SpatialRefs
+        // 用户数据表从 a00000008 开始
+        {
+            // 从路径提取文件序号
+            auto fname = fs::path(tpath).stem().string();  // e.g. "a00000004"
+            if (fname.size() >= 9) {
+                int idx = std::stoi(fname.substr(1));
+                if (idx < 8) continue;  // 跳过系统表
+            }
+        }
 
         try {
             FILE* fp = std::fopen(tpath.c_str(), "rb");
@@ -238,6 +250,8 @@ bool GdbTableWriter::discover_table_layout() {
             std::vector<bool> null_flags;
             int geom_idx = -1;
             double fxorig = 0, fyorig = 0, fxyscale = 0;
+            double fzorig = 0, fzscale = 1;
+            double fmorig = 0, fmscale = 1;
 
             bool parse_ok = true;
             for (uint16_t fi = 0; fi < nfields && parse_ok; ++fi) {
@@ -284,16 +298,16 @@ bool GdbTableWriter::discover_table_layout() {
                     uint16_t wkt_len = br.read_u16();
                     br.skip(wkt_len);  // WKT string bytes
                     uint8_t gf = br.read_u8();
-                    bool has_m = (gf & 2) != 0;
-                    bool has_z = (gf & 4) != 0;
+                    bool desc_has_m = (gf & 2) != 0;
+                    bool desc_has_z = (gf & 4) != 0;
                     fd.xorig = br.read_f64();
                     fd.yorig = br.read_f64();
                     fd.xyscale = br.read_f64();
-                    if (has_m) { br.read_f64(); br.read_f64(); }  // morig, mscale
-                    if (has_z) { br.read_f64(); br.read_f64(); }  // zorig, zscale
+                    if (desc_has_m) { fd.morig = br.read_f64(); fd.mscale = br.read_f64(); }
+                    if (desc_has_z) { fd.zorig = br.read_f64(); fd.zscale = br.read_f64(); }
                     br.read_f64();  // xytolerance
-                    if (has_m) br.read_f64();
-                    if (has_z) br.read_f64();
+                    if (desc_has_m) br.read_f64();  // mtolerance
+                    if (desc_has_z) br.read_f64();  // ztolerance
                     br.skip(32);  // bbox: xmin,ymin,xmax,ymax
                     if (layer_has_z) br.skip(16);  // zmin, zmax
                     if (layer_has_m) br.skip(16);  // mmin, mmax
@@ -331,6 +345,10 @@ bool GdbTableWriter::discover_table_layout() {
                     fxorig = fd.xorig;
                     fyorig = fd.yorig;
                     fxyscale = fd.xyscale;
+                    fzorig = fd.zorig;
+                    fzscale = fd.zscale;
+                    fmorig = fd.morig;
+                    fmscale = fd.mscale;
                 }
                 null_flags.push_back((fd.flag & 1) != 0);
                 fds.push_back(std::move(fd));
@@ -356,6 +374,10 @@ bool GdbTableWriter::discover_table_layout() {
         xorig_ = fxorig;
         yorig_ = fyorig;
         xyscale_ = fxyscale;
+        zorig_ = fzorig;
+        zscale_ = fzscale;
+        morig_ = fmorig;
+        mscale_ = fmscale;
         data_start_offset_ = data_start;
         current_offset_ = data_start;
 

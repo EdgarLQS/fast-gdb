@@ -343,3 +343,247 @@ TEST_F(WriterTest, T_W04_GDALCompatibility) {
     GDALClose(ds);
     std::cout << "[T_W04] GDAL compatibility verified: " << N << " features read back correctly\n";
 }
+
+// ── T_W05: Point 类型写入 + GDAL 回读 ──
+TEST_F(WriterTest, T_W05_PointType) {
+    GdbTableWriter writer;
+
+    std::vector<WriterField> fields = {
+        {"name", FieldType::String, true, 100},
+        {"value", FieldType::Float64, true, 0},
+    };
+
+    // wkbPoint = 1
+    ASSERT_TRUE(writer.create_new(gdb_path(), "points", fields, "", 1));
+
+    auto& ser = writer.geometry_serializer();
+    const int N = 5;
+    for (int i = 0; i < N; ++i) {
+        ser.set_point({121.47 + i * 0.01, 31.23 + i * 0.01});
+        ser.serialize(GeomType::Point);
+
+        writer.begin_row();
+        writer.append_string(0, "poi_" + std::to_string(i));
+        writer.append_f64(1, 100.0 + i);
+        writer.append_geometry(2);
+        writer.end_row();
+    }
+    writer.close();
+    ASSERT_EQ(writer.row_count(), static_cast<uint64_t>(N));
+
+    // GDAL 回读验证
+    GDALDataset* ds = (GDALDataset*)GDALOpenEx(
+        gdb_path().c_str(), GDAL_OF_VECTOR, nullptr, nullptr, nullptr);
+    ASSERT_NE(ds, nullptr);
+    OGRLayer* layer = ds->GetLayer(0);
+    ASSERT_EQ(layer->GetFeatureCount(), N);
+
+    layer->ResetReading();
+    for (int i = 0; i < N; ++i) {
+        OGRFeature* feat = layer->GetNextFeature();
+        ASSERT_NE(feat, nullptr);
+
+        const char* name = feat->GetFieldAsString("name");
+        EXPECT_STREQ(name, ("poi_" + std::to_string(i)).c_str());
+
+        OGRGeometry* geom = feat->GetGeometryRef();
+        ASSERT_NE(geom, nullptr);
+        EXPECT_EQ(wkbFlatten(geom->getGeometryType()), wkbPoint);
+
+        OGRPoint* pt = geom->toPoint();
+        EXPECT_NEAR(pt->getX(), 121.47 + i * 0.01, 0.001);
+        EXPECT_NEAR(pt->getY(), 31.23 + i * 0.01, 0.001);
+
+        OGRFeature::DestroyFeature(feat);
+    }
+    GDALClose(ds);
+    std::cout << "[T_W05] Point: " << N << " features verified\n";
+}
+
+// ── T_W06: Polyline 类型写入 + GDAL 回读 ──
+TEST_F(WriterTest, T_W06_PolylineType) {
+    GdbTableWriter writer;
+
+    std::vector<WriterField> fields = {
+        {"road_name", FieldType::String, true, 100},
+        {"length", FieldType::Float64, true, 0},
+    };
+
+    // wkbLineString = 2
+    ASSERT_TRUE(writer.create_new(gdb_path(), "roads", fields, "", 2));
+
+    auto& ser = writer.geometry_serializer();
+    const int N = 3;
+    for (int i = 0; i < N; ++i) {
+        // 每条线 4 个点
+        std::vector<GeomPoint> line = {
+            {100.0 + i, 200.0 + i},
+            {101.0 + i, 201.0 + i},
+            {102.0 + i, 200.5 + i},
+            {103.0 + i, 201.5 + i},
+        };
+        ser.set_lines({line});
+        ser.serialize(GeomType::Polyline);
+
+        writer.begin_row();
+        writer.append_string(0, "road_" + std::to_string(i));
+        writer.append_f64(1, 1000.0 + i * 100);
+        writer.append_geometry(2);
+        writer.end_row();
+    }
+    writer.close();
+    ASSERT_EQ(writer.row_count(), static_cast<uint64_t>(N));
+
+    // GDAL 回读
+    GDALDataset* ds = (GDALDataset*)GDALOpenEx(
+        gdb_path().c_str(), GDAL_OF_VECTOR, nullptr, nullptr, nullptr);
+    ASSERT_NE(ds, nullptr);
+    OGRLayer* layer = ds->GetLayer(0);
+    ASSERT_EQ(layer->GetFeatureCount(), N);
+
+    layer->ResetReading();
+    for (int i = 0; i < N; ++i) {
+        OGRFeature* feat = layer->GetNextFeature();
+        ASSERT_NE(feat, nullptr);
+
+        const char* name = feat->GetFieldAsString("road_name");
+        EXPECT_STREQ(name, ("road_" + std::to_string(i)).c_str());
+
+        OGRGeometry* geom = feat->GetGeometryRef();
+        ASSERT_NE(geom, nullptr);
+        int gt = wkbFlatten(geom->getGeometryType());
+        EXPECT_TRUE(gt == wkbLineString || gt == wkbMultiLineString)
+            << "unexpected geom type " << gt;
+
+        OGRFeature::DestroyFeature(feat);
+    }
+    GDALClose(ds);
+    std::cout << "[T_W06] Polyline: " << N << " features verified\n";
+}
+
+// ── T_W07: MultiPoint 类型写入 + GDAL 回读 ──
+TEST_F(WriterTest, T_W07_MultiPointType) {
+    GdbTableWriter writer;
+
+    std::vector<WriterField> fields = {
+        {"cluster_id", FieldType::Int64, true, 0},
+    };
+
+    // wkbMultiPoint = 4
+    ASSERT_TRUE(writer.create_new(gdb_path(), "clusters", fields, "", 4));
+
+    auto& ser = writer.geometry_serializer();
+    const int N = 3;
+    for (int i = 0; i < N; ++i) {
+        // 每个 multipoint 含 3~5 个点
+        std::vector<GeomPoint> pts;
+        for (int j = 0; j < 3 + i; ++j) {
+            pts.push_back({100.0 + i + j * 0.1, 200.0 + i + j * 0.1});
+        }
+        ser.set_points(pts);
+        ser.serialize(GeomType::MultiPoint);
+
+        writer.begin_row();
+        writer.append_i64(0, static_cast<int64_t>(i + 1));
+        writer.append_geometry(1);
+        writer.end_row();
+    }
+    writer.close();
+    ASSERT_EQ(writer.row_count(), static_cast<uint64_t>(N));
+
+    // GDAL 回读
+    GDALDataset* ds = (GDALDataset*)GDALOpenEx(
+        gdb_path().c_str(), GDAL_OF_VECTOR, nullptr, nullptr, nullptr);
+    ASSERT_NE(ds, nullptr);
+    OGRLayer* layer = ds->GetLayer(0);
+    ASSERT_EQ(layer->GetFeatureCount(), N);
+
+    layer->ResetReading();
+    for (int i = 0; i < N; ++i) {
+        OGRFeature* feat = layer->GetNextFeature();
+        ASSERT_NE(feat, nullptr);
+
+        OGRGeometry* geom = feat->GetGeometryRef();
+        ASSERT_NE(geom, nullptr);
+        EXPECT_EQ(wkbFlatten(geom->getGeometryType()), wkbMultiPoint);
+
+        OGRMultiPoint* mp = geom->toMultiPoint();
+        EXPECT_EQ(mp->getNumGeometries(), 3 + i);
+
+        OGRFeature::DestroyFeature(feat);
+    }
+    GDALClose(ds);
+    std::cout << "[T_W07] MultiPoint: " << N << " features verified\n";
+}
+
+// ── T_W08: PointZ（3D 点）写入 + GDAL 回读 ──
+TEST_F(WriterTest, T_W08_PointZ) {
+    // 用 GDAL 创建含 Z 的图层
+    GDALAllRegister();
+    GDALDriver* driver = GetGDALDriverManager()->GetDriverByName("OpenFileGDB");
+    ASSERT_NE(driver, nullptr);
+
+    GDALDataset* ds = driver->Create(gdb_path().c_str(), 0, 0, 0, GDT_Unknown, nullptr);
+    ASSERT_NE(ds, nullptr);
+
+    // 创建 3D 点图层 (wkbPoint25D = 0x80000001)
+    OGRLayer* layer = ds->CreateLayer("points3d", nullptr, wkbPoint25D, nullptr);
+    ASSERT_NE(layer, nullptr);
+
+    OGRFieldDefn name_field("name", OFTString);
+    layer->CreateField(&name_field);
+    OGRFieldDefn elev_field("elevation", OFTReal);
+    layer->CreateField(&elev_field);
+    GDALClose(ds);
+
+    // 用我们的 writer 打开并写入
+    GdbTableWriter writer;
+    ASSERT_TRUE(writer.open_existing(gdb_path(), "points3d"));
+
+    auto& ser = writer.geometry_serializer();
+    const int N = 3;
+    for (int i = 0; i < N; ++i) {
+        double x = 121.47 + i * 0.01;
+        double y = 31.23 + i * 0.01;
+        double z = 100.0 + i * 10;
+
+        ser.set_point({x, y});
+        ser.set_z_values({z});
+        ser.serialize(GeomType::PointZ);
+
+        writer.begin_row();
+        writer.append_string(0, "pt3d_" + std::to_string(i));
+        writer.append_f64(1, z);
+        writer.append_geometry(2);
+        writer.end_row();
+    }
+    writer.close();
+    ASSERT_EQ(writer.row_count(), static_cast<uint64_t>(N));
+
+    // GDAL 回读验证 Z 值
+    ds = (GDALDataset*)GDALOpenEx(
+        gdb_path().c_str(), GDAL_OF_VECTOR, nullptr, nullptr, nullptr);
+    ASSERT_NE(ds, nullptr);
+    layer = ds->GetLayer(0);
+    ASSERT_EQ(layer->GetFeatureCount(), N);
+
+    layer->ResetReading();
+    for (int i = 0; i < N; ++i) {
+        OGRFeature* feat = layer->GetNextFeature();
+        ASSERT_NE(feat, nullptr);
+
+        OGRGeometry* geom = feat->GetGeometryRef();
+        ASSERT_NE(geom, nullptr);
+        EXPECT_TRUE(wkbHasZ(geom->getGeometryType())) << "geometry should be 3D at feature " << i;
+
+        OGRPoint* pt = geom->toPoint();
+        EXPECT_NEAR(pt->getX(), 121.47 + i * 0.01, 0.001);
+        EXPECT_NEAR(pt->getY(), 31.23 + i * 0.01, 0.001);
+        EXPECT_NEAR(pt->getZ(), 100.0 + i * 10, 1.0)
+            << "Z mismatch at feature " << i;
+
+        OGRFeature::DestroyFeature(feat);
+    }
+    GDALClose(ds);
+    std::cout << "[T_W08] PointZ: " << N << " 3D features verified\n";
+}
