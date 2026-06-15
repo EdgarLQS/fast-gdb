@@ -12,8 +12,8 @@
 //   - 几何坐标一致（逐点对比，允许浮点误差）
 
 #include <gtest/gtest.h>
-#include "writer/gdb_table_writer.h"
-#include "writer/geometry_serializer.h"
+#include "gdb_table_writer.h"
+#include "geometry_serializer.h"
 #include "gdb_table.h"
 #include "gdb_tablx.h"
 #include "explorgdb_types.h"
@@ -47,6 +47,58 @@ protected:
     std::string test_dir_;
 };
 
+// ── 辅助：用 GDAL 创建 schema，然后用 writer.open_existing() 打开 ──
+// 替代原来 writer.create_new() 的功能（GDAL 依赖已从 writer 移到测试层）
+static bool create_schema_and_open(GdbTableWriter& writer, const std::string& gdb_path,
+                                   const std::string& layer_name,
+                                   const std::vector<WriterField>& fields,
+                                   int ogr_geom_type) {
+    GDALAllRegister();
+    GDALDriver* driver = GetGDALDriverManager()->GetDriverByName("OpenFileGDB");
+    if (!driver) return false;
+
+    GDALDataset* ds = driver->Create(gdb_path.c_str(), 0, 0, 0, GDT_Unknown, nullptr);
+    if (!ds) return false;
+
+    OGRLayer* layer = ds->CreateLayer(layer_name.c_str(), nullptr,
+                                       static_cast<OGRwkbGeometryType>(ogr_geom_type), nullptr);
+    if (!layer) { GDALClose(ds); return false; }
+
+    for (const auto& f : fields) {
+        OGRFieldDefn ogr_f(f.name.c_str(), OFTString);
+        switch (f.type) {
+            case FieldType::Int16:
+                ogr_f.SetType(OFTInteger);
+                ogr_f.SetSubType(OFSTInt16);
+                break;
+            case FieldType::Int32:
+                ogr_f.SetType(OFTInteger);
+                break;
+            case FieldType::Int64:
+                ogr_f.SetType(OFTInteger64);
+                break;
+            case FieldType::Float32:
+                ogr_f.SetType(OFTReal);
+                ogr_f.SetSubType(OFSTFloat32);
+                break;
+            case FieldType::Float64:
+                ogr_f.SetType(OFTReal);
+                break;
+            case FieldType::String:
+                ogr_f.SetType(OFTString);
+                if (f.max_width > 0) ogr_f.SetWidth(f.max_width);
+                break;
+            default:
+                break;
+        }
+        ogr_f.SetNullable(f.nullable);
+        layer->CreateField(&ogr_f);
+    }
+    GDALClose(ds);
+
+    return writer.open_existing(gdb_path, layer_name);
+}
+
 // ── T_W01: 基础写入 + explorgdb 读回验证 ──
 TEST_F(WriterTest, T_W01_BasicWriteAndRead) {
     // 1. 创建 .gdb 并写入数据
@@ -58,7 +110,7 @@ TEST_F(WriterTest, T_W01_BasicWriteAndRead) {
         {"area", FieldType::Float64, true, 0},
     };
 
-    ASSERT_TRUE(writer.create_new(gdb_path(), "test_layer", fields, "", 3 /* wkbPolygon */));
+    ASSERT_TRUE(create_schema_and_open(writer, gdb_path(), "test_layer", fields, 3 /* wkbPolygon */));
 
     // 写入 3 个 polygon
     for (int i = 0; i < 3; ++i) {
@@ -116,7 +168,7 @@ TEST_F(WriterTest, T_W02_CoordinateAccuracy) {
         {"label", FieldType::String, true, 50},
     };
 
-    ASSERT_TRUE(writer.create_new(gdb_path(), "coord_test", fields, "", 3));
+    ASSERT_TRUE(create_schema_and_open(writer, gdb_path(), "coord_test", fields, 3));
 
     // 写入一个精确坐标的 polygon（上海附近）
     double coords[][2] = {
@@ -200,7 +252,7 @@ TEST_F(WriterTest, T_W03_BulkWritePerformance) {
         };
 
         auto t0 = std::chrono::high_resolution_clock::now();
-        ASSERT_TRUE(writer.create_new(gdb, "bench", fields, "", 3));
+        ASSERT_TRUE(create_schema_and_open(writer, gdb, "bench", fields, 3));
         auto t1 = std::chrono::high_resolution_clock::now();
 
         for (int i = 0; i < N; ++i) {
@@ -258,7 +310,7 @@ TEST_F(WriterTest, T_W04_GDALCompatibility) {
         {"area", FieldType::Float64, true, 0},
     };
 
-    ASSERT_TRUE(writer.create_new(gdb_path(), "gdal_test", fields, "", 3));
+    ASSERT_TRUE(create_schema_and_open(writer, gdb_path(), "gdal_test", fields, 3));
 
     // 注意：GDAL OpenFileGDB 会将 Int64 字段自动转为 Float64（除非指定
     // TARGET_ARCGIS_VERSION=ARCGIS_PRO_3_2_OR_LATER）。
@@ -354,7 +406,7 @@ TEST_F(WriterTest, T_W05_PointType) {
     };
 
     // wkbPoint = 1
-    ASSERT_TRUE(writer.create_new(gdb_path(), "points", fields, "", 1));
+    ASSERT_TRUE(create_schema_and_open(writer, gdb_path(), "points", fields, 1));
 
     auto& ser = writer.geometry_serializer();
     const int N = 5;
@@ -410,7 +462,7 @@ TEST_F(WriterTest, T_W06_PolylineType) {
     };
 
     // wkbLineString = 2
-    ASSERT_TRUE(writer.create_new(gdb_path(), "roads", fields, "", 2));
+    ASSERT_TRUE(create_schema_and_open(writer, gdb_path(), "roads", fields, 2));
 
     auto& ser = writer.geometry_serializer();
     const int N = 3;
@@ -470,7 +522,7 @@ TEST_F(WriterTest, T_W07_MultiPointType) {
     };
 
     // wkbMultiPoint = 4
-    ASSERT_TRUE(writer.create_new(gdb_path(), "clusters", fields, "", 4));
+    ASSERT_TRUE(create_schema_and_open(writer, gdb_path(), "clusters", fields, 4));
 
     auto& ser = writer.geometry_serializer();
     const int N = 3;
@@ -588,36 +640,11 @@ TEST_F(WriterTest, T_W08_PointZ) {
     std::cout << "[T_W08] PointZ: " << N << " 3D features verified\n";
 }
 
-// ── 辅助：创建含 Z 的 .gdb 并返回 writer ──
-static bool create_z_gdb(GdbTableWriter& writer, const std::string& gdb_path,
-                         const std::string& layer_name, int ogr_geom_type,
-                         const std::vector<WriterField>& fields) {
-    GDALDriver* driver = GetGDALDriverManager()->GetDriverByName("OpenFileGDB");
-    if (!driver) return false;
-
-    GDALDataset* ds = driver->Create(gdb_path.c_str(), 0, 0, 0, GDT_Unknown, nullptr);
-    if (!ds) return false;
-
-    OGRLayer* layer = ds->CreateLayer(layer_name.c_str(), nullptr,
-                                       static_cast<OGRwkbGeometryType>(ogr_geom_type), nullptr);
-    if (!layer) { GDALClose(ds); return false; }
-
-    for (const auto& f : fields) {
-        OGRFieldDefn ogr_f(f.name.c_str(), OFTString);
-        if (f.type == FieldType::Float64) ogr_f.SetType(OFTReal);
-        else if (f.type == FieldType::Int64) ogr_f.SetType(OFTInteger64);
-        layer->CreateField(&ogr_f);
-    }
-    GDALClose(ds);
-
-    return writer.open_existing(gdb_path, layer_name);
-}
-
 // ── T_W09: PolylineZ（3D 线）──
 TEST_F(WriterTest, T_W09_PolylineZ) {
     std::vector<WriterField> fields = {{"name", FieldType::String, true, 100}};
     GdbTableWriter writer;
-    ASSERT_TRUE(create_z_gdb(writer, gdb_path(), "lines3d", wkbLineString25D, fields));
+    ASSERT_TRUE(create_schema_and_open(writer, gdb_path(), "lines3d", fields, wkbLineString25D));
 
     auto& ser = writer.geometry_serializer();
     const int N = 2;
@@ -679,7 +706,7 @@ TEST_F(WriterTest, T_W09_PolylineZ) {
 TEST_F(WriterTest, T_W10_PolygonZ) {
     std::vector<WriterField> fields = {{"name", FieldType::String, true, 100}};
     GdbTableWriter writer;
-    ASSERT_TRUE(create_z_gdb(writer, gdb_path(), "polys3d", wkbPolygon25D, fields));
+    ASSERT_TRUE(create_schema_and_open(writer, gdb_path(), "polys3d", fields, wkbPolygon25D));
 
     auto& ser = writer.geometry_serializer();
     const int N = 2;
@@ -728,7 +755,7 @@ TEST_F(WriterTest, T_W10_PolygonZ) {
 TEST_F(WriterTest, T_W11_MultiPointZ) {
     std::vector<WriterField> fields = {{"id", FieldType::Float64, true, 0}};
     GdbTableWriter writer;
-    ASSERT_TRUE(create_z_gdb(writer, gdb_path(), "mp3d", wkbMultiPoint25D, fields));
+    ASSERT_TRUE(create_schema_and_open(writer, gdb_path(), "mp3d", fields, wkbMultiPoint25D));
 
     auto& ser = writer.geometry_serializer();
     const int N = 2;
@@ -786,7 +813,7 @@ TEST_F(WriterTest, T_W12_PointM) {
     // GDAL 没有直接的 wkbPointM，用 wkbPoint25D 创建再让 GDAL 处理
     // 简化：用 PointZ 测试 M 值的写入机制
     // 实际 M 支持需要特殊图层创建选项
-    ASSERT_TRUE(create_z_gdb(writer, gdb_path(), "ptm", wkbPoint25D, fields));
+    ASSERT_TRUE(create_schema_and_open(writer, gdb_path(), "ptm", fields, wkbPoint25D));
 
     auto& ser = writer.geometry_serializer();
     const int N = 3;
@@ -821,7 +848,7 @@ TEST_F(WriterTest, T_W13_PolylineZM) {
     std::vector<WriterField> fields = {{"name", FieldType::String, true, 100}};
     GdbTableWriter writer;
     // 创建 3D 线图层（GDAL 会设置 zorig/zscale）
-    ASSERT_TRUE(create_z_gdb(writer, gdb_path(), "lines_zm", wkbLineString25D, fields));
+    ASSERT_TRUE(create_schema_and_open(writer, gdb_path(), "lines_zm", fields, wkbLineString25D));
 
     auto& ser = writer.geometry_serializer();
     std::vector<GeomPoint> line = {
@@ -860,7 +887,7 @@ TEST_F(WriterTest, T_W13_PolylineZM) {
 TEST_F(WriterTest, T_W14_PolygonZM) {
     std::vector<WriterField> fields = {{"name", FieldType::String, true, 100}};
     GdbTableWriter writer;
-    ASSERT_TRUE(create_z_gdb(writer, gdb_path(), "polys_zm", wkbPolygon25D, fields));
+    ASSERT_TRUE(create_schema_and_open(writer, gdb_path(), "polys_zm", fields, wkbPolygon25D));
 
     auto& ser = writer.geometry_serializer();
     std::vector<GeomPoint> ring = {
@@ -895,7 +922,7 @@ TEST_F(WriterTest, T_W14_PolygonZM) {
 TEST_F(WriterTest, T_W15_MultiPointZM) {
     std::vector<WriterField> fields = {{"id", FieldType::Float64, true, 0}};
     GdbTableWriter writer;
-    ASSERT_TRUE(create_z_gdb(writer, gdb_path(), "mp_zm", wkbMultiPoint25D, fields));
+    ASSERT_TRUE(create_schema_and_open(writer, gdb_path(), "mp_zm", fields, wkbMultiPoint25D));
 
     auto& ser = writer.geometry_serializer();
     std::vector<GeomPoint> pts = {{1,2},{3,4},{5,6}};

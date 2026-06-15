@@ -31,6 +31,8 @@
 #ifndef EXPLORGDB_ROW_BUFFER_H
 #define EXPLORGDB_ROW_BUFFER_H
 
+#include "../common/varint.h"
+
 #include <cstdint>
 #include <cstddef>
 #include <cstring>
@@ -151,7 +153,7 @@ public:
         auto& buf = cur_buf();
         uint64_t len = value.size();
         uint8_t varbuf[10];
-        size_t vlen = encode_varuint(varbuf, len);
+        size_t vlen = encode_varuint_to(varbuf, len);
         buf.insert(buf.end(), varbuf, varbuf + vlen);
         buf.insert(buf.end(), value.begin(), value.end());
     }
@@ -159,7 +161,7 @@ public:
     void append_binary(const uint8_t* data, size_t len) {
         auto& buf = cur_buf();
         uint8_t varbuf[10];
-        size_t vlen = encode_varuint(varbuf, len);
+        size_t vlen = encode_varuint_to(varbuf, len);
         buf.insert(buf.end(), varbuf, varbuf + vlen);
         buf.insert(buf.end(), data, data + len);
     }
@@ -167,7 +169,7 @@ public:
     void append_geometry(const uint8_t* blob, size_t blob_len) {
         auto& buf = cur_buf();
         uint8_t varbuf[10];
-        size_t vlen = encode_varuint(varbuf, blob_len);
+        size_t vlen = encode_varuint_to(varbuf, blob_len);
         buf.insert(buf.end(), varbuf, varbuf + vlen);
         if (blob_len > 0) {
             buf.insert(buf.end(), blob, blob + blob_len);
@@ -242,16 +244,7 @@ private:
         return (bitmap_[bit_pos / 8] & (1 << (bit_pos % 8))) != 0;
     }
 
-    static size_t encode_varuint(uint8_t* dst, uint64_t value) {
-        size_t n = 0;
-        do {
-            uint8_t byte = static_cast<uint8_t>(value & 0x7F);
-            value >>= 7;
-            if (value != 0) byte |= 0x80;
-            dst[n++] = byte;
-        } while (value != 0);
-        return n;
-    }
+    // encode_varuint_to 来自 ../common/varint.h
 
     int num_fields_ = 0;
     std::vector<bool> nullable_flags_;     // 每个描述符字段是否 nullable

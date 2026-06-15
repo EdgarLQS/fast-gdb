@@ -39,30 +39,40 @@ target_compile_features(gdb_component PUBLIC cxx_std_17)
 target_compile_options(gdb_component PRIVATE -Wall -Wno-unused-result)
 
 # ===== explorgdb: 纯 C++ GDB 二进制解析器（不依赖 GDAL） =====
-file(GLOB EXPLORGDB_SOURCES src/edgar/explorgdb/*.cpp)
-list(FILTER EXPLORGDB_SOURCES EXCLUDE REGEX ".*explorgdb_cli\\.cpp$")
-add_library(explorgdb_lib STATIC ${EXPLORGDB_SOURCES})
-target_include_directories(explorgdb_lib PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb
-)
-target_compile_features(explorgdb_lib PUBLIC cxx_std_17)
-target_compile_options(explorgdb_lib PRIVATE -Wall -Wno-unused-result)
 
-# ===== explorgdb_writer: GDB 直接写入器（依赖 GDAL + explorgdb_lib） =====
+# common — 读写共享基础设施
+file(GLOB COMMON_SOURCES src/edgar/explorgdb/common/*.cpp)
+add_library(explorgdb_common_lib STATIC ${COMMON_SOURCES})
+target_include_directories(explorgdb_common_lib PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/common
+)
+target_compile_features(explorgdb_common_lib PUBLIC cxx_std_17)
+target_compile_options(explorgdb_common_lib PRIVATE -Wall -Wno-unused-result)
+
+# reader — GDB 读取器
+file(GLOB READER_SOURCES src/edgar/explorgdb/reader/*.cpp)
+list(FILTER READER_SOURCES EXCLUDE REGEX ".*explorgdb_cli\\.cpp$")
+add_library(explorgdb_reader_lib STATIC ${READER_SOURCES})
+target_include_directories(explorgdb_reader_lib PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader
+)
+target_link_libraries(explorgdb_reader_lib PUBLIC explorgdb_common_lib)
+target_compile_features(explorgdb_reader_lib PUBLIC cxx_std_17)
+target_compile_options(explorgdb_reader_lib PRIVATE -Wall -Wno-unused-result)
+
+# writer — GDB 写入器（纯 C++，不依赖 GDAL）
 file(GLOB WRITER_SOURCES src/edgar/explorgdb/writer/*.cpp)
 add_library(explorgdb_writer_lib STATIC ${WRITER_SOURCES})
 target_include_directories(explorgdb_writer_lib PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb
     ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/writer
-    ${GDAL_INCLUDE_DIR}
 )
-target_link_libraries(explorgdb_writer_lib PUBLIC explorgdb_lib PRIVATE ${GDAL_LIBRARY})
+target_link_libraries(explorgdb_writer_lib PUBLIC explorgdb_common_lib)
 target_compile_features(explorgdb_writer_lib PUBLIC cxx_std_17)
 target_compile_options(explorgdb_writer_lib PRIVATE -Wall -Wno-unused-result)
 
 # CLI 工具（不依赖 GDAL）
-add_executable(explorgdb_cli src/edgar/explorgdb/explorgdb_cli.cpp)
-target_link_libraries(explorgdb_cli explorgdb_lib)
+add_executable(explorgdb_cli src/edgar/explorgdb/reader/explorgdb_cli.cpp)
+target_link_libraries(explorgdb_cli explorgdb_reader_lib)
 target_compile_options(explorgdb_cli PRIVATE -Wall -Wno-unused-result -Wno-format)
 
 # ===== Google Test =====
@@ -72,19 +82,34 @@ enable_testing()
 # Test sources
 file(GLOB USEGDAL_TEST_SOURCES tests/edgar/component/usegdal/*.cpp)
 file(GLOB BASEUSE_SOURCES tests/edgar/baseuse/*.cpp)
-file(GLOB EXPLORGDB_TEST_SOURCES tests/edgar/explorgdb/*.cpp)
-list(FILTER EXPLORGDB_TEST_SOURCES EXCLUDE REGEX ".*generate_large_gdb\\.cpp$")
+file(GLOB EXPLORGDB_READER_TEST_SOURCES tests/edgar/explorgdb/reader/*.cpp)
+file(GLOB EXPLORGDB_WRITER_TEST_SOURCES tests/edgar/explorgdb/writer/*.cpp)
 set(TEST_SOURCES
     tests/test_runner.cpp
     tests/test_fixture.h
     ${BASEUSE_SOURCES}
     ${USEGDAL_TEST_SOURCES}
-    ${EXPLORGDB_TEST_SOURCES}
+    ${EXPLORGDB_READER_TEST_SOURCES}
+    ${EXPLORGDB_WRITER_TEST_SOURCES}
 )
 
 add_executable(gdb_tutorial_test_runner ${TEST_SOURCES})
-target_include_directories(gdb_tutorial_test_runner PRIVATE ${GDAL_INCLUDE_DIR} tests tests/edgar/component/usegdal tests/edgar/explorgdal tests/edgar/baseuse tests/edgar/explorgdb)
-target_link_libraries(gdb_tutorial_test_runner PRIVATE ${GDAL_LIBRARY} GTest::gtest GTest::gtest_main gdb_component explorgdb_lib explorgdb_writer_lib)
+target_include_directories(gdb_tutorial_test_runner PRIVATE
+    ${GDAL_INCLUDE_DIR}
+    tests
+    tests/edgar/component/usegdal
+    tests/edgar/explorgdal
+    tests/edgar/baseuse
+    tests/edgar/explorgdb
+    tests/edgar/explorgdb/reader
+    tests/edgar/explorgdb/writer
+)
+target_link_libraries(gdb_tutorial_test_runner PRIVATE
+    ${GDAL_LIBRARY} GTest::gtest GTest::gtest_main
+    gdb_component
+    explorgdb_reader_lib
+    explorgdb_writer_lib
+)
 target_compile_options(gdb_tutorial_test_runner PRIVATE -Wall -Wno-unused-result)
 
 gtest_discover_tests(gdb_tutorial_test_runner)
@@ -99,7 +124,9 @@ target_compile_options(generate_large_gdb PRIVATE -Wall -Wno-unused-result)
 message(STATUS "")
 message(STATUS "=== GDB Tutorial ===")
 message(STATUS "Component: gdb_component (usegdal — GDAL 高层 API)")
-message(STATUS "Component: explorgdb_lib (纯 C++ GDB 二进制解析)")
+message(STATUS "Component: explorgdb_common_lib (纯 C++ 共享基础设施)")
+message(STATUS "Component: explorgdb_reader_lib (纯 C++ GDB 二进制解析)")
+message(STATUS "Component: explorgdb_writer_lib (纯 C++ GDB 写入器)")
 message(STATUS "GDAL: ${GDAL_ROOT}")
 message(STATUS "Target: explorgdb_cli - GDB 二进制探索工具")
 message(STATUS "Target: gdb_tutorial_test_runner - 教程配套测试")

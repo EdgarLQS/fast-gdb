@@ -1,10 +1,10 @@
 // src/edgar/explorgdb/writer/gdb_table_writer.h
-// .gdbtable 直接写入器 — 绕开 GDAL CreateFeature，纯 C++ 构造二进制行
+// .gdbtable 直接写入器 — 纯 C++ 构造二进制行（不依赖 GDAL）
 //
 // 架构概览：
 //   1. 用 GDAL 创建空 .gdb（只做 schema：建目录、建图层、建字段）
 //   2. 发现数据表路径（a00000001.gdbtable）和数据起始偏移
-//   3. 用 RowBuffer + PolygonSerializer 编码每行，直接追加到 .gdbtable
+//   3. 用 RowBuffer + GeometrySerializer 编码每行，直接追加到 .gdbtable
 //   4. 用 TablxWriter 同步记录行偏移
 //   5. close() 时更新 .gdbtable 头部（记录数 + 文件大小）和 .gdbtablx
 //
@@ -15,11 +15,9 @@
 //   - 零堆分配行编码（RowBuffer 复用内部 buffer）
 //
 // 使用方式：
+//   // 先用 GDAL 创建空 .gdb（只做 schema：建目录、建图层、建字段）
 //   GdbTableWriter writer;
-//   // 方式 A：从现有 .gdb 追加（GDAL 已创建 schema）
 //   writer.open_existing("/path/to/data.gdb", "my_layer");
-//   // 方式 B：新建（内部调用 GDAL 创建 schema）
-//   writer.create_new("/path/to/data.gdb", "my_layer", fields, wkt_srs, geom_type);
 //
 //   // 添加行
 //   PolygonSerializer& geom_ser = writer.geometry_serializer();
@@ -41,18 +39,12 @@
 #include "row_buffer.h"
 #include "geometry_serializer.h"
 #include "tablx_writer.h"
-#include "../explorgdb_types.h"
+#include "../common/explorgdb_types.h"
 
 #include <cstdint>
 #include <cstddef>
 #include <string>
 #include <vector>
-#include <memory>
-#include <functional>
-
-// GDAL 前置声明
-class GDALDataset;
-class OGRLayer;
 
 namespace explorgdb {
 namespace writer {
@@ -77,16 +69,6 @@ public:
     // gdb_path: .gdb 目录路径
     // layer_name: 图层名称
     bool open_existing(const std::string& gdb_path, const std::string& layer_name);
-
-    // 新建 .gdb（内部调用 GDAL 创建 schema）
-    // fields: 非几何字段列表
-    // wkt_srs: 空间参考 WKT（空字符串 = 未定义）
-    // geom_type: OGR 几何类型代码（wkbPolygon=3, wkbPoint=1, etc.）
-    bool create_new(const std::string& gdb_path,
-                    const std::string& layer_name,
-                    const std::vector<WriterField>& fields,
-                    const std::string& wkt_srs,
-                    int geom_type);
 
     // ── 行写入 ──
 
@@ -148,8 +130,6 @@ private:
     bool is_open_ = false;
     std::string gdb_path_;
     std::string layer_name_;
-
-    // GDAL 句柄（仅用于 create_new 时创建 schema，创建后即关闭）
 
     // 数据表文件路径
     std::string table_path_;   // a00000001.gdbtable

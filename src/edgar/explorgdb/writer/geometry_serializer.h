@@ -56,6 +56,8 @@
 #ifndef EXPLORGDB_GEOMETRY_SERIALIZER_H
 #define EXPLORGDB_GEOMETRY_SERIALIZER_H
 
+#include "../common/varint.h"
+
 #include <cstdint>
 #include <cstddef>
 #include <cstring>
@@ -226,7 +228,7 @@ private:
 
         size_t pos = 0;
         // geom_type（包含 Z/M 标志位）
-        pos += encode_varuint(tmp_ + pos, static_cast<uint64_t>(type));
+        pos += encode_varuint_to(tmp_ + pos, static_cast<uint64_t>(type));
         blob_.insert(blob_.end(), tmp_, tmp_ + pos);
 
         const auto& pt = points_[0];
@@ -235,8 +237,8 @@ private:
 
         // x+1, y+1 (0 means NULL)
         pos = 0;
-        pos += encode_varuint(tmp_ + pos, static_cast<uint64_t>(ix + 1));
-        pos += encode_varuint(tmp_ + pos, static_cast<uint64_t>(iy + 1));
+        pos += encode_varuint_to(tmp_ + pos, static_cast<uint64_t>(ix + 1));
+        pos += encode_varuint_to(tmp_ + pos, static_cast<uint64_t>(iy + 1));
         blob_.insert(blob_.end(), tmp_, tmp_ + pos);
 
         // Z (Point 用无符号 varuint(iz+1))
@@ -282,17 +284,17 @@ private:
 
         // 写头部到 tmp_
         size_t pos = 0;
-        pos += encode_varuint(tmp_ + pos, static_cast<uint64_t>(type));  // geom_type
-        pos += encode_varuint(tmp_ + pos, total_points);                  // nPoints
-        pos += encode_varuint(tmp_ + pos, n_parts);                       // nParts
+        pos += encode_varuint_to(tmp_ + pos, static_cast<uint64_t>(type));  // geom_type
+        pos += encode_varuint_to(tmp_ + pos, total_points);                  // nPoints
+        pos += encode_varuint_to(tmp_ + pos, n_parts);                       // nParts
         // bbox: vxmin, vymin, vdx, vdy
-        pos += encode_varuint(tmp_ + pos, static_cast<uint64_t>(ixmin));
-        pos += encode_varuint(tmp_ + pos, static_cast<uint64_t>(iymin));
-        pos += encode_varuint(tmp_ + pos, static_cast<uint64_t>(ixmax - ixmin));
-        pos += encode_varuint(tmp_ + pos, static_cast<uint64_t>(iymax - iymin));
+        pos += encode_varuint_to(tmp_ + pos, static_cast<uint64_t>(ixmin));
+        pos += encode_varuint_to(tmp_ + pos, static_cast<uint64_t>(iymin));
+        pos += encode_varuint_to(tmp_ + pos, static_cast<uint64_t>(ixmax - ixmin));
+        pos += encode_varuint_to(tmp_ + pos, static_cast<uint64_t>(iymax - iymin));
         // part_sizes (nParts-1 个)
         for (size_t p = 0; p + 1 < int_rings.size(); ++p) {
-            pos += encode_varuint(tmp_ + pos, int_rings[p].size());
+            pos += encode_varuint_to(tmp_ + pos, int_rings[p].size());
         }
         blob_.insert(blob_.end(), tmp_, tmp_ + pos);
 
@@ -333,20 +335,20 @@ private:
 
         // 头部
         size_t pos = 0;
-        pos += encode_varuint(tmp_ + pos, static_cast<uint64_t>(type));  // geom_type（含 Z/M 标志）
-        pos += encode_varuint(tmp_ + pos, n_points);
+        pos += encode_varuint_to(tmp_ + pos, static_cast<uint64_t>(type));  // geom_type（含 Z/M 标志）
+        pos += encode_varuint_to(tmp_ + pos, n_points);
         // bbox
-        pos += encode_varuint(tmp_ + pos, static_cast<uint64_t>(ixmin));
-        pos += encode_varuint(tmp_ + pos, static_cast<uint64_t>(iymin));
-        pos += encode_varuint(tmp_ + pos, static_cast<uint64_t>(ixmax - ixmin));
-        pos += encode_varuint(tmp_ + pos, static_cast<uint64_t>(iymax - iymin));
+        pos += encode_varuint_to(tmp_ + pos, static_cast<uint64_t>(ixmin));
+        pos += encode_varuint_to(tmp_ + pos, static_cast<uint64_t>(iymin));
+        pos += encode_varuint_to(tmp_ + pos, static_cast<uint64_t>(ixmax - ixmin));
+        pos += encode_varuint_to(tmp_ + pos, static_cast<uint64_t>(iymax - iymin));
         blob_.insert(blob_.end(), tmp_, tmp_ + pos);
 
         // MultiPoint 用绝对坐标（非 delta）
         for (const auto& [ix, iy] : int_pts) {
             pos = 0;
-            pos += encode_varuint(tmp_ + pos, static_cast<uint64_t>(ix));
-            pos += encode_varuint(tmp_ + pos, static_cast<uint64_t>(iy));
+            pos += encode_varuint_to(tmp_ + pos, static_cast<uint64_t>(ix));
+            pos += encode_varuint_to(tmp_ + pos, static_cast<uint64_t>(iy));
             blob_.insert(blob_.end(), tmp_, tmp_ + pos);
         }
 
@@ -364,8 +366,8 @@ private:
     // ── 空几何 ──
     size_t serialize_empty() {
         size_t pos = 0;
-        pos += encode_varuint(tmp_ + pos, 0);  // SHPT_NULL
-        pos += encode_varuint(tmp_ + pos, 0);  // nPoints=0
+        pos += encode_varuint_to(tmp_ + pos, 0);  // SHPT_NULL
+        pos += encode_varuint_to(tmp_ + pos, 0);  // nPoints=0
         blob_.insert(blob_.end(), tmp_, tmp_ + pos);
         return blob_.size();
     }
@@ -390,8 +392,8 @@ private:
                 prev_y = iy;
 
                 size_t pos = 0;
-                pos += encode_signed_varint(tmp_ + pos, dx);
-                pos += encode_signed_varint(tmp_ + pos, dy);
+                pos += encode_varint_to(tmp_ + pos, dx);
+                pos += encode_varint_to(tmp_ + pos, dy);
                 blob_.insert(blob_.end(), tmp_, tmp_ + pos);
             }
         }
@@ -402,7 +404,7 @@ private:
     void write_z_point(double z) {
         int64_t iz = coord_to_int(z, zorig_, zscale_);
         size_t pos = 0;
-        pos += encode_varuint(tmp_ + pos, static_cast<uint64_t>(iz + 1));
+        pos += encode_varuint_to(tmp_ + pos, static_cast<uint64_t>(iz + 1));
         blob_.insert(blob_.end(), tmp_, tmp_ + pos);
     }
 
@@ -416,7 +418,7 @@ private:
             prev_iz = iz;
 
             size_t pos = 0;
-            pos += encode_signed_varint(tmp_ + pos, dz);
+            pos += encode_varint_to(tmp_ + pos, dz);
             blob_.insert(blob_.end(), tmp_, tmp_ + pos);
         }
     }
@@ -426,7 +428,7 @@ private:
     void write_m_point(double m) {
         int64_t im = coord_to_int(m, morig_, mscale_);
         size_t pos = 0;
-        pos += encode_varuint(tmp_ + pos, static_cast<uint64_t>(im + 1));
+        pos += encode_varuint_to(tmp_ + pos, static_cast<uint64_t>(im + 1));
         blob_.insert(blob_.end(), tmp_, tmp_ + pos);
     }
 
@@ -440,7 +442,7 @@ private:
             prev_im = im;
 
             size_t pos = 0;
-            pos += encode_signed_varint(tmp_ + pos, dm);
+            pos += encode_varint_to(tmp_ + pos, dm);
             blob_.insert(blob_.end(), tmp_, tmp_ + pos);
         }
     }
@@ -454,47 +456,7 @@ private:
         return static_cast<int64_t>(std::llround(val));
     }
 
-    static size_t encode_varuint(uint8_t* dst, uint64_t value) {
-        size_t n = 0;
-        do {
-            uint8_t byte = static_cast<uint8_t>(value & 0x7F);
-            value >>= 7;
-            if (value != 0) byte |= 0x80;
-            dst[n++] = byte;
-        } while (value != 0);
-        return n;
-    }
-
-    // 有符号 varint：首字节 bit6=符号, bit7=延续, 低6bit=数据
-    static size_t encode_signed_varint(uint8_t* dst, int64_t value) {
-        uint64_t sign_bit = 0;
-        uint64_t abs_val;
-        if (value < 0) {
-            sign_bit = 0x40;
-            abs_val = static_cast<uint64_t>(-value);
-        } else {
-            abs_val = static_cast<uint64_t>(value);
-        }
-
-        uint64_t first_data = abs_val & 0x3F;
-        abs_val >>= 6;
-
-        size_t n = 0;
-        if (abs_val == 0) {
-            dst[n++] = static_cast<uint8_t>(first_data | sign_bit);
-            return n;
-        }
-
-        dst[n++] = static_cast<uint8_t>(first_data | sign_bit | 0x80);
-
-        while (abs_val != 0) {
-            uint8_t byte = static_cast<uint8_t>(abs_val & 0x7F);
-            abs_val >>= 7;
-            if (abs_val != 0) byte |= 0x80;
-            dst[n++] = byte;
-        }
-        return n;
-    }
+    // encode_varuint_to / encode_varint_to 来自 ../common/varint.h
 
     // ── 成员变量 ──
     double xorig_, yorig_, xyscale_;

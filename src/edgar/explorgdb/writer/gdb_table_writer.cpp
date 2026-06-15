@@ -9,16 +9,7 @@
 //   5. 更新 .gdbtable 头部（记录数 + 文件大小）
 
 #include "gdb_table_writer.h"
-#include "varint_encoder.h"
-#include "../binary_reader.h"
-#include "../gdb_catalog.h"
-
-#include "gdal.h"
-#include "gdal_priv.h"
-#include "ogr_api.h"
-#include "ogr_srs_api.h"
-#include "ogrsf_frmts.h"
-#include "cpl_conv.h"
+#include "../common/binary_reader.h"
 
 #include <cstdio>
 #include <cstring>
@@ -37,91 +28,6 @@ GdbTableWriter::GdbTableWriter() {
 
 GdbTableWriter::~GdbTableWriter() {
     if (is_open_) close();
-}
-
-// ── 创建新 .gdb（GDAL 建 schema）──
-bool GdbTableWriter::create_new(const std::string& gdb_path,
-                                 const std::string& layer_name,
-                                 const std::vector<WriterField>& fields,
-                                 const std::string& wkt_srs,
-                                 int geom_type) {
-    // 保存用户字段定义（用于后续按名称匹配描述符）
-    user_fields_ = fields;
-
-    // 用 GDAL 创建空 .gdb
-    GDALDriver* driver = GetGDALDriverManager()->GetDriverByName("OpenFileGDB");
-    if (!driver) {
-        std::cerr << "OpenFileGDB driver not available\n";
-        return false;
-    }
-
-    // 创建 .gdb 目录
-    char** options = nullptr;
-    GDALDataset* ds = driver->Create(gdb_path.c_str(), 0, 0, 0, GDT_Unknown, options);
-    if (!ds) {
-        std::cerr << "Failed to create: " << gdb_path << "\n";
-        return false;
-    }
-
-    // 创建图层
-    OGRSpatialReference* srs = nullptr;
-    if (!wkt_srs.empty()) {
-        srs = new OGRSpatialReference();
-        const char* wkt_ptr = wkt_srs.c_str();
-        srs->importFromWkt(&wkt_ptr);
-    }
-
-    OGRLayer* layer = ds->CreateLayer(layer_name.c_str(), srs,
-                                       static_cast<OGRwkbGeometryType>(geom_type), nullptr);
-    if (!layer) {
-        std::cerr << "Failed to create layer: " << layer_name << "\n";
-        GDALClose(ds);
-        if (srs) srs->Dereference();
-        return false;
-    }
-
-    // 添加字段
-    for (const auto& f : fields) {
-        OGRFieldDefn ogr_field(f.name.c_str(), OFTString);  // 默认 String
-
-        switch (f.type) {
-            case FieldType::Int16:
-                ogr_field.SetType(OFTInteger);
-                ogr_field.SetSubType(OFSTInt16);
-                break;
-            case FieldType::Int32:
-                ogr_field.SetType(OFTInteger);
-                break;
-            case FieldType::Int64:
-                ogr_field.SetType(OFTInteger64);
-                break;
-            case FieldType::Float32:
-                ogr_field.SetType(OFTReal);
-                ogr_field.SetSubType(OFSTFloat32);
-                break;
-            case FieldType::Float64:
-                ogr_field.SetType(OFTReal);
-                break;
-            case FieldType::String:
-                ogr_field.SetType(OFTString);
-                if (f.max_width > 0) ogr_field.SetWidth(f.max_width);
-                break;
-            default:
-                ogr_field.SetType(OFTString);
-                break;
-        }
-
-        ogr_field.SetNullable(f.nullable);
-        layer->CreateField(&ogr_field);
-    }
-
-    if (srs) srs->Dereference();
-
-    // 关闭 GDAL 数据集（flush 到磁盘）
-    GDALClose(ds);
-
-    // 现在用 open_existing 打开（我们接管数据写入）
-    return open_existing(gdb_path, layer_name);
 }
 
 // ── 打开已有 .gdb ──
