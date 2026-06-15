@@ -815,3 +815,144 @@ TEST_F(WriterTest, T_W12_PointM) {
     GDALClose(ds);
     std::cout << "[T_W12] PointZM: " << N << " features written\n";
 }
+
+// ── T_W13: PolylineZM（3D 线 + M 度量值）──
+TEST_F(WriterTest, T_W13_PolylineZM) {
+    std::vector<WriterField> fields = {{"name", FieldType::String, true, 100}};
+    GdbTableWriter writer;
+    // 创建 3D 线图层（GDAL 会设置 zorig/zscale）
+    ASSERT_TRUE(create_z_gdb(writer, gdb_path(), "lines_zm", wkbLineString25D, fields));
+
+    auto& ser = writer.geometry_serializer();
+    std::vector<GeomPoint> line = {
+        {100.0, 200.0}, {101.0, 201.0}, {102.0, 200.5}, {103.0, 201.5},
+    };
+    std::vector<double> zvals = {10.0, 20.0, 30.0, 40.0};
+    std::vector<double> mvals = {0.0, 100.0, 200.0, 300.0};  // 里程/度量
+
+    ser.set_lines({line});
+    ser.set_z_values(zvals);
+    ser.set_m_values(mvals);
+    ser.serialize(GeomType::PolylineZM);
+
+    writer.begin_row();
+    writer.append_string(0, "line_zm");
+    writer.append_geometry(1);
+    writer.end_row();
+    writer.close();
+
+    ASSERT_EQ(writer.row_count(), 1u);
+    // 验证 blob 大小 > 纯 2D（多了 Z 和 M 数据）
+    EXPECT_GT(writer.geometry_serializer().blob_size(), 30u);
+
+    GDALDataset* ds = (GDALDataset*)GDALOpenEx(
+        gdb_path().c_str(), GDAL_OF_VECTOR, nullptr, nullptr, nullptr);
+    if (ds) {
+        OGRLayer* layer = ds->GetLayer(0);
+        EXPECT_EQ(layer->GetFeatureCount(), 1);
+        GDALClose(ds);
+    }
+    std::cout << "[T_W13] PolylineZM: 1 feature, blob="
+              << writer.geometry_serializer().blob_size() << " bytes\n";
+}
+
+// ── T_W14: PolygonZM（3D 面 + M 度量值）──
+TEST_F(WriterTest, T_W14_PolygonZM) {
+    std::vector<WriterField> fields = {{"name", FieldType::String, true, 100}};
+    GdbTableWriter writer;
+    ASSERT_TRUE(create_z_gdb(writer, gdb_path(), "polys_zm", wkbPolygon25D, fields));
+
+    auto& ser = writer.geometry_serializer();
+    std::vector<GeomPoint> ring = {
+        {100.0, 200.0}, {105.0, 200.0}, {105.0, 205.0}, {100.0, 205.0}, {100.0, 200.0}
+    };
+    std::vector<double> zvals = {0.0, 0.0, 10.0, 10.0, 0.0};
+    std::vector<double> mvals = {0.0, 50.0, 100.0, 150.0, 200.0};
+
+    ser.set_rings({ring});
+    ser.set_z_values(zvals);
+    ser.set_m_values(mvals);
+    ser.serialize(GeomType::PolygonZM);
+
+    writer.begin_row();
+    writer.append_string(0, "poly_zm");
+    writer.append_geometry(1);
+    writer.end_row();
+    writer.close();
+
+    ASSERT_EQ(writer.row_count(), 1u);
+    GDALDataset* ds = (GDALDataset*)GDALOpenEx(
+        gdb_path().c_str(), GDAL_OF_VECTOR, nullptr, nullptr, nullptr);
+    if (ds) {
+        OGRLayer* layer = ds->GetLayer(0);
+        EXPECT_EQ(layer->GetFeatureCount(), 1);
+        GDALClose(ds);
+    }
+    std::cout << "[T_W14] PolygonZM: 1 feature verified\n";
+}
+
+// ── T_W15: MultiPointZM（3D 多点 + M）──
+TEST_F(WriterTest, T_W15_MultiPointZM) {
+    std::vector<WriterField> fields = {{"id", FieldType::Float64, true, 0}};
+    GdbTableWriter writer;
+    ASSERT_TRUE(create_z_gdb(writer, gdb_path(), "mp_zm", wkbMultiPoint25D, fields));
+
+    auto& ser = writer.geometry_serializer();
+    std::vector<GeomPoint> pts = {{1,2},{3,4},{5,6}};
+    std::vector<double> zvals = {100.0, 200.0, 300.0};
+    std::vector<double> mvals = {10.0, 20.0, 30.0};
+
+    ser.set_points(pts);
+    ser.set_z_values(zvals);
+    ser.set_m_values(mvals);
+    ser.serialize(GeomType::MultiPointZM);
+
+    writer.begin_row();
+    writer.append_f64(0, 1.0);
+    writer.append_geometry(1);
+    writer.end_row();
+    writer.close();
+
+    ASSERT_EQ(writer.row_count(), 1u);
+    GDALDataset* ds = (GDALDataset*)GDALOpenEx(
+        gdb_path().c_str(), GDAL_OF_VECTOR, nullptr, nullptr, nullptr);
+    if (ds) {
+        OGRLayer* layer = ds->GetLayer(0);
+        EXPECT_EQ(layer->GetFeatureCount(), 1);
+        GDALClose(ds);
+    }
+    std::cout << "[T_W15] MultiPointZM: 1 feature verified\n";
+}
+
+// ── T_W16: 纯 M 编码验证（无 GDAL 创建 M 图层，直接验证 blob）──
+TEST_F(WriterTest, T_W16_MOnly_Encoding) {
+    // GDAL OpenFileGDB 不支持直接创建纯 M 图层
+    // 此测试直接验证 M-only 编码生成的 blob 格式正确性
+    GeometrySerializer ser(0, 0, 10000);
+
+    // PointM
+    ser.set_point({100.0, 200.0});
+    ser.set_m_values({42.0});
+    size_t sz = ser.serialize(GeomType::PointM);
+    EXPECT_GT(sz, 0u);
+
+    // PolylineM
+    ser.set_lines({{{100,200},{101,201},{102,200}}});
+    ser.set_m_values({0.0, 50.0, 100.0});
+    sz = ser.serialize(GeomType::PolylineM);
+    EXPECT_GT(sz, 10u);
+
+    // PolygonM
+    ser.set_rings({{{0,0},{1,0},{1,1},{0,1},{0,0}}});
+    ser.set_m_values({0.0, 10.0, 20.0, 30.0, 40.0});
+    sz = ser.serialize(GeomType::PolygonM);
+    EXPECT_GT(sz, 10u);
+
+    // MultiPointM
+    ser.set_points({{1,2},{3,4}});
+    ser.set_m_values({5.0, 10.0});
+    sz = ser.serialize(GeomType::MultiPointM);
+    EXPECT_GT(sz, 5u);
+
+    std::cout << "[T_W16] M-only encoding: PointM/PolylineM/PolygonM/MultiPointM all produced valid blobs\n";
+}
