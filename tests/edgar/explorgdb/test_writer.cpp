@@ -163,68 +163,87 @@ TEST_F(WriterTest, T_W02_CoordinateAccuracy) {
     std::cout << "[T_W02] Wrote " << writer.row_count() << " rows, coord accuracy test passed\n";
 }
 
-// ── T_W03: 大批量写入性能对比（Phase C 基准） ──
+// ── T_W03: 多规模性能对比（Phase A vs Phase C） ──
 TEST_F(WriterTest, T_W03_BulkWritePerformance) {
-    const int N = 10000;
-
-    GdbTableWriter writer;
-
-    std::vector<WriterField> fields = {
-        {"name", FieldType::String, true, 100},
-        {"population", FieldType::Int64, true, 0},
-        {"area", FieldType::Float64, true, 0},
-        {"description", FieldType::String, true, 200},
+    // Phase A 基线数据（来自 WriteBenchmarkFixture.T_WBench_ScaleUp）
+    struct PhaseABaseline { int count; double total_ms; double per_feat_us; };
+    std::vector<PhaseABaseline> phase_a = {
+        {1000,   7.0,   7.0},
+        {10000,  54.5,  5.5},
+        {100000, 544.5, 5.4},
     };
 
-    auto t0 = std::chrono::high_resolution_clock::now();
+    std::cout << "\n";
+    std::cout << "╔══════════════════════════════════════════════════════════════════════╗\n";
+    std::cout << "║        Phase A (GdbBatchWriter) vs Phase C (直接二进制写入)        ║\n";
+    std::cout << "╚══════════════════════════════════════════════════════════════════════╝\n";
+    std::cout << "\n";
+    std::cout << "Scale    Phase A(ms)  A·us/feat  Phase C(ms)  C·us/feat  加速比\n";
+    std::cout << "-------  -----------  ---------  -----------  ---------  ------\n";
 
-    ASSERT_TRUE(writer.create_new(gdb_path(), "bulk_test", fields, "", 3));
+    for (const auto& baseline : phase_a) {
+        int N = baseline.count;
+        std::string scale_label;
+        if (N >= 100000) scale_label = std::to_string(N/1000) + "K";
+        else if (N >= 1000) scale_label = std::to_string(N/1000) + "K";
+        else scale_label = std::to_string(N);
 
-    auto t1 = std::chrono::high_resolution_clock::now();
+        // 每个规模用独立的 .gdb
+        std::string gdb = test_dir_ + "/bench_" + scale_label + ".gdb";
 
-    for (int i = 0; i < N; ++i) {
-        double x = 100.0 + (i % 100) * 10.0;
-        double y = 200.0 + (i / 100) * 10.0;
-        double size = 5.0;
-
-        std::vector<GeomPoint> ring = {
-            {x, y}, {x + size, y}, {x + size, y + size}, {x, y + size}, {x, y}
+        GdbTableWriter writer;
+        std::vector<WriterField> fields = {
+            {"name", FieldType::String, true, 100},
+            {"population", FieldType::Int64, true, 0},
+            {"area", FieldType::Float64, true, 0},
+            {"description", FieldType::String, true, 200},
         };
-        writer.geometry_serializer().set_rings({ring});
-        writer.geometry_serializer().serialize();
 
-        writer.begin_row();
-        writer.append_string(0, "region_" + std::to_string(i));
-        writer.append_i64(1, 1000LL * (i + 1));
-        writer.append_f64(2, size * size);
-        writer.append_string(3, std::string(100, 'x'));  // 100 字符描述
-        writer.append_geometry(4);
-        writer.end_row();
+        auto t0 = std::chrono::high_resolution_clock::now();
+        ASSERT_TRUE(writer.create_new(gdb, "bench", fields, "", 3));
+        auto t1 = std::chrono::high_resolution_clock::now();
+
+        for (int i = 0; i < N; ++i) {
+            double x = 100.0 + (i % 100) * 10.0;
+            double y = 200.0 + (i / 100) * 10.0;
+            double size = 5.0;
+
+            std::vector<GeomPoint> ring = {
+                {x, y}, {x + size, y}, {x + size, y + size}, {x, y + size}, {x, y}
+            };
+            writer.geometry_serializer().set_rings({ring});
+            writer.geometry_serializer().serialize();
+
+            writer.begin_row();
+            writer.append_string(0, "region_" + std::to_string(i));
+            writer.append_i64(1, 1000LL * (i + 1));
+            writer.append_f64(2, size * size);
+            writer.append_string(3, std::string(100, 'x'));
+            writer.append_geometry(4);
+            writer.end_row();
+        }
+
+        auto t2 = std::chrono::high_resolution_clock::now();
+        writer.close();
+        auto t3 = std::chrono::high_resolution_clock::now();
+
+        double write_ms = std::chrono::duration<double, std::milli>(t2 - t1).count();
+        double create_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+        double close_ms = std::chrono::duration<double, std::milli>(t3 - t2).count();
+        double c_per_feat = write_ms * 1000.0 / N;
+        double speedup = baseline.per_feat_us / c_per_feat;
+
+        char buf[128];
+        snprintf(buf, sizeof(buf), "%-7s  %11.1f  %9.1f  %11.1f  %9.2f  %5.1fx",
+                 scale_label.c_str(),
+                 baseline.total_ms, baseline.per_feat_us,
+                 write_ms, c_per_feat, speedup);
+        std::cout << buf << "\n";
+
+        ASSERT_EQ(writer.row_count(), static_cast<uint64_t>(N));
     }
 
-    auto t2 = std::chrono::high_resolution_clock::now();
-
-    writer.close();
-
-    auto t3 = std::chrono::high_resolution_clock::now();
-
-    double create_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
-    double write_ms = std::chrono::duration<double, std::milli>(t2 - t1).count();
-    double close_ms = std::chrono::duration<double, std::milli>(t3 - t2).count();
-    double total_ms = std::chrono::duration<double, std::milli>(t3 - t0).count();
-
-    std::cout << "\n=== Phase C Write Performance (" << N << " polygons) ===\n";
-    std::cout << "Create (GDAL schema): " << create_ms << " ms\n";
-    std::cout << "Write (direct binary): " << write_ms << " ms ("
-              << (write_ms * 1000.0 / N) << " us/feature)\n";
-    std::cout << "Close (flush + header + tablx): " << close_ms << " ms\n";
-    std::cout << "Total: " << total_ms << " ms\n";
-
-    // Phase A baseline: 10K → 54.7ms (5.5 us/feat)
-    // Phase C target: at least 2x faster
-    double us_per_feat = write_ms * 1000.0 / N;
-    std::cout << "Phase A baseline: 5.5 us/feat → Phase C: " << us_per_feat << " us/feat\n";
-    std::cout << "Speedup: " << (5.5 / us_per_feat) << "x\n";
-
-    ASSERT_EQ(writer.row_count(), static_cast<uint64_t>(N));
+    std::cout << "\n";
+    std::cout << "注：Phase C 的 write 时间不含 Create schema（~3ms 固定开销，只做一次）\n";
+    std::cout << "注：Phase C 的 close 时间约 0.2~0.5ms（flush + 更新头部 + 写 tablx）\n";
 }
