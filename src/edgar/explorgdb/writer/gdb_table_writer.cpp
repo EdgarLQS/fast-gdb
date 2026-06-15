@@ -45,6 +45,9 @@ bool GdbTableWriter::create_new(const std::string& gdb_path,
                                  const std::vector<WriterField>& fields,
                                  const std::string& wkt_srs,
                                  int geom_type) {
+    // 保存用户字段定义（用于后续按名称匹配描述符）
+    user_fields_ = fields;
+
     // 用 GDAL 创建空 .gdb
     GDALDriver* driver = GetGDALDriverManager()->GetDriverByName("OpenFileGDB");
     if (!driver) {
@@ -146,8 +149,12 @@ bool GdbTableWriter::open_existing(const std::string& gdb_path, const std::strin
         return false;
     }
 
-    // 初始化 RowBuffer
-    row_buffer_.init(nullable_flags_);
+    // 初始化 RowBuffer（使用描述符字段数量和 nullable flags）
+    int num_desc_fields = static_cast<int>(field_descriptors_.size());
+    row_buffer_.init(num_desc_fields, nullable_flags_);
+    if (objectid_descriptor_index_ >= 0) {
+        row_buffer_.mark_objectid(objectid_descriptor_index_);
+    }
 
     // 初始化 GeometrySerializer
     geom_serializer_.reset(xorig_, yorig_, xyscale_);
@@ -352,6 +359,53 @@ bool GdbTableWriter::discover_table_layout() {
         data_start_offset_ = data_start;
         current_offset_ = data_start;
 
+        // 构建用户字段索引 → 描述符字段索引的映射
+        // 描述符顺序通常是: Geometry[0], ObjectId[1], name[2], population[3], area[4]
+        // 用户字段顺序: name[0], population[1], area[2], geometry[3]
+        // 需要按名称匹配（不能用顺序，因为描述符顺序与用户顺序不同）
+        user_to_descriptor_.clear();
+        objectid_descriptor_index_ = -1;
+
+        // 找到 ObjectId 在描述符中的位置
+        for (size_t i = 0; i < field_descriptors_.size(); ++i) {
+            if (field_descriptors_[i].type == FieldType::ObjectId) {
+                objectid_descriptor_index_ = static_cast<int>(i);
+                break;
+            }
+        }
+
+        // 按名称匹配用户字段到描述符字段
+        if (!user_fields_.empty()) {
+            for (size_t ui = 0; ui < user_fields_.size(); ++ui) {
+                bool found = false;
+                for (size_t di = 0; di < field_descriptors_.size(); ++di) {
+                    if (field_descriptors_[di].name == user_fields_[ui].name) {
+                        user_to_descriptor_.push_back(static_cast<int>(di));
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    std::cerr << "[writer] WARNING: user field '" << user_fields_[ui].name
+                              << "' not found in descriptors\n";
+                    user_to_descriptor_.push_back(-1);
+                }
+            }
+        } else {
+            // open_existing() 没有 user_fields_：按描述符顺序跳过 ObjectId，
+            // Geometry 放最后
+            for (size_t i = 0; i < field_descriptors_.size(); ++i) {
+                if (field_descriptors_[i].type == FieldType::ObjectId) continue;
+                if (field_descriptors_[i].type == FieldType::Geometry) continue;
+                user_to_descriptor_.push_back(static_cast<int>(i));
+            }
+        }
+
+        // 添加 Geometry 字段（用户通过 append_geometry 写入）
+        if (geometry_field_index_ >= 0) {
+            user_to_descriptor_.push_back(geometry_field_index_);
+        }
+
         return true;
 
         } catch (const std::exception& e) {
@@ -372,35 +426,43 @@ void GdbTableWriter::begin_row() {
     in_row_ = true;
 }
 
-void GdbTableWriter::set_null(int /*field_index*/) {
+void GdbTableWriter::set_null(int field_index) {
+    row_buffer_.set_field(user_to_descriptor_[field_index]);
     row_buffer_.set_null();
 }
 
-void GdbTableWriter::append_i16(int /*field_index*/, int16_t value) {
+void GdbTableWriter::append_i16(int field_index, int16_t value) {
+    row_buffer_.set_field(user_to_descriptor_[field_index]);
     row_buffer_.append_i16(value);
 }
 
-void GdbTableWriter::append_i32(int /*field_index*/, int32_t value) {
+void GdbTableWriter::append_i32(int field_index, int32_t value) {
+    row_buffer_.set_field(user_to_descriptor_[field_index]);
     row_buffer_.append_i32(value);
 }
 
-void GdbTableWriter::append_i64(int /*field_index*/, int64_t value) {
+void GdbTableWriter::append_i64(int field_index, int64_t value) {
+    row_buffer_.set_field(user_to_descriptor_[field_index]);
     row_buffer_.append_i64(value);
 }
 
-void GdbTableWriter::append_f32(int /*field_index*/, float value) {
+void GdbTableWriter::append_f32(int field_index, float value) {
+    row_buffer_.set_field(user_to_descriptor_[field_index]);
     row_buffer_.append_f32(value);
 }
 
-void GdbTableWriter::append_f64(int /*field_index*/, double value) {
+void GdbTableWriter::append_f64(int field_index, double value) {
+    row_buffer_.set_field(user_to_descriptor_[field_index]);
     row_buffer_.append_f64(value);
 }
 
-void GdbTableWriter::append_string(int /*field_index*/, const std::string& value) {
+void GdbTableWriter::append_string(int field_index, const std::string& value) {
+    row_buffer_.set_field(user_to_descriptor_[field_index]);
     row_buffer_.append_string(value);
 }
 
-void GdbTableWriter::append_geometry(int /*field_index*/) {
+void GdbTableWriter::append_geometry(int field_index) {
+    row_buffer_.set_field(user_to_descriptor_[field_index]);
     row_buffer_.append_geometry(geom_serializer_.blob_data(), geom_serializer_.blob_size());
 }
 
@@ -411,6 +473,8 @@ void GdbTableWriter::end_row() {
     size_t row_size = row_buffer_.size();
 
     // 记录当前偏移（这行在 .gdbtable 中的位置）
+    // current_offset_ = 已刷盘到文件的总字节数
+    // write_buffer_pos_ = 缓冲区中尚未刷盘的字节数
     uint64_t row_offset = current_offset_ + write_buffer_pos_;
     tablx_writer_.add_offset(row_offset);
 
@@ -428,9 +492,6 @@ void GdbTableWriter::end_row() {
     ++buffered_rows_;
     if (row_size > max_row_size_) max_row_size_ = static_cast<uint32_t>(row_size);
 
-    // 更新当前偏移
-    current_offset_ += write_buffer_pos_;
-
     // 检查是否需要刷盘
     if (buffered_rows_ >= kMaxBufferRows || write_buffer_pos_ >= kMaxBufferBytes) {
         internal_flush();
@@ -445,6 +506,7 @@ void GdbTableWriter::internal_flush() {
     if (write_buffer_pos_ == 0 || !table_fp_) return;
 
     std::fwrite(write_buffer_.data(), 1, write_buffer_pos_, table_fp_);
+    current_offset_ += write_buffer_pos_;  // 累加已刷盘的字节数
     write_buffer_pos_ = 0;
     buffered_rows_ = 0;
 }

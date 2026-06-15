@@ -1,24 +1,26 @@
 // src/edgar/explorgdb/writer/tablx_writer.h
 // .gdbtablx 偏移表写入器 — 管理 FID → .gdbtable 文件偏移的映射
 //
-// .gdbtablx 文件结构（v4）：
-//   [header: 20 字节]
-//     version(4) = 4
-//     unknown(4) = 0
-//     size_tablx_offsets(4) = 4（或 5/6）
-//     padding(8) = 0
-//   [offset entries: N × size_tablx_offsets 字节]
-//     每个条目是 .gdbtable 中对应 FID 行的文件偏移
-//     偏移值 0 = 该 FID 不存在
-//   [trailer: 12 字节]
-//     nfeatures_v4(8) = 有效要素数
-//     sizeof_varying_section(4) = 0
+// .gdbtablx 文件结构（v3 — GDAL 默认格式）：
+//   [header: 16 字节]
+//     version(4) = 3
+//     n1024BlocksPresent(4) = ceil(nFeatures / 1024)
+//     nTotalRecordCount(4) = 有效要素数
+//     entrySize(4) = 5（默认；4=最大4GB，6=最大256TB）
+//   [offset entries: n1024BlocksPresent × 1024 × entrySize 字节]
+//     每个条目是 .gdbtable 中对应 FID 行的文件偏移（5 字节 LE）
+//     偏移值 0 = 该 FID 不存在（已删除或填充）
+//   [trailer: 16 字节]
+//     nBitmapInt32Words(4) = 0（无 block bitmap）
+//     n1024BlocksTotal(4) = ceil(nFeatures / 1024)
+//     n1024BlocksPresent(4) = 同 header
+//     nLeadingNonZero32BitWords(4) = 0
 //
 // 使用方式：
 //   TablxWriter writer;
-//   writer.set_offset(0, 1024);   // FID 0 → offset 1024
-//   writer.set_offset(1, 2048);   // FID 1 → offset 2048
-//   writer.write("/path/to/a00000001.gdbtablx");
+//   writer.add_offset(329);   // FID 0 → offset 329
+//   writer.add_offset(461);   // FID 1 → offset 461
+//   writer.write("/path/to/a00000009.gdbtablx");
 
 #ifndef EXPLORGDB_TABLX_WRITER_H
 #define EXPLORGDB_TABLX_WRITER_H
@@ -48,7 +50,7 @@ public:
     // 条目数
     size_t count() const { return offsets_.size(); }
 
-    // 写入 .gdbtablx 文件（v4 格式）
+    // 写入 .gdbtablx 文件（v3 格式 — GDAL 默认）
     bool write(const std::string& path) const {
         std::ofstream ofs(path, std::ios::binary | std::ios::trunc);
         if (!ofs.is_open()) return false;
@@ -57,28 +59,28 @@ public:
         uint32_t n_blocks = (n_features + 1023) / 1024;
         if (n_blocks == 0) n_blocks = 1;  // 至少 1 个块
         uint32_t n_entries = n_blocks * 1024;
-        uint32_t entry_size = 4;  // 4 字节偏移（支持最大 4GB 文件）
+        uint32_t entry_size = 5;  // 默认 5 字节偏移（GDAL 默认值，支持 ~1TB）
 
-        // ── 写头部（20 字节）──
-        write_u32(ofs, 4);            // version = 4
-        write_u32(ofs, 0);            // unknown = 0
-        write_u32(ofs, entry_size);   // size_tablx_offsets = 4
-        write_u32(ofs, 0);            // padding (4 bytes)
-        write_u32(ofs, 0);            // padding (4 bytes)
+        // ── 写头部（16 字节）──
+        write_u32(ofs, 3);            // version = 3
+        write_u32(ofs, n_blocks);     // n1024BlocksPresent
+        write_u32(ofs, n_features);   // nTotalRecordCount
+        write_u32(ofs, entry_size);   // entrySize = 5
 
-        // ── 写偏移表 ──
-        // 有效条目
+        // ── 写偏移表（每条目 5 字节 LE）──
         for (uint32_t i = 0; i < n_features; ++i) {
-            write_u32(ofs, static_cast<uint32_t>(offsets_[i]));
+            write_u40(ofs, offsets_[i]);
         }
         // 填充到块边界（用 0 填充 = 不存在的 FID）
         for (uint32_t i = n_features; i < n_entries; ++i) {
-            write_u32(ofs, 0);
+            write_zero_n(ofs, entry_size);
         }
 
-        // ── 写 trailer ──
-        write_u64(ofs, n_features);           // nfeatures_v4
-        write_u32(ofs, 0);                    // sizeof_varying_section = 0
+        // ── 写 trailer（16 字节）──
+        write_u32(ofs, 0);            // nBitmapInt32Words = 0（无 bitmap）
+        write_u32(ofs, n_blocks);     // n1024BlocksTotal
+        write_u32(ofs, n_blocks);     // n1024BlocksPresent
+        write_u32(ofs, 0);            // nLeadingNonZero32BitWords = 0
 
         return true;
     }
@@ -91,6 +93,22 @@ private:
         buf[2] = static_cast<uint8_t>((value >> 16) & 0xFF);
         buf[3] = static_cast<uint8_t>((value >> 24) & 0xFF);
         ofs.write(reinterpret_cast<const char*>(buf), 4);
+    }
+
+    // 写 5 字节 little-endian（tablx v3 默认 entry size）
+    static void write_u40(std::ofstream& ofs, uint64_t value) {
+        uint8_t buf[5];
+        for (int i = 0; i < 5; ++i) {
+            buf[i] = static_cast<uint8_t>(value & 0xFF);
+            value >>= 8;
+        }
+        ofs.write(reinterpret_cast<const char*>(buf), 5);
+    }
+
+    // 写 N 字节零
+    static void write_zero_n(std::ofstream& ofs, uint32_t n) {
+        uint8_t buf[8] = {0};
+        ofs.write(reinterpret_cast<const char*>(buf), n);
     }
 
     static void write_u64(std::ofstream& ofs, uint64_t value) {

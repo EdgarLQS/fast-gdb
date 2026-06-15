@@ -169,6 +169,13 @@ private:
     std::vector<bool> nullable_flags_;                // 每个字段是否 nullable
     int geometry_field_index_ = -1;
 
+    // 用户字段索引 → 描述符字段索引的映射
+    // 用户调用 append_string(0, ...) 时，0 是用户字段索引
+    // 需要映射到描述符字段索引（Geometry 通常在 index 0，ObjectId 在 index 1）
+    std::vector<int> user_to_descriptor_;  // user_field_index → descriptor_field_index
+    int objectid_descriptor_index_ = -1;   // ObjectId 在描述符中的位置
+    std::vector<WriterField> user_fields_; // 用户传入的字段定义（用于按名称匹配）
+
     // 几何坐标系参数（从几何字段描述符提取）
     double xorig_ = 0, yorig_ = 0, xyscale_ = 0;
 

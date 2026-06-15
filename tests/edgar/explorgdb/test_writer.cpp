@@ -247,3 +247,99 @@ TEST_F(WriterTest, T_W03_BulkWritePerformance) {
     std::cout << "注：Phase C 的 write 时间不含 Create schema（~3ms 固定开销，只做一次）\n";
     std::cout << "注：Phase C 的 close 时间约 0.2~0.5ms（flush + 更新头部 + 写 tablx）\n";
 }
+
+// ── T_W04: GDAL 兼容性验证 — GDAL 能正确读取写入器输出 ──
+TEST_F(WriterTest, T_W04_GDALCompatibility) {
+    GdbTableWriter writer;
+
+    std::vector<WriterField> fields = {
+        {"name", FieldType::String, true, 100},
+        {"population", FieldType::Int64, true, 0},
+        {"area", FieldType::Float64, true, 0},
+    };
+
+    ASSERT_TRUE(writer.create_new(gdb_path(), "gdal_test", fields, "", 3));
+
+    // 注意：GDAL OpenFileGDB 会将 Int64 字段自动转为 Float64（除非指定
+    // TARGET_ARCGIS_VERSION=ARCGIS_PRO_3_2_OR_LATER）。
+    // 所以 population 在 .gdbtable 字段描述符中实际是 Float64，
+    // 我们必须用 append_f64() 来写入，而不是 append_i64()。
+
+    const int N = 5;
+    for (int i = 0; i < N; ++i) {
+        double x = 100.0 + i * 10;
+        double y = 200.0 + i * 10;
+        double size = 5.0;
+
+        std::vector<GeomPoint> ring = {
+            {x, y}, {x + size, y}, {x + size, y + size}, {x, y + size}, {x, y}
+        };
+        writer.geometry_serializer().set_rings({ring});
+        writer.geometry_serializer().serialize();
+
+        writer.begin_row();
+        writer.append_string(0, "region_" + std::to_string(i));
+        writer.append_f64(1, static_cast<double>(1000 * (i + 1)));  // GDAL 将此字段存为 Float64
+        writer.append_f64(2, size * size);
+        writer.append_geometry(3);
+        writer.end_row();
+    }
+
+    writer.close();
+    ASSERT_EQ(writer.row_count(), static_cast<uint64_t>(N));
+
+    // 用 GDAL 打开并验证
+    GDALDataset* ds = (GDALDataset*)GDALOpenEx(
+        gdb_path().c_str(), GDAL_OF_VECTOR, nullptr, nullptr, nullptr);
+    ASSERT_NE(ds, nullptr) << "GDAL failed to open written GDB";
+
+    ASSERT_EQ(ds->GetLayerCount(), 1);
+    OGRLayer* layer = ds->GetLayer(0);
+    ASSERT_NE(layer, nullptr);
+
+    // 验证要素数
+    GIntBig feat_count = layer->GetFeatureCount();
+    ASSERT_EQ(feat_count, N) << "GDAL feature count mismatch";
+
+    // 逐条读取并验证字段值
+    layer->ResetReading();
+    for (int i = 0; i < N; ++i) {
+        OGRFeature* feat = layer->GetNextFeature();
+        ASSERT_NE(feat, nullptr) << "GDAL returned null at feature " << i;
+
+        // 验证 name
+        const char* name = feat->GetFieldAsString("name");
+        ASSERT_NE(name, nullptr);
+        std::string expected_name = "region_" + std::to_string(i);
+        EXPECT_STREQ(name, expected_name.c_str()) << "name mismatch at feature " << i;
+
+        // 验证 population（GDAL 可能以 Float64 存储，读取时返回为 Real 或 Integer64）
+        GIntBig pop = feat->GetFieldAsInteger64("population");
+        // 如果 GDAL 将此字段存为 Float64，GetFieldAsInteger64 会截断
+        // 所以我们用宽松的对比
+        if (pop == 0) {
+            // 可能被存为 Float64，尝试用 GetFieldAsDouble 读取
+            double pop_d = feat->GetFieldAsDouble("population");
+            EXPECT_NEAR(pop_d, 1000.0 * (i + 1), 1.0) << "population mismatch at feature " << i;
+        } else {
+            EXPECT_EQ(pop, 1000LL * (i + 1)) << "population mismatch at feature " << i;
+        }
+
+        // 验证 area
+        double area = feat->GetFieldAsDouble("area");
+        EXPECT_NEAR(area, 25.0, 0.001) << "area mismatch at feature " << i;
+
+        // 验证几何存在
+        OGRGeometry* geom = feat->GetGeometryRef();
+        ASSERT_NE(geom, nullptr) << "geometry missing at feature " << i;
+        // FileGDB polygon 在 GDAL 中映射为 wkbMultiPolygon（或 wkbPolygon）
+        int gt = wkbFlatten(geom->getGeometryType());
+        EXPECT_TRUE(gt == wkbPolygon || gt == wkbMultiPolygon)
+            << "unexpected geometry type " << gt << " at feature " << i;
+
+        OGRFeature::DestroyFeature(feat);
+    }
+
+    GDALClose(ds);
+    std::cout << "[T_W04] GDAL compatibility verified: " << N << " features read back correctly\n";
+}

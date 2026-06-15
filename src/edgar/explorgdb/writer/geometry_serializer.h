@@ -57,6 +57,12 @@ struct GeomPoint {
 // 将一组环（rings）编码为 .gdbtable 几何 blob
 class PolygonSerializer {
 public:
+    // 几何类型常量（与 shapefile 标准一致）
+    static constexpr uint64_t SHPT_POLYGON    = 5;
+    static constexpr uint64_t SHPT_POLYGONZ   = 0x80000000 | 5;  // EXT_SHAPE_Z_FLAG
+    static constexpr uint64_t SHPT_POLYGONM   = 0x40000000 | 5;  // EXT_SHAPE_M_FLAG
+    static constexpr uint64_t SHPT_POLYGONZM  = 0xC0000000 | 5;
+
     // 默认构造（坐标参数后续通过 reset() 设置）
     PolygonSerializer() : xorig_(0), yorig_(0), xyscale_(1.0) {}
 
@@ -89,11 +95,18 @@ public:
         uint64_t n_parts = rings_.size();
 
         if (total_points == 0) {
-            // 空几何：只写 nPoints=0
-            size_t n = encode_varuint(tmp_, 0);
+            // 空几何：写 geom_type=SHPT_NULL(0) + nPoints=0
+            size_t n = 0;
+            n += encode_varuint(tmp_ + n, 0);  // SHPT_NULL
+            n += encode_varuint(tmp_ + n, 0);  // nPoints=0
             blob_.insert(blob_.end(), tmp_, tmp_ + n);
             return blob_.size();
         }
+
+        // 0. 写入几何类型（GDAL 期望的第一个字段）
+        //    对于 2D polygon: SHPT_POLYGON = 5
+        size_t pos = 0;
+        pos += encode_varuint(tmp_ + pos, SHPT_POLYGON);
 
         // 1. 转换所有坐标为整数，并计算 bbox
         int64_t ixmin = INT64_MAX, iymin = INT64_MAX;
@@ -117,8 +130,7 @@ public:
             int_rings.push_back(std::move(int_ring));
         }
 
-        // 2. 写入 nPoints
-        size_t pos = 0;
+        // 1. 写入 nPoints
         pos += encode_varuint(tmp_ + pos, total_points);
 
         // 3. 写入 nParts
@@ -228,7 +240,7 @@ private:
     double xorig_, yorig_, xyscale_;
     std::vector<std::vector<GeomPoint>> rings_;
     std::vector<uint8_t> blob_;        // 序列化结果
-    uint8_t tmp_[20];                  // 临时编码缓冲区（单个 varint 最多 10 字节）
+    uint8_t tmp_[64];                  // 临时编码缓冲区（头部最多 ~45 字节）
 };
 
 }  // namespace writer
