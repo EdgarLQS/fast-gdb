@@ -86,17 +86,58 @@
 
 ---
 
-## 4. Phase C 优化目标
+## 4. Phase C 优化结果（2026-06-15 完成）
 
-| 指标 | Phase A 基线 | Phase C 目标 |
-|------|-------------|-------------|
-| 1K 批量写入 | 7.0 ms (7.0 us/feat) | TBD |
-| 10K 批量写入 | 54.7 ms (5.5 us/feat) | TBD |
-| 100K 批量写入 | 539.4 ms (5.4 us/feat) | TBD |
+### 模块结构
+
+```
+src/edgar/explorgdb/writer/
+├── varint_encoder.h         // 零分配 varint 编码（纯头文件，inline）
+├── row_buffer.h             // 可复用行缓冲区（零堆分配）
+├── geometry_serializer.h    // Polygon → GDB delta 编码整数 blob
+├── tablx_writer.h           // .gdbtablx 偏移表写入
+└── gdb_table_writer.h/.cpp  // 主写入器（buffered write，混合刷盘）
+```
+
+### 性能数据
+
+| 规模 | Phase A (GdbBatchWriter) | Phase C (直接写入) | 加速比 |
+|------|--------------------------|-------------------|--------|
+| 10K polygons | 54.7 ms (5.5 us/feat) | **2.0 ms (0.2 us/feat)** | **27x** |
+
+### 耗时分解（10K polygons）
+
+| 阶段 | 耗时 | 占比 |
+|------|------|------|
+| Create（GDAL 建 schema） | 3.2 ms | 59%（固定开销，只发生一次） |
+| **Write（直接二进制写入）** | **2.0 ms** | **37%** |
+| Close（flush + header + tablx） | 0.2 ms | 4% |
+| **总计** | **5.4 ms** | - |
+
+### 关键成果
+
+- **加速 27 倍**：从 5.5 us/feat 降到 0.2 us/feat
+- **瓶颈突破**：完全绕开 GDAL CreateFeature()（Phase A 中占 47.7% 的主瓶颈）
+- **零堆分配**：RowBuffer 复用内部 buffer，跨行无 malloc/free
+- **混合刷盘**：5000 行 OR 16MB 缓冲，先到先刷
+- **explorgdb 读回验证通过**：字段解析正确，坐标系参数正确
+
+### 已知限制
+
+- **GDAL 兼容性待完善**：需要实现 `update_system_tables()` 更新 a00000000 系统表，GDAL 才能正确读取要素数
+- 当前验证路径：explorgdb 读回 → 正确 ✅
+- 待实现：GDAL OpenFileGDB 驱动兼容 → 需要系统表更新
+
+### 运行方式
+
+```bash
+cd fast_gdb/build && cmake .. -DCMAKE_BUILD_TYPE=Release && make
+./bin/gdb_tutorial_test_runner --gtest_filter='WriterTest.*'
+```
 
 ---
 
-## 运行方式
+## 运行方式（Phase A 基准测试）
 
 ```bash
 cd fast_gdb/build && cmake .. -DCMAKE_BUILD_TYPE=Release && make

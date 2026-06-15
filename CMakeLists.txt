@@ -48,6 +48,18 @@ target_include_directories(explorgdb_lib PUBLIC
 target_compile_features(explorgdb_lib PUBLIC cxx_std_17)
 target_compile_options(explorgdb_lib PRIVATE -Wall -Wno-unused-result)
 
+# ===== explorgdb_writer: GDB 直接写入器（依赖 GDAL + explorgdb_lib） =====
+file(GLOB WRITER_SOURCES src/edgar/explorgdb/writer/*.cpp)
+add_library(explorgdb_writer_lib STATIC ${WRITER_SOURCES})
+target_include_directories(explorgdb_writer_lib PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/writer
+    ${GDAL_INCLUDE_DIR}
+)
+target_link_libraries(explorgdb_writer_lib PUBLIC explorgdb_lib PRIVATE ${GDAL_LIBRARY})
+target_compile_features(explorgdb_writer_lib PUBLIC cxx_std_17)
+target_compile_options(explorgdb_writer_lib PRIVATE -Wall -Wno-unused-result)
+
 # CLI 工具（不依赖 GDAL）
 add_executable(explorgdb_cli src/edgar/explorgdb/explorgdb_cli.cpp)
 target_link_libraries(explorgdb_cli explorgdb_lib)
@@ -72,7 +84,7 @@ set(TEST_SOURCES
 
 add_executable(gdb_tutorial_test_runner ${TEST_SOURCES})
 target_include_directories(gdb_tutorial_test_runner PRIVATE ${GDAL_INCLUDE_DIR} tests tests/edgar/component/usegdal tests/edgar/explorgdal tests/edgar/baseuse tests/edgar/explorgdb)
-target_link_libraries(gdb_tutorial_test_runner PRIVATE ${GDAL_LIBRARY} GTest::gtest GTest::gtest_main gdb_component explorgdb_lib)
+target_link_libraries(gdb_tutorial_test_runner PRIVATE ${GDAL_LIBRARY} GTest::gtest GTest::gtest_main gdb_component explorgdb_lib explorgdb_writer_lib)
 target_compile_options(gdb_tutorial_test_runner PRIVATE -Wall -Wno-unused-result)
 
 gtest_discover_tests(gdb_tutorial_test_runner)
