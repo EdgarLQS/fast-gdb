@@ -65,6 +65,13 @@ bool GdbTableWriter::open_existing(const std::string& gdb_path, const std::strin
     // 初始化 GeometrySerializer
     geom_serializer_.reset(xorig_, yorig_, xyscale_, zorig_, zscale_, morig_, mscale_);
 
+    // 初始化 SpatialIndexWriter（使用从字段描述符提取的网格参数）
+    // 使用 xyscale * 1000 作为默认网格分辨率（使网格单元大小合理）
+    uint32_t grid_res = static_cast<uint32_t>(xyscale_ * 1000);
+    if (grid_res == 0) grid_res = 10000000;  // 防止为 0
+    std::vector<uint32_t> default_grid = {grid_res};
+    spatial_index_writer_.set_grid_params(xorig_, yorig_, xyscale_, default_grid);
+
     is_open_ = true;
     return true;
 }
@@ -334,6 +341,12 @@ bool GdbTableWriter::discover_table_layout() {
             user_to_descriptor_.push_back(geometry_field_index_);
         }
 
+        // 构建字段名→描述符索引的映射（用于属性索引）
+        field_name_to_descriptor_.clear();
+        for (size_t i = 0; i < field_descriptors_.size(); ++i) {
+            field_name_to_descriptor_[field_descriptors_[i].name] = static_cast<int>(i);
+        }
+
         return true;
 
         } catch (const std::exception& e) {
@@ -458,7 +471,16 @@ void GdbTableWriter::close() {
     // 3. 写 .gdbtablx
     tablx_writer_.write(tablx_path_);
 
-    // 4. 关闭文件
+    // 4. 写索引（如果启用）
+    if (enable_spatial_index_ && spatial_index_writer_.size() > 0) {
+        std::string spx_path = table_path_.substr(0, table_path_.size() - 9) + ".spx";
+        spatial_index_writer_.write(spx_path);
+    }
+
+    // 写属性索引
+    // TODO: 实现属性索引写入（需要收集字段值）
+
+    // 5. 关闭文件
     if (table_fp_) {
         std::fclose(table_fp_);
         table_fp_ = nullptr;
@@ -513,6 +535,25 @@ bool GdbTableWriter::update_system_tables() {
     // TODO: 更新 a00000000.gdbtable 中的图层记录数
     // 对于验证阶段，GDAL 通过 tablx 计算要素数，可以暂不更新
     return true;
+}
+
+// ── 索引控制 ──
+
+void GdbTableWriter::enable_attribute_index(const std::string& field_name, bool enable) {
+    if (enable) {
+        // 检查字段是否存在
+        auto it = field_name_to_descriptor_.find(field_name);
+        if (it == field_name_to_descriptor_.end()) {
+            std::cerr << "[writer] WARNING: field '" << field_name
+                      << "' not found for attribute index\n";
+            return;
+        }
+        attribute_index_fields_.push_back(field_name);
+    } else {
+        attribute_index_fields_.erase(
+            std::remove(attribute_index_fields_.begin(), attribute_index_fields_.end(), field_name),
+            attribute_index_fields_.end());
+    }
 }
 
 int GdbTableWriter::find_geometry_field_index() const {

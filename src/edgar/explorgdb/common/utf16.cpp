@@ -45,4 +45,39 @@ std::string utf16le_to_utf8(const uint8_t* data, int char_count) {
     return out;
 }
 
+std::u16string utf8_to_utf16(const std::string& str) {
+    std::u16string out;
+    out.reserve(str.size());  // 预分配
+    size_t i = 0;
+    while (i < str.size()) {
+        uint8_t c = static_cast<uint8_t>(str[i]);
+        uint32_t codepoint;
+        if (c < 0x80) {
+            // 1 字节 UTF-8: 0xxxxxxx
+            codepoint = c;
+            i += 1;
+        } else if ((c & 0xE0) == 0xC0) {
+            // 2 字节 UTF-8: 110xxxxx 10xxxxxx
+            codepoint = (c & 0x1F) << 6;
+            if (i + 1 < str.size()) codepoint |= (static_cast<uint8_t>(str[i + 1]) & 0x3F);
+            i += 2;
+        } else if ((c & 0xF0) == 0xE0) {
+            // 3 字节 UTF-8: 1110xxxx 10xxxxxx 10xxxxxx
+            codepoint = (c & 0x0F) << 12;
+            if (i + 1 < str.size()) codepoint |= (static_cast<uint8_t>(str[i + 1]) & 0x3F) << 6;
+            if (i + 2 < str.size()) codepoint |= (static_cast<uint8_t>(str[i + 2]) & 0x3F);
+            i += 3;
+        } else {
+            // 4 字节 UTF-8 或其他（跳过，不支持代理对）
+            i += 1;
+            continue;
+        }
+        // 限制在 BMP 范围内
+        if (codepoint <= 0xFFFF) {
+            out += static_cast<char16_t>(codepoint);
+        }
+    }
+    return out;
+}
+
 } // namespace explorgdb

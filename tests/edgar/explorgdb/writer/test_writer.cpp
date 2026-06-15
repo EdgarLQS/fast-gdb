@@ -983,3 +983,46 @@ TEST_F(WriterTest, T_W16_MOnly_Encoding) {
 
     std::cout << "[T_W16] M-only encoding: PointM/PolylineM/PolygonM/MultiPointM all produced valid blobs\n";
 }
+
+// ── T_W17: 空间索引（点要素 + .spx 生成）──
+TEST_F(WriterTest, T_W17_SpatialIndex_Points) {
+    std::vector<WriterField> fields = {{"name", FieldType::String, true, 100}};
+    GdbTableWriter writer;
+    ASSERT_TRUE(create_schema_and_open(writer, gdb_path(), "points_idx", fields, wkbPoint));
+
+    writer.enable_spatial_index(true);
+
+    auto& ser = writer.geometry_serializer();
+    const int N = 100;
+    for (int i = 0; i < N; ++i) {
+        double x = 100.0 + (i % 10) * 0.01;
+        double y = 200.0 + (i / 10) * 0.01;
+        ser.set_point({x, y});
+        ser.serialize(GeomType::Point);
+
+        writer.begin_row();
+        writer.append_string(0, "pt_" + std::to_string(i));
+        writer.append_geometry(1);
+        writer.end_row();
+
+        // 添加空间索引条目
+        writer.add_spatial_index_entry(i + 1, x, y, x, y);
+    }
+    writer.close();
+    ASSERT_EQ(writer.row_count(), static_cast<uint64_t>(N));
+
+    // 验证 .spx 文件存在（使用 writer 的实际表路径）
+    std::string table_path = writer.data_table_path();
+    std::string spx_path = table_path.substr(0, table_path.size() - 9) + ".spx";
+    EXPECT_TRUE(std::filesystem::exists(spx_path));
+
+    // 验证 GDAL 能读取
+    GDALDataset* ds = (GDALDataset*)GDALOpenEx(
+        gdb_path().c_str(), GDAL_OF_VECTOR, nullptr, nullptr, nullptr);
+    ASSERT_NE(ds, nullptr);
+    OGRLayer* layer = ds->GetLayer(0);
+    EXPECT_EQ(layer->GetFeatureCount(), N);
+
+    GDALClose(ds);
+    std::cout << "[T_W17] SpatialIndex Points: " << N << " features verified\n";
+}

@@ -9,6 +9,7 @@
 //
 // 转换函数:
 //   utf16le_to_utf8(data, char_count) — 将 UTF-16LE 字节流转为 UTF-8 std::string
+//   utf8_to_utf16(str)                — 将 UTF-8 std::string 转为 UTF-16 std::u16string
 //
 // 注意：当前实现仅支持 BMP 字符（最多 3 字节 UTF-8 编码），
 // 不处理代理对（surrogate pairs）。如果未来 GDB 数据包含 Emoji 等
@@ -28,6 +29,12 @@ namespace explorgdb {
 // 返回       — UTF-8 编码的 std::string
 // 遇到 null 字符（U+0000）时提前终止
 std::string utf16le_to_utf8(const uint8_t* data, int char_count);
+
+// 将 UTF-8 字符串转换为 UTF-16 std::u16string
+// str    — UTF-8 编码的字符串
+// 返回   — UTF-16 编码的 std::u16string
+// 当前实现仅支持 BMP 字符（U+0000 ~ U+FFFF），不处理代理对
+std::u16string utf8_to_utf16(const std::string& str);
 
 } // namespace explorgdb
 
