@@ -300,13 +300,42 @@ docs/WRITE_PERFORMANCE_BASELINE.md
 5. 最优参数推荐（batch size、buffer 阈值）
 ```
 
+## Phase A 实际结果（2026-06-15 完成）
+
+### 基准数据
+
+| 规模 | 总耗时(ms) | 每要素(us) | 转换(ms) | 写入(ms) |
+|------|-----------|-----------|---------|---------|
+| 1K | 6.9 | 6.9 | 0.2 (2.9%) | 5.1 (73.9%) |
+| 10K | 54.7 | 5.5 | 2.1 (3.8%) | 50.9 (93.1%) |
+| 100K | 539.4 | 5.4 | 21.5 (4.0%) | 515.8 (95.6%) |
+
+### 瓶颈拆解（1K 逐条写入）
+
+| 阶段 | 占比 | 说明 |
+|------|------|------|
+| **CreateFeature** | **47.7%** | GDAL 编码+I/O+索引 ← 主瓶颈 |
+| GDALClose (flush) | 27.7% | 文件落盘（不可分摊） |
+| CreateLayer | 19.2% | 固定开销 |
+| toNative | 2.9% | 远小于预期 |
+| 其他 | 2.7% | SetGeometry + DestroyFeature |
+
+### 结论
+
+- **CreateFeature 占 47.7%** — 确认是主瓶颈，Phase C 直接写入可绕开
+- **toNative 仅 2.9%** — GdbFeature 抽象层不是瓶颈，无需优化
+- **批量 vs 逐条**：1.3~1.4x 加速
+- **每要素耗时稳定**：6.9→5.5→5.4 us，线性扩展
+
+详细数据见 `docs/WRITE_PERFORMANCE_BASELINE.md`
+
 ## 实施顺序
 
 ```
-Step 1: write_benchmark_test.cpp — 基准测试框架
-Step 2: 运行 Phase A 基准，记录数据
-Step 3: 分析瓶颈，确认 CreateFeature 是否为大头
-Step 4: 实现 explorgdb/writer/ 模块（Phase C）
+Step 1: write_benchmark_test.cpp — 基准测试框架     ✅ 完成
+Step 2: 运行 Phase A 基准，记录数据                  ✅ 完成
+Step 3: 分析瓶颈，确认 CreateFeature 是否为大头       ✅ 确认 (47.7%)
+Step 4: 实现 explorgdb/writer/ 模块（Phase C）       ← 当前
 Step 5: 正确性验证（双读交叉校验）
 Step 6: 性能对比，记录到 WRITE_PERFORMANCE_BASELINE.md
 ```
