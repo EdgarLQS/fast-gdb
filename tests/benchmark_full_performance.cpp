@@ -548,6 +548,70 @@ protected:
     }
 
     /**
+     * explorgdb 顺序扫描（零拷贝，sequential_scan 回调模式）
+     * 与 ReadAllWithExplorgdb 做相同工作（计算 area 总和），但使用零拷贝路径
+     */
+    Timing ReadAllWithExplorgdbSeqScan(const std::string& gdb_path) {
+        Timing t;
+        auto t0 = Clock::now();
+
+        uint32_t table_id = FindDataTableId(gdb_path);
+        if (table_id == 0) {
+            printf("  [ERROR] 未找到数据表\n");
+            return t;
+        }
+
+        explorgdb::GdbCatalog catalog;
+        if (!catalog.scan(gdb_path)) return t;
+
+        const auto* table_entry = catalog.find_table(table_id);
+        const auto* tablx_entry = catalog.find_tablx(table_id);
+        if (!table_entry || !tablx_entry) return t;
+
+        std::string table_path = gdb_path + "/" + table_entry->filename;
+        std::string tablx_path = gdb_path + "/" + tablx_entry->filename;
+
+        explorgdb::GdbTableParser parser(table_path);
+        if (!parser.open() || !parser.ensure_fields_loaded() || !parser.load_tablx(tablx_path)) {
+            printf("  [ERROR] 解析 .gdbtable/.gdbtablx 失败\n");
+            return t;
+        }
+
+        // 找到面积字段的索引
+        int area_idx = -1;
+        for (size_t i = 0; i < parser.fields().size(); ++i) {
+            if (parser.fields()[i].name == "area") {
+                area_idx = static_cast<int>(i);
+                break;
+            }
+        }
+        if (area_idx < 0) {
+            printf("  [ERROR] 未找到 area 字段\n");
+            return t;
+        }
+
+        int count = 0;
+        double sum_area = 0;
+
+        parser.sequential_scan([&](uint32_t fid, const explorgdb::FieldRef* fields, int n_fields) {
+            count++;
+            if (area_idx < n_fields && !fields[area_idx].is_null) {
+                sum_area += fields[area_idx].as_f64();
+            }
+            return true;  // 继续扫描
+        });
+
+        t.read_ms = std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
+        t.feature_count = count;
+
+        printf("  [explorgdb SeqScan] 零拷贝扫描 %d 要素: %.2f ms (%.2f us/要素), sum_area=%.0f\n",
+               count, t.read_ms, t.read_ms * 1000.0 / std::max(count, 1), sum_area);
+
+        parser.close_file();
+        return t;
+    }
+
+    /**
      * GDAL 空间查询（使用空间滤镜）
      */
     Timing SpatialQueryWithGDAL(const std::string& gdb_path,
@@ -907,6 +971,84 @@ TEST_F(PerformanceBenchmarkFixture, R2_Explorgdb_SequentialRead_10M) {
     }
 
     ReadAllWithExplorgdb(configs[4].gdb_path);
+}
+
+// R2b: 读取方式对比（GDAL vs explorgdb per-record vs explorgdb zero-copy seq scan）
+TEST_F(PerformanceBenchmarkFixture, R2_ReadMethodComparison) {
+    printf("\n=== R2b: 读取方式对比（per-record vs zero-copy seq scan） ===\n");
+
+    // 使用 100K 数据（已有，无需重新生成）
+    if (!fs::exists(configs[2].gdb_path)) {
+        GenerateWithWriter(100000, configs[2].gdb_path);
+    }
+
+    printf("\n  --- GDAL GdbRecordset ---\n");
+    auto gdal_t = ReadAllWithGDAL(configs[2].gdb_path);
+
+    printf("\n  --- explorgdb read_record_by_fid（per-record） ---\n");
+    auto per_rec_t = ReadAllWithExplorgdb(configs[2].gdb_path);
+
+    printf("\n  --- explorgdb sequential_scan（zero-copy） ---\n");
+    auto seq_scan_t = ReadAllWithExplorgdbSeqScan(configs[2].gdb_path);
+
+    printf("\n  ╔════════════════════════════════════════════════════════════╗\n");
+    printf("  ║  R2b: 读取方式对比 (100K)                                ║\n");
+    printf("  ╠═══════════════════╤════════════╤═══════════╤══════════════╣\n");
+    printf("  ║ 方案              ║ 时间 (ms)  ║ us/要素   ║ vs GDAL      ║\n");
+    printf("  ╠═══════════════════╪════════════╪═══════════╪══════════════╣\n");
+    printf("  ║ GDAL GdbRecordset ║ %10.2f ║ %9.2f ║ 基准         ║\n",
+           gdal_t.read_ms, gdal_t.read_ms * 1000.0 / std::max(gdal_t.feature_count, 1));
+    printf("  ║ explorgdb per-rec ║ %10.2f ║ %9.2f ║ %.2fx         ║\n",
+           per_rec_t.read_ms, per_rec_t.read_ms * 1000.0 / std::max(per_rec_t.feature_count, 1),
+           per_rec_t.read_ms / std::max(gdal_t.read_ms, 0.001));
+    printf("  ║ explorgdb seqscan ║ %10.2f ║ %9.2f ║ %.2fx         ║\n",
+           seq_scan_t.read_ms, seq_scan_t.read_ms * 1000.0 / std::max(seq_scan_t.feature_count, 1),
+           seq_scan_t.read_ms / std::max(gdal_t.read_ms, 0.001));
+    printf("  ╚═══════════════════╧════════════╧═══════════╧══════════════╝\n");
+
+    if (per_rec_t.read_ms > 0.001) {
+        double improvement = (per_rec_t.read_ms - seq_scan_t.read_ms) / per_rec_t.read_ms * 100;
+        printf("\n  seq scan vs per-record 提速: %.1f%%\n", improvement);
+    }
+}
+
+// R2b 扩展: 10M 规模读取方式对比
+TEST_F(PerformanceBenchmarkFixture, R2_ReadMethodComparison_10M) {
+    printf("\n=== R2b: 读取方式对比 10M ===\n");
+
+    if (!fs::exists(configs[4].gdb_path)) {
+        printf("  数据不存在，先生成 10M 数据（约 45 秒）...\n");
+        GenerateWithWriter(10000000, configs[4].gdb_path);
+    }
+
+    printf("\n  --- GDAL GdbRecordset ---\n");
+    auto gdal_t = ReadAllWithGDAL(configs[4].gdb_path);
+
+    printf("\n  --- explorgdb read_record_by_fid（per-record） ---\n");
+    auto per_rec_t = ReadAllWithExplorgdb(configs[4].gdb_path);
+
+    printf("\n  --- explorgdb sequential_scan（zero-copy） ---\n");
+    auto seq_scan_t = ReadAllWithExplorgdbSeqScan(configs[4].gdb_path);
+
+    printf("\n  ╔════════════════════════════════════════════════════════════╗\n");
+    printf("  ║  R2b: 读取方式对比 (10M)                                 ║\n");
+    printf("  ╠═══════════════════╤════════════╤═══════════╤══════════════╣\n");
+    printf("  ║ 方案              ║ 时间 (ms)  ║ us/要素   ║ vs GDAL      ║\n");
+    printf("  ╠═══════════════════╪════════════╪═══════════╪══════════════╣\n");
+    printf("  ║ GDAL GdbRecordset ║ %10.2f ║ %9.2f ║ 基准         ║\n",
+           gdal_t.read_ms, gdal_t.read_ms * 1000.0 / std::max(gdal_t.feature_count, 1));
+    printf("  ║ explorgdb per-rec ║ %10.2f ║ %9.2f ║ %.2fx         ║\n",
+           per_rec_t.read_ms, per_rec_t.read_ms * 1000.0 / std::max(per_rec_t.feature_count, 1),
+           per_rec_t.read_ms / std::max(gdal_t.read_ms, 0.001));
+    printf("  ║ explorgdb seqscan ║ %10.2f ║ %9.2f ║ %.2fx         ║\n",
+           seq_scan_t.read_ms, seq_scan_t.read_ms * 1000.0 / std::max(seq_scan_t.feature_count, 1),
+           seq_scan_t.read_ms / std::max(gdal_t.read_ms, 0.001));
+    printf("  ╚═══════════════════╧════════════╧═══════════╧══════════════╝\n");
+
+    if (per_rec_t.read_ms > 0.001) {
+        double improvement = (per_rec_t.read_ms - seq_scan_t.read_ms) / per_rec_t.read_ms * 100;
+        printf("\n  seq scan vs per-record 提速: %.1f%%\n", improvement);
+    }
 }
 
 // R3: GDAL 空间查询 vs explorgdb 空间索引查询

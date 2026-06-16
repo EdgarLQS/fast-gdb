@@ -38,6 +38,7 @@
 #include "gdb_geometry.h"
 #include <string>
 #include <vector>
+#include <functional>
 #include <shared_mutex>
 
 namespace explorgdb {
@@ -105,6 +106,23 @@ public:
 
     // 统计 nullable 字段的数量（用于解析记录中的位图大小）
     int nullable_field_count() const;
+
+    // ── 顺序扫描模式（零拷贝，高性能）──
+    //
+    // sequential_scan: 遍历 mmap 内存，零拷贝解析，回调模式
+    // 性能优势：消除 per-record memcpy + variant 构造 + string 堆分配
+    //
+    // 回调签名：bool callback(uint32_t fid, const FieldRef* fields, int n_fields)
+    //   - fid: 当前要素 ID
+    //   - fields: 字段引用数组（长度 = fields_.size()），指向 mmap 内存
+    //   - n_fields: 字段数量
+    //   - 返回 false 提前终止扫描
+    //
+    // FieldRef 仅在回调内有效（回调返回后指针可能失效）
+    // 要求：已 open() + load_tablx()，且 mapped_data_ 非空（mmap 成功）
+    // 返回：扫描的记录数
+    using ScanCallback = std::function<bool(uint32_t fid, const FieldRef* fields, int n_fields)>;
+    uint64_t sequential_scan(ScanCallback callback);
 
 private:
     // 解析单个字段描述符（被 parse_fields 循环调用）

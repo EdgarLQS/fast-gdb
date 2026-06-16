@@ -1124,4 +1124,215 @@ GdbGeomDecoder GdbTableParser::make_geom_decoder(const FieldDescriptor& fd) cons
         layer_has_z, layer_has_m);
 }
 
+// ── 顺序扫描（零拷贝，高性能）──
+// 遍历 feature_offsets_ 顺序读取每条记录，直接从 mmap 内存解析字段，
+// 通过 FieldRef 引用原始字节（不拷贝、不构造 variant、不分配 string 堆内存）。
+
+// 内联 varuint 读取（从裸指针，不依赖 BinaryReader 的位置跟踪）
+static inline uint64_t read_varuint_inline(const uint8_t*& p) {
+    uint64_t ret = 0;
+    int shift = 0;
+    uint8_t byte;
+    do {
+        byte = *p++;
+        ret |= static_cast<uint64_t>(byte & 0x7F) << shift;
+        shift += 7;
+    } while (byte & 0x80);
+    return ret;
+}
+
+uint64_t GdbTableParser::sequential_scan(ScanCallback callback) {
+    // 前置条件：mmap 已建立 + 字段已加载 + tablx 已加载
+    if (!mapped_data_ || fields_.empty() || feature_offsets_.empty()) {
+        std::cerr << "sequential_scan: prerequisites not met (need mmap + fields + tablx)\n";
+        return 0;
+    }
+    if (!callback) return 0;
+
+    const int n_fields = static_cast<int>(fields_.size());
+    const int n_nullable = nullable_field_count();
+    const int nullable_bytes = (n_nullable + 7) / 8;
+
+    // 预分配 FieldRef 数组（避免每行分配 vector）
+    std::vector<FieldRef> field_refs(n_fields);
+
+    uint64_t scanned = 0;
+
+    for (uint32_t fid = 0; fid < feature_offsets_.size(); ++fid) {
+        uint64_t offset = feature_offsets_[fid];
+        if (offset == 0 || offset >= file_size_) continue;  // null 或越界
+
+        const uint8_t* p = mapped_data_ + offset;
+        const uint8_t* end = mapped_data_ + file_size_;
+
+        // 读取 blob_len（4 字节，小端）
+        if (p + 4 > end) break;
+        uint32_t blob_len;
+        std::memcpy(&blob_len, p, 4);
+        p += 4;
+
+        if (blob_len == 0) {
+            // 空记录：所有字段为 null
+            for (int i = 0; i < n_fields; ++i) {
+                field_refs[i] = FieldRef{fields_[i].type, nullptr, 0, true, 0};
+            }
+            if (!callback(fid, field_refs.data(), n_fields)) break;
+            scanned++;
+            continue;
+        }
+
+        if (p + blob_len > end) break;  // 越界保护
+        const uint8_t* blob_end = p + blob_len;
+
+        // ── 读取 nullable 位图 ──
+        const uint8_t* nullable_bitmap = nullptr;
+        if (n_nullable > 0) {
+            if (p + nullable_bytes > blob_end) break;
+            nullable_bitmap = p;
+            p += nullable_bytes;
+        }
+
+        // ── 零拷贝解析各字段 ──
+        int nullable_bit_index = 0;
+        bool parse_ok = true;
+
+        for (int i = 0; i < n_fields; ++i) {
+            const auto& fd = fields_[i];
+            bool is_nullable = (fd.flag & 1) != 0;
+            bool is_null = false;
+
+            if (is_nullable) {
+                int byte_idx = nullable_bit_index / 8;
+                int bit_idx = nullable_bit_index % 8;
+                is_null = nullable_bitmap &&
+                          ((nullable_bitmap[byte_idx] >> bit_idx) & 1);
+                nullable_bit_index++;
+            }
+
+            FieldRef& ref = field_refs[i];
+            ref.type = fd.type;
+            ref.is_null = is_null;
+            ref.implicit_value = static_cast<int32_t>(fid + 1);
+
+            if (is_null) {
+                ref.data = nullptr;
+                ref.byte_len = 0;
+                continue;
+            }
+
+            // 根据字段类型设置 FieldRef（零拷贝：data 指向 mmap 内存）
+            switch (fd.type) {
+                case FieldType::ObjectId:
+                    // ObjectId 无原始字节，值 = fid + 1（已存入 implicit_value）
+                    ref.data = nullptr;
+                    ref.byte_len = 0;
+                    break;
+
+                case FieldType::Int16:
+                    if (p + 2 > blob_end) { parse_ok = false; break; }
+                    ref.data = p;
+                    ref.byte_len = 2;
+                    p += 2;
+                    break;
+
+                case FieldType::Int32:
+                    if (p + 4 > blob_end) { parse_ok = false; break; }
+                    ref.data = p;
+                    ref.byte_len = 4;
+                    p += 4;
+                    break;
+
+                case FieldType::Int64:
+                    if (p + 8 > blob_end) { parse_ok = false; break; }
+                    ref.data = p;
+                    ref.byte_len = 8;
+                    p += 8;
+                    break;
+
+                case FieldType::Float32:
+                    if (p + 4 > blob_end) { parse_ok = false; break; }
+                    ref.data = p;
+                    ref.byte_len = 4;
+                    p += 4;
+                    break;
+
+                case FieldType::Float64:
+                case FieldType::DateTime:
+                case FieldType::Date:
+                case FieldType::Time:
+                    if (p + 8 > blob_end) { parse_ok = false; break; }
+                    ref.data = p;
+                    ref.byte_len = 8;
+                    p += 8;
+                    break;
+
+                case FieldType::DateTimeWithOffset:
+                    if (p + 10 > blob_end) { parse_ok = false; break; }
+                    ref.data = p;
+                    ref.byte_len = 8;  // 只暴露 double 部分
+                    p += 10;  // 跳过 double + int16 offset
+                    break;
+
+                case FieldType::String:
+                case FieldType::XML: {
+                    if (p >= blob_end) { parse_ok = false; break; }
+                    uint64_t len = read_varuint_inline(p);
+                    if (p + len > blob_end) { parse_ok = false; break; }
+                    ref.data = p;
+                    ref.byte_len = static_cast<size_t>(len);
+                    p += len;
+                    break;
+                }
+
+                case FieldType::Binary:
+                case FieldType::Geometry: {
+                    if (p >= blob_end) { parse_ok = false; break; }
+                    uint64_t len = read_varuint_inline(p);
+                    if (p + len > blob_end) { parse_ok = false; break; }
+                    ref.data = p;
+                    ref.byte_len = static_cast<size_t>(len);
+                    p += len;
+                    break;
+                }
+
+                case FieldType::UUID_1:
+                case FieldType::UUID_2:
+                    if (p + 16 > blob_end) { parse_ok = false; break; }
+                    ref.data = p;
+                    ref.byte_len = 16;
+                    p += 16;
+                    break;
+
+                case FieldType::Raster:
+                    // Raster 太复杂，跳过（设为 null）
+                    ref.is_null = true;
+                    ref.data = nullptr;
+                    ref.byte_len = 0;
+                    break;
+
+                default:
+                    // 未知类型：无法安全跳过，终止解析
+                    parse_ok = false;
+                    break;
+            }
+
+            if (!parse_ok) break;
+        }
+
+        if (!parse_ok) {
+            // 解析失败的行，仍回调（字段标记为 null）
+            for (int i = 0; i < n_fields; ++i) {
+                if (field_refs[i].data == nullptr && !field_refs[i].is_null) {
+                    field_refs[i].is_null = true;
+                }
+            }
+        }
+
+        if (!callback(fid, field_refs.data(), n_fields)) break;
+        scanned++;
+    }
+
+    return scanned;
+}
+
 } // namespace explorgdb

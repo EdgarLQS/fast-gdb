@@ -14,7 +14,9 @@
 #define EXPLORGDB_TYPES_H
 
 #include <cstdint>
+#include <cstring>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <variant>
 
@@ -304,6 +306,68 @@ struct AttributeIndexEntry {
     uint32_t fid = 0;            // 要素 ID (1-based)
     std::string string_value;    // 字符串值（非字符串类型为空）
     double numeric_value = 0;    // 数值（NaN 表示字符串类型）
+};
+
+// ────────────────────────────────────────────────
+// 14. 零拷贝字段引用 — 顺序扫描模式使用
+// ────────────────────────────────────────────────
+// FieldRef 直接指向 mmap 内存中的原始字节，不做拷贝。
+// 定长类型（Int16/Int32/Int64/Float32/Float64）：data 指向值起始位置
+// 变长类型（String/Binary）：data 指向数据内容起始位置（varuint 长度之后）
+// ObjectId：无原始字节，is_null=false，value 由 fid+1 隐式给出
+//
+// 生命周期：FieldRef 仅在 sequential_scan 回调内有效，
+// 回调返回后 mmap 内存可能被 unmap，指针失效。
+struct FieldRef {
+    FieldType type = FieldType::ObjectId;
+    const uint8_t* data = nullptr;  // 指向 mmap 内存中的原始字节
+    size_t byte_len = 0;            // 原始字节长度（定长类型=类型宽度，变长=内容长度）
+    bool is_null = false;           // 是否为 NULL
+    int32_t implicit_value = 0;     // ObjectId 的隐式值（fid+1）
+
+    // ── 零拷贝解码方法 ──
+    // 直接 reinterpret_cast mmap 中的原始字节（小端，与 x86/ARM 一致）
+
+    int32_t as_i16() const {
+        if (is_null || byte_len < 2) return 0;
+        int16_t v;
+        std::memcpy(&v, data, 2);
+        return static_cast<int32_t>(v);
+    }
+
+    int32_t as_i32() const {
+        if (is_null || byte_len < 4) return implicit_value;
+        int32_t v;
+        std::memcpy(&v, data, 4);
+        return v;
+    }
+
+    int64_t as_i64() const {
+        if (is_null || byte_len < 8) return static_cast<int64_t>(implicit_value);
+        int64_t v;
+        std::memcpy(&v, data, 8);
+        return v;
+    }
+
+    float as_f32() const {
+        if (is_null || byte_len < 4) return 0.0f;
+        float v;
+        std::memcpy(&v, data, 4);
+        return v;
+    }
+
+    double as_f64() const {
+        if (is_null || byte_len < 8) return 0.0;
+        double v;
+        std::memcpy(&v, data, 8);
+        return v;
+    }
+
+    // 返回 string_view，零拷贝（指向 mmap 内存）
+    std::string_view as_string_view() const {
+        if (is_null || !data || byte_len == 0) return {};
+        return std::string_view(reinterpret_cast<const char*>(data), byte_len);
+    }
 };
 
 } // namespace explorgdb
