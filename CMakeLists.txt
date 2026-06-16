@@ -91,6 +91,7 @@ set(TEST_SOURCES
     ${USEGDAL_TEST_SOURCES}
     ${EXPLORGDB_READER_TEST_SOURCES}
     ${EXPLORGDB_WRITER_TEST_SOURCES}
+    tests/benchmark_full_performance.cpp
 )
 
 add_executable(gdb_tutorial_test_runner ${TEST_SOURCES})

@@ -193,8 +193,9 @@ bool CreateAttributeIndex(const std::string& gdb_path,
                           const std::string& field_name,
                           const std::string& index_name) {
     // 1. Generate index name if not provided
+    // Keep short: OpenFileGDB limits index names to 16 characters
     std::string idx_name = index_name.empty()
-        ? layer_name + "_" + field_name + "_idx"
+        ? field_name.substr(0, 8) + "_idx"
         : index_name;
 
     // Convert to lowercase for consistency
