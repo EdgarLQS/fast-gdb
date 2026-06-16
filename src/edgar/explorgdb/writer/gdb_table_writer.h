@@ -39,17 +39,12 @@
 #include "row_buffer.h"
 #include "geometry_serializer.h"
 #include "tablx_writer.h"
-#include "spatial_index_writer.h"
-#include "attribute_index_writer.h"
-#include "gdb_indexes_writer.h"
 #include "../common/explorgdb_types.h"
 
 #include <cstdint>
 #include <cstddef>
 #include <string>
 #include <vector>
-#include <memory>
-#include <unordered_map>
 
 namespace explorgdb {
 namespace writer {
@@ -100,24 +95,6 @@ public:
 
     // 获取几何序列化器（用于在 end_row 前准备几何数据）
     GeometrySerializer& geometry_serializer() { return geom_serializer_; }
-
-    // ── 索引控制 ──
-
-    // 启用空间索引（在 close() 时自动生成 .spx）
-    void enable_spatial_index(bool enable = true) { enable_spatial_index_ = enable; }
-
-    // 启用属性索引（在 close() 时自动生成 .atx）
-    // field_name: 字段名
-    void enable_attribute_index(const std::string& field_name, bool enable = true);
-
-    // 添加空间索引条目（用户手动调用，传入要素的 bbox）
-    // fid: 要素 ID（1-based，与写入顺序一致）
-    void add_spatial_index_entry(uint32_t fid, double xmin, double ymin,
-                                  double xmax, double ymax) {
-        if (enable_spatial_index_) {
-            spatial_index_writer_.add_geometry(fid, xmin, ymin, xmax, ymax);
-        }
-    }
 
     // 手动刷盘（通常不需要，close() 时自动刷盘）
     void flush();
@@ -196,21 +173,6 @@ private:
     // 刷盘阈值
     static constexpr size_t kMaxBufferRows = 5000;
     static constexpr size_t kMaxBufferBytes = 16 * 1024 * 1024;  // 16MB
-
-    // 索引控制
-    bool enable_spatial_index_ = false;
-    std::vector<std::string> attribute_index_fields_;  // 需要建索引的字段名
-
-    // 索引写入器
-    SpatialIndexWriter spatial_index_writer_;
-    std::vector<std::unique_ptr<AttributeIndexWriter<int32_t>>> int32_index_writers_;
-    std::vector<std::unique_ptr<AttributeIndexWriter<int64_t>>> int64_index_writers_;
-    std::vector<std::unique_ptr<AttributeIndexWriter<double>>> double_index_writers_;
-    std::unique_ptr<StringAttributeIndexWriter> string_index_writer_;
-    GdbIndexesWriter gdb_indexes_writer_;
-
-    // 字段名→描述符索引的映射（用于属性索引收集）
-    std::unordered_map<std::string, int> field_name_to_descriptor_;
 
     // 状态
     uint64_t row_count_ = 0;

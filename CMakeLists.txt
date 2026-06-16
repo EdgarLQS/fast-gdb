@@ -120,6 +120,17 @@ target_include_directories(generate_large_gdb PRIVATE ${GDAL_INCLUDE_DIR})
 target_link_libraries(generate_large_gdb PRIVATE ${GDAL_LIBRARY})
 target_compile_options(generate_large_gdb PRIVATE -Wall -Wno-unused-result)
 
+# ===== 10 万面数据生成器（用于 ArcGIS Pro 索引测试）=====
+add_executable(generate_100k_polygons tests/generate_100k_polygons.cpp)
+target_include_directories(generate_100k_polygons PRIVATE ${GDAL_INCLUDE_DIR})
+target_link_libraries(generate_100k_polygons PRIVATE explorgdb_writer_lib ${GDAL_LIBRARY})
+target_compile_options(generate_100k_polygons PRIVATE -Wall -Wno-unused-result)
+
+# ===== ArcGIS Pro 索引验证工具 =====
+add_executable(verify_arcgis_indexes tests/verify_arcgis_indexes.cpp)
+target_link_libraries(verify_arcgis_indexes PRIVATE explorgdb_reader_lib)
+target_compile_options(verify_arcgis_indexes PRIVATE -Wall -Wno-unused-result)
+
 # ===== Build Info =====
 message(STATUS "")
 message(STATUS "=== GDB Tutorial ===")

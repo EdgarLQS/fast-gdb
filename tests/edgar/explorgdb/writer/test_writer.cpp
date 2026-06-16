@@ -984,7 +984,12 @@ TEST_F(WriterTest, T_W16_MOnly_Encoding) {
     std::cout << "[T_W16] M-only encoding: PointM/PolylineM/PolygonM/MultiPointM all produced valid blobs\n";
 }
 
-// ── T_W17: 空间索引（点要素 + .spx 生成）──
+// ── T_W17: 空间索引（已移至 experimental）──
+// 空间索引写入功能已移至 experimental 目录
+// 推荐使用混合工作流：我们的 writer + ArcGIS Pro 建索引 + 我们的 reader
+// 如需测试实验性功能，请参考 docs/HYBRID_WORKFLOW.md
+
+/*
 TEST_F(WriterTest, T_W17_SpatialIndex_Points) {
     std::vector<WriterField> fields = {{"name", FieldType::String, true, 100}};
     GdbTableWriter writer;
@@ -1026,3 +1031,4 @@ TEST_F(WriterTest, T_W17_SpatialIndex_Points) {
     GDALClose(ds);
     std::cout << "[T_W17] SpatialIndex Points: " << N << " features verified\n";
 }
+*/
