@@ -131,6 +131,24 @@ add_executable(verify_arcgis_indexes tests/verify_arcgis_indexes.cpp)
 target_link_libraries(verify_arcgis_indexes PRIVATE explorgdb_reader_lib)
 target_compile_options(verify_arcgis_indexes PRIVATE -Wall -Wno-unused-result)
 
+# ===== 二进制写入后索引创建验证 =====
+add_executable(verify_binary_write_index tests/verify_binary_write_index.cpp)
+target_include_directories(verify_binary_write_index PRIVATE ${GDAL_INCLUDE_DIR} src/edgar)
+target_link_libraries(verify_binary_write_index PRIVATE explorgdb_writer_lib ${GDAL_LIBRARY})
+target_compile_options(verify_binary_write_index PRIVATE -Wall -Wno-unused-result)
+
+# ===== 性能基准测试：索引创建 =====
+add_executable(benchmark_index_creation tests/benchmark_index_creation.cpp)
+target_include_directories(benchmark_index_creation PRIVATE ${GDAL_INCLUDE_DIR} src/edgar)
+target_link_libraries(benchmark_index_creation PRIVATE explorgdb_writer_lib ${GDAL_LIBRARY})
+target_compile_options(benchmark_index_creation PRIVATE -Wall -Wno-unused-result)
+
+# ===== GDAL 兼容性验证工具 =====
+add_executable(verify_gdal_indexes tests/verify_gdal_indexes.cpp)
+target_include_directories(verify_gdal_indexes PRIVATE src/edgar)
+target_link_libraries(verify_gdal_indexes PRIVATE explorgdb_reader_lib)
+target_compile_options(verify_gdal_indexes PRIVATE -Wall -Wno-unused-result)
+
 # ===== Build Info =====
 message(STATUS "")
 message(STATUS "=== GDB Tutorial ===")
@@ -141,6 +159,8 @@ message(STATUS "Component: explorgdb_writer_lib (纯 C++ GDB 写入器)")
 message(STATUS "GDAL: ${GDAL_ROOT}")
 message(STATUS "Target: explorgdb_cli - GDB 二进制探索工具")
 message(STATUS "Target: gdb_tutorial_test_runner - 教程配套测试")
+message(STATUS "Target: benchmark_index_creation - 索引创建性能基准测试")
+message(STATUS "Target: verify_gdal_indexes - GDAL 兼容性验证工具")
 message(STATUS "")
 message(STATUS "  ./build/bin/explorgdb_cli explore <gdb_path>          # 探索 GDB 目录")
 message(STATUS "  ./build/bin/explorgdb_cli dump-table <file>           # 解析 .gdbtable")
@@ -149,5 +169,7 @@ message(STATUS "  ./build/bin/explorgdb_cli dump-indexes <file>         # 解析
 message(STATUS "  ./build/bin/explorgdb_cli dump-records <file>         # 解析要素记录")
 message(STATUS "  ./build/bin/gdb_tutorial_test_runner                  # 运行全部测试")
 message(STATUS "  ./build/bin/gdb_tutorial_test_runner --gtest_filter='T001_*'  # 运行 001 格式测试")
+message(STATUS "  ./build/bin/benchmark_index_creation [gdb_path]       # 索引创建性能基准测试")
+message(STATUS "  ./build/bin/verify_gdal_indexes [gdb_path]            # GDAL 兼容性验证工具")
 message(STATUS "  ctest --output-on-failure                             # 通过 CTest 运行")
 message(STATUS "")
