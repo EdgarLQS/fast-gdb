@@ -14,7 +14,7 @@ cd fast_gdb && mkdir -p build && cd build
 cmake ..
 make -j$(sysctl -n hw.ncpu)
 
-# 运行全部 112 个测试（27 基础 + 85 组件）
+# 运行全部 369 个测试（27 教程 + 113 组件 + 229 explorgdb）
 ./bin/gdb_tutorial_test_runner
 
 # 运行单个章节
