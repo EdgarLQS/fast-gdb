@@ -80,15 +80,17 @@ find_package(GTest REQUIRED)
 enable_testing()
 
 # Test sources
-file(GLOB USEGDAL_TEST_SOURCES tests/edgar/component/usegdal/*.cpp)
-file(GLOB BASEUSE_SOURCES tests/edgar/baseuse/*.cpp)
+file(GLOB USEGDAL_TEST_SOURCES tests/usegdal/*.cpp)
+file(GLOB TUTORIAL_SOURCES tests/tutorials/*.cpp)
+file(GLOB EXPLORGDB_COMMON_TEST_SOURCES tests/edgar/explorgdb/common/*.cpp)
 file(GLOB EXPLORGDB_READER_TEST_SOURCES tests/edgar/explorgdb/reader/*.cpp)
 file(GLOB EXPLORGDB_WRITER_TEST_SOURCES tests/edgar/explorgdb/writer/*.cpp)
 set(TEST_SOURCES
     tests/test_runner.cpp
     tests/test_fixture.h
-    ${BASEUSE_SOURCES}
+    ${TUTORIAL_SOURCES}
     ${USEGDAL_TEST_SOURCES}
+    ${EXPLORGDB_COMMON_TEST_SOURCES}
     ${EXPLORGDB_READER_TEST_SOURCES}
     ${EXPLORGDB_WRITER_TEST_SOURCES}
     tests/benchmark_full_performance.cpp
@@ -98,10 +100,10 @@ add_executable(gdb_tutorial_test_runner ${TEST_SOURCES})
 target_include_directories(gdb_tutorial_test_runner PRIVATE
     ${GDAL_INCLUDE_DIR}
     tests
-    tests/edgar/component/usegdal
-    tests/edgar/explorgdal
-    tests/edgar/baseuse
+    tests/tutorials
+    tests/usegdal
     tests/edgar/explorgdb
+    tests/edgar/explorgdb/common
     tests/edgar/explorgdb/reader
     tests/edgar/explorgdb/writer
 )
@@ -122,30 +124,30 @@ target_link_libraries(generate_large_gdb PRIVATE ${GDAL_LIBRARY})
 target_compile_options(generate_large_gdb PRIVATE -Wall -Wno-unused-result)
 
 # ===== 10 万面数据生成器（用于 ArcGIS Pro 索引测试）=====
-add_executable(generate_100k_polygons tests/generate_100k_polygons.cpp)
+add_executable(generate_100k_polygons tests/tools/generate_100k_polygons.cpp)
 target_include_directories(generate_100k_polygons PRIVATE ${GDAL_INCLUDE_DIR})
 target_link_libraries(generate_100k_polygons PRIVATE explorgdb_writer_lib ${GDAL_LIBRARY})
 target_compile_options(generate_100k_polygons PRIVATE -Wall -Wno-unused-result)
 
 # ===== ArcGIS Pro 索引验证工具 =====
-add_executable(verify_arcgis_indexes tests/verify_arcgis_indexes.cpp)
+add_executable(verify_arcgis_indexes tests/tools/verify_arcgis_indexes.cpp)
 target_link_libraries(verify_arcgis_indexes PRIVATE explorgdb_reader_lib)
 target_compile_options(verify_arcgis_indexes PRIVATE -Wall -Wno-unused-result)
 
 # ===== 二进制写入后索引创建验证 =====
-add_executable(verify_binary_write_index tests/verify_binary_write_index.cpp)
+add_executable(verify_binary_write_index tests/tools/verify_binary_write_index.cpp)
 target_include_directories(verify_binary_write_index PRIVATE ${GDAL_INCLUDE_DIR} src/edgar)
 target_link_libraries(verify_binary_write_index PRIVATE explorgdb_writer_lib ${GDAL_LIBRARY})
 target_compile_options(verify_binary_write_index PRIVATE -Wall -Wno-unused-result)
 
 # ===== 性能基准测试：索引创建 =====
-add_executable(benchmark_index_creation tests/benchmark_index_creation.cpp)
+add_executable(benchmark_index_creation tests/tools/benchmark_index_creation.cpp)
 target_include_directories(benchmark_index_creation PRIVATE ${GDAL_INCLUDE_DIR} src/edgar)
 target_link_libraries(benchmark_index_creation PRIVATE explorgdb_writer_lib ${GDAL_LIBRARY})
 target_compile_options(benchmark_index_creation PRIVATE -Wall -Wno-unused-result)
 
 # ===== GDAL 兼容性验证工具 =====
-add_executable(verify_gdal_indexes tests/verify_gdal_indexes.cpp)
+add_executable(verify_gdal_indexes tests/tools/verify_gdal_indexes.cpp)
 target_include_directories(verify_gdal_indexes PRIVATE src/edgar)
 target_link_libraries(verify_gdal_indexes PRIVATE explorgdb_reader_lib)
 target_compile_options(verify_gdal_indexes PRIVATE -Wall -Wno-unused-result)

@@ -13,7 +13,7 @@ using namespace explorgdb;
 // ── 测试数据路径 ──
 
 static const std::string kSmallSpx =
-    "test_data/gdb/test_spatial_gdb.gdb/test_spatial_gdb.gdb/a0000000c.spx";
+    "../test_data/gdb/test_spatial_gdb.gdb/test_spatial_gdb.gdb/a0000000c.spx";
 
 static const std::string kLargeSpx =
     "/Users/edgarlqs/Downloads/daydaydaywork/dailyWork/convert/gdal/"

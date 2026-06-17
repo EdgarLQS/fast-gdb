@@ -2,57 +2,107 @@
 
 本目录包含 GDB 教程配套测试，**测试即教程**——每个测试文件头部的注释就是对应章节的教程内容。
 
-## 测试文件列表
+## 目录结构
 
-### 基础篇（101-basics）
-
-| 文件 | 对应教程 | 测试用例数 | 验证内容 |
-|------|---------|-----------|---------|
-| `test_001_format.cpp` | 001 GDB 格式与内部结构 | 3 | .gdb 内部文件结构（.gdbtable, .gdbtablx）、文件头格式 |
-| `test_002_drivers.cpp` | 002 两套驱动对比与选择 | 3 | OpenFileGDB 驱动注册、默认驱动、完整读写流程 |
-| `test_003_readwrite.cpp` | 003 读写实战指南 | 3 | 创建图层、定义字段、写入要素、多边形图层 |
-| `test_004_raster.cpp` | 004 栅格图层读取 | 3 | OpenFileGDB 不支持创建栅格、驱动注册、矢量 GDB 无 ras_bnd 文件 |
-
-### 进阶篇（102-deep-dive）
-
-| 文件 | 对应教程 | 测试用例数 | 验证内容 |
-|------|---------|-----------|---------|
-| `test_005_source_chain.cpp` | 005 源码深度解析与调用链 | 3 | 驱动注册链、数据源打开链、要素读取链 |
-| `test_007_testdata.cpp` | 007 测试数据与验证 | 3 | 多几何类型数据集、多字段类型、GDB_Items 系统表 |
-| `test_008_pitfalls.cpp` | 008 常见问题与陷阱 | 4 | 字段名清洗、字符串宽度、南半球坐标编码、图层名称清洗 |
-| `test_010_experiments.cpp` | 010 最小实验 | 5 | 列图层、创建字段、写入要素、不同 CRS、重新打开验证 |
-
-**总计：8 个测试文件，27 个测试用例**
+```
+tests/
+├── test_runner.cpp                       # Google Test 入口
+├── test_fixture.h                        # 共享 Fixture（GDAL 初始化 + 自动清理）
+├── benchmark_full_performance.cpp        # 完整性能基准测试（集成在 test_runner 中）
+│
+├── tutorials/                            # 基础教程测试（T001~T010，27 用例）
+│   ├── test_001_format.cpp              #   001 GDB 格式与内部结构
+│   ├── test_002_drivers.cpp             #   002 两套驱动对比与选择
+│   ├── test_003_readwrite.cpp           #   003 读写实战指南
+│   ├── test_004_raster.cpp              #   004 栅格图层读取
+│   ├── test_005_source_chain.cpp        #   005 源码深度解析与调用链
+│   ├── test_007_testdata.cpp            #   007 测试数据与验证
+│   ├── test_008_pitfalls.cpp            #   008 常见问题与陷阱
+│   └── test_010_experiments.cpp         #   010 最小实验
+│
+├── usegdal/                              # usegdal 组件测试（T011~T015，85 用例）
+│   ├── datasource_test.cpp              #   GdbDatasource 打开/关闭/事务能力
+│   ├── datasets_test.cpp                #   GdbDatasets 图层枚举/字段元数据
+│   ├── datasets_write_test.cpp          #   创建/删除图层
+│   ├── recordset_test.cpp               #   顺序游标/类型读取
+│   ├── recordset_write_test.cpp         #   写入操作
+│   ├── feature_test.cpp                 #   FID/Geometry/Fields 读写
+│   ├── field_test.cpp                   #   类型创建/转换/isNull
+│   ├── batch_writer_test.cpp            #   批量插入/flush/commit
+│   ├── transaction_test.cpp             #   begin/commit/rollback
+│   ├── query_builder_test.cpp           #   链式 where/spatial/limit
+│   ├── query_test.cpp                   #   属性+空间查询参数
+│   ├── pool_test.cpp                    #   连接池 acquire/release
+│   ├── connection_info_test.cpp         #   默认连接参数
+│   └── write_benchmark_test.cpp         #   写入性能基准
+│
+├── explorgdb/                            # explorgdb 纯 C++ 解析器测试
+│   ├── test_fixture_explorgdb.h         #   explorgdb 专用 Fixture
+│   ├── generate_large_gdb.cpp           #   大规模测试数据生成器（独立可执行文件）
+│   ├── common/                           #   common/ 模块测试
+│   │   ├── test_binary_reader.cpp       #     字节序/seek/整数读取
+│   │   ├── test_varint.cpp              #     varint 编解码往返
+│   │   ├── test_utf16.cpp               #     UTF-16LE → UTF-8 转换
+│   │   └── test_ole_date.cpp            #     OLE DATE → time_point
+│   ├── reader/                           #   reader/ 模块测试
+│   │   ├── test_catalog.cpp             #     目录扫描/magic 校验
+│   │   ├── test_gdbtable.cpp            #     .gdbtable 头/字段/记录
+│   │   ├── test_gdbtablx.cpp            #     .gdbtablx 偏移表/位图
+│   │   ├── test_gdbindexes.cpp          #     .gdbindexes 元数据解析
+│   │   ├── test_gdb_spatial_index.cpp   #     .spx 解析/query_bbox
+│   │   ├── test_gdb_attribute_index.cpp #     .atx 索引解析（合成数据）
+│   │   ├── test_geometry.cpp            #     几何 blob 解码（Point/Poly/Multi*）
+│   │   ├── test_spatial_benchmark.cpp   #     空间查询性能 vs GDAL
+│   │   ├── test_synthetic.cpp           #     合成数据自包含测试
+│   │   └── test_full_audit.cpp          #     端到端 spx.gdb 审计
+│   └── writer/                           #   writer/ 模块测试
+│       ├── test_writer.cpp              #     二进制写入正确性/交叉验证
+│       └── test_index_creator.cpp       #     CreateSpatialIndex/.spx 创建
+│
+└── tools/                                # 独立工具（不参与 test_runner 编译）
+    ├── benchmark_index_creation.cpp      #   索引创建性能基准
+    ├── generate_100k_polygons.cpp        #   10 万面数据生成器
+    ├── verify_arcgis_indexes.cpp         #   ArcGIS Pro 索引验证
+    ├── verify_binary_write_index.cpp     #   二进制写入后索引验证
+    └── verify_gdal_indexes.cpp           #   GDAL 兼容性验证
+```
 
 ## 运行方式
 
 ```bash
-# 运行全部教程测试
-./build/bin/gdb_tutorial_test_runner
+# 运行全部测试（tutorials + usegdal + explorgdb，112 用例）
+./bin/gdb_tutorial_test_runner
 
-# 运行单个教程的测试
-./build/bin/gdb_tutorial_test_runner --gtest_filter='T001_*'
-./build/bin/gdb_tutorial_test_runner --gtest_filter='T003_*'
+# 按分类运行
+./bin/gdb_tutorial_test_runner --gtest_filter='T001_*:T002_*:T003_*:T004_*'  # 基础教程
+./bin/gdb_tutorial_test_runner --gtest_filter='T001_*'                         # 单个教程
+./bin/gdb_tutorial_test_runner --gtest_filter='*Datasource*'                   # 按类名筛选
 
-# 运行基础篇全部测试
-./build/bin/gdb_tutorial_test_runner --gtest_filter='T001_*:T002_*:T003_*:T004_*'
-
-# 运行进阶篇全部测试
-./build/bin/gdb_tutorial_test_runner --gtest_filter='T005_*:T007_*:T008_*:T010_*'
-
-# 通过 CTest 运行
+# CTest
 ctest --output-on-failure
+
+# 独立工具
+./bin/benchmark_index_creation [gdb_path]
+./bin/verify_gdal_indexes [gdb_path]
+./bin/generate_large_gdb <output_dir>
+./bin/generate_100k_polygons <output_dir>
 ```
 
 ## 测试命名规则
 
-- `T001_*` — 001 GDB 格式
-- `T002_*` — 002 驱动对比
-- `T003_*` — 003 读写实战
-- `T004_*` — 004 栅格读取
-- `T005_*` — 005 源码调用链
-- `T007_*` — 007 测试数据
-- `T008_*` — 008 常见陷阱
-- `T010_*` — 010 最小实验
+| 前缀 | 目录 | 说明 |
+|------|------|------|
+| `T001_*` ~ `T010_*` | `tutorials/` | 教程测试（test_001 ~ test_010） |
+| `T011_*` ~ `T015_*` | `usegdal/` | usegdal 组件测试 |
+| 无前缀 | `explorgdb/` | explorgdb 解析器测试 |
 
 > 006（源码速查表）和 009（外部参考）是纯参考文档，不配测试。
+
+## 与 src/ 的对应关系
+
+```
+src/edgar/usegdal/              →  tests/usegdal/
+src/edgar/explorgdb/common/     →  tests/edgar/explorgdb/common/
+src/edgar/explorgdb/reader/     →  tests/edgar/explorgdb/reader/
+src/edgar/explorgdb/writer/     →  tests/edgar/explorgdb/writer/
+```

@@ -74,14 +74,19 @@ GdbBatchWriter（批量写入，每线程独立连接）
 
 ```
 tests/
-├── edgar/
-│   ├── baseuse/               # 基础教程测试（T001~T010，27 用例）
-│   ├── component/usegdal/     # usegdal 组件测试（T011~T015，85 用例）
-│   └── explorgdb/             # explorgdb 解析器测试
-├── test_runner.cpp            # Google Test 入口
-├── test_fixture.h             # 共享 Fixture（GDAL 初始化 + 自动清理）
-└── INDEX.md                   # 测试索引
+├── tutorials/                    # 基础教程测试（T001~T010，27 用例）
+├── usegdal/                      # usegdal 组件测试（T011~T015，85 用例）
+├── edgar/explorgdb/              # explorgdb 解析器测试
+│   ├── common/                   #   common/ 模块测试
+│   ├── reader/                   #   reader/ 模块测试
+│   └── writer/                   #   writer/ 模块测试
+├── tools/                        # 独立工具（benchmark/verify/generate）
+├── test_runner.cpp               # Google Test 入口
+├── test_fixture.h                # 共享 Fixture
+└── INDEX.md                      # 测试索引
 ```
+
+测试目录镜像 `src/` 结构：`tests/usegdal/` ↔ `src/edgar/usegdal/`，`tests/edgar/explorgdb/{common,reader,writer}/` ↔ `src/edgar/explorgdb/{common,reader,writer}/`。
 
 测试命名规则：`T001_*` 对应教程 001，`T011_*` 对应 Phase 1A 组件，以此类推。
 

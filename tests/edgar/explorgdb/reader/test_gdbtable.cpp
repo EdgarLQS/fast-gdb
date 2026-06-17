@@ -317,7 +317,7 @@ TEST(GdbTableTest, ReadRecordByFid_NoTablx) {
 
 // 空间测试数据路径（有几何字段）
 static const char* SPATIAL_GDB_PATH =
-    "test_data/gdb/test_spatial_gdb.gdb/test_spatial_gdb.gdb";
+    "../test_data/gdb/test_spatial_gdb.gdb/test_spatial_gdb.gdb";
 static const uint32_t SPATIAL_TABLE_ID = 0xC;
 
 // 测试 peek_geometry_blob 读取有效几何 blob
