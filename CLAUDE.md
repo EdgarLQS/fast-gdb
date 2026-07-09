@@ -75,7 +75,7 @@ GdbBatchWriter（批量写入，每线程独立连接）
 ```
 tests/
 ├── tutorials/                    # 基础教程测试（T001~T010，27 用例）
-├── usegdal/                      # usegdal 组件测试（T011~T015，85 用例）
+├── usegdal/                      # usegdal 组件测试（T011~T015，113 用例）
 ├── edgar/explorgdb/              # explorgdb 解析器测试
 │   ├── common/                   #   common/ 模块测试
 │   ├── reader/                   #   reader/ 模块测试
@@ -94,20 +94,32 @@ tests/
 
 | 目标 | 说明 |
 |------|------|
-| `gdb_tutorial_test_runner` | 教程测试运行器（基础 + 组件全部测试） |
+| `gdb_tutorial_test_runner` | 教程测试运行器（所有 369 个测试） |
 | `explorgdb_cli` | GDB 二进制探索 CLI 工具 |
 | `generate_large_gdb` | 大规模测试数据生成器 |
+| `generate_100k_polygons` | 10 万面数据生成器（供 ArcGIS Pro 索引测试） |
+| `verify_arcgis_indexes` | 验证 ArcGIS Pro 索引可被 explorgdb 正确读取 |
+| `verify_binary_write_index` | 验证混合工作流（GDAL schema + 二进制写入 → 索引创建） |
+| `verify_gdal_indexes` | 验证 GDAL 索引可被 explorgdb 正确读取 |
+| `benchmark_index_creation` | 索引创建性能基准（空间/属性/复合） |
 
 二进制输出到 `build/bin/`，运行时通过 `CMAKE_BUILD_RPATH` 自动找到 `libgdal.dylib`。
 
+## 独立工具
+
+`tests/tools/` 目录下的 5 个独立可执行文件（上表后 5 个）不参与 `test_runner` 编译，需单独构建运行。用于验证索引兼容性、生成测试数据、基准测试。
+
 ## 文档
 
-`docs/` 目录包含 5 篇整合文档（从原始 25 篇合并）：
+`docs/` 目录包含 6 篇文档：
 
 | 文件 | 内容 |
 |------|------|
+| `00_项目全景与架构概览.md` | 项目全景、架构总览、学习路线（**入口**） |
 | `01_组件库设计与使用.md` | 架构设计、API 教程、空间关系查询（Phase 1A-3） |
 | `02_性能基准与优化.md` | 完整基准测试（25 用例）、优化历程、性能对比根因分析 |
 | `03_索引构建方案.md` | 混合工作流（ArcGIS Pro）、GDAL SQL 索引、API 参考 |
 | `04_项目状态与规划.md` | 当前状态、已完成工作、待办事项、已知限制 |
 | `05_技术探索与教训.md` | B+树分隔符发现、LRU Bug、mmap 优化、失败实验教训 |
+
+建议从 `docs/00_项目全景与架构概览.md` 开始阅读。
