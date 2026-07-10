@@ -23,6 +23,7 @@
    - 8.5 [按需读取流程](#85-按需读取流程不索引直接读取)
    - 8.6 [查询路径选择指南](#86-查询路径选择指南)
 
+
 ---
 
 ## 1. GDB 目录结构概览
@@ -842,8 +843,8 @@ flowchart LR
 
 **为什么 ObjectId 查询最快**：
 
-- Step 1: ObjectId → FID 转换是纯数学运算（O(1)）
-- Step 2: FID 是 `.gdbtablx` 数组的索引，直接定位（O(1)）
+- Step 1: ObjectId → FID 转换是纯数学运算（O(1））
+- Step 2: FID 是 `.gdbtablx` 数组的索引，直接定位（O(1））
 - Step 3: `.gdbtablx` entry = 4/5/6 字节的文件偏移，不存在需要遍历的数据结构
 - 不需要 B+ 树遍历，不需要索引匹配，**两步 O(1) 到位**
 
@@ -895,6 +896,8 @@ flowchart TD
     TABLX -->|"文件偏移"| READ["GdbTableParser<br/>read_record_by_fid()<br/>.gdbtable 记录解析"]
 
     READ --> DONE["返回完整要素"]
+```
+
 
     DONE --> NEXT{"还有更多 FID？"}
     NEXT -->|"是"| TABLX
@@ -909,7 +912,7 @@ flowchart TD
 |------|------|------|------|
 | [`src/edgar/usegdal/datasets.cpp`](../src/edgar/usegdal/datasets.cpp#L138) | 138 | `GdbDataset::query(const GdbQuery&)` | 属性过滤入口 |
 | [`src/edgar/usegdal/datasets.cpp`](../src/edgar/usegdal/datasets.cpp#L153) | 153 | `SetAttributeFilter()` | 设置属性过滤 |
-| [`src/edgar/explorgdb/reader/gdb_attribute_index.cpp`](../src/edgar/explorgdb/reader/gdb_attribute_index.cpp) | - | `GdbAttributeIndexParser` | .atx B+ 树解析 |
+| [`src/edgar/explorgdb/reader/gdb_attribute_index.cpp`](../src/edgar/explorgdb/reader/gdb_attribute_index.cpp#L-`)` | - | `GdbAttributeIndexParser` | .atx B+ 树解析 |
 
 ### 8.3 空间查询流程
 
@@ -983,83 +986,6 @@ flowchart TD
 | [`src/edgar/explorgdb/reader/gdb_geometry.cpp`](../src/edgar/explorgdb/reader/gdb_geometry.cpp#L640) | 640 | `peek_bbox()` | 轻量 bbox 过滤 |
 | [`src/edgar/explorgdb/reader/gdb_geometry.cpp`](../src/edgar/explorgdb/reader/gdb_geometry.cpp#L558) | 558 | `decode()` | 完整几何解码 |
 
-### 8.4 联合查询流程（空间 + 属性）
-
-空间和属性过滤可以同时起作用，**GDAL 内部自动做 AND 逻辑**。
-
-```mermaid
-flowchart TD
-    USER(["GdbQuery q;<br/>q.where(\"textname = 'test'\")<br/> .spatial(&bbox, Contains)"])
-
-    USER --> DATASET["GdbDataset::query(q)<br/>src/edgar/usegdal/datasets.cpp:138"]
-
-    DATASET --> CLEAR["清空旧滤镜<br/>SetAttributeFilter(nullptr)<br/>SetSpatialFilter(nullptr)"]
-
-    CLEAR --> ATTR["SetAttributeFilter<br/>(\"textname = 'test'\")<br/>dataset.cpp:153"]
-
-    ATTR --> SPATIAL["SetSpatialFilter(bbox)<br/>dataset.cpp:168"]
-
-    SPATIAL --> POST["设置空间关系元数据<br/>setSpatialRelation(Contains)<br/>setSpatialFilter(filterGeom)"]
-
-    POST --> RS["GdbRecordset 返回"]
-    RS --> MOVE{"recordset.moveNext()"}
-
-    MOVE --> GNF["OGRLayer::GetNextFeature()"]
-
-    GNF --> FILTERS{"GDAL 内部<br/>同时检查两个滤镜"}
-    FILTERS -->|"属性不匹配"| SKIP["跳过"]
-    FILTERS -->|"属性匹配但空间不匹配"| SKIP
-    FILTERS -->|"都匹配"| CHECK2["进入空间关系后过滤<br/>检查 Contains 关系"]
-    SKIP --> MOVE
-
-    CHECK2 -->|"Contains 成立"| KEEP["保留要素"]
-    CHECK2 -->|"不成立<br/>（bbox 相交但几何不包含）"| DROP["跳过"]
-    KEEP --> KEEP_NEXT{"还有更多？"}
-    DROP --> KEEP_NEXT
-    KEEP_NEXT -->|"是"| MOVE
-    KEEP_NEXT -->|"否"| END(["返回结果列表"])
-```
-
-**联合查询的数据流**：
-
-```
-用户查询: q.where("textname = 'test'").spatial(&bbox, Contains)
-              ↓
-      GdbDataset::query()
-              ↓
-  ① SetAttributeFilter("textname = 'test'")     ← 持久化到 OGRLayer
-  ② SetSpatialFilter(bbox)                       ← 持久化到 OGRLayer
-  ③ 设置空间关系后过滤元数据（Contains, filterGeom）
-              ↓
-      GdbRecordset::moveNext()
-              ↓
-  loop: GetNextFeature()
-         ├── 属性检查 through SWQ AST          ← 第 1 层过滤
-         ├── 空间 bbox 检查                     ← 第 2a 层过滤（GDAL 内部）
-         └── Contains 几何关系验证              ← 第 2b 层过滤（Recordset 后过滤）
-              ↓
-        返回匹配的要素
-```
-
-**关键设计点**：
-
-- 属性过滤和空间过滤在 GDAL 内部是**同时生效**的（AND 逻辑），不是先属性后空间或反之
-- `SetSpatialFilter()` 只做 bbox 相交预过滤，如果是 Contains/Within 关系，还需要 Recordset 的后过滤验证
-- `Disjoint` 特殊：跳过 bbox 预过滤（因为预过滤返回相交的，Disjoint 需要不相交的），但又需要后过滤来确认
-
-**相关源代码**：
-
-| 文件 | 行号 | 函数 | 说明 |
-|------|------|------|------|
-| [`src/edgar/usegdal/query_builder.h`](../src/edgar/usegdal/query_builder.h#L38) | 38 | `GdbQuery` | 链式查询构建器 |
-| [`src/edgar/usegdal/query_builder.h`](../src/edgar/usegdal/query_builder.h#L49) | 49 | `GdbQuery::where()` | 设置属性过滤 |
-| [`src/edgar/usegdal/query_builder.h`](../src/edgar/usegdal/query_builder.h#L58) | 58 | `GdbQuery::spatial()` | 设置空间过滤 |
-| [`src/edgar/usegdal/query_builder.h`](../src/edgar/usegdal/query_builder.h#L64) | 64 | `GdbQuery::limit()` | 结果数量限制 |
-| [`src/edgar/usegdal/datasets.cpp`](../src/edgar/usegdal/datasets.cpp#L138) | 138 | `GdbDataset::query()` | 统一查询执行入口 |
-
-### 8.5 按需读取流程（不索引，直接读取）
-
-当不使用索引时，GDB 通过 `.gdbtablx` 偏移表直接定位记录：
 
 ```mermaid
 flowchart TD
@@ -1107,6 +1033,7 @@ flowchart TD
 | 联合查询（有索引） | 属性 SWQ + 空间两层过滤 | O(N) 有优化 | 两个滤镜同时生效，AND 逻辑 |
 | 全表遍历 | `sequential_scan()` 零拷贝 | O(N) 最快 | 不经过任何索引，直接 mmap 遍历 |
 
+
 ## 附录：关键文件索引
 
 | 组件 | 文件路径 | 说明 |
@@ -1128,4 +1055,5 @@ flowchart TD
 | 查询构建器 | `src/edgar/usegdal/query_builder.h` | GdbQuery 链式查询构建器 |
 | 查询执行 | `src/edgar/usegdal/datasets.cpp` | GdbDataset::query() 统一查询入口 |
 | 记录集过滤 | `src/edgar/usegdal/recordset.cpp` | GdbRecordset::moveNext() 空间关系后过滤 |
+
 | CLI 入口 | `src/edgar/explorgdb/reader/explorgdb_cli.cpp` | CLI 工具 |
