@@ -30,3 +30,6 @@
 | [01_项目状态与规划.md](planning/01_项目状态与规划.md) | 当前状态、已完成工作、待办事项和已知限制 |
 | [02_GDAL功能对比矩阵.md](planning/02_GDAL功能对比矩阵.md) | 与 GDAL OpenFileGDB 的功能差异、边界条件和 fast-gdb 补齐方向 |
 | [03_fast-gdb优先生产化计划.md](planning/03_fast-gdb优先生产化计划.md) | fast-gdb 优先生产化路线、阶段任务和验收标准 |
+| [04_fast-gdb-v1实施设计.md](planning/04_fast-gdb-v1实施设计.md) | v1 只读主路径的实现说明、验证口径和合并状态 |
+| [05_merge_readiness.md](planning/05_merge_readiness.md) | 合并前收尾检查单，避免夸大完成状态 |
+| [06_fast-gdb-v2开发计划.md](planning/06_fast-gdb-v2开发计划.md) | v2 下一步适配计划，覆盖 nullable bitmap、General 几何、曲线读取、Raster 标记和 MultiPatch |

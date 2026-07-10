@@ -1,6 +1,6 @@
-# fast-gdb v1 实施与合并前状态
+# fast-gdb v1 实施说明与合并状态
 
-实施分支：`feature/fast-gdb-plan`
+实施分支：`feature/fast-gdb-plan`（已合并 main，保留历史说明）
 
 ## 目标
 
