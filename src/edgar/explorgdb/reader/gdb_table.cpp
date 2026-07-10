@@ -105,6 +105,24 @@ bool read_varuint_inline(const uint8_t*& cursor,
     return false;
 }
 
+size_t nullable_bitmap_bytes_for(int nullable_count) {
+    return static_cast<size_t>((nullable_count + 7) / 8);
+}
+
+bool nullable_bit_is_set(const std::vector<uint8_t>& bitmap, int nullable_bit) {
+    const int byte_index = nullable_bit / 8;
+    const int bit_index = nullable_bit % 8;
+    return byte_index < static_cast<int>(bitmap.size()) &&
+           ((bitmap[byte_index] >> bit_index) & 1U) != 0;
+}
+
+bool is_zero_padding(const uint8_t* cursor, const uint8_t* end) {
+    while (cursor < end) {
+        if (*cursor++ != 0) return false;
+    }
+    return true;
+}
+
 } // namespace
 
 GdbTableParser::GdbTableParser(const std::string& file_path)
@@ -498,172 +516,166 @@ bool GdbTableParser::read_record_by_fid(uint32_t fid, FeatureRecord& record) {
     if (!read_at(offset + 4, row_buffer_.data(), blob_length)) return false;
 
     try {
-        BinaryReader reader(row_buffer_.data(), blob_length);
-        const int nullable_count = nullable_field_count();
-        if (nullable_count > 0)
-            record.nullable_flags = reader.read_bytes(
-                static_cast<size_t>((nullable_count + 7) / 8));
-
-        record.field_values.reserve(fields_.size());
-        int nullable_bit = 0;
-        for (const auto& field : fields_) {
-            bool is_null = false;
-            if ((field.flag & 1U) != 0) {
-                const int byte_index = nullable_bit / 8;
-                const int bit_index = nullable_bit % 8;
-                is_null = byte_index < static_cast<int>(record.nullable_flags.size()) &&
-                          ((record.nullable_flags[byte_index] >> bit_index) & 1U) != 0;
-                ++nullable_bit;
-            }
-            if (is_null) {
-                record.field_values.push_back(nullptr);
-                continue;
-            }
-
-            if (field.type == FieldType::ObjectId ||
-                fixed_physical_width(field.type) != 0) {
-                FieldValue value;
-                if (!read_fixed_field_value(reader, field.type, fid + 1, value)) return false;
-                record.field_values.push_back(std::move(value));
-                continue;
-            }
-
-            switch (field.type) {
-                case FieldType::String:
-                case FieldType::XML: {
-                    const uint64_t length = reader.read_varuint();
-                    if (!reader.can_read(static_cast<size_t>(length))) return false;
-                    std::string text(static_cast<size_t>(length), '\0');
-                    for (char& c : text) c = static_cast<char>(reader.read_u8());
-                    record.field_values.push_back(std::move(text));
-                    break;
-                }
-                case FieldType::Binary: {
-                    const uint64_t length = reader.read_varuint();
-                    if (!reader.can_read(static_cast<size_t>(length))) return false;
-                    record.field_values.push_back(
-                        reader.read_bytes(static_cast<size_t>(length)));
-                    break;
-                }
-                case FieldType::Raster: {
-                    const uint64_t length = reader.read_varuint();
-                    if (!reader.can_read(static_cast<size_t>(length))) return false;
-                    reader.skip(static_cast<size_t>(length));
-                    record.field_values.push_back(nullptr);
-                    break;
-                }
-                case FieldType::Geometry: {
-                    const uint64_t length = reader.read_varuint();
-                    if (!reader.can_read(static_cast<size_t>(length))) return false;
-                    const size_t blob_offset = reader.tell();
-                    if (length == 0) {
-                        record.field_values.push_back("POINT EMPTY");
-                    } else {
-                        try {
-                            const auto geometry = make_geom_decoder(field).decode(
-                                row_buffer_.data() + blob_offset,
-                                static_cast<size_t>(length));
-                            record.field_values.push_back(geometry.wkt);
-                        } catch (const std::exception&) {
-                            record.field_values.push_back("<geom decode error>");
-                        }
-                    }
-                    reader.skip(static_cast<size_t>(length));
-                    break;
-                }
-                default:
-                    return false;
-            }
-        }
-        return true;
+        if (parse_record_payload(row_buffer_.data(), blob_length, fid, record))
+            return true;
     } catch (const std::exception& error) {
         std::cerr << "FID " << fid << " @offset " << offset
                   << ": parse error: " << error.what() << "\n";
-        return false;
     }
+    return false;
 }
 
 void GdbTableParser::parse_record_at_offset(size_t offset, FeatureRecord& record) {
     BinaryReader reader(file_data_.data() + offset, file_data_.size() - offset);
     record.blob_len = reader.read_u32();
+    if (record.blob_len > file_data_.size() - offset - 4)
+        throw std::out_of_range("record outside file");
+    if (!parse_record_payload(file_data_.data() + offset + 4,
+                              record.blob_len,
+                              record.fid,
+                              record))
+        throw std::runtime_error("record payload could not be parsed");
+}
+
+bool GdbTableParser::parse_record_payload(const uint8_t* row_data,
+                                          size_t row_size,
+                                          uint32_t fid,
+                                          FeatureRecord& record) {
+    if (row_size == 0) return true;
 
     const int nullable_count = nullable_field_count();
-    if (nullable_count > 0)
-        record.nullable_flags = reader.read_bytes(
-            static_cast<size_t>((nullable_count + 7) / 8));
+    const size_t max_bitmap_bytes = nullable_bitmap_bytes_for(nullable_count);
+    FeatureRecord best_record;
+    size_t best_padding = row_size + 1;
+    bool found = false;
 
-    record.field_values.reserve(fields_.size());
-    int nullable_bit = 0;
-    for (const auto& field : fields_) {
-        bool is_null = false;
-        if ((field.flag & 1U) != 0) {
-            const int byte_index = nullable_bit / 8;
-            const int bit_index = nullable_bit % 8;
-            is_null = byte_index < static_cast<int>(record.nullable_flags.size()) &&
-                      ((record.nullable_flags[byte_index] >> bit_index) & 1U) != 0;
-            ++nullable_bit;
-        }
-        if (is_null) {
-            record.field_values.push_back(nullptr);
+    for (size_t bitmap_bytes = max_bitmap_bytes;; --bitmap_bytes) {
+        if (bitmap_bytes > row_size) {
+            if (bitmap_bytes == 0) break;
             continue;
         }
 
-        if (field.type == FieldType::ObjectId ||
-            fixed_physical_width(field.type) != 0) {
-            FieldValue value;
-            if (!read_fixed_field_value(reader, field.type, record.fid + 1, value))
-                throw std::out_of_range("fixed field outside record");
-            record.field_values.push_back(std::move(value));
-            continue;
-        }
+        const int max_present_bits =
+            std::min(nullable_count, static_cast<int>(bitmap_bytes * 8));
+        for (int present_bits = max_present_bits; present_bits >= 0; --present_bits) {
+            FeatureRecord candidate;
+            candidate.fid = fid;
+            candidate.blob_len = static_cast<uint32_t>(row_size);
 
-        switch (field.type) {
-            case FieldType::String:
-            case FieldType::XML: {
-                const uint64_t length = reader.read_varuint();
-                if (!reader.can_read(static_cast<size_t>(length)))
-                    throw std::out_of_range("string outside record");
-                std::string text(static_cast<size_t>(length), '\0');
-                for (char& c : text) c = static_cast<char>(reader.read_u8());
-                record.field_values.push_back(std::move(text));
-                break;
-            }
-            case FieldType::Binary: {
-                const uint64_t length = reader.read_varuint();
-                record.field_values.push_back(
-                    reader.read_bytes(static_cast<size_t>(length)));
-                break;
-            }
-            case FieldType::Raster: {
-                const uint64_t length = reader.read_varuint();
-                reader.skip(static_cast<size_t>(length));
-                record.field_values.push_back(nullptr);
-                break;
-            }
-            case FieldType::Geometry: {
-                const uint64_t length = reader.read_varuint();
-                if (!reader.can_read(static_cast<size_t>(length)))
-                    throw std::out_of_range("geometry outside record");
-                const size_t absolute_blob_offset = offset + reader.tell();
-                if (length == 0) {
-                    record.field_values.push_back("POINT EMPTY");
-                } else {
-                    try {
-                        const auto geometry = make_geom_decoder(field).decode(
-                            file_data_.data() + absolute_blob_offset,
-                            static_cast<size_t>(length));
-                        record.field_values.push_back(geometry.wkt);
-                    } catch (const std::exception&) {
-                        record.field_values.push_back("<geom decode error>");
+            try {
+                BinaryReader reader(row_data, row_size);
+                if (bitmap_bytes > 0)
+                    candidate.nullable_flags = reader.read_bytes(bitmap_bytes);
+
+                candidate.field_values.reserve(fields_.size());
+                int nullable_bit = 0;
+                bool valid = true;
+                for (const auto& field : fields_) {
+                    bool is_null = false;
+                    if ((field.flag & 1U) != 0) {
+                        is_null = nullable_bit >= present_bits ||
+                                  nullable_bit_is_set(candidate.nullable_flags, nullable_bit);
+                        ++nullable_bit;
+                    }
+                    if (is_null) {
+                        candidate.field_values.push_back(nullptr);
+                        continue;
+                    }
+
+                    if (field.type == FieldType::ObjectId ||
+                        fixed_physical_width(field.type) != 0) {
+                        FieldValue value;
+                        if (!read_fixed_field_value(reader, field.type, fid + 1, value)) {
+                            valid = false;
+                            break;
+                        }
+                        candidate.field_values.push_back(std::move(value));
+                        continue;
+                    }
+
+                    switch (field.type) {
+                        case FieldType::String:
+                        case FieldType::XML: {
+                            const uint64_t length = reader.read_varuint();
+                            if (!reader.can_read(static_cast<size_t>(length))) {
+                                valid = false;
+                                break;
+                            }
+                            std::string text(static_cast<size_t>(length), '\0');
+                            for (char& c : text) c = static_cast<char>(reader.read_u8());
+                            candidate.field_values.push_back(std::move(text));
+                            break;
+                        }
+                        case FieldType::Binary: {
+                            const uint64_t length = reader.read_varuint();
+                            if (!reader.can_read(static_cast<size_t>(length))) {
+                                valid = false;
+                                break;
+                            }
+                            candidate.field_values.push_back(
+                                reader.read_bytes(static_cast<size_t>(length)));
+                            break;
+                        }
+                        case FieldType::Raster: {
+                            const uint64_t length = reader.read_varuint();
+                            if (!reader.can_read(static_cast<size_t>(length))) {
+                                valid = false;
+                                break;
+                            }
+                            reader.skip(static_cast<size_t>(length));
+                            candidate.field_values.push_back(nullptr);
+                            break;
+                        }
+                        case FieldType::Geometry: {
+                            const uint64_t length = reader.read_varuint();
+                            if (!reader.can_read(static_cast<size_t>(length))) {
+                                valid = false;
+                                break;
+                            }
+                            const size_t blob_offset = reader.tell();
+                            if (length == 0) {
+                                candidate.field_values.push_back("POINT EMPTY");
+                            } else {
+                                try {
+                                    const auto geometry = make_geom_decoder(field).decode(
+                                        row_data + blob_offset,
+                                        static_cast<size_t>(length));
+                                    candidate.field_values.push_back(geometry.wkt);
+                                } catch (const std::exception&) {
+                                    candidate.field_values.push_back("<geom decode error>");
+                                }
+                            }
+                            reader.skip(static_cast<size_t>(length));
+                            break;
+                        }
+                        default:
+                            valid = false;
+                            break;
+                    }
+                    if (!valid) break;
+                }
+
+                if (valid && reader.tell() <= row_size) {
+                    const size_t padding = row_size - reader.tell();
+                    if (is_zero_padding(row_data + reader.tell(), row_data + row_size) &&
+                        padding < best_padding) {
+                        best_padding = padding;
+                        best_record = std::move(candidate);
+                        found = true;
+                        if (padding == 0) break;
                     }
                 }
-                reader.skip(static_cast<size_t>(length));
-                break;
+            } catch (const std::exception&) {
             }
-            default:
-                throw std::runtime_error("unsupported variable field type");
         }
+        if (found && best_padding == 0) break;
+
+        if (bitmap_bytes == 0) break;
     }
+
+    if (!found) return false;
+    record = std::move(best_record);
+    return true;
 }
 
 GdbGeomDecoder GdbTableParser::make_geom_decoder(const FieldDescriptor& field) const {
@@ -682,7 +694,7 @@ uint64_t GdbTableParser::sequential_scan(ScanCallback callback) {
 
     const int field_count = static_cast<int>(fields_.size());
     const int nullable_count = nullable_field_count();
-    const size_t nullable_bytes = static_cast<size_t>((nullable_count + 7) / 8);
+    const size_t max_bitmap_bytes = nullable_bitmap_bytes_for(nullable_count);
     std::vector<FieldRef> refs(static_cast<size_t>(field_count));
     uint64_t scanned = 0;
 
@@ -709,69 +721,95 @@ uint64_t GdbTableParser::sequential_scan(ScanCallback callback) {
             continue;
         }
 
-        const uint8_t* nullable_bitmap = nullptr;
-        if (nullable_bytes > 0) {
-            if (cursor + nullable_bytes > record_end) break;
-            nullable_bitmap = cursor;
-            cursor += nullable_bytes;
-        }
-
-        int nullable_bit = 0;
         bool valid = true;
-        for (int i = 0; i < field_count; ++i) {
-            const auto& field = fields_[static_cast<size_t>(i)];
-            auto& ref = refs[static_cast<size_t>(i)];
-            ref = FieldRef{};
-            ref.type = field.type;
-            ref.implicit_value = static_cast<int32_t>(fid + 1);
-
-            if ((field.flag & 1U) != 0) {
-                const int byte_index = nullable_bit / 8;
-                const int bit_index = nullable_bit % 8;
-                ref.is_null = nullable_bitmap &&
-                              ((nullable_bitmap[byte_index] >> bit_index) & 1U) != 0;
-                ++nullable_bit;
-            }
-            if (ref.is_null) continue;
-
-            if (field.type == FieldType::ObjectId ||
-                fixed_physical_width(field.type) != 0) {
-                valid = set_fixed_field_ref(cursor, record_end, field.type, ref);
-                if (!valid) break;
+        bool accepted = false;
+        size_t best_padding = static_cast<size_t>(record_end - cursor) + 1;
+        std::vector<FieldRef> best_refs(refs.size());
+        for (size_t bitmap_bytes = max_bitmap_bytes;; --bitmap_bytes) {
+            if (cursor + bitmap_bytes > record_end) {
+                if (bitmap_bytes == 0) break;
                 continue;
             }
 
-            switch (field.type) {
-                case FieldType::String:
-                case FieldType::XML:
-                case FieldType::Binary:
-                case FieldType::Geometry:
-                case FieldType::Raster: {
-                    uint64_t length = 0;
-                    if (!read_varuint_inline(cursor, record_end, length) ||
-                        length > static_cast<uint64_t>(record_end - cursor)) {
-                        valid = false;
-                        break;
+            const int max_present_bits =
+                std::min(nullable_count, static_cast<int>(bitmap_bytes * 8));
+            for (int present_bits = max_present_bits; present_bits >= 0; --present_bits) {
+                const uint8_t* field_cursor = cursor + bitmap_bytes;
+                const uint8_t* nullable_bitmap = bitmap_bytes > 0 ? cursor : nullptr;
+                int nullable_bit = 0;
+                valid = true;
+                for (int i = 0; i < field_count; ++i) {
+                    const auto& field = fields_[static_cast<size_t>(i)];
+                    auto& ref = refs[static_cast<size_t>(i)];
+                    ref = FieldRef{};
+                    ref.type = field.type;
+                    ref.implicit_value = static_cast<int32_t>(fid + 1);
+
+                    if ((field.flag & 1U) != 0) {
+                        const int byte_index = nullable_bit / 8;
+                        const int bit_index = nullable_bit % 8;
+                        ref.is_null =
+                            nullable_bit >= present_bits ||
+                            (nullable_bitmap &&
+                             ((nullable_bitmap[byte_index] >> bit_index) & 1U) != 0);
+                        ++nullable_bit;
                     }
-                    if (field.type == FieldType::Raster) {
-                        ref.is_null = true;
-                        ref.data = nullptr;
-                        ref.byte_len = 0;
-                    } else {
-                        ref.data = cursor;
-                        ref.byte_len = static_cast<size_t>(length);
+                    if (ref.is_null) continue;
+
+                    if (field.type == FieldType::ObjectId ||
+                        fixed_physical_width(field.type) != 0) {
+                        valid = set_fixed_field_ref(field_cursor, record_end, field.type, ref);
+                        if (!valid) break;
+                        continue;
                     }
-                    cursor += static_cast<size_t>(length);
-                    break;
+
+                    switch (field.type) {
+                        case FieldType::String:
+                        case FieldType::XML:
+                        case FieldType::Binary:
+                        case FieldType::Geometry:
+                        case FieldType::Raster: {
+                            uint64_t length = 0;
+                            if (!read_varuint_inline(field_cursor, record_end, length) ||
+                                length > static_cast<uint64_t>(record_end - field_cursor)) {
+                                valid = false;
+                                break;
+                            }
+                            if (field.type == FieldType::Raster) {
+                                ref.is_null = true;
+                                ref.data = nullptr;
+                                ref.byte_len = 0;
+                            } else {
+                                ref.data = field_cursor;
+                                ref.byte_len = static_cast<size_t>(length);
+                            }
+                            field_cursor += static_cast<size_t>(length);
+                            break;
+                        }
+                        default:
+                            valid = false;
+                            break;
+                    }
+                    if (!valid) break;
                 }
-                default:
-                    valid = false;
-                    break;
+                if (valid) {
+                    const size_t padding = static_cast<size_t>(record_end - field_cursor);
+                    if (is_zero_padding(field_cursor, record_end) && padding < best_padding) {
+                        best_padding = padding;
+                        best_refs = refs;
+                        accepted = true;
+                        if (padding == 0) break;
+                    }
+                }
             }
-            if (!valid) break;
+            if (accepted && best_padding == 0) break;
+            valid = false;
+            if (bitmap_bytes == 0) break;
         }
 
-        if (!valid) {
+        if (accepted) {
+            refs = best_refs;
+        } else {
             for (auto& ref : refs) {
                 if (!ref.is_null && ref.data == nullptr && ref.type != FieldType::ObjectId)
                     ref.is_null = true;

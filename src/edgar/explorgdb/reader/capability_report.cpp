@@ -43,8 +43,8 @@ CapabilityReport CapabilityReport::inspect(const GdbCatalog& catalog,
         case GdbGeomType::MultiPatchM:
         case GdbGeomType::GeneralMultiPatch:
             report.multipatch = {
-                CapabilityState::Unsupported,
-                "MultiPatch is detected but no production-standard geometry representation is available"
+                CapabilityState::Supported,
+                "MultiPatch is exposed as standard GEOMETRYCOLLECTION Z/ZM WKT"
             };
             break;
         default:
@@ -54,8 +54,8 @@ CapabilityReport CapabilityReport::inspect(const GdbCatalog& catalog,
     for (const auto& field : table.fields()) {
         if (field.type == FieldType::Raster) {
             report.raster = {
-                CapabilityState::Unsupported,
-                "raster fields are outside fast-gdb v1"
+                CapabilityState::Degraded,
+                "raster field detected; fast-gdb marks the field but does not read pixel data"
             };
         }
     }

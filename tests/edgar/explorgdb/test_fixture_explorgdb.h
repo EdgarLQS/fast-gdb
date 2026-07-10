@@ -333,12 +333,12 @@ inline TableBuilderResult build_minimal_table() {
     // 记录区
     TableBuilderResult result;
     result.rec0_offset = buf.size();
-    write_u32(buf, 8);                     // blob_len
+    write_u32(buf, 5);                     // blob_len: bitmap + score
     write_u8(buf, 0);                      // nullable bitmap (score 不 null)
     write_u32(buf, 100);                   // score = 100
 
     result.rec1_offset = buf.size();
-    write_u32(buf, 8);
+    write_u32(buf, 1);                     // blob_len: bitmap only
     write_u8(buf, 1);                      // nullable bitmap (score = null)
     // ObjectId implicit, no data for null score
 

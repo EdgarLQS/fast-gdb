@@ -10,7 +10,7 @@ fast-gdb v2 聚焦五类高优先级适配：
 |:---:|------|----------|-------------|
 | 1 | 旧记录 nullable bitmap 兼容 | schema 扩字段后旧记录字段错位 | 新增字段返回 null，旧字段保持正确 |
 | 2 | General 几何 bbox 对齐 | 全解码路径与 peek 路径 bbox 不一致 | General 线/面两条路径语义一致 |
-| 3 | 曲线几何读取 | 曲线段被当作普通线/面静默输出 | 能读取曲线段类型和参数；可还原时输出圆心、半径、起止角等结构化信息 |
+| 3 | 曲线几何读取 | 曲线段被当作普通线/面静默输出 | v2 先做到 `nCurves>0` 显式 unsupported；曲线段类型和参数还原保留为后续 gap |
 | 4 | Raster 字段标记 | 含 Raster 字段图层被误判为完整可生产 | 只做字段存在和 capability reason 标记，不读取像素数据 |
 | 5 | MultiPatch 标准表达 | 描述文本被当作生产 WKT 使用 | 输出标准 GeometryCollection / TIN / PolyhedralSurface，不再以 unsupported 作为 v2 完成结果 |
 
@@ -26,6 +26,8 @@ v2 不处理完整 SQL 引擎、坐标重投影、写入生产化、Raster 像�
 ## 3. 阶段计划
 
 ### Phase 1：记录布局兼容
+
+状态：✅ 已实现。新增 `NullableBitmapCompatTest` 覆盖按 FID、全量解析、`sequential_scan` 和 `peek_geometry_blob`。
 
 目标：先修复可能导致字段错位的记录解析问题。
 
@@ -43,6 +45,8 @@ v2 不处理完整 SQL 引擎、坐标重投影、写入生产化、Raster 像�
 
 ### Phase 2：General 几何一致性
 
+状态：✅ 已实现。完整 decode、`peek_bbox`、`intersects_with_peek`、`geometry_intersects_bbox` 均统一读取 `nCurves`；`nCurves>0` 不再静默按普通线/面输出。
+
 目标：让 GeneralPolyline / GeneralPolygon 的轻量路径和完整解码路径保持一致。
 
 | 任务 | 修改范围 | 验收 |
@@ -59,13 +63,15 @@ v2 不处理完整 SQL 引擎、坐标重投影、写入生产化、Raster 像�
 
 ### Phase 3：曲线几何读取和 Raster 字段标记
 
+状态：⚠️ 部分完成。Raster capability degraded 标记已完成；曲线几何当前完成显式保护，尚未还原 CircularArc / EllipticArc / Bezier 参数。
+
 目标：曲线几何不只做“存在检测”，而是读取 `GeneralPolyline` / `GeneralPolygon` 中的曲线段信息。Raster 本轮只做字段级标记和 capability reason，不进入像素数据读取。
 
 | 任务 | 修改范围 | 验收 |
 |------|----------|------|
-| 曲线段 header 解析 | `gdb_geometry.cpp` 的 General 线/面解析路径 | 能读取 `nCurves`，并遍历每个 curve segment，不再直接跳过 |
-| 曲线类型识别 | 新增曲线段结构或内部解析 helper | 能区分 CircularArc、EllipticArc、Bezier 等类型；未知类型保留 raw payload |
-| 圆弧参数提取 | 曲线段解析 helper | 对 CircularArc 尽量输出圆心、半径、起点、终点、起止角和方向；无法稳定推导时返回 raw 参数和 reason |
+| 曲线段 header 解析 | `gdb_geometry.cpp` 的 General 线/面解析路径 | 已读取 `nCurves`；`nCurves>0` 返回显式 unsupported，避免静默误输出 |
+| 曲线类型识别 | 新增曲线段结构或内部解析 helper | 未完成；保留为后续 gap |
+| 圆弧参数提取 | 曲线段解析 helper | 未完成；保留为后续 gap |
 | capability 状态更新 | `CapabilityReport::inspect` 和几何 schema 判断 | 含曲线图层不再被报告为完全 supported；若只能读取参数但不能输出标准 WKT，则为 degraded |
 | Raster 字段标记 | 字段扫描和 capability reason | 含 Raster 字段图层返回明确 degraded / unsupported；不尝试读取像素数据 |
 | reason 文案稳定化 | `capability_state_name` / 测试断言 | 上层可直接展示或记录 reason |
@@ -77,6 +83,8 @@ v2 不处理完整 SQL 引擎、坐标重投影、写入生产化、Raster 像�
 ```
 
 ### Phase 4：MultiPatch 标准表达
+
+状态：✅ 已实现。MultiPatch / MultiPatchM 输出标准 `GEOMETRYCOLLECTION Z/ZM`，不再输出 `MultiPatch(...)` 描述文本。
 
 目标：停止把描述文本当作生产 WKT，并在 v2 内实现标准表达。实现期间可用 capability 保护边界，但 v2 完成标准必须是可输出标准几何。
 
@@ -115,10 +123,10 @@ cmake --build build --target gdb_tutorial_test_runner
 
 ## 5. 合并前检查单
 
-- [ ] `nullable bitmap` 兼容旧记录，新增字段缺失统一返回 null。
-- [ ] General 线/面的 decode bbox、peek bbox、空间过滤结果一致。
-- [ ] 曲线几何可读取曲线段类型和参数；圆弧可输出圆心、半径、起止角，无法稳定还原时保留 raw segment 和 reason。
-- [ ] Raster 字段只做 capability 标记，不读取像素数据。
-- [ ] MultiPatch 输出标准 GeometryCollection / TIN / PolyhedralSurface，不再以描述文本或 unsupported 作为 v2 完成结果。
-- [ ] 文档同步更新：功能矩阵、项目状态、v2 计划。
-- [ ] 构建和专项测试通过。
+- [x] `nullable bitmap` 兼容旧记录，新增字段缺失统一返回 null。
+- [x] General 线/面的 decode bbox、peek bbox、空间过滤结果一致。
+- [ ] 曲线几何可读取曲线段类型和参数；圆弧可输出圆心、半径、起止角，无法稳定还原时保留 raw segment 和 reason。（当前仅完成显式 unsupported 保护）
+- [x] Raster 字段只做 capability 标记，不读取像素数据。
+- [x] MultiPatch 输出标准 GeometryCollection / TIN / PolyhedralSurface，不再以描述文本或 unsupported 作为 v2 完成结果。
+- [x] 文档同步更新：功能矩阵、项目状态、v2 计划。
+- [x] 构建和专项测试通过。

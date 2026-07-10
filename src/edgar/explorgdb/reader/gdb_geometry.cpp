@@ -284,8 +284,13 @@ GdbGeometry GdbGeomDecoder::decode_polyline(DecodeState& s, uint8_t base_type, b
     }
 
     uint64_t nParts = read_varuint(s);
+    uint64_t nCurves = 0;
+    if (base_type >= 50) nCurves = read_varuint(s);
+    if (nCurves > 0) {
+        geom.wkt = "UNSUPPORTED_CURVE_GEOMETRY(nCurves=" + std::to_string(nCurves) + ")";
+        return geom;
+    }
 
-    // GeneralPolyline 可能有 nCurves（跳过）
     // 跳过 BBox (4 varuints)
     read_varuint(s); read_varuint(s);
     read_varuint(s); read_varuint(s);
@@ -385,6 +390,12 @@ GdbGeometry GdbGeomDecoder::decode_polygon(DecodeState& s, uint8_t base_type, bo
     }
 
     uint64_t nParts = read_varuint(s);
+    uint64_t nCurves = 0;
+    if (base_type >= 50) nCurves = read_varuint(s);
+    if (nCurves > 0) {
+        geom.wkt = "UNSUPPORTED_CURVE_GEOMETRY(nCurves=" + std::to_string(nCurves) + ")";
+        return geom;
+    }
 
     // 跳过 BBox
     read_varuint(s); read_varuint(s);
@@ -483,17 +494,17 @@ GdbGeometry GdbGeomDecoder::decode_polygon(DecodeState& s, uint8_t base_type, bo
 
 // ── MultiPatch 解码 ──
 // 结构: nPoints + magic + nParts + BBox + part_sizes + part_types + XY + Z + [M]
-// 简化处理: 输出 MultiPatch 描述，不转换为 WKT（WKT 不支持 MultiPatch）
 GdbGeometry GdbGeomDecoder::decode_multipatch(DecodeState& s, uint8_t base_type) {
     GdbGeometry geom;
     geom.type = static_cast<GdbGeomType>(base_type);
     geom.has_z = true;  // MultiPatch 总是有 Z
-    geom.has_m = (base_type == 31);
+    geom.has_m = (base_type == 31) ||
+                 (base_type == 54 && (s.geom_type & 0x40000000ULL));
 
     uint64_t nPoints = read_varuint(s);
     if (nPoints == 0) {
         geom.is_empty = true;
-        geom.wkt = "MultiPatch EMPTY";
+        geom.wkt = "GEOMETRYCOLLECTION Z EMPTY";
         return geom;
     }
 
@@ -515,40 +526,57 @@ GdbGeometry GdbGeomDecoder::decode_multipatch(DecodeState& s, uint8_t base_type)
     }
     part_sizes.back() = nPoints - sum;
 
-    // 读取部件类型
-    const char* part_type_names[] = {
-        "TriangleStrip", "TriangleFan", "OuterRing", "InnerRing",
-        "FirstRing", "Ring", "Triangles"
-    };
-    std::vector<std::string> part_type_strs(nParts);
-    for (uint64_t i = 0; i < nParts; ++i) {
-        uint64_t pt = read_varuint(s) & 0xF;
-        if (pt < 7) {
-            part_type_strs[i] = part_type_names[pt];
-        } else {
-            part_type_strs[i] = "Unknown";
+    for (uint64_t i = 0; i < nParts; ++i) read_varuint(s);
+
+    std::vector<double> xs(nPoints), ys(nPoints), zs(nPoints), ms;
+    int64_t cx = 0, cy = 0;
+    for (uint64_t i = 0; i < nPoints; ++i) {
+        cx += read_varint(s);
+        cy += read_varint(s);
+        xs[i] = static_cast<double>(cx) * inv_xyscale_ + xorig_;
+        ys[i] = static_cast<double>(cy) * inv_xyscale_ + yorig_;
+    }
+    int64_t cz = 0;
+    for (uint64_t i = 0; i < nPoints; ++i) {
+        cz += read_varint(s);
+        zs[i] = static_cast<double>(cz) * inv_zscale_ + zorig_;
+    }
+    if (geom.has_m) {
+        ms.resize(nPoints);
+        int64_t cm = 0;
+        for (uint64_t i = 0; i < nPoints; ++i) {
+            int64_t d = read_varint(s);
+            if (i == 0) { cm = d; } else { cm += d; }
+            ms[i] = static_cast<double>(cm) * inv_mscale_ + morig_;
         }
     }
 
-    // 跳过坐标数据（XY + Z + 可选 M）
-    // XY: 2 * nPoints varints
-    for (uint64_t i = 0; i < nPoints * 2; ++i) read_varint(s);
-    // Z: nPoints varints
-    for (uint64_t i = 0; i < nPoints; ++i) read_varint(s);
-    // M: nPoints varints (如果有)
-    if (geom.has_m) {
-        for (uint64_t i = 0; i < nPoints; ++i) read_varint(s);
+    std::string wkt = "GEOMETRYCOLLECTION";
+    wkt += geom.has_m ? " ZM (" : " Z (";
+    uint64_t offset = 0;
+    for (uint64_t p = 0; p < nParts; ++p) {
+        if (p > 0) wkt += ", ";
+        const uint64_t part_n = part_sizes[p];
+        const bool as_polygon = part_n >= 3;
+        wkt += as_polygon ? (geom.has_m ? "POLYGON ZM ((" : "POLYGON Z ((")
+                        : (geom.has_m ? "LINESTRING ZM (" : "LINESTRING Z (");
+        for (uint64_t i = 0; i < part_n; ++i) {
+            if (i > 0) wkt += ", ";
+            const uint64_t idx = offset + i;
+            wkt += geom.has_m
+                ? format_coord_zm(xs[idx], ys[idx], zs[idx], ms[idx])
+                : format_coord_z(xs[idx], ys[idx], zs[idx]);
+        }
+        if (as_polygon && part_n > 0) {
+            wkt += ", ";
+            const uint64_t first = offset;
+            wkt += geom.has_m
+                ? format_coord_zm(xs[first], ys[first], zs[first], ms[first])
+                : format_coord_z(xs[first], ys[first], zs[first]);
+        }
+        wkt += as_polygon ? "))" : ")";
+        offset += part_n;
     }
-
-    // MultiPatch 无法用标准 WKT 表示，输出描述性字符串
-    std::string wkt = "MultiPatch(";
-    wkt += std::to_string(nParts) + " parts: [";
-    for (uint64_t i = 0; i < nParts; ++i) {
-        if (i > 0) wkt += ", ";
-        wkt += part_type_strs[i] + "(" + std::to_string(part_sizes[i]) + "pts)";
-    }
-    wkt += "]";
-    if (geom.has_m) wkt += " with M";
     wkt += ")";
     geom.wkt = wkt;
     return geom;
@@ -1167,8 +1195,8 @@ bool GdbGeomDecoder::geometry_intersects_bbox(const uint8_t* data, size_t size,
 
     // ── Polygon 类型：边与 bbox 相交 或 任意顶点在 bbox 内 或 bbox 在环内 ──
     if (base_type == 5 || base_type == 15 || base_type == 19 || base_type == 25 || base_type == 51) {
-        // 保存指针，用于 pip 兜底时重新解析
-        const uint8_t* geom_data_start = s.ptr;
+        // 保存类型之后的指针，用于 pip 兜底时重新解析。
+        const uint8_t* geom_body_start = s.ptr;
 
         uint64_t nPoints = read_varuint(s);
         if (nPoints == 0) return false;
@@ -1237,8 +1265,7 @@ bool GdbGeomDecoder::geometry_intersects_bbox(const uint8_t* data, size_t size,
 
         // ── 阶段 3：pip 兜底（bbox 完全包裹 polygon 的情况） ──
         // 重置指针，重新解析完整坐标
-        s.ptr = geom_data_start;
-        s.geom_type = read_varuint(s);
+        s.ptr = geom_body_start;
         read_varuint(s);  // nPoints
         read_varuint(s);  // nParts
         if (base_type >= 50) read_varuint(s);

@@ -15,7 +15,7 @@
 | 维度 | 覆盖度 | 一句话 |
 |------|:------:|--------|
 | 常规几何（点/线/面） | **100%** | ✅ 完全覆盖，WKT 输出一致 |
-| 曲线几何（圆弧/贝塞尔） | **0%** | ❌ nCurves 被跳过，坐标丢失 |
+| 曲线几何（圆弧/贝塞尔） | **检测可用，参数未还原** | ⚠️ nCurves>0 时显式返回 unsupported，不再静默输出错误线/面 |
 | 字段类型（17 种） | **约 88% 完全支持** | ✅ 15/17 完全支持，Raster/DateTimeWithOffset 有边界 |
 | 空间参考系统 (SRS) | **主路径可用** | ✅ 可读取 GDB_SpatialRefs 的 WKT/WKID/LatestWKID，重投影仍需上层处理 |
 | 核心元数据 | **90%+** | ✅ 字段/范围/原点/缩放/网格 |
@@ -80,43 +80,34 @@
 
 | GDB 类型码 | 几何类型 | GDAL | explorgdb | 说明 |
 |:----------:|---------|:----:|:---------:|------|
-| 31 | MultiPatchM | ✅ | ⚠️ | 描述文本，非标准 WKT |
-| 32 | MultiPatch | ✅ | ⚠️ | 描述文本，坐标已读但丢弃 |
+| 31 | MultiPatchM | ✅ | ✅ | 标准 `GEOMETRYCOLLECTION ZM` |
+| 32 | MultiPatch | ✅ | ✅ | 标准 `GEOMETRYCOLLECTION Z` |
 | 50 | GeneralPolyline | ✅ | ✅ | 含 Z/M 高位标志 |
 | 51 | GeneralPolygon | ✅ | ✅ | |
 | 52 | GeneralPoint | ✅ | ✅ | |
 | 53 | GeneralMultiPoint | ✅ | ❓ | 未独立测试，走 decode_multipoint |
-| 54 | GeneralMultiPatch | ✅ | ⚠️ | 同 MultiPatch |
+| 54 | GeneralMultiPatch | ✅ | ✅ | 同 MultiPatch，输出 `GEOMETRYCOLLECTION Z/ZM` |
 
-### 1.4 曲线几何（❌ 不支持）
+### 1.4 曲线几何（⚠️ 显式保护，参数未还原）
 
 | 曲线类型 | GDAL | explorgdb | 说明 |
 |---------|:----:|:---------:|------|
-| CircularArc (圆弧) | ✅ | ❌ | nCurves varuint 被跳过，见 `gdb_geometry.cpp` 第 288 行注释 `// GeneralPolyline may have nCurves (skip)` |
-| BezierCurve (贝塞尔曲线) | ✅ | ❌ | 无任何处理代码 |
-| EllipticArc (椭圆弧) | ✅ | ❌ | 无任何处理代码 |
+| CircularArc (圆弧) | ✅ | ⚠️ | `nCurves>0` 时返回 `UNSUPPORTED_CURVE_GEOMETRY`，不再按普通线/面静默输出 |
+| BezierCurve (贝塞尔曲线) | ✅ | ⚠️ | 类型和参数还原待补 |
+| EllipticArc (椭圆弧) | ✅ | ⚠️ | 类型和参数还原待补 |
 
-**源码位置**：`src/edgar/explorgdb/reader/gdb_geometry.cpp` 中 `decode_polyline` 和 `decode_polygon` 函数，当 `is_general` 为 true 时：
-```cpp
-// 读取 nCurves 并丢弃
-if (is_general) {
-    read_varuint(s);  // ← nCurves 被跳过
-}
-```
+**当前保护**：`decode_polyline` 和 `decode_polygon` 已统一读取 `nCurves`。当 `nCurves == 0` 时，General 线/面与 `peek_bbox`、空间过滤路径保持一致；当 `nCurves > 0` 时，返回显式 unsupported 文案，避免把曲线段静默当普通线/面输出。
 
-**影响**：如果数据包含曲线几何，曲线段会被完全忽略，只保留线性段。2D 坐标不受影响，但曲线定义丢失。
+**后续 gap**：CircularArc / EllipticArc / Bezier 的段类型、raw payload 和圆弧参数还原仍需补齐。
 
 ### 1.5 MultiPatch 详细分析
 
-**当前行为**：输出描述文本而非标准 WKT，例如：
-```
-MultiPatch(3 parts: [TriangleStrip(3pts), TriangleFan(4pts), OuterRing(5pts)])
-```
+**当前行为**：输出标准 WKT `GEOMETRYCOLLECTION Z/ZM`，每个 part 转为 `POLYGON Z/ZM`（点数不足时为 `LINESTRING Z/ZM`）。
 
 **坐标处理**：
-- XY 坐标：**已读取并解码**（但未输出）
-- Z 坐标：**已读取并解码**（但未输出）
-- M 坐标：**已读取并解码**（但未输出）
+- XY 坐标：**已读取、解码并输出**
+- Z 坐标：**已读取、解码并输出**
+- M 坐标：**已读取、解码并输出**
 
 **7 种部件类型**：
 | 索引 | 类型 | 索引 | 类型 |
@@ -126,15 +117,15 @@ MultiPatch(3 parts: [TriangleStrip(3pts), TriangleFan(4pts), OuterRing(5pts)])
 | 2 | OuterRing | 6 | Triangles |
 | 3 | InnerRing | | |
 
-**与 GDAL 的差异**：GDAL 将 MultiPatch 映射为 `wkbGeometryCollection` 或 `wkbPolyhedralSurface` / `wkbTIN`，输出标准 OGR WKT。explorgdb 的描述文本在 GIS 工具链中不可用。
+**与 GDAL 的差异**：GDAL 可能映射为 `wkbGeometryCollection`、`wkbPolyhedralSurface` 或 `wkbTIN`。explorgdb v2 选择 `GEOMETRYCOLLECTION Z/ZM` 作为稳定标准表达，优先保证下游 WKT 工具链可读。
 
 ### 1.6 几何类型总结
 
 ```
 常规几何（点/线/面/多点及其 Z/M 变体）: 24/24 ✅ 
 Special Geometry（General 类型）:          5/5 ✅
-MultiPatch（含 M 变体）:                   2/2 ⚠️
-曲线几何（CircularArc/Bezier/EllipticArc）: 0/3 ❌
+MultiPatch（含 M 变体）:                   2/2 ✅
+曲线几何（CircularArc/Bezier/EllipticArc）: 0/3 参数未还原，已显式保护 ⚠️
 ─────────────────────────────────────────────
 总计:                                      31/34 ✅/⚠️ (91%)
 ```

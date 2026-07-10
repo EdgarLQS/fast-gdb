@@ -1,7 +1,18 @@
 #include "gdb_table.h"
 #include "field_layout.h"
+#include <algorithm>
 
 namespace explorgdb {
+namespace {
+
+bool is_zero_padding(const uint8_t* cursor, const uint8_t* end) {
+    while (cursor < end) {
+        if (*cursor++ != 0) return false;
+    }
+    return true;
+}
+
+} // namespace
 
 bool GdbTableParser::peek_geometry_blob(uint32_t fid,
                                         const uint8_t*& blob_data,
@@ -44,36 +55,84 @@ bool GdbTableParser::peek_geometry_blob(uint32_t fid,
     }
 
     try {
-        BinaryReader reader(row_data, row_size);
         const int nullable_count = nullable_field_count();
-        const uint8_t* nullable_bitmap = nullptr;
-        if (nullable_count > 0) {
-            const size_t bitmap_size = static_cast<size_t>((nullable_count + 7) / 8);
-            nullable_bitmap = reader.data() + reader.tell();
-            reader.skip(bitmap_size);
+        const size_t max_bitmap_size = static_cast<size_t>((nullable_count + 7) / 8);
+        const uint8_t* best_blob = nullptr;
+        size_t best_size = 0;
+        size_t best_padding = row_size + 1;
+
+        for (size_t bitmap_size = max_bitmap_size;; --bitmap_size) {
+            if (bitmap_size > row_size) {
+                if (bitmap_size == 0) break;
+                continue;
+            }
+
+            const int max_present_bits =
+                std::min(nullable_count, static_cast<int>(bitmap_size * 8));
+            for (int present_bits = max_present_bits; present_bits >= 0; --present_bits) {
+                BinaryReader reader(row_data, row_size);
+                const uint8_t* nullable_bitmap = nullptr;
+                if (bitmap_size > 0) {
+                    nullable_bitmap = reader.data() + reader.tell();
+                    reader.skip(bitmap_size);
+                }
+
+                const uint8_t* candidate_blob = nullptr;
+                size_t candidate_size = 0;
+                int nullable_bit = 0;
+                bool valid = true;
+                for (const auto& field : fields_) {
+                    bool is_null = false;
+                    if ((field.flag & 1) != 0) {
+                        const int byte_index = nullable_bit / 8;
+                        const int bit_index = nullable_bit % 8;
+                        is_null =
+                            nullable_bit >= present_bits ||
+                            (nullable_bitmap != nullptr &&
+                             ((nullable_bitmap[byte_index] >> bit_index) & 1U) != 0);
+                        ++nullable_bit;
+                    }
+                    if (is_null) continue;
+
+                    if (field.type == FieldType::Geometry) {
+                        const uint64_t geometry_size = reader.read_varuint();
+                        if (geometry_size > row_size - reader.tell()) {
+                            valid = false;
+                            break;
+                        }
+                        candidate_blob = reader.data() + reader.tell();
+                        candidate_size = static_cast<size_t>(geometry_size);
+                        reader.skip(candidate_size);
+                        continue;
+                    }
+
+                    if (!skip_field_value(reader, field.type)) {
+                        valid = false;
+                        break;
+                    }
+                }
+
+                if (valid &&
+                    reader.tell() <= row_size &&
+                    is_zero_padding(row_data + reader.tell(), row_data + row_size) &&
+                    candidate_blob != nullptr) {
+                    const size_t padding = row_size - reader.tell();
+                    if (padding < best_padding ||
+                        (padding == best_padding && candidate_size > best_size)) {
+                        best_blob = candidate_blob;
+                        best_size = candidate_size;
+                        best_padding = padding;
+                    }
+                }
+            }
+
+            if (bitmap_size == 0) break;
         }
 
-        int nullable_bit = 0;
-        for (const auto& field : fields_) {
-            bool is_null = false;
-            if ((field.flag & 1) != 0) {
-                const int byte_index = nullable_bit / 8;
-                const int bit_index = nullable_bit % 8;
-                is_null = nullable_bitmap != nullptr &&
-                          ((nullable_bitmap[byte_index] >> bit_index) & 1U) != 0;
-                ++nullable_bit;
-            }
-            if (is_null) continue;
-
-            if (field.type == FieldType::Geometry) {
-                const uint64_t geometry_size = reader.read_varuint();
-                if (geometry_size > row_size - reader.tell()) return false;
-                blob_data = reader.data() + reader.tell();
-                blob_size = static_cast<size_t>(geometry_size);
-                return true;
-            }
-
-            if (!skip_field_value(reader, field.type)) return false;
+        if (best_blob != nullptr) {
+            blob_data = best_blob;
+            blob_size = best_size;
+            return true;
         }
     } catch (const std::exception&) {
         blob_data = nullptr;

@@ -57,6 +57,10 @@ private:
                                 bool layer_has_m);
     void parse_geometry_field(size_t& offset, FieldDescriptor& field);
     void parse_record_at_offset(size_t offset, FeatureRecord& record);
+    bool parse_record_payload(const uint8_t* row_data,
+                              size_t row_size,
+                              uint32_t fid,
+                              FeatureRecord& record);
     GdbGeomDecoder make_geom_decoder(const FieldDescriptor& field) const;
 
     std::string file_path_;

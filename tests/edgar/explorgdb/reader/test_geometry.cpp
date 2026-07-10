@@ -332,8 +332,11 @@ TEST(GeometryTest, MultiPatch) {
 
     EXPECT_FALSE(geom.is_empty);
     EXPECT_TRUE(geom.has_z);  // MultiPatch always has Z
-    EXPECT_NE(geom.wkt.find("MultiPatch"), std::string::npos);
-    EXPECT_NE(geom.wkt.find("TriangleStrip"), std::string::npos);
+    EXPECT_FALSE(geom.has_m);
+    EXPECT_NE(geom.wkt.find("GEOMETRYCOLLECTION Z"), std::string::npos);
+    EXPECT_NE(geom.wkt.find("POLYGON Z"), std::string::npos);
+    EXPECT_EQ(geom.wkt.find("MultiPatch"), std::string::npos);
+    EXPECT_NE(geom.wkt.find("0.001 0.001 1.001"), std::string::npos);
 }
 
 TEST(GeometryTest, MultiPatchM) {
@@ -344,9 +347,10 @@ TEST(GeometryTest, MultiPatchM) {
     EXPECT_FALSE(geom.is_empty);
     EXPECT_TRUE(geom.has_z);
     EXPECT_TRUE(geom.has_m);
-    EXPECT_NE(geom.wkt.find("MultiPatch"), std::string::npos);
-    EXPECT_NE(geom.wkt.find("OuterRing"), std::string::npos);
-    EXPECT_NE(geom.wkt.find("with M"), std::string::npos);
+    EXPECT_NE(geom.wkt.find("GEOMETRYCOLLECTION ZM"), std::string::npos);
+    EXPECT_NE(geom.wkt.find("POLYGON ZM"), std::string::npos);
+    EXPECT_EQ(geom.wkt.find("MultiPatch"), std::string::npos);
+    EXPECT_NE(geom.wkt.find("0.001 0.001 1.001 5.001"), std::string::npos);
 }
 
 TEST(GeometryTest, MultiPatchEmpty) {
@@ -356,7 +360,7 @@ TEST(GeometryTest, MultiPatchEmpty) {
     auto decoder = make_decoder_2d();
     auto geom = decoder.decode(buf.data(), buf.size());
     EXPECT_TRUE(geom.is_empty);
-    EXPECT_EQ(geom.wkt, "MultiPatch EMPTY");
+    EXPECT_EQ(geom.wkt, "GEOMETRYCOLLECTION Z EMPTY");
 }
 
 // ── General Types (50-54) 测试 ──
@@ -369,6 +373,8 @@ TEST(GeometryTest, GeneralPolyline) {
     EXPECT_FALSE(geom.is_empty);
     // GeneralPolyline uses decode_polyline → MULTILINESTRING WKT
     EXPECT_NE(geom.wkt.find("MULTILINESTRING"), std::string::npos);
+    EXPECT_NE(geom.wkt.find("0.001 0.001"), std::string::npos);
+    EXPECT_NE(geom.wkt.find("1.001 1.001"), std::string::npos);
 }
 
 TEST(GeometryTest, GeneralPolygon) {
@@ -379,6 +385,8 @@ TEST(GeometryTest, GeneralPolygon) {
     EXPECT_FALSE(geom.is_empty);
     // GeneralPolygon uses decode_polygon → MULTIPOLYGON WKT
     EXPECT_NE(geom.wkt.find("MULTIPOLYGON"), std::string::npos);
+    EXPECT_NE(geom.wkt.find("0.001 0.001"), std::string::npos);
+    EXPECT_NE(geom.wkt.find("1.001 1.001"), std::string::npos);
 }
 
 TEST(GeometryTest, GeneralPolylineWithZ) {
@@ -404,6 +412,34 @@ TEST(GeometryTest, GeneralPolylineWithZ) {
     auto geom = decoder.decode(buf.data(), buf.size());
     EXPECT_FALSE(geom.is_empty);
     EXPECT_TRUE(geom.has_z);
+    EXPECT_NE(geom.wkt.find("0.001 0.001 1.001"), std::string::npos);
+    EXPECT_NE(geom.wkt.find("1.001 1.001 3.001"), std::string::npos);
+}
+
+TEST(GeometryTest, GeneralPolylineWithCurvesIsExplicitlyUnsupported) {
+    std::vector<uint8_t> buf;
+    explorgdb_test::write_varuint(buf, 50);
+    explorgdb_test::write_varuint(buf, 2);
+    explorgdb_test::write_varuint(buf, 1);
+    explorgdb_test::write_varuint(buf, 1);
+
+    auto decoder = make_decoder_2d();
+    auto geom = decoder.decode(buf.data(), buf.size());
+    EXPECT_NE(geom.wkt.find("UNSUPPORTED_CURVE_GEOMETRY"), std::string::npos);
+    EXPECT_NE(geom.wkt.find("nCurves=1"), std::string::npos);
+}
+
+TEST(GeometryTest, GeneralPolygonWithCurvesIsExplicitlyUnsupported) {
+    std::vector<uint8_t> buf;
+    explorgdb_test::write_varuint(buf, 51);
+    explorgdb_test::write_varuint(buf, 4);
+    explorgdb_test::write_varuint(buf, 1);
+    explorgdb_test::write_varuint(buf, 2);
+
+    auto decoder = make_decoder_2d();
+    auto geom = decoder.decode(buf.data(), buf.size());
+    EXPECT_NE(geom.wkt.find("UNSUPPORTED_CURVE_GEOMETRY"), std::string::npos);
+    EXPECT_NE(geom.wkt.find("nCurves=2"), std::string::npos);
 }
 
 // ── peek_bbox 测试 ──
@@ -553,6 +589,10 @@ TEST(GeometryTest, PeekBbox_GeneralPolyline) {
     auto decoder = make_decoder_2d();
     auto bbox = decoder.peek_bbox(buf.data(), buf.size());
     ASSERT_TRUE(bbox.has_value());
+    EXPECT_NEAR(bbox->xmin, 0.001, 0.000001);
+    EXPECT_NEAR(bbox->ymin, 0.001, 0.000001);
+    EXPECT_NEAR(bbox->xmax, 1.001, 0.000001);
+    EXPECT_NEAR(bbox->ymax, 1.001, 0.000001);
 }
 
 TEST(GeometryTest, PeekBbox_GeneralPolygon) {
@@ -560,6 +600,10 @@ TEST(GeometryTest, PeekBbox_GeneralPolygon) {
     auto decoder = make_decoder_2d();
     auto bbox = decoder.peek_bbox(buf.data(), buf.size());
     ASSERT_TRUE(bbox.has_value());
+    EXPECT_NEAR(bbox->xmin, 0.001, 0.000001);
+    EXPECT_NEAR(bbox->ymin, 0.001, 0.000001);
+    EXPECT_NEAR(bbox->xmax, 1.001, 0.000001);
+    EXPECT_NEAR(bbox->ymax, 1.001, 0.000001);
 }
 
 TEST(GeometryTest, GeometryIntersectsBbox_GeneralPolyline) {
@@ -612,4 +656,20 @@ TEST(GeometryTest, IntersectsWithPeek_PolygonPipFallback) {
     // 查询 bbox 完全在多边形内部 → 需要 pip 回退
     // query center = (4.5, 4.5), which is inside the polygon
     EXPECT_TRUE(decoder.intersects_with_peek(buf.data(), buf.size(), 4.0, 4.0, 5.0, 5.0));
+}
+
+TEST(GeometryTest, GeometryIntersectsBbox_PolygonPipFallback) {
+    std::vector<uint8_t> buf;
+    explorgdb_test::write_varuint(buf, 5);  // Polygon
+    explorgdb_test::write_varuint(buf, 4);  // nPoints
+    explorgdb_test::write_varuint(buf, 1);  // nParts
+    explorgdb_test::write_varuint(buf, 1); explorgdb_test::write_varuint(buf, 1);
+    explorgdb_test::write_varuint(buf, 10000); explorgdb_test::write_varuint(buf, 10000);
+    explorgdb_test::write_svarint(buf, 1); explorgdb_test::write_svarint(buf, 1);
+    explorgdb_test::write_svarint(buf, 10000); explorgdb_test::write_svarint(buf, 0);
+    explorgdb_test::write_svarint(buf, 0); explorgdb_test::write_svarint(buf, 10000);
+    explorgdb_test::write_svarint(buf, -10000); explorgdb_test::write_svarint(buf, 0);
+
+    auto decoder = make_decoder_2d();
+    EXPECT_TRUE(decoder.geometry_intersects_bbox(buf.data(), buf.size(), 4.0, 4.0, 5.0, 5.0));
 }
