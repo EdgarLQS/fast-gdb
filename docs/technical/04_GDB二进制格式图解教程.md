@@ -2,7 +2,7 @@
 
 本文档用图 + 代码链接的方式，直观展示 ESRI File Geodatabase 二进制格式的核心数据结构。
 
-> **前置知识**：建议先阅读 [00_项目全景与架构概览.md](00_项目全景与架构概览.md) 了解项目整体结构。
+> **前置知识**：建议先阅读 [00_项目全景与架构概览.md](../overview/00_项目全景与架构概览.md) 了解项目整体结构。
 
 ---
 
@@ -69,7 +69,7 @@ graph TB
 | 6 | GDB_DatasetRelationships | 数据集关系 |
 | 7 | GDB_SpatialRefs | 空间参考定义 |
 
-**源代码**：目录扫描逻辑 → [`src/edgar/explorgdb/reader/gdb_catalog.cpp`](../src/edgar/explorgdb/reader/gdb_catalog.cpp#L26) `GdbCatalog::scan()`
+**源代码**：目录扫描逻辑 → [`src/edgar/explorgdb/reader/gdb_catalog.cpp`](../../src/edgar/explorgdb/reader/gdb_catalog.cpp#L26) `GdbCatalog::scan()`
 
 ---
 
@@ -88,7 +88,7 @@ packet-beta
 - `version` 总是 5
 - `magic` 固定为 `0xDEADBEEF`
 
-**源代码**：magic 校验 → `GdbCatalog::read_magic()` 在 [`src/edgar/explorgdb/reader/gdb_catalog.cpp`](../src/edgar/explorgdb/reader/gdb_catalog.cpp)
+**源代码**：magic 校验 → `GdbCatalog::read_magic()` 在 [`src/edgar/explorgdb/reader/gdb_catalog.cpp`](../../src/edgar/explorgdb/reader/gdb_catalog.cpp)
 
 ### 2.2 timestamps 文件
 
@@ -155,7 +155,7 @@ packet-beta
   320-383: "field_desc_offset (uint64)"
 ```
 
-**源代码**：header 解析 → [`src/edgar/explorgdb/reader/gdb_table.cpp`](../src/edgar/explorgdb/reader/gdb_table.cpp#L244) `GdbTableParser::parse_header()`
+**源代码**：header 解析 → [`src/edgar/explorgdb/reader/gdb_table.cpp`](../../src/edgar/explorgdb/reader/gdb_table.cpp#L244) `GdbTableParser::parse_header()`
 
 ### 3.2 Section Header
 
@@ -185,7 +185,7 @@ packet-beta
   after4: "类型专属数据"
 ```
 
-**源代码**：字段描述符解析 → [`src/edgar/explorgdb/reader/gdb_table.cpp`](../src/edgar/explorgdb/reader/gdb_table.cpp#L341) `GdbTableParser::parse_field_descriptor()`，被 [`parse_fields()`](../src/edgar/explorgdb/reader/gdb_table.cpp#L290) 循环调用。
+**源代码**：字段描述符解析 → [`src/edgar/explorgdb/reader/gdb_table.cpp`](../../src/edgar/explorgdb/reader/gdb_table.cpp#L341) `GdbTableParser::parse_field_descriptor()`，被 [`parse_fields()`](../../src/edgar/explorgdb/reader/gdb_table.cpp#L290) 循环调用。
 
 ### 3.4 Geometry 字段描述符（最复杂）
 
@@ -237,9 +237,9 @@ packet-beta
 
 **注意**：字段顺序完全按字段描述符的顺序，不是固定「几何在前」或「几何在后」。FileGDB SDK 创建表时 Geometry 总是第一个字段描述符，所以实际中几何在记录中排第一位。ObjectId 不存储（隐式 = FID+1）。
 
-**记录之间没有预留空间** — 格式为 `[blob_len][data][blob_len][next data]...`，连续存储（[`filegdbtable.cpp:540`](../../../../../../code/gdal/ogr/ogrsf_frmts/openfilegdb/filegdbtable.cpp#L540) `GuessFeatureLocations()`）。
+**记录之间没有预留空间** — 格式为 `[blob_len][data][blob_len][next data]...`，连续存储（[`filegdbtable.cpp:540`](../../../../../code/gdal/ogr/ogrsf_frmts/openfilegdb/filegdbtable.cpp#L540) `GuessFeatureLocations()`）。
 
-**源代码**：记录解析 → [`src/edgar/explorgdb/reader/gdb_table.cpp`](../src/edgar/explorgdb/reader/gdb_table.cpp#L507) `GdbTableParser::read_record_by_fid()`
+**源代码**：记录解析 → [`src/edgar/explorgdb/reader/gdb_table.cpp`](../../src/edgar/explorgdb/reader/gdb_table.cpp#L507) `GdbTableParser::read_record_by_fid()`
 
 ### 3.6 记录大小变化时的处理
 
@@ -260,8 +260,8 @@ flowchart TD
 
 | 条件 | 行为 | 位置 |
 |------|------|------|
-| 新大小 <= 旧大小 | **原地覆写**，剩余空间清零 | [`filegdbtable_write.cpp:1926`](../../../../../../code/gdal/ogr/ogrsf_frmts/openfilegdb/filegdbtable_write.cpp#L1926) |
-| 新大小 > 旧大小 + 有空闲 | **写空闲位置**，旧空间废弃 | [`filegdbtable_write.cpp:1960`](../../../../../../code/gdal/ogr/ogrsf_frmts/openfilegdb/filegdbtable_write.cpp#L1960) |
+| 新大小 <= 旧大小 | **原地覆写**，剩余空间清零 | [`filegdbtable_write.cpp:1926`](../../../../../code/gdal/ogr/ogrsf_frmts/openfilegdb/filegdbtable_write.cpp#L1926) |
+| 新大小 > 旧大小 + 有空闲 | **写空闲位置**，旧空间废弃 | [`filegdbtable_write.cpp:1960`](../../../../../code/gdal/ogr/ogrsf_frmts/openfilegdb/filegdbtable_write.cpp#L1960) |
 | 新大小 > 旧大小 + 无空闲 | **追加到末尾**，旧空间废弃 | 同上 |
 
 即使只是修改几何从 10 个点到 100 万个点，如果新 blob 装不进旧位置，就废弃旧位置写到别处。`gdbtablx` 中的偏移更新为新位置。旧空间以后可能被其他大小匹配的要素复用。
@@ -282,7 +282,7 @@ flowchart TD
 
 **不重写时**：仅更新字段描述符区。新记录使用完整字段列表编码，旧记录解析时 bitmap 多出的 bit 自动解释为新字段 = null。
 
-**重写时**（`RewriteTableToAddLastAddedField()` → [`filegdbtable_write_fields.cpp:166`](../../../../../../code/gdal/ogr/ogrsf_frmts/openfilegdb/filegdbtable_write_fields.cpp#L166)）：
+**重写时**（`RewriteTableToAddLastAddedField()` → [`filegdbtable_write_fields.cpp:166`](../../../../../code/gdal/ogr/ogrsf_frmts/openfilegdb/filegdbtable_write_fields.cpp#L166)）：
 
 1. 读取每条旧记录
 2. 在 nullable_bitmap 后追加 1 字节 `0xFF`（表示新字段为 null，如果 nullable）
@@ -330,7 +330,7 @@ graph LR
     end
 ```
 
-**源代码**：字段类型枚举 → [`src/edgar/explorgdb/common/explorgdb_types.h`](../src/edgar/explorgdb/common/explorgdb_types.h#L33) `FieldType`
+**源代码**：字段类型枚举 → [`src/edgar/explorgdb/common/explorgdb_types.h`](../../src/edgar/explorgdb/common/explorgdb_types.h#L33) `FieldType`
 
 ### 4.2 nullable_bitmap 布局
 
@@ -414,7 +414,7 @@ graph LR
     end
 ```
 
-**源代码**：偏移表解析 → [`src/edgar/explorgdb/reader/gdb_tablx.cpp`](../src/edgar/explorgdb/reader/gdb_tablx.cpp#L39) `GdbTablxParser::parse()`
+**源代码**：偏移表解析 → [`src/edgar/explorgdb/reader/gdb_tablx.cpp`](../../src/edgar/explorgdb/reader/gdb_tablx.cpp#L39) `GdbTablxParser::parse()`
 
 ### 5.4 删除与新增时的行为
 
@@ -432,7 +432,7 @@ flowchart LR
     TLX --> READ["读取端<br/>offset=0 → 跳过"]
 ```
 
-**GDAL DeleteFeature 执行步骤**（[`filegdbtable_write.cpp:2046`](../../../../../../code/gdal/ogr/ogrsf_frmts/openfilegdb/filegdbtable_write.cpp#L2046)）：
+**GDAL DeleteFeature 执行步骤**（[`filegdbtable_write.cpp:2046`](../../../../../code/gdal/ogr/ogrsf_frmts/openfilegdb/filegdbtable_write.cpp#L2046)）：
 
 | 步骤 | 操作 | 位置 |
 |------|------|------|
@@ -457,7 +457,7 @@ flowchart TD
     APPEND --> DONE
 ```
 
-**GDAL CreateFeature 关键逻辑**（[`filegdbtable_write.cpp:1790`](../../../../../../code/gdal/ogr/ogrsf_frmts/openfilegdb/filegdbtable_write.cpp#L1790)）：
+**GDAL CreateFeature 关键逻辑**（[`filegdbtable_write.cpp:1790`](../../../../../code/gdal/ogr/ogrsf_frmts/openfilegdb/filegdbtable_write.cpp#L1790)）：
 
 - 自动分配：**新 FID = totalRecordCount + 1**（不是 validRecordCount + 1）
 - **已删除的 FID 不会被自动复用**
@@ -488,10 +488,10 @@ explorgdb 中所有读取路径统一处理 offset=0：
 
 | 读取方式 | offset=0 时的行为 | 位置 |
 |----------|-------------------|------|
-| `parse_records()` | `continue` 跳过 | [`gdb_table.cpp:492`](../src/edgar/explorgdb/reader/gdb_table.cpp#L492) |
-| `read_record_by_fid()` | 返回 `false` | [`gdb_table.cpp:516`](../src/edgar/explorgdb/reader/gdb_table.cpp#L516) |
-| `sequential_scan()` | `continue` 跳过 | [`gdb_table.cpp:1161`](../src/edgar/explorgdb/reader/gdb_table.cpp#L1161) |
-| `peek_geometry_blob()` | 返回 `false` | [`gdb_table.cpp:712`](../src/edgar/explorgdb/reader/gdb_table.cpp#L712) |
+| `parse_records()` | `continue` 跳过 | [`gdb_table.cpp:492`](../../src/edgar/explorgdb/reader/gdb_table.cpp#L492) |
+| `read_record_by_fid()` | 返回 `false` | [`gdb_table.cpp:516`](../../src/edgar/explorgdb/reader/gdb_table.cpp#L516) |
+| `sequential_scan()` | `continue` 跳过 | [`gdb_table.cpp:1161`](../../src/edgar/explorgdb/reader/gdb_table.cpp#L1161) |
+| `peek_geometry_blob()` | 返回 `false` | [`gdb_table.cpp:712`](../../src/edgar/explorgdb/reader/gdb_table.cpp#L712) |
 
 无论要素是「从未创建」还是「已删除」，读取端看到的都是 offset=0，无从区分。
 
@@ -519,7 +519,7 @@ explorgdb 中所有读取路径统一处理 offset=0：
 
 Geometry 编码后直接嵌入到同一 `m_abyBuffer` 中，**没有独立的几何存储文件**。这意味着空间复用受记录大小匹配度的限制。
 
-**GDAL 的 Best-Fit 空间分配算法**（[`filegdbtable_freelist.cpp:329`](../../../../../../code/gdal/ogr/ogrsf_frmts/openfilegdb/filegdbtable_freelist.cpp#L329)）：
+**GDAL 的 Best-Fit 空间分配算法**（[`filegdbtable_freelist.cpp:329`](../../../../../code/gdal/ogr/ogrsf_frmts/openfilegdb/filegdbtable_freelist.cpp#L329)）：
 
 ```mermaid
 flowchart TD
@@ -603,7 +603,7 @@ packet-beta
   80-111: "total_value_count (uint32)"
 ```
 
-**源代码**：trailer 结构定义 → [`src/edgar/explorgdb/common/explorgdb_types.h`](../src/edgar/explorgdb/common/explorgdb_types.h#L274) `BPlusTreeTrailer`
+**源代码**：trailer 结构定义 → [`src/edgar/explorgdb/common/explorgdb_types.h`](../../src/edgar/explorgdb/common/explorgdb_types.h#L274) `BPlusTreeTrailer`
 
 ### 6.3 分支页面布局（4096 字节）
 
@@ -635,7 +635,7 @@ packet-beta
   33-63: "cell_y (31 bit)"
 ```
 
-**源代码**：编码实现 → [`src/edgar/explorgdb/reader/gdb_spatial_index.cpp`](../src/edgar/explorgdb/reader/gdb_spatial_index.cpp#L315) `query_bbox()` 中的 `start_raw` 构造
+**源代码**：编码实现 → [`src/edgar/explorgdb/reader/gdb_spatial_index.cpp`](../../src/edgar/explorgdb/reader/gdb_spatial_index.cpp#L315) `query_bbox()` 中的 `start_raw` 构造
 
 ### 6.6 B+ 树导航算法
 
@@ -662,9 +662,9 @@ flowchart TD
 - `child[i]` 的 cell_x 范围：`[entry[i-1].cx+1, entry[i].cx]`
 - `child[0]` 的范围：`[-inf, entry[0].cx]`
 
-**源代码**：B+ 树遍历 → [`src/edgar/explorgdb/reader/gdb_spatial_index.cpp`](../src/edgar/explorgdb/reader/gdb_spatial_index.cpp#L201) `GdbSpatialIndexParser::collect_fids_btree()`
+**源代码**：B+ 树遍历 → [`src/edgar/explorgdb/reader/gdb_spatial_index.cpp`](../../src/edgar/explorgdb/reader/gdb_spatial_index.cpp#L201) `GdbSpatialIndexParser::collect_fids_btree()`
 
-**源代码**：二分查找 → [`src/edgar/explorgdb/reader/gdb_spatial_index.cpp`](../src/edgar/explorgdb/reader/gdb_spatial_index.cpp#L147) `GdbSpatialIndexParser::find_minmax_idx()`
+**源代码**：二分查找 → [`src/edgar/explorgdb/reader/gdb_spatial_index.cpp`](../../src/edgar/explorgdb/reader/gdb_spatial_index.cpp#L147) `GdbSpatialIndexParser::find_minmax_idx()`
 
 ### 6.7 LRU 页面缓存
 
@@ -686,7 +686,7 @@ graph TB
 
 **实现细节**：递归遍历时先提取 child IDs 再递归，避免递归过程中 LRU 驱逐父页面。
 
-**源代码**：LRU 缓存读页面 → [`src/edgar/explorgdb/reader/gdb_spatial_index.cpp`](../src/edgar/explorgdb/reader/gdb_spatial_index.cpp#L84) `GdbSpatialIndexParser::read_page()`
+**源代码**：LRU 缓存读页面 → [`src/edgar/explorgdb/reader/gdb_spatial_index.cpp`](../../src/edgar/explorgdb/reader/gdb_spatial_index.cpp#L84) `GdbSpatialIndexParser::read_page()`
 
 ---
 
@@ -712,9 +712,9 @@ flowchart LR
     I2 --> D2R --> R2
 ```
 
-**源代码**：编码 → [`src/edgar/explorgdb/writer/geometry_serializer.h`](../src/edgar/explorgdb/writer/geometry_serializer.h#L452) `coord_to_int()`
+**源代码**：编码 → [`src/edgar/explorgdb/writer/geometry_serializer.h`](../../src/edgar/explorgdb/writer/geometry_serializer.h#L452) `coord_to_int()`
 
-**源代码**：解码 → [`src/edgar/explorgdb/reader/gdb_geometry.cpp`](../src/edgar/explorgdb/reader/gdb_geometry.cpp#L69) `GdbGeomDecoder::decode_coord()`
+**源代码**：解码 → [`src/edgar/explorgdb/reader/gdb_geometry.cpp`](../../src/edgar/explorgdb/reader/gdb_geometry.cpp#L69) `GdbGeomDecoder::decode_coord()`
 
 ### 7.2 三种不同的坐标解码方式
 
@@ -793,7 +793,7 @@ flowchart TD
     MPCH --> DONE
 ```
 
-**源代码**：主解码入口 → [`src/edgar/explorgdb/reader/gdb_geometry.cpp`](../src/edgar/explorgdb/reader/gdb_geometry.cpp#L558) `GdbGeomDecoder::decode()`
+**源代码**：主解码入口 → [`src/edgar/explorgdb/reader/gdb_geometry.cpp`](../../src/edgar/explorgdb/reader/gdb_geometry.cpp#L558) `GdbGeomDecoder::decode()`
 
 ### 7.5 轻量 Bbox Peek
 
@@ -812,7 +812,7 @@ flowchart LR
     COORDS -.->|"O(1) varint 操作<br/>不读取全部坐标"| NOTE
 ```
 
-**源代码**：peek_bbox → [`src/edgar/explorgdb/reader/gdb_geometry.cpp`](../src/edgar/explorgdb/reader/gdb_geometry.cpp#L640) `GdbGeomDecoder::peek_bbox()`
+**源代码**：peek_bbox → [`src/edgar/explorgdb/reader/gdb_geometry.cpp`](../../src/edgar/explorgdb/reader/gdb_geometry.cpp#L640) `GdbGeomDecoder::peek_bbox()`
 
 ---
 
@@ -852,9 +852,9 @@ flowchart LR
 
 | 文件 | 行号 | 函数 | 说明 |
 |------|------|------|------|
-| [`src/edgar/explorgdb/reader/gdb_tablx.cpp`](../src/edgar/explorgdb/reader/gdb_tablx.cpp#L151) | 151 | `get_offset()` | FID→文件偏移 O(1) 查表 |
-| [`src/edgar/explorgdb/reader/gdb_table.cpp`](../src/edgar/explorgdb/reader/gdb_table.cpp#L507) | 507 | `read_record_by_fid()` | 按 FID 读取完整记录 |
-| [`src/edgar/explorgdb/reader/gdb_table.cpp`](../src/edgar/explorgdb/reader/gdb_table.cpp#L582) | 582 | `ObjectId 字段处理` | ObjectId = FID + 1 |
+| [`src/edgar/explorgdb/reader/gdb_tablx.cpp`](../../src/edgar/explorgdb/reader/gdb_tablx.cpp#L151) | 151 | `get_offset()` | FID→文件偏移 O(1) 查表 |
+| [`src/edgar/explorgdb/reader/gdb_table.cpp`](../../src/edgar/explorgdb/reader/gdb_table.cpp#L507) | 507 | `read_record_by_fid()` | 按 FID 读取完整记录 |
+| [`src/edgar/explorgdb/reader/gdb_table.cpp`](../../src/edgar/explorgdb/reader/gdb_table.cpp#L582) | 582 | `ObjectId 字段处理` | ObjectId = FID + 1 |
 
 ### 8.2 属性查询流程
 
@@ -910,9 +910,9 @@ flowchart TD
 
 | 文件 | 行号 | 函数 | 说明 |
 |------|------|------|------|
-| [`src/edgar/usegdal/datasets.cpp`](../src/edgar/usegdal/datasets.cpp#L138) | 138 | `GdbDataset::query(const GdbQuery&)` | 属性过滤入口 |
-| [`src/edgar/usegdal/datasets.cpp`](../src/edgar/usegdal/datasets.cpp#L153) | 153 | `SetAttributeFilter()` | 设置属性过滤 |
-| [`src/edgar/explorgdb/reader/gdb_attribute_index.cpp`](../src/edgar/explorgdb/reader/gdb_attribute_index.cpp) | - | `GdbAttributeIndexParser` | .atx B+ 树解析 |
+| [`src/edgar/usegdal/datasets.cpp`](../../src/edgar/usegdal/datasets.cpp#L138) | 138 | `GdbDataset::query(const GdbQuery&)` | 属性过滤入口 |
+| [`src/edgar/usegdal/datasets.cpp`](../../src/edgar/usegdal/datasets.cpp#L153) | 153 | `SetAttributeFilter()` | 设置属性过滤 |
+| [`src/edgar/explorgdb/reader/gdb_attribute_index.cpp`](../../src/edgar/explorgdb/reader/gdb_attribute_index.cpp) | - | `GdbAttributeIndexParser` | .atx B+ 树解析 |
 
 ### 8.3 空间查询流程
 
@@ -979,12 +979,12 @@ flowchart TD
 
 | 文件 | 行号 | 函数 | 说明 |
 |------|------|------|------|
-| [`src/edgar/usegdal/datasets.cpp`](../src/edgar/usegdal/datasets.cpp#L138) | 138 | `GdbDataset::query(const GdbQuery&)` | 空间查询入口（usegdal） |
-| [`src/edgar/usegdal/recordset.cpp`](../src/edgar/usegdal/recordset.cpp#L120) | 120 | `GdbRecordset::moveNext()` | 空间关系后过滤 |
-| [`src/edgar/explorgdb/reader/gdb_spatial_index.cpp`](../src/edgar/explorgdb/reader/gdb_spatial_index.cpp#L272) | 272 | `query_bbox()` | spx B+ 树空间查询 |
-| [`src/edgar/explorgdb/reader/gdb_spatial_index.cpp`](../src/edgar/explorgdb/reader/gdb_spatial_index.cpp#L201) | 201 | `collect_fids_btree()` | B+ 树递归遍历收集 FID |
-| [`src/edgar/explorgdb/reader/gdb_geometry.cpp`](../src/edgar/explorgdb/reader/gdb_geometry.cpp#L640) | 640 | `peek_bbox()` | 轻量 bbox 过滤 |
-| [`src/edgar/explorgdb/reader/gdb_geometry.cpp`](../src/edgar/explorgdb/reader/gdb_geometry.cpp#L558) | 558 | `decode()` | 完整几何解码 |
+| [`src/edgar/usegdal/datasets.cpp`](../../src/edgar/usegdal/datasets.cpp#L138) | 138 | `GdbDataset::query(const GdbQuery&)` | 空间查询入口（usegdal） |
+| [`src/edgar/usegdal/recordset.cpp`](../../src/edgar/usegdal/recordset.cpp#L120) | 120 | `GdbRecordset::moveNext()` | 空间关系后过滤 |
+| [`src/edgar/explorgdb/reader/gdb_spatial_index.cpp`](../../src/edgar/explorgdb/reader/gdb_spatial_index.cpp#L272) | 272 | `query_bbox()` | spx B+ 树空间查询 |
+| [`src/edgar/explorgdb/reader/gdb_spatial_index.cpp`](../../src/edgar/explorgdb/reader/gdb_spatial_index.cpp#L201) | 201 | `collect_fids_btree()` | B+ 树递归遍历收集 FID |
+| [`src/edgar/explorgdb/reader/gdb_geometry.cpp`](../../src/edgar/explorgdb/reader/gdb_geometry.cpp#L640) | 640 | `peek_bbox()` | 轻量 bbox 过滤 |
+| [`src/edgar/explorgdb/reader/gdb_geometry.cpp`](../../src/edgar/explorgdb/reader/gdb_geometry.cpp#L558) | 558 | `decode()` | 完整几何解码 |
 
 
 ```mermaid
@@ -1017,9 +1017,9 @@ flowchart TD
 
 | 文件 | 行号 | 函数 | 说明 |
 |------|------|------|------|
-| [`src/edgar/explorgdb/reader/gdb_table.cpp`](../src/edgar/explorgdb/reader/gdb_table.cpp#L41) | 41 | `open()` | 按需读取入口 |
-| [`src/edgar/explorgdb/reader/gdb_table.cpp`](../src/edgar/explorgdb/reader/gdb_table.cpp#L1144) | 1144 | `sequential_scan()` | 零拷贝顺序扫描 |
-| [`src/edgar/explorgdb/reader/gdb_catalog.cpp`](../src/edgar/explorgdb/reader/gdb_catalog.cpp) | - | `GdbCatalog::scan()` | 目录扫描 |
+| [`src/edgar/explorgdb/reader/gdb_table.cpp`](../../src/edgar/explorgdb/reader/gdb_table.cpp#L41) | 41 | `open()` | 按需读取入口 |
+| [`src/edgar/explorgdb/reader/gdb_table.cpp`](../../src/edgar/explorgdb/reader/gdb_table.cpp#L1144) | 1144 | `sequential_scan()` | 零拷贝顺序扫描 |
+| [`src/edgar/explorgdb/reader/gdb_catalog.cpp`](../../src/edgar/explorgdb/reader/gdb_catalog.cpp) | - | `GdbCatalog::scan()` | 目录扫描 |
 
 ### 8.6 查询路径选择指南
 
