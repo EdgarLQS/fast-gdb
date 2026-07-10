@@ -98,7 +98,7 @@
 
 **当前保护**：`decode_polyline` 和 `decode_polygon` 已统一读取 `nCurves`。当 `nCurves == 0` 时，General 线/面与 `peek_bbox`、空间过滤路径保持一致；当 `nCurves > 0` 时，返回显式 unsupported 文案，避免把曲线段静默当普通线/面输出。
 
-**后续 gap**：CircularArc / EllipticArc / Bezier 的段类型、raw payload 和圆弧参数还原仍需补齐。
+**当前边界**：CircularArc / EllipticArc / Bezier 的段类型、raw payload 和参数还原仍未实现；当前版本保持显式 unsupported，并已从本轮开发范围中移出。
 
 ### 1.5 MultiPatch 详细分析
 
@@ -225,19 +225,19 @@ SRS 信息存储在 GDB 的系统表中，不在 `.gdbtable` 字段描述符中�
 
 | 元数据 | GDAL | explorgdb | 影响 |
 |-------|:----:|:---------:|------|
-| 字段域 (coded value / range domains) | ✅ | ❌ | 无法验证字段取值合法性 |
-| 关系类 (relationship class) | ✅ | ❌ | 无法跨表关联查询 |
-| Feature dataset 分组 | ✅ | ❌ | 图层目录结构扁平化 |
+| 字段域 (coded value / range domains) | ✅ | ✅ | 已结构化解析 workspace domains 和字段绑定 |
+| 关系类 (relationship class) | ✅ | ✅ | 已暴露 summary 和 definition；不执行跨表 join |
+| Feature dataset 分组 | ✅ | ✅ | 已按 `CatalogPath` 提供分组摘要 |
 | 注解/尺寸注记 (Annotation/Dimension) | ✅ | ❌ | 无法读取注记 |
-| 图层 XML 定义 | ✅ | ❌ | 无法获取完整图层元数据 |
+| 图层 XML 定义 | ✅ | ✅ | 已可读取 Definition/Documentation 等元数据 |
 
 ### 元数据总结
 
 ```
 核心元数据: 20/20 ✅ (100%)
-高级元数据:  0/5  ❌ (0%)
+高级元数据:  4/5  ✅ (80%)
 ─────────────────────────────────────────────
-总计:      20/25 ✅ (80%)
+总计:      24/25 ✅ (96%)
 ```
 
 ---
@@ -251,11 +251,11 @@ SRS 信息存储在 GDB 的系统表中，不在 `.gdbtable` 字段描述符中�
 | 要素计数 (GetFeatureCount) | ✅ | ✅ | feature_count() |
 | 数据范围 (GetExtent) | ✅ | ✅ | 从字段描述符读取 |
 | 空间过滤 (SetSpatialFilter) | ✅ | ⚠️ | 需外部调用两阶段过滤实现 |
-| 属性过滤 (SetAttributeFilter) | ✅ | ⚠️ | 需外部实现，无 Layer 级状态 |
+| 属性过滤 (SetAttributeFilter) | ✅ | ⚠️ | 已支持常见 WHERE 子句子集，但无 Layer 级状态 |
 | SQL 查询 (ExecuteSQL) | ✅ | ❌ | 无 SQL 解析引擎 |
 | 字段定义 (GetLayerDefn) | ✅ | ✅ | fields() 返回字段定义 |
 | 坐标系 (GetSpatialRef) | ✅ | ⚠️ | fast-gdb 通过 `MetadataReader` 暴露 SRS 元数据，但不是 GDAL 对象 |
-| 元数据键值 (GetMetadataItem) | ✅ | ❌ | 无通用键值元数据接口 |
+| 元数据键值 (GetMetadataItem) | ✅ | ✅ | `MetadataReader::read_metadata_item()` 提供同风格接口 |
 | 能力检测 (TestCapability) | ✅ | ✅ | `CapabilityReport` 已接入 |
 | 批量读取 (SetNextByIndex) | ✅ | ❌ | 索引跳跃扫描 |
 | 重置读取游标 (ResetReading) | ✅ | ✅ | 顺序扫描可重置 |
@@ -287,8 +287,8 @@ for (auto fid : candidates) {
     }
 }
 
-// 属性过滤需要额外实现
-// 无 Layer 级状态，每次读取需重新设置
+// 属性过滤通过 QueryEngine::query({kind=WhereClause,...}) 提供
+// 无 Layer 级状态，每次查询显式给出过滤表达式
 ```
 
 ---
@@ -345,7 +345,7 @@ for (auto fid : candidates) {
 
 ### 8.1 总体结论
 
-**fast-gdb 应作为生产化主线，GDAL 只保留测试对照和兼容性验证。**
+**fast-gdb 应作为生产化主线，GDAL 只保留测试对照和兼容性验证。当前除曲线标准输出外，本轮计划内的元数据、查询门面、WHERE 子集和关系类定义已收口。**
 
 explorgdb 在常规点/线/面数据上提供了 **9-12x 的读取性能提升**，索引查询和 SRS 读取主路径也已经成熟。当前策略不应是“遇到缺口就默认回退 GDAL”，而是优先在 fast-gdb 内补齐曲线几何、MultiPatch 标准表达、Raster 标记和更完整的元数据 API。
 
@@ -366,19 +366,15 @@ explorgdb 在常规点/线/面数据上提供了 **9-12x 的读取性能提升**
 | 场景 | 根因 | 影响 |
 |------|------|------|
 | 需要重投影 / 坐标变换 | 未提供完整 OGRSpatialReference 对象 | 无法直接替代 GDAL 的几何投影能力 |
-| 需要 SQL 查询 | 无 ExecuteSQL | 无法用 SQL 表达式过滤 |
-| 包含曲线几何 | nCurves 被跳过 | 曲线段丢失 |
-| 需要 MultiPatch 标准 WKT | 输出描述文本 | GIS 工具链无法解析 |
-| 需要字段域约束 | 未实现 | 取值验证不可用 |
-| 需要关系类关联 | 未实现 | 无法跨表 join |
+| 需要 SQL 查询 | 无 ExecuteSQL | 无法用完整 SQL 表达式过滤 |
+| 包含曲线几何 | `nCurves>0` 显式 unsupported | 曲线段尚未标准输出 |
 | 需要 GIS 桌面软件集成 | 需要完整 OGRLayer API | 无法替代 GDAL 驱动 |
 
 ### 8.4 ⚠️ 有风险但可缓解的场景
 
 | 场景 | 风险 | 缓解方案 |
 |------|------|---------|
-| 包含曲线几何 | 曲线定义未解析 | 先检测并标记 unsupported；随后实现曲线解码或线性化 |
-| 包含 MultiPatch | 输出非标准 WKT，无法被 GIS 工具接受 | 在 fast-gdb 内输出标准 GeometryCollection / TIN / PolyhedralSurface |
+| 包含曲线几何 | 曲线定义未解析 | 保持显式 unsupported，不静默误输出 |
 | 需要完整 OGRSpatialReference 对象 | 目前只暴露元数据结构 | 上层可接 GDAL / PROJ |
 | 旧版 GDAL 创建的数据 | INT_MIN origin 标记 | 已有 clamp 处理（offset=-2147483647 → 0.0） |
 | 数据含有 Raster 字段 | 像素数据未解码 | 先暴露字段存在和元数据，矢量读取不因 Raster 字段失败 |
@@ -454,10 +450,10 @@ cmake --build build --target gdb_tutorial_test_runner
 
 | 阶段 | 内容 | 工作量 | 收益 |
 |------|------|:------:|:----:|
-| 字段域支持 | 从系统表解析 coded/range domain | 2-3 天 | 对齐 GDAL 元数据能力 |
-| 高级元数据 API | GetMetadataItem 风格键值接口 | 1-2 天 | 简化上层集成 |
-| 关系类 / Feature dataset | 解析 GDB_Items 中的关联和分组信息 | 1-2 天 | 对齐更完整的图层元数据 |
-| fast-gdb 查询门面 | 封装顺序扫描、FID、.spx、.atx 查询入口 | 2-3 天 | 上层不直接拼底层 parser |
+| 字段域支持 | 从系统表解析 coded/range domain | 已完成 | 对齐 GDAL 元数据能力 |
+| 高级元数据 API | GetMetadataItem 风格键值接口 | 已完成 | 简化上层集成 |
+| 关系类 / Feature dataset | 解析 GDB_Items 中的关联和分组信息 | 已完成 | 对齐更完整的图层元数据 |
+| fast-gdb 查询门面 | 封装顺序扫描、FID、.spx、.atx 查询入口 | 已完成 | 上层不直接拼底层 parser |
 
 ### 9.3 后续阶段二：v3 表达式过滤与高级 GIS 能力（长期，可选，低优先级）
 
@@ -465,9 +461,9 @@ cmake --build build --target gdb_tutorial_test_runner
 
 | 阶段 | 内容 | 工作量 | 收益 |
 |------|------|:------:|:----:|
-| 精简表达式过滤器 | 支持常见 WHERE 子句子集 | 1-2 周 | 减少上层手写过滤 |
-| 曲线几何标准输出 | 将已读取的曲线参数输出为 CircularString / CompoundCurve 等标准表达 | 1-2 周 | 100% 功能覆盖 |
-| 关系类 | 解析 GDB_Items 中的关系定义 | 1 周 | 对齐高级 GIS 功能 |
+| 精简表达式过滤器 | 支持常见 WHERE 子句子集 | 已完成 | 减少上层手写过滤 |
+| 曲线几何标准输出 | 将已读取的曲线参数输出为 CircularString / CompoundCurve 等标准表达 | 已取消 | 保持显式 unsupported，不纳入当前范围 |
+| 关系类 | 解析 GDB_Items 中的关系定义 | 已完成 | 对齐高级 GIS 功能 |
 
 ---
 

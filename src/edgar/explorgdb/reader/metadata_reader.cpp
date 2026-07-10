@@ -2,10 +2,16 @@
 #include "gdb_table.h"
 #include <algorithm>
 #include <cctype>
+#include <map>
 #include <unordered_map>
 
 namespace explorgdb {
 namespace {
+struct ParsedTableRows {
+    std::unordered_map<std::string, size_t> columns;
+    std::vector<FeatureRecord> rows;
+};
+
 std::string lower(std::string value) {
     std::transform(value.begin(), value.end(), value.begin(),
                    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
@@ -19,6 +25,132 @@ int as_int(const FieldValue& value) {
 std::string as_string(const FieldValue& value) {
     if (const auto* v = std::get_if<std::string>(&value)) return *v;
     return {};
+}
+std::string as_text(const FieldValue& value) {
+    if (const auto* v = std::get_if<std::string>(&value)) return *v;
+    if (const auto* v = std::get_if<int32_t>(&value)) return std::to_string(*v);
+    if (const auto* v = std::get_if<int64_t>(&value)) return std::to_string(*v);
+    if (const auto* v = std::get_if<double>(&value)) return std::to_string(*v);
+    return {};
+}
+std::string lookup_text(const std::unordered_map<std::string, size_t>& columns,
+                        const FeatureRecord& row,
+                        const char* name) {
+    const auto it = columns.find(lower(name));
+    if (it == columns.end() || it->second >= row.field_values.size()) return {};
+    return as_text(row.field_values[it->second]);
+}
+bool matches_name(const std::string& candidate, const std::string& requested) {
+    return !candidate.empty() && lower(candidate) == lower(requested);
+}
+std::string trim(std::string value) {
+    const auto begin = value.find_first_not_of(" \t\r\n");
+    if (begin == std::string::npos) return {};
+    const auto end = value.find_last_not_of(" \t\r\n");
+    return value.substr(begin, end - begin + 1);
+}
+std::string extract_tag_text(const std::string& xml, const std::string& tag) {
+    const std::string open = "<" + tag + ">";
+    const std::string close = "</" + tag + ">";
+    const auto start = xml.find(open);
+    if (start == std::string::npos) return {};
+    const auto value_start = start + open.size();
+    const auto end = xml.find(close, value_start);
+    if (end == std::string::npos) return {};
+    return trim(xml.substr(value_start, end - value_start));
+}
+std::string extract_attribute(const std::string& xml, const std::string& key) {
+    const std::string token = key + "=\"";
+    const auto start = xml.find(token);
+    if (start == std::string::npos) return {};
+    const auto value_start = start + token.size();
+    const auto end = xml.find('"', value_start);
+    if (end == std::string::npos) return {};
+    return xml.substr(value_start, end - value_start);
+}
+std::vector<std::string> extract_blocks(const std::string& xml,
+                                        const std::string& open_tag_prefix,
+                                        const std::string& close_tag) {
+    std::vector<std::string> blocks;
+    size_t offset = 0;
+    while (true) {
+        const auto start = xml.find(open_tag_prefix, offset);
+        if (start == std::string::npos) break;
+        const auto open_end = xml.find('>', start);
+        if (open_end == std::string::npos) break;
+        const auto end = xml.find(close_tag, open_end + 1);
+        if (end == std::string::npos) break;
+        blocks.push_back(xml.substr(start, end + close_tag.size() - start));
+        offset = end + close_tag.size();
+    }
+    return blocks;
+}
+std::vector<DomainCodedValue> decode_coded_values(const std::string& xml) {
+    std::vector<DomainCodedValue> values;
+    for (const auto& block : extract_blocks(xml, "<CodedValue", "</CodedValue>")) {
+        DomainCodedValue value;
+        value.code = extract_tag_text(block, "Code");
+        value.name = extract_tag_text(block, "Name");
+        if (!value.code.empty() || !value.name.empty()) values.push_back(std::move(value));
+    }
+    return values;
+}
+const DomainInfo* find_domain_by_name(const std::vector<DomainInfo>& domains,
+                                      const std::string& domain_name) {
+    for (const auto& domain : domains) {
+        if (lower(domain.name) == lower(domain_name)) return &domain;
+    }
+    return nullptr;
+}
+bool load_table_rows(const CatalogResolver& resolver,
+                     const std::string& table_name,
+                     ParsedTableRows& out) {
+    const auto resolved = resolver.resolve(table_name);
+    if (!resolved || resolved->tablx_path.empty()) return false;
+
+    GdbTableParser parser(resolved->table_path);
+    if (!parser.open() || !parser.load_tablx(resolved->tablx_path)) return false;
+
+    out.columns.clear();
+    out.rows.clear();
+    for (size_t i = 0; i < parser.fields().size(); ++i) {
+        out.columns[lower(parser.fields()[i].name)] = i;
+    }
+    out.rows.reserve(parser.feature_count());
+    for (uint32_t fid = 0; fid < parser.feature_count(); ++fid) {
+        FeatureRecord row;
+        if (parser.read_record_by_fid(fid, row)) out.rows.push_back(std::move(row));
+    }
+    return true;
+}
+std::optional<LayerMetadata> decode_layer_metadata_by_uuid(
+        const std::unordered_map<std::string, size_t>& columns,
+        const FeatureRecord& row,
+        const std::string& requested_uuid) {
+    const std::string uuid = lookup_text(columns, row, "UUID");
+    if (uuid.empty() || lower(uuid) != lower(requested_uuid)) return std::nullopt;
+
+    LayerMetadata metadata;
+    metadata.name = lookup_text(columns, row, "Name");
+    metadata.path = lookup_text(columns, row, "Path");
+    metadata.physical_name = lookup_text(columns, row, "PhysicalName");
+    metadata.definition = lookup_text(columns, row, "Definition");
+    metadata.documentation = lookup_text(columns, row, "Documentation");
+    metadata.uuid = uuid;
+    metadata.type = lookup_text(columns, row, "Type");
+    metadata.catalog_path = extract_tag_text(metadata.definition, "CatalogPath");
+    metadata.dataset_type = extract_tag_text(metadata.definition, "DatasetType");
+    for (const auto& entry : columns) {
+        if (entry.second >= row.field_values.size()) continue;
+        metadata.items.emplace(entry.first, as_text(row.field_values[entry.second]));
+    }
+    return metadata;
+}
+std::string parent_catalog_path(const std::string& path) {
+    if (path.empty() || path == "\\") return {};
+    const auto pos = path.find_last_of('\\');
+    if (pos == std::string::npos || pos == 0) return {};
+    return path.substr(0, pos);
 }
 } // namespace
 
@@ -49,6 +181,34 @@ std::optional<SpatialReferenceInfo> MetadataReader::decode_spatial_reference_row
     return info;
 }
 
+std::optional<LayerMetadata> MetadataReader::decode_layer_metadata_row(
+        const std::unordered_map<std::string, size_t>& columns,
+        const FeatureRecord& row,
+        const std::string& requested_name) {
+    const std::string name = lookup_text(columns, row, "Name");
+    const std::string physical_name = lookup_text(columns, row, "PhysicalName");
+    if (!matches_name(name, requested_name) && !matches_name(physical_name, requested_name)) {
+        return std::nullopt;
+    }
+
+    LayerMetadata metadata;
+    metadata.name = name;
+    metadata.path = lookup_text(columns, row, "Path");
+    metadata.physical_name = physical_name;
+    metadata.definition = lookup_text(columns, row, "Definition");
+    metadata.documentation = lookup_text(columns, row, "Documentation");
+    metadata.uuid = lookup_text(columns, row, "UUID");
+    metadata.type = lookup_text(columns, row, "Type");
+    metadata.catalog_path = extract_tag_text(metadata.definition, "CatalogPath");
+    metadata.dataset_type = extract_tag_text(metadata.definition, "DatasetType");
+
+    for (const auto& entry : columns) {
+        if (entry.second >= row.field_values.size()) continue;
+        metadata.items.emplace(entry.first, as_text(row.field_values[entry.second]));
+    }
+    return metadata;
+}
+
 std::optional<SpatialReferenceInfo> MetadataReader::read_spatial_reference(int requested_wkid) const {
     const auto resolved = resolver_.resolve("GDB_SpatialRefs");
     if (!resolved || resolved->tablx_path.empty()) return std::nullopt;
@@ -67,6 +227,331 @@ std::optional<SpatialReferenceInfo> MetadataReader::read_spatial_reference(int r
         if (decoded) return decoded;
     }
     return std::nullopt;
+}
+
+std::optional<LayerMetadata> MetadataReader::read_layer_metadata(const std::string& layer_name) const {
+    ParsedTableRows items;
+    if (!load_table_rows(resolver_, "GDB_Items", items)) return std::nullopt;
+
+    for (const auto& row : items.rows) {
+        const auto decoded = decode_layer_metadata_row(items.columns, row, layer_name);
+        if (decoded) return decoded;
+    }
+    return std::nullopt;
+}
+
+std::optional<std::string> MetadataReader::read_metadata_item(const std::string& layer_name,
+                                                              const std::string& key) const {
+    const auto metadata = read_layer_metadata(layer_name);
+    if (!metadata) return std::nullopt;
+
+    const auto it = metadata->items.find(lower(key));
+    if (it == metadata->items.end()) return std::nullopt;
+    return it->second;
+}
+
+std::vector<DomainInfo> MetadataReader::decode_workspace_domains_xml(const std::string& xml) {
+    std::vector<DomainInfo> domains;
+    auto blocks = extract_blocks(xml, "<Domain ", "</Domain>");
+    if (blocks.empty()) blocks = extract_blocks(xml, "<Domain>", "</Domain>");
+    for (const auto& block : blocks) {
+        DomainInfo domain;
+        domain.type = extract_attribute(block, "xsi:type");
+        if (domain.type.empty()) domain.type = "Domain";
+        domain.name = extract_tag_text(block, "DomainName");
+        if (domain.name.empty()) domain.name = extract_tag_text(block, "Name");
+        domain.field_type = extract_tag_text(block, "FieldType");
+        domain.description = extract_tag_text(block, "Description");
+        domain.merge_policy = extract_tag_text(block, "MergePolicy");
+        domain.split_policy = extract_tag_text(block, "SplitPolicy");
+        domain.min_value = extract_tag_text(block, "MinValue");
+        domain.max_value = extract_tag_text(block, "MaxValue");
+        domain.coded_values = decode_coded_values(block);
+        if (!domain.name.empty() || !domain.coded_values.empty() ||
+            !domain.min_value.empty() || !domain.max_value.empty()) {
+            domains.push_back(std::move(domain));
+        }
+    }
+    return domains;
+}
+
+std::vector<DomainInfo> MetadataReader::read_workspace_domains() const {
+    const auto workspace = read_layer_metadata("Workspace");
+    if (!workspace) return {};
+    return decode_workspace_domains_xml(workspace->definition);
+}
+
+std::vector<FieldDomainBinding> MetadataReader::decode_field_domain_bindings_xml(
+        const std::string& xml,
+        const std::vector<DomainInfo>& workspace_domains) {
+    std::vector<FieldDomainBinding> bindings;
+    auto field_blocks = extract_blocks(xml, "<GPFieldInfoEx", "</GPFieldInfoEx>");
+    if (field_blocks.empty()) field_blocks = extract_blocks(xml, "<FieldInfo", "</FieldInfo>");
+
+    for (const auto& block : field_blocks) {
+        FieldDomainBinding binding;
+        binding.field_name = extract_tag_text(block, "Name");
+        binding.domain_name = extract_tag_text(block, "DomainName");
+        if (binding.field_name.empty() || binding.domain_name.empty()) continue;
+
+        if (const auto* domain = find_domain_by_name(workspace_domains, binding.domain_name)) {
+            binding.domain = *domain;
+        }
+        bindings.push_back(std::move(binding));
+    }
+    return bindings;
+}
+
+RelationshipClassDefinition MetadataReader::decode_relationship_class_attributes_xml(
+        const std::string& xml) {
+    RelationshipClassDefinition def;
+    def.cardinality = extract_tag_text(xml, "Cardinality");
+    def.notification = extract_tag_text(xml, "Notification");
+    def.origin_primary_key = extract_tag_text(xml, "OriginPrimaryKey");
+    if (def.origin_primary_key.empty()) {
+        def.origin_primary_key = extract_tag_text(xml, "OriginClassKeys");
+    }
+    def.origin_foreign_key = extract_tag_text(xml, "OriginForeignKey");
+    def.destination_primary_key = extract_tag_text(xml, "DestinationPrimaryKey");
+    if (def.destination_primary_key.empty()) {
+        def.destination_primary_key = extract_tag_text(xml, "DestinationClassKeys");
+    }
+    def.destination_foreign_key = extract_tag_text(xml, "DestinationForeignKey");
+    return def;
+}
+
+std::vector<FieldDomainBinding> MetadataReader::read_field_domain_bindings(
+        const std::string& layer_name) const {
+    const auto metadata = read_layer_metadata(layer_name);
+    if (!metadata) return {};
+    const auto domains = read_workspace_domains();
+    return decode_field_domain_bindings_xml(metadata->definition, domains);
+}
+
+std::vector<RelationshipSummary> MetadataReader::read_relationship_summaries() const {
+    ParsedTableRows items;
+    ParsedTableRows relationships;
+    ParsedTableRows relationship_types;
+    if (!load_table_rows(resolver_, "GDB_Items", items)) return {};
+    if (!load_table_rows(resolver_, "GDB_ItemRelationships", relationships)) return {};
+    if (!load_table_rows(resolver_, "GDB_ItemRelationshipTypes", relationship_types)) return {};
+
+    std::unordered_map<std::string, LayerMetadata> items_by_uuid;
+    for (const auto& row : items.rows) {
+        if (const auto decoded = decode_layer_metadata_by_uuid(items.columns, row,
+                                                               lookup_text(items.columns, row, "UUID"))) {
+            items_by_uuid.emplace(lower(decoded->uuid), *decoded);
+        }
+    }
+
+    struct RelationshipTypeSummary {
+        std::string name;
+        std::string forward_label;
+        std::string backward_label;
+        bool is_containment = false;
+    };
+    std::unordered_map<std::string, RelationshipTypeSummary> type_by_uuid;
+    for (const auto& row : relationship_types.rows) {
+        const std::string uuid = lookup_text(relationship_types.columns, row, "UUID");
+        if (uuid.empty()) continue;
+        RelationshipTypeSummary type;
+        type.name = lookup_text(relationship_types.columns, row, "Name");
+        type.forward_label = lookup_text(relationship_types.columns, row, "ForwardLabel");
+        type.backward_label = lookup_text(relationship_types.columns, row, "BackwardLabel");
+        type.is_containment = as_int(row.field_values[relationship_types.columns["iscontainment"]]) != 0;
+        type_by_uuid.emplace(lower(uuid), std::move(type));
+    }
+
+    std::vector<RelationshipSummary> summaries;
+    summaries.reserve(relationships.rows.size());
+    for (const auto& row : relationships.rows) {
+        RelationshipSummary summary;
+        summary.uuid = lookup_text(relationships.columns, row, "UUID");
+        summary.origin_uuid = lookup_text(relationships.columns, row, "OriginID");
+        summary.destination_uuid = lookup_text(relationships.columns, row, "DestID");
+        summary.type_uuid = lookup_text(relationships.columns, row, "Type");
+
+        const auto type_it = type_by_uuid.find(lower(summary.type_uuid));
+        if (type_it != type_by_uuid.end()) {
+            summary.type_name = type_it->second.name;
+            summary.forward_label = type_it->second.forward_label;
+            summary.backward_label = type_it->second.backward_label;
+            summary.is_containment = type_it->second.is_containment;
+        }
+
+        const auto origin_it = items_by_uuid.find(lower(summary.origin_uuid));
+        if (origin_it != items_by_uuid.end()) {
+            summary.origin_name = origin_it->second.name;
+            summary.origin_path = origin_it->second.catalog_path.empty()
+                ? origin_it->second.path : origin_it->second.catalog_path;
+        }
+        const auto dest_it = items_by_uuid.find(lower(summary.destination_uuid));
+        if (dest_it != items_by_uuid.end()) {
+            summary.destination_name = dest_it->second.name;
+            summary.destination_path = dest_it->second.catalog_path.empty()
+                ? dest_it->second.path : dest_it->second.catalog_path;
+        }
+        summaries.push_back(std::move(summary));
+    }
+    return summaries;
+}
+
+std::vector<RelationshipClassDefinition> MetadataReader::read_relationship_class_definitions() const {
+    ParsedTableRows items;
+    ParsedTableRows item_types;
+    ParsedTableRows relationships;
+    ParsedTableRows relationship_types;
+    if (!load_table_rows(resolver_, "GDB_Items", items)) return {};
+    if (!load_table_rows(resolver_, "GDB_ItemTypes", item_types)) return {};
+    if (!load_table_rows(resolver_, "GDB_ItemRelationships", relationships)) return {};
+    if (!load_table_rows(resolver_, "GDB_ItemRelationshipTypes", relationship_types)) return {};
+
+    std::unordered_map<std::string, LayerMetadata> items_by_uuid;
+    for (const auto& row : items.rows) {
+        const std::string uuid = lookup_text(items.columns, row, "UUID");
+        if (uuid.empty()) continue;
+        if (const auto decoded = decode_layer_metadata_by_uuid(items.columns, row, uuid)) {
+            items_by_uuid.emplace(lower(decoded->uuid), *decoded);
+        }
+    }
+
+    struct ItemTypeInfo {
+        std::string name;
+        std::string parent_type_uuid;
+    };
+    std::unordered_map<std::string, ItemTypeInfo> item_types_by_uuid;
+    for (const auto& row : item_types.rows) {
+        const std::string uuid = lookup_text(item_types.columns, row, "UUID");
+        if (uuid.empty()) continue;
+        ItemTypeInfo info;
+        info.name = lookup_text(item_types.columns, row, "Name");
+        info.parent_type_uuid = lookup_text(item_types.columns, row, "ParentTypeID");
+        item_types_by_uuid.emplace(lower(uuid), std::move(info));
+    }
+
+    struct RelationshipTypeInfo {
+        std::string name;
+        std::string origin_item_type_uuid;
+        std::string destination_item_type_uuid;
+        std::string forward_label;
+        std::string backward_label;
+        bool is_containment = false;
+    };
+    std::unordered_map<std::string, RelationshipTypeInfo> relationship_types_by_uuid;
+    for (const auto& row : relationship_types.rows) {
+        const std::string uuid = lookup_text(relationship_types.columns, row, "UUID");
+        if (uuid.empty()) continue;
+        RelationshipTypeInfo info;
+        info.name = lookup_text(relationship_types.columns, row, "Name");
+        info.origin_item_type_uuid = lookup_text(relationship_types.columns, row, "OrigItemTypeID");
+        info.destination_item_type_uuid = lookup_text(relationship_types.columns, row, "DestItemTypeID");
+        info.forward_label = lookup_text(relationship_types.columns, row, "ForwardLabel");
+        info.backward_label = lookup_text(relationship_types.columns, row, "BackwardLabel");
+        info.is_containment =
+            as_int(row.field_values[relationship_types.columns["iscontainment"]]) != 0;
+        relationship_types_by_uuid.emplace(lower(uuid), std::move(info));
+    }
+
+    std::vector<RelationshipClassDefinition> definitions;
+    definitions.reserve(relationships.rows.size());
+    for (const auto& row : relationships.rows) {
+        RelationshipClassDefinition def;
+        def.relationship_uuid = lookup_text(relationships.columns, row, "UUID");
+        def.relationship_type_uuid = lookup_text(relationships.columns, row, "Type");
+        def.origin_item_uuid = lookup_text(relationships.columns, row, "OriginID");
+        def.destination_item_uuid = lookup_text(relationships.columns, row, "DestID");
+        def.attributes = lookup_text(relationships.columns, row, "Attributes");
+        if (!def.attributes.empty()) {
+            const auto attrs = decode_relationship_class_attributes_xml(def.attributes);
+            def.cardinality = attrs.cardinality;
+            def.notification = attrs.notification;
+            def.origin_primary_key = attrs.origin_primary_key;
+            def.origin_foreign_key = attrs.origin_foreign_key;
+            def.destination_primary_key = attrs.destination_primary_key;
+            def.destination_foreign_key = attrs.destination_foreign_key;
+        }
+        const auto properties_it = relationships.columns.find("properties");
+        if (properties_it != relationships.columns.end() &&
+            properties_it->second < row.field_values.size()) {
+            def.properties = as_int(row.field_values[properties_it->second]);
+        }
+
+        const auto rel_type_it = relationship_types_by_uuid.find(lower(def.relationship_type_uuid));
+        if (rel_type_it != relationship_types_by_uuid.end()) {
+            def.relationship_type_name = rel_type_it->second.name;
+            def.origin_item_type_uuid = rel_type_it->second.origin_item_type_uuid;
+            def.destination_item_type_uuid = rel_type_it->second.destination_item_type_uuid;
+            def.forward_label = rel_type_it->second.forward_label;
+            def.backward_label = rel_type_it->second.backward_label;
+            def.is_containment = rel_type_it->second.is_containment;
+        }
+
+        const auto origin_type_it = item_types_by_uuid.find(lower(def.origin_item_type_uuid));
+        if (origin_type_it != item_types_by_uuid.end()) {
+            def.origin_item_type_name = origin_type_it->second.name;
+        }
+        const auto dest_type_it = item_types_by_uuid.find(lower(def.destination_item_type_uuid));
+        if (dest_type_it != item_types_by_uuid.end()) {
+            def.destination_item_type_name = dest_type_it->second.name;
+        }
+
+        const auto origin_item_it = items_by_uuid.find(lower(def.origin_item_uuid));
+        if (origin_item_it != items_by_uuid.end()) {
+            def.origin_item_name = origin_item_it->second.name;
+            def.origin_item_path = origin_item_it->second.catalog_path.empty()
+                ? origin_item_it->second.path : origin_item_it->second.catalog_path;
+        }
+        const auto dest_item_it = items_by_uuid.find(lower(def.destination_item_uuid));
+        if (dest_item_it != items_by_uuid.end()) {
+            def.destination_item_name = dest_item_it->second.name;
+            def.destination_item_path = dest_item_it->second.catalog_path.empty()
+                ? dest_item_it->second.path : dest_item_it->second.catalog_path;
+        }
+        definitions.push_back(std::move(def));
+    }
+    return definitions;
+}
+
+std::vector<DatasetGroupSummary> MetadataReader::summarize_dataset_groups(
+        const std::vector<LayerMetadata>& layers) {
+    std::map<std::string, DatasetGroupSummary> grouped;
+    for (const auto& layer : layers) {
+        const std::string path = layer.catalog_path.empty() ? layer.path : layer.catalog_path;
+        const std::string parent = parent_catalog_path(path);
+        if (parent.empty()) continue;
+        auto& summary = grouped[parent];
+        summary.group_path = parent;
+        summary.member_names.push_back(layer.name);
+        summary.member_paths.push_back(path);
+    }
+
+    std::vector<DatasetGroupSummary> result;
+    result.reserve(grouped.size());
+    for (auto& entry : grouped) {
+        if (entry.second.member_names.empty()) continue;
+        result.push_back(std::move(entry.second));
+    }
+    return result;
+}
+
+std::vector<DatasetGroupSummary> MetadataReader::read_dataset_group_summaries() const {
+    ParsedTableRows items;
+    if (!load_table_rows(resolver_, "GDB_Items", items)) return {};
+
+    std::vector<LayerMetadata> layers;
+    for (const auto& row : items.rows) {
+        LayerMetadata metadata;
+        metadata.name = lookup_text(items.columns, row, "Name");
+        metadata.path = lookup_text(items.columns, row, "Path");
+        metadata.physical_name = lookup_text(items.columns, row, "PhysicalName");
+        metadata.definition = lookup_text(items.columns, row, "Definition");
+        metadata.catalog_path = extract_tag_text(metadata.definition, "CatalogPath");
+        metadata.dataset_type = extract_tag_text(metadata.definition, "DatasetType");
+        if (metadata.catalog_path.empty() || metadata.catalog_path == "\\") continue;
+        if (metadata.dataset_type.empty()) continue;
+        layers.push_back(std::move(metadata));
+    }
+    return summarize_dataset_groups(layers);
 }
 
 } // namespace explorgdb

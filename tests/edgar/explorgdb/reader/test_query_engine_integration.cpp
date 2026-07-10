@@ -65,6 +65,31 @@ TEST_F(QueryEngineIntegrationTest, OpenReadScanAndQueryBboxOnGeneratedGdb) {
     const auto hits = engine.query_bbox(0.0, 0.0, 10.0, 10.0);
     ASSERT_EQ(hits.size(), 1u);
     EXPECT_EQ(hits.front(), 0u);
+
+    QueryRequest fid_request;
+    fid_request.kind = QueryKind::ReadByFid;
+    fid_request.fid = 0;
+    const auto fid_result = engine.query(fid_request);
+    ASSERT_EQ(fid_result.execution_path, "fid");
+    ASSERT_EQ(fid_result.matched_fids.size(), 1u);
+    ASSERT_TRUE(fid_result.record.has_value());
+
+    QueryRequest bbox_request;
+    bbox_request.kind = QueryKind::SpatialBbox;
+    bbox_request.xmin = 0.0;
+    bbox_request.ymin = 0.0;
+    bbox_request.xmax = 10.0;
+    bbox_request.ymax = 10.0;
+    const auto bbox_result = engine.query(bbox_request);
+    ASSERT_EQ(bbox_result.matched_fids.size(), 1u);
+    EXPECT_EQ(bbox_result.matched_fids.front(), 0u);
+    EXPECT_FALSE(bbox_result.execution_path.empty());
+
+    QueryRequest scan_request;
+    scan_request.kind = QueryKind::SequentialScan;
+    const auto scan_result = engine.query(scan_request);
+    ASSERT_EQ(scan_result.execution_path, "scan:sequential");
+    ASSERT_EQ(scan_result.matched_fids.size(), 2u);
 }
 
 TEST_F(QueryEngineIntegrationTest, MissingAttributeIndexIsExplicitAndReturnsEmpty) {
@@ -98,4 +123,128 @@ TEST_F(QueryEngineIntegrationTest, MissingAttributeIndexIsExplicitAndReturnsEmpt
     EXPECT_TRUE(engine.query_attribute_string("missing", "7", AttrOp::Eq).empty());
     EXPECT_NE(engine.capabilities().attribute_index.state, CapabilityState::Supported);
     EXPECT_FALSE(engine.capabilities().attribute_index.reason.empty());
+
+    QueryRequest attr_request;
+    attr_request.kind = QueryKind::AttributeDouble;
+    attr_request.index_name = "missing";
+    attr_request.double_value = 7.0;
+    attr_request.attr_op = AttrOp::Eq;
+    const auto attr_result = engine.query(attr_request);
+    EXPECT_TRUE(attr_result.matched_fids.empty());
+    EXPECT_EQ(attr_result.execution_path, "attribute:sequential");
+    EXPECT_EQ(attr_result.fallback_reason, "attribute index missing");
+}
+
+TEST_F(QueryEngineIntegrationTest, WhereClauseSupportsBasicAndFilters) {
+    const auto path = (std::filesystem::temp_directory_path() /
+                       "fast_gdb_query_engine_where.gdb").string();
+
+    GDALDataset* dataset = createGdb(path.c_str());
+    ASSERT_NE(dataset, nullptr);
+    OGRLayer* layer = dataset->CreateLayer("filter_table", nullptr, wkbNone, nullptr);
+    ASSERT_NE(layer, nullptr);
+
+    OGRFieldDefn name_field("name", OFTString);
+    OGRFieldDefn value_field("value", OFTInteger);
+    ASSERT_EQ(layer->CreateField(&name_field), OGRERR_NONE);
+    ASSERT_EQ(layer->CreateField(&value_field), OGRERR_NONE);
+
+    struct RowData { const char* name; int value; } rows[] = {
+        {"alpha", 1},
+        {"beta", 5},
+        {"beta", 8},
+    };
+    for (const auto& row : rows) {
+        OGRFeature* feature = OGRFeature::CreateFeature(layer->GetLayerDefn());
+        ASSERT_NE(feature, nullptr);
+        feature->SetField("name", row.name);
+        feature->SetField("value", row.value);
+        ASSERT_EQ(layer->CreateFeature(feature), OGRERR_NONE);
+        OGRFeature::DestroyFeature(feature);
+    }
+    GDALClose(dataset);
+
+    GdbCatalog catalog;
+    ASSERT_TRUE(catalog.scan(path));
+    CatalogResolver resolver(catalog);
+    ASSERT_TRUE(resolver.load());
+    const auto resolved = resolver.resolve("filter_table");
+    ASSERT_TRUE(resolved.has_value());
+
+    QueryEngine engine(catalog, *resolved);
+    ASSERT_TRUE(engine.open());
+
+    QueryRequest request;
+    request.kind = QueryKind::WhereClause;
+    request.where_clause = "name = 'beta' AND value >= 5";
+    const auto result = engine.query(request);
+    EXPECT_EQ(result.execution_path, "where:sequential");
+    ASSERT_EQ(result.matched_fids.size(), 2u);
+    EXPECT_EQ(result.matched_fids[0], 1u);
+    EXPECT_EQ(result.matched_fids[1], 2u);
+
+    QueryRequest bad_request;
+    bad_request.kind = QueryKind::WhereClause;
+    bad_request.where_clause = "missing = 1";
+    const auto bad_result = engine.query(bad_request);
+    EXPECT_TRUE(bad_result.matched_fids.empty());
+    EXPECT_EQ(bad_result.fallback_reason, "unknown field in where clause");
+}
+
+TEST_F(QueryEngineIntegrationTest, WhereClauseSupportsOrInAndParentheses) {
+    const auto path = (std::filesystem::temp_directory_path() /
+                       "fast_gdb_query_engine_where_or_in.gdb").string();
+
+    GDALDataset* dataset = createGdb(path.c_str());
+    ASSERT_NE(dataset, nullptr);
+    OGRLayer* layer = dataset->CreateLayer("filter_table_or", nullptr, wkbNone, nullptr);
+    ASSERT_NE(layer, nullptr);
+
+    OGRFieldDefn name_field("name", OFTString);
+    OGRFieldDefn value_field("value", OFTInteger);
+    ASSERT_EQ(layer->CreateField(&name_field), OGRERR_NONE);
+    ASSERT_EQ(layer->CreateField(&value_field), OGRERR_NONE);
+
+    struct RowData { const char* name; int value; } rows[] = {
+        {"alpha", 1},
+        {"beta", 5},
+        {"gamma", 8},
+        {"delta", 10},
+    };
+    for (const auto& row : rows) {
+        OGRFeature* feature = OGRFeature::CreateFeature(layer->GetLayerDefn());
+        ASSERT_NE(feature, nullptr);
+        feature->SetField("name", row.name);
+        feature->SetField("value", row.value);
+        ASSERT_EQ(layer->CreateFeature(feature), OGRERR_NONE);
+        OGRFeature::DestroyFeature(feature);
+    }
+    GDALClose(dataset);
+
+    GdbCatalog catalog;
+    ASSERT_TRUE(catalog.scan(path));
+    CatalogResolver resolver(catalog);
+    ASSERT_TRUE(resolver.load());
+    const auto resolved = resolver.resolve("filter_table_or");
+    ASSERT_TRUE(resolved.has_value());
+
+    QueryEngine engine(catalog, *resolved);
+    ASSERT_TRUE(engine.open());
+
+    QueryRequest request;
+    request.kind = QueryKind::WhereClause;
+    request.where_clause = "(name IN ('alpha', 'gamma') OR value >= 10) AND value != 5";
+    const auto result = engine.query(request);
+    EXPECT_EQ(result.execution_path, "where:sequential");
+    ASSERT_EQ(result.matched_fids.size(), 3u);
+    EXPECT_EQ(result.matched_fids[0], 0u);
+    EXPECT_EQ(result.matched_fids[1], 2u);
+    EXPECT_EQ(result.matched_fids[2], 3u);
+
+    QueryRequest unsupported;
+    unsupported.kind = QueryKind::WhereClause;
+    unsupported.where_clause = "name IN ('alpha') OR";
+    const auto unsupported_result = engine.query(unsupported);
+    EXPECT_TRUE(unsupported_result.matched_fids.empty());
+    EXPECT_EQ(unsupported_result.fallback_reason, "unsupported where clause");
 }
