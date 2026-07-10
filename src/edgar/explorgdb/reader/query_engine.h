@@ -54,7 +54,8 @@ public:
     // Spatial query: .spx candidate lookup followed by exact geometry/bbox filtering.
     // Missing or unparseable .spx falls back to sequential probing; a valid empty
     // index result remains an empty result and must not trigger a full scan.
-    std::vector<uint32_t> query_bbox(double xmin, double ymin, double xmax, double ymax);
+    std::vector<uint32_t> query_bbox(double xmin, double ymin, double xmax, double ymax,
+                                     bool* skipped_unsupported_curve = nullptr);
 
     std::vector<uint32_t> query_attribute_double(const std::string& index_name,
                                                  double value, AttrOp op);
@@ -73,7 +74,8 @@ public:
 private:
     const FieldDescriptor* geometry_field() const;
     bool feature_intersects(uint32_t fid, double xmin, double ymin,
-                            double xmax, double ymax);
+                            double xmax, double ymax,
+                            bool* skipped_unsupported_curve = nullptr);
     QueryResult query_sequential_scan() const;
     QueryResult query_spatial(const QueryRequest& request);
     QueryResult query_attribute(const QueryRequest& request);

@@ -111,6 +111,9 @@ public:
     bool geometry_intersects_bbox(const uint8_t* data, size_t size,
                                   double xmin, double ymin, double xmax, double ymax);
 
+    // 轻量检测：当前发布不支持 GeneralPolyline/GeneralPolygon 曲线描述符。
+    bool has_unsupported_curve_geometry(const uint8_t* data, size_t size);
+
 private:
     struct DecodeState {
         const uint8_t* ptr;
@@ -135,6 +138,7 @@ private:
 
     bool has_z_type(uint8_t base_type) const;
     bool has_m_type(uint8_t base_type) const;
+    bool has_curve_descriptors(uint8_t base_type, uint64_t geom_type) const;
     std::string geom_type_name(uint8_t base_type) const;
 
     double xorig_, yorig_, xyscale_;

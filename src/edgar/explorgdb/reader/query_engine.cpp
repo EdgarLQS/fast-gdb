@@ -466,7 +466,8 @@ const FieldDescriptor* QueryEngine::geometry_field() const {
 }
 
 bool QueryEngine::feature_intersects(uint32_t fid, double xmin, double ymin,
-                                     double xmax, double ymax) {
+                                     double xmax, double ymax,
+                                     bool* skipped_unsupported_curve) {
     const auto* geom_field = geometry_field();
     if (!geom_field || !parser_) return false;
 
@@ -480,11 +481,16 @@ bool QueryEngine::feature_intersects(uint32_t fid, double xmin, double ymin,
                            geom_field->zorig, geom_field->zscale,
                            geom_field->morig, geom_field->mscale,
                            has_z, has_m);
+    if (decoder.has_unsupported_curve_geometry(blob, size)) {
+        if (skipped_unsupported_curve != nullptr) *skipped_unsupported_curve = true;
+        return false;
+    }
     return decoder.intersects_with_peek(blob, size, xmin, ymin, xmax, ymax);
 }
 
 std::vector<uint32_t> QueryEngine::query_bbox(double xmin, double ymin,
-                                              double xmax, double ymax) {
+                                              double xmax, double ymax,
+                                              bool* skipped_unsupported_curve) {
     std::vector<uint32_t> candidates;
     const auto* geom_field = geometry_field();
     if (!parser_ || !geom_field) return candidates;
@@ -518,7 +524,9 @@ std::vector<uint32_t> QueryEngine::query_bbox(double xmin, double ymin,
     std::vector<uint32_t> result;
     result.reserve(candidates.size());
     for (uint32_t fid : candidates) {
-        if (feature_intersects(fid, xmin, ymin, xmax, ymax)) result.push_back(fid);
+        if (feature_intersects(fid, xmin, ymin, xmax, ymax, skipped_unsupported_curve)) {
+            result.push_back(fid);
+        }
     }
     std::sort(result.begin(), result.end());
     result.erase(std::unique(result.begin(), result.end()), result.end());
@@ -535,12 +543,18 @@ QueryResult QueryEngine::query_spatial(const QueryRequest& request) {
 
     const auto* spx = catalog_.find_spx(resolved_.id);
     result.execution_path = (spx != nullptr) ? "bbox:spx" : "bbox:sequential";
-    result.matched_fids = query_bbox(request.xmin, request.ymin, request.xmax, request.ymax);
+    bool skipped_unsupported_curve = false;
+    result.matched_fids = query_bbox(request.xmin, request.ymin, request.xmax, request.ymax,
+                                     &skipped_unsupported_curve);
     if (!spx) {
         result.fallback_reason = "spatial index missing; sequential scan used";
     } else if (capabilities_.spatial_index.state == CapabilityState::Degraded) {
         result.execution_path = "bbox:sequential";
         result.fallback_reason = capabilities_.spatial_index.reason;
+    }
+    if (skipped_unsupported_curve) {
+        if (!result.fallback_reason.empty()) result.fallback_reason += "; ";
+        result.fallback_reason += "curve geometry unsupported; skipped exact spatial filtering for curve records";
     }
     return result;
 }

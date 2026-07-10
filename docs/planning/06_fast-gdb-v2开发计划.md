@@ -1,132 +1,116 @@
-# 06 — fast-gdb v2 开发计划
+# 06 — fast-gdb v2 开发计划（历史）
 
-本文档承接 [02_GDAL功能对比矩阵.md](02_GDAL功能对比矩阵.md) 的 `9.1 下一步适配计划`。v1 已经把 fast-gdb 只读主路径合并到 main；v2 的目标是继续适配生产数据中会影响正确性的边界能力，而不是把 GDAL 做成默认运行时回退。
+**文档状态**：📚 历史开发计划，原范围已结束  
+**当前状态入口**：[00_规划文档状态索引.md](00_规划文档状态索引.md)
 
-## 1. v2 目标
+## 1. 原始目标
 
-fast-gdb v2 聚焦五类高优先级适配：
+v2 原计划聚焦会影响只读正确性的边界：
 
-| 顺序 | 目标 | 生产风险 | v2 期望结果 |
-|:---:|------|----------|-------------|
-| 1 | 旧记录 nullable bitmap 兼容 | schema 扩字段后旧记录字段错位 | 新增字段返回 null，旧字段保持正确 |
-| 2 | General 几何 bbox 对齐 | 全解码路径与 peek 路径 bbox 不一致 | General 线/面两条路径语义一致 |
-| 3 | 曲线几何读取 | 曲线段被当作普通线/面静默输出 | v2 先做到 `nCurves>0` 显式 unsupported；曲线段类型和参数还原保留为后续 gap |
-| 4 | Raster 字段标记 | 含 Raster 字段图层被误判为完整可生产 | 只做字段存在和 capability reason 标记，不读取像素数据 |
-| 5 | MultiPatch 标准表达 | 描述文本被当作生产 WKT 使用 | 输出标准 GeometryCollection / TIN / PolyhedralSurface，不再以 unsupported 作为 v2 完成结果 |
+1. nullable bitmap 旧记录兼容。
+2. General 几何 header 和 bbox 路径一致性。
+3. 曲线几何检测与安全失败。
+4. Raster 字段 capability 标记。
+5. MultiPatch 标准表达。
 
-v2 不处理完整 SQL 引擎、坐标重投影、写入生产化、Raster 像素读取、字段域和关系类。这些内容保留在后续阶段。
+该阶段的主要代码已经完成，但后续源码审阅发现部分状态曾被写得过于乐观。本文件按最终实际结果归档。
 
-## 2. 设计原则
+## 2. 最终结果
 
-- fast-gdb 继续作为默认只读主路径；GDAL 只作为测试 oracle、兼容性对照和人工校验工具。
-- 对无法完整表达的数据，优先返回明确 capability 状态，不允许静默输出可能错误的几何或字段。
-- 所有解析路径必须保持一致：`read_record_by_fid`、全量读取、`sequential_scan`、`peek_geometry_blob`、`peek_bbox` 不应各自维护不同的字段或几何跳过规则。
-- 每个 promoted 能力都必须有单测或集成测试覆盖，不能只依赖 CLI 人工观察。
+| 原任务 | 当前状态 | 实际结果 |
+|--------|:---:|----------|
+| nullable bitmap 旧记录兼容 | ✅ | 旧字段保持对齐，缺失新增字段返回 null |
+| General 线/面路径统一 | ⚠️ | 多条路径当前行为一致，但统一使用了错误的 `base_type >= 50` 判断；仍需按 Curve flag 修正 |
+| 曲线几何安全失败 | ⚠️ | 已有 `UNSUPPORTED_CURVE_GEOMETRY`，但必须先正确识别 Curve flag 才能可靠生效 |
+| 曲线类型和参数还原 | ⏸️ | 当前版本明确不实施 |
+| Raster 字段标记 | ✅ | capability degraded，不读取像素 |
+| MultiPatch WKT 语法 | ✅ | 可输出 `GEOMETRYCOLLECTION Z/ZM` |
+| MultiPatch part type 语义 | ❌ | 当前丢弃 part type，不能宣称完整支持 |
+| capability 文案 | ⚠️ | MultiPatch 仍被代码标记为 supported，需要修正定级或补语义实现 |
 
-## 3. 阶段计划
+## 3. 各阶段归档
 
 ### Phase 1：记录布局兼容
 
-状态：✅ 已实现。新增 `NullableBitmapCompatTest` 覆盖按 FID、全量解析、`sequential_scan` 和 `peek_geometry_blob`。
+状态：✅ 已完成。
 
-目标：先修复可能导致字段错位的记录解析问题。
-
-| 任务 | 修改范围 | 验收 |
-|------|----------|------|
-| nullable bitmap 安全读取 | `gdb_table.cpp` 的按 FID、全量读取、顺序扫描路径 | schema 扩字段后，旧记录仍能正确读取旧字段 |
-| 缺失新增字段统一返回 null | `FeatureRecord` / `FieldRef` 生成逻辑 | 新字段缺失时不读取越界、不污染后续字段 |
-| 合成 fixture 覆盖跨字节 bitmap | reader 测试 fixture | 7 nullable 字段扩到 9 nullable 字段时测试通过 |
-
-建议测试：
-
-```bash
-./build/bin/gdb_tutorial_test_runner --gtest_filter='GdbTableTest.*:FieldLayoutTest.*'
-```
+- nullable bitmap 可按实际旧记录布局安全收缩。
+- 新增 nullable 字段缺失时返回 null。
+- 已覆盖 FID、全量解析和顺序扫描路径。
 
 ### Phase 2：General 几何一致性
 
-状态：✅ 已实现。完整 decode、`peek_bbox`、`intersects_with_peek`、`geometry_intersects_bbox` 均统一读取 `nCurves`；`nCurves>0` 不再静默按普通线/面输出。
+状态：⚠️ 部分完成。
 
-目标：让 GeneralPolyline / GeneralPolygon 的轻量路径和完整解码路径保持一致。
+已完成：
 
-| 任务 | 修改范围 | 验收 |
-|------|----------|------|
-| 统一 `nCurves` 头部处理 | `gdb_geometry.cpp`、`peek_bbox` / `intersects_with_peek` 相关逻辑 | General 线/面的 bbox 在 peek 和 decode 路径一致 |
-| 增加 General 几何测试 | `tests/edgar/explorgdb/reader/test_geometry.cpp` | 全解码 WKT、peek bbox、空间过滤结果一致 |
-| 更新 capability 判断 | `CapabilityReport` | General 曲线能力能进入 degraded / unsupported |
+- decode、peek 和空间过滤路径采用一致的 header 消费规则。
+- `nCurves > 0` 时不再直接输出普通线面。
 
-建议测试：
+仍需修正：
 
-```bash
-./build/bin/gdb_tutorial_test_runner --gtest_filter='GeometryTest.*:CapabilityReportTest.*'
-```
+- `nCurves` 不是所有 General 线面都存在。
+- 只有 `geom_type & 0x20000000` 时才应读取。
+- 当前 fixture 也错误地为普通 General 线面无条件写入 `nCurves=0`。
 
-### Phase 3：曲线几何读取和 Raster 字段标记
+需要同步修改：
 
-状态：⚠️ 部分完成。Raster capability degraded 标记已完成；曲线几何当前完成显式保护，尚未还原 CircularArc / EllipticArc / Bezier 参数。
+1. `decode_polyline`
+2. `decode_polygon`
+3. `peek_bbox`
+4. `intersects_with_peek`
+5. `geometry_intersects_bbox`
+6. polygon PIP 二次解析
+7. General 几何测试 fixture
 
-目标：曲线几何不只做“存在检测”，而是读取 `GeneralPolyline` / `GeneralPolygon` 中的曲线段信息。Raster 本轮只做字段级标记和 capability reason，不进入像素数据读取。
+### Phase 3：曲线检测和 Raster
 
-| 任务 | 修改范围 | 验收 |
-|------|----------|------|
-| 曲线段 header 解析 | `gdb_geometry.cpp` 的 General 线/面解析路径 | 已读取 `nCurves`；`nCurves>0` 返回显式 unsupported，避免静默误输出 |
-| 曲线类型识别 | 新增曲线段结构或内部解析 helper | 未完成；保留为后续 gap |
-| 圆弧参数提取 | 曲线段解析 helper | 未完成；保留为后续 gap |
-| capability 状态更新 | `CapabilityReport::inspect` 和几何 schema 判断 | 含曲线图层不再被报告为完全 supported；若只能读取参数但不能输出标准 WKT，则为 degraded |
-| Raster 字段标记 | 字段扫描和 capability reason | 含 Raster 字段图层返回明确 degraded / unsupported；不尝试读取像素数据 |
-| reason 文案稳定化 | `capability_state_name` / 测试断言 | 上层可直接展示或记录 reason |
+状态：Raster ✅；曲线安全失败 ⚠️；曲线表达 ⏸️。
 
-建议测试：
+- Raster 字段 capability 标记已完成。
+- 曲线 payload、CircularArc、Bezier、EllipticArc 参数没有实现。
+- 当前版本只允许明确 unsupported，不允许静默线性化。
+- 曲线格式分析见 [09_fast-gdb曲线几何分析.md](09_fast-gdb曲线几何分析.md)。
 
-```bash
-./build/bin/gdb_tutorial_test_runner --gtest_filter='GeometryTest.*:CapabilityReportTest.*:QueryEngineTest.*'
-```
+### Phase 4：MultiPatch
 
-### Phase 4：MultiPatch 标准表达
+状态：⚠️ 部分完成。
 
-状态：✅ 已实现。MultiPatch / MultiPatchM 输出标准 `GEOMETRYCOLLECTION Z/ZM`，不再输出 `MultiPatch(...)` 描述文本。
+已完成：
 
-目标：停止把描述文本当作生产 WKT，并在 v2 内实现标准表达。实现期间可用 capability 保护边界，但 v2 完成标准必须是可输出标准几何。
+- XY/Z/M 数组读取。
+- 输出合法的 `GEOMETRYCOLLECTION Z/ZM` WKT 语法。
 
-| 任务 | 修改范围 | 验收 |
-|------|----------|------|
-| MultiPatch 部件读取完整化 | `gdb_geometry.cpp` | 读取 TriangleStrip、TriangleFan、OuterRing、InnerRing、FirstRing、Ring、Triangles 的部件类型和坐标 |
-| 标准表达方案实现 | `gdb_geometry.cpp` | 采用 GeometryCollection、TIN 或 PolyhedralSurface 之一，并说明选择理由 |
-| capability 状态收敛 | `CapabilityReport` | 标准表达实现后，普通 MultiPatch 不再返回 unsupported；无法覆盖的特殊部件必须给出 reason |
-| 标准输出测试 | `test_geometry.cpp` | MultiPatch / MultiPatchM / GeneralMultiPatch 输出可被后续 GIS 工具链识别的标准 WKT |
+未完成：
 
-建议测试：
+- TriangleStrip 和 TriangleFan 重建。
+- OuterRing / InnerRing / FirstRing / Ring 关系。
+- Triangles 分组。
+- TIN / PolyhedralSurface 等价语义。
 
-```bash
-./build/bin/gdb_tutorial_test_runner --gtest_filter='GeometryTest.*:CapabilityReportTest.*'
-```
+因此本阶段不能标记为“完整标准表达完成”。当前发布必须把 MultiPatch 视为 degraded，除非补齐 part type 语义。
 
-## 4. v2 验收标准
+## 4. 原 v2 验收项的最终定级
 
-v2 完成时必须满足：
+| 验收项 | 最终状态 |
+|--------|:---:|
+| nullable bitmap 兼容 | ✅ |
+| DateTimeWithOffset 物理跳过一致 | ✅ |
+| General 多路径一致 | ✅，但共同格式判断仍需修正 |
+| 曲线不静默误输出 | ⚠️，依赖 Curve flag 修正 |
+| Raster capability 标记 | ✅ |
+| MultiPatch WKT 语法 | ✅ |
+| MultiPatch 完整语义 | ❌ |
+| 真实 FileGDB 验证 | 🧪 未执行 |
 
-| 类别 | 标准 |
-|------|------|
-| 正确性 | 旧记录 bitmap 扩容、General 几何 bbox、曲线读取、Raster 字段标记、MultiPatch 标准表达均有测试覆盖 |
-| 架构 | 上层仍通过 `CapabilityReport` 和 `QueryEngine` 判断能力，不新增 GDAL 运行时 fallback |
-| 文档 | 功能矩阵、项目状态、实施说明同步更新，不把 unsupported 能力写成 supported |
-| 测试 | 新增专项、reader smoke、系统表测试通过 |
+## 5. 当前归属
 
-推荐最终验证：
+原 v2 计划已经关闭，剩余任务转入当前发布收口：
 
-```bash
-cmake -S . -B build
-cmake --build build --target gdb_tutorial_test_runner
-./build/bin/gdb_tutorial_test_runner --gtest_filter='CapabilityReportTest.*:FieldLayoutTest.*:GeometryTest.*:GdbTableTest.*:QueryEngineTest.*:QueryEngineIntegrationTest.*'
-./build/bin/gdb_tutorial_test_runner --gtest_filter='GdbCatalogTest.FindById:GdbCatalogTest.FindSpx:GdbCatalogTest.FindAtx:GdbCatalogTest.FindAllAtx:FullAuditTest.SystemCatalogRecordsEndToEnd:GdbTutorialFixture.T007_*'
-```
+- General Curve flag/header 修正。
+- MultiPatch capability 定级或语义补齐。
+- 普通真实 FileGDB 回归。
+- 真实曲线 FileGDB 边界回归。
+- GeneralMultiPoint 独立测试。
 
-## 5. 合并前检查单
-
-- [x] `nullable bitmap` 兼容旧记录，新增字段缺失统一返回 null。
-- [x] General 线/面的 decode bbox、peek bbox、空间过滤结果一致。
-- [ ] 曲线几何可读取曲线段类型和参数；圆弧可输出圆心、半径、起止角，无法稳定还原时保留 raw segment 和 reason。（当前仅完成显式 unsupported 保护）
-- [x] Raster 字段只做 capability 标记，不读取像素数据。
-- [x] MultiPatch 输出标准 GeometryCollection / TIN / PolyhedralSurface，不再以描述文本或 unsupported 作为 v2 完成结果。
-- [x] 文档同步更新：功能矩阵、项目状态、v2 计划。
-- [x] 构建和专项测试通过。
+当前执行文件：[07_fast-gdb-v2后续统一计划.md](07_fast-gdb-v2后续统一计划.md)。

@@ -36,15 +36,15 @@ CapabilityReport CapabilityReport::inspect(const GdbCatalog& catalog,
         case GdbGeomType::GeneralPolygon:
             report.curve_geometry = {
                 CapabilityState::Degraded,
-                "general polyline/polygon may contain curve segments; fast-gdb preserves detection but does not linearize curves"
+                "general polyline/polygon may contain curve segments; fast-gdb detects unsupported curve descriptors and does not linearize them"
             };
             break;
         case GdbGeomType::MultiPatch:
         case GdbGeomType::MultiPatchM:
         case GdbGeomType::GeneralMultiPatch:
             report.multipatch = {
-                CapabilityState::Supported,
-                "MultiPatch is exposed as standard GEOMETRYCOLLECTION Z/ZM WKT"
+                CapabilityState::Degraded,
+                "MultiPatch coordinates are exposed as GEOMETRYCOLLECTION Z/ZM, but part type and surface topology are not preserved"
             };
             break;
         default:

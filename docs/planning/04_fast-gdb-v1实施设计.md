@@ -1,93 +1,91 @@
-# fast-gdb v1 实施说明与合并状态
+# 04 — fast-gdb v1 实施说明与合并状态（历史）
 
-实施分支：`feature/fast-gdb-plan`（已合并 main，保留历史说明）
+**文档状态**：📚 已合并实施记录  
+**实施分支**：`feature/fast-gdb-plan`（已合并 `main`）  
+**当前状态入口**：[00_规划文档状态索引.md](00_规划文档状态索引.md)
 
-## 目标
+## 1. 本文用途
 
-本阶段仅收敛 fast-gdb 只读主路径，不引入 GDAL 运行时 fallback，不扩大到写入生产化、MultiPatch 标准 WKT、完整 GDB_Items XML 解析或坐标重投影。
+本文记录 v1 只读主路径的实施结果。原分支已经合并，因此原“合并前剩余门禁”不再是当前待办。当前发布门禁统一见 [08_fast-gdb只读发布收口.md](08_fast-gdb只读发布收口.md)。
 
-## 当前已完成
+## 2. v1 已完成内容
 
-### 1. 字段物理布局
+### 2.1 字段物理布局
 
-- `field_layout.h` 是字段物理宽度和跳过语义的统一来源。
-- `DateTimeWithOffset` 的物理宽度为 10 字节：`double + int16 UTC offset minutes`。
-- `peek_geometry_blob()` 通过 `skip_field_value()` 跳过前置字段。
-- `read_record_by_fid()`、全量记录读取和 `sequential_scan()` 通过 `fixed_physical_width()` 共享固定字段物理宽度。
-- `gdb_table.cpp` 中历史 peek 实现已删除，CMake 不再使用符号重命名兼容层。
-- 已补 `DateTimeWithOffsetBeforeGeometry_*` 测试，覆盖普通读取、几何 peek 和顺序扫描。
+- `field_layout.h` 统一字段物理宽度和跳过语义。
+- `DateTimeWithOffset` 按 `double + int16` 消费 10 字节。
+- `peek_geometry_blob()` 使用统一跳过逻辑。
+- `read_record_by_fid()`、全量记录读取和 `sequential_scan()` 共享固定字段宽度规则。
+- 历史 peek 重复实现和 CMake 符号重命名兼容层已删除。
+- 已有 `DateTimeWithOffsetBeforeGeometry_*` 自动化测试。
 
-### 2. CatalogResolver
+### 2.2 CatalogResolver
 
-- 通过 `GDB_SystemCatalog` 的 `Name/ObjectClassID` 建立大小写不敏感映射。
-- 通过表名定位 `GDB_SpatialRefs`、`GDB_Items` 等系统表，不依赖固定业务表编号。
+- 通过 `GDB_SystemCatalog` 建立大小写不敏感映射。
+- 通过表名定位 `GDB_SpatialRefs`、`GDB_Items` 和用户表。
+- 不依赖固定业务表编号。
 
-### 3. CapabilityReport
+### 2.3 CapabilityReport
 
-- 作为图层是否适合 fast-gdb 处理的统一判断入口。
-- 明确报告 SRS、曲线、MultiPatch、Raster、空间索引和属性索引能力。
-- `.spx` 缺失或解析失败时标记为 degraded，并由查询层降级顺序扫描。
+- 已成为图层能力判断入口。
+- 报告 SRS、曲线、MultiPatch、Raster、空间索引和属性索引状态。
+- `.spx` 缺失或解析失败时可明确降级。
 
-### 4. SRS 元数据
+当前补充说明：MultiPatch 在代码中仍被标记为 supported，但实际只提供部分语义，当前发布收口应调整定级或实现。
 
-- 已实现从 `GDB_SpatialRefs` 输出 `WKT/WKID/LatestWKID/SRSName`。
-- 当前不执行坐标转换或重投影。
-- 完整 `GDB_Items` Definition XML 解析仍属于后续阶段。
+### 2.4 SRS 和元数据
 
-### 5. QueryEngine
+v1 当时完成：
+
+- WKT、WKID、LatestWKID、SRSName。
+- 图层 Definition XML 基础读取。
+
+后续阶段已经补齐：
+
+- coded/range domain。
+- Metadata item 风格接口。
+- Feature Dataset 摘要。
+- relationship summary 和 definition。
+
+坐标转换和重投影仍不在 fast-gdb reader 内实现。
+
+### 2.5 QueryEngine
 
 - 已封装 `open/read_by_fid/scan/query_bbox`。
-- 空间查询优先使用 `.spx`，索引缺失或解析失败时在 fast-gdb 内部降级顺序扫描。
-- 属性查询支持 `.atx` 数值和字符串入口；无对应索引时返回空结果，能力状态由 `CapabilityReport` 明确表达。
-- 集成测试使用 GDAL 仅生成临时 FileGDB fixture，再由 fast-gdb 自身执行目录解析、打开、读取、扫描和 bbox 查询；生产路径没有 GDAL fallback。
+- 已扩展属性索引和 WHERE 子集入口。
+- 空间查询优先使用 `.spx`，缺失或失败时明确使用顺序过滤。
+- 生产路径没有 GDAL fallback。
 
-## 合并前剩余门禁
+## 3. v1 当时的非目标及后续状态
 
-- 在本地执行配置和构建。
-- 执行新增专项、计划 smoke 和系统表测试。
-- 同步当前 `main` 的两个非 fast-gdb 提交后再次执行专项测试。
-- 确认 `git status --short --branch` 仅包含计划内变更；仓库外层日志不纳入 fast-gdb 功能提交。
+| 原非目标 | 当前状态 |
+|----------|----------|
+| GDAL 运行时 fallback | 继续不实施 |
+| 写入生产化 | writer 主数据直写已实现；系统表更新仍未完成 |
+| MultiPatch 标准 WKT | 已有标准 WKT 语法；完整 part type 语义仍未实现 |
+| 曲线标准化 | 当前版本仍不实施 |
+| 完整 GDB_Items XML | 常用 domain/relationship/Feature Dataset 已补齐 |
+| 坐标重投影 | 继续由上层 GDAL / PROJ 处理 |
 
-## 本阶段明确不做
+## 4. 原合并门禁状态
 
-- GDAL 运行时 fallback。
-- 写入路径生产化。
-- MultiPatch 标准 WKT 完整支持。
-- 曲线几何完整标准化。
-- 完整 `GDB_Items` XML 生产级解析。
-- 坐标重投影。
-- 修复既有小 `.spx` fixture 或缺失 `test_spatial_gdb.gdb` 测试数据。
+原分支已经合并，因此以下项目仅作为历史记录：
 
-## 测试计划
+- 配置和构建。
+- v1 专项、smoke、系统表测试。
+- 同步当时的 `main`。
+- 检查分支改动范围。
 
-### 构建
+这些门禁不应继续以未勾选项目出现在当前发布清单中。
 
-```bash
-cmake -S . -B build
-cmake --build build --target gdb_tutorial_test_runner
-```
+## 5. 当前遗留问题
 
-### 新增专项
+v1 合并并不代表当前 reader 已完成发布验收。当前仍需：
 
-```bash
-./build/bin/gdb_tutorial_test_runner --gtest_filter='FieldLayoutTest.*:DateTimeWithOffsetBeforeGeometry_*:CatalogResolverTest.*:CapabilityReportTest.*:MetadataReaderTest.*:QueryEngineTest.*:QueryEngineIntegrationTest.*'
-```
+1. 修正 General Curve flag/header 规则。
+2. 用普通真实 FileGDB 执行回归。
+3. 用真实曲线 FileGDB 验证明确 unsupported。
+4. 修正 MultiPatch capability 定级或补齐 part type 语义。
+5. 增加 GeneralMultiPoint 独立测试。
 
-### 计划 smoke
-
-```bash
-./build/bin/gdb_tutorial_test_runner --gtest_filter='GdbTableTest.HeaderVersion:GdbTableTest.SystemCatalogFields:GdbTableTest.GeometryFieldWKT:GdbTableTest.ReadRecordByFid_Basic:GeometryTest.*:AttributeIndexTest.*:SpatialIndexTest.ParseValidLarge:SpatialIndexTest.QuerySmallBbox:SpatialIndexTest.ParseNonexistent:SpatialIndexTest.ParseTruncated'
-```
-
-### 元数据和系统表
-
-```bash
-./build/bin/gdb_tutorial_test_runner --gtest_filter='GdbCatalogTest.FindById:GdbCatalogTest.FindSpx:GdbCatalogTest.FindAtx:GdbCatalogTest.FindAllAtx:FullAuditTest.SystemCatalogRecordsEndToEnd:GdbTutorialFixture.T007_*'
-```
-
-## 准入标准
-
-1. 主路径可构建。
-2. 新增专项、计划 smoke 和系统表测试通过；已知 fixture 缺失单独记录。
-3. 文档与实际能力一致，不把后续阶段能力描述为已完成。
-4. `git status --short --branch` 只包含本计划内变更；仓库外层日志不纳入 fast-gdb 功能提交。
+详见 [07_fast-gdb-v2后续统一计划.md](07_fast-gdb-v2后续统一计划.md)。

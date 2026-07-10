@@ -1,36 +1,53 @@
-# fast-gdb 合并前检查单
+# 05 — fast-gdb v1 合并检查单（历史归档）
 
-## 已完成的代码收敛
+**文档状态**：📚 已归档  
+**适用范围**：原 `feature/fast-gdb-plan` 合并门禁  
+**当前发布检查单**：[08_fast-gdb只读发布收口.md](08_fast-gdb只读发布收口.md)
 
-- [x] `gdb_table.cpp` 已删除历史 `peek_geometry_blob` 实现。
-- [x] CMake 已删除 `EXPLORGDB_RENAME_LEGACY_PEEK` 符号重命名兼容层。
-- [x] `read_record_by_fid`、全量记录读取和 `sequential_scan` 通过 `fixed_physical_width()` 共享固定字段物理宽度语义。
-- [x] 公开 `peek_geometry_blob` 通过 `skip_field_value()` 跳过非几何字段。
-- [x] `DateTimeWithOffset` 在全部读取路径均消费 10 字节。
-- [x] `QueryEngine` 测试覆盖生成 GDB 后的 `open/read_by_fid/scan/query_bbox` 主路径。
-- [x] 无 `.atx` 时返回空结果，且 capability 状态和 reason 明确。
-- [x] 临时 GitHub Actions 工作流已删除，不纳入最终 PR。
+## 1. 归档说明
 
-## 合并前仍需本地执行
+原 v1 分支已经合并 `main`。本文件中的构建、同步和 `git status` 项目属于当时的分支操作，不再作为当前未完成任务，也不应继续显示为当前 release blocker。
 
-- [ ] `cmake -S . -B build`
-- [ ] `cmake --build build --target gdb_tutorial_test_runner`
-- [ ] 新增专项测试通过。
-- [ ] 计划 smoke 通过。
-- [ ] 元数据/系统表测试通过。
-- [ ] `git status --short --branch` 仅包含计划内改动。
-- [ ] 同步当前 `main` 后再次构建和执行专项测试。
+## 2. 原合并时已完成的代码收敛
 
-## 非阻塞记录
+- [x] 删除历史重复 `peek_geometry_blob` 实现。
+- [x] 删除 `EXPLORGDB_RENAME_LEGACY_PEEK` 兼容层。
+- [x] 固定宽度字段使用统一物理布局。
+- [x] 公开 peek 路径使用统一字段跳过规则。
+- [x] DateTimeWithOffset 在主要读取路径消费 10 字节。
+- [x] QueryEngine 覆盖 open、FID、scan 和 bbox 主路径。
+- [x] 缺少 `.atx` 时有明确状态和 reason。
+- [x] 临时 GitHub Actions 工作流未进入最终合并。
 
-- 既有小 `.spx` fixture 问题。
-- 缺失 `test_spatial_gdb.gdb` 测试数据路径。
-- 仓库外层本地日志不纳入本分支。
+## 3. 原合并门禁
 
-## 范围外
+以下项目已随原分支合并结束，不再逐项追踪：
 
-- GDAL 运行时 fallback。
-- 写入生产化。
-- MultiPatch 标准 WKT。
-- 完整 GDB_Items XML 生产级解析。
-- 坐标重投影。
+- 本地 CMake 配置和编译。
+- v1 新增专项测试。
+- 当时的 smoke 和系统表测试。
+- 同步当时的 `main`。
+- 检查原分支改动范围。
+
+历史检查单没有保存完整本地输出，因此不能用它证明当前分支测试已通过。
+
+## 4. 当前需要重新执行的门禁
+
+当前 `chore/fast-gdb-release-hardening` 分支必须使用新的发布清单：
+
+- [ ] General Curve flag/header 修正和专项测试。
+- [ ] MultiPatch capability 定级修正或语义补齐。
+- [ ] 普通真实 FileGDB 回归。
+- [ ] 真实曲线 FileGDB 边界回归。
+- [ ] 当前分支专项测试。
+- [ ] 当前分支全量测试。
+- [ ] 最终文档一致性检查。
+
+详细命令见 [08_fast-gdb只读发布收口.md](08_fast-gdb只读发布收口.md)。
+
+## 5. 当前仍然有效的范围原则
+
+- 不引入默认 GDAL 运行时 fallback。
+- reader 发布不等于 writer 生产化完成。
+- 不把 WKT 语法可输出等同于完整几何语义支持。
+- 未运行的本地或真实数据测试不能标记为已通过。

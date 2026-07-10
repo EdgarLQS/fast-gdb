@@ -4,6 +4,7 @@
 
 #include <gtest/gtest.h>
 #include "gdb_spatial_index.h"
+#include "../test_paths.h"
 #include <filesystem>
 #include <fstream>
 
@@ -13,11 +14,12 @@ using namespace explorgdb;
 // ── 测试数据路径 ──
 
 static const std::string kSmallSpx =
-    "../test_data/gdb/test_spatial_gdb.gdb/test_spatial_gdb.gdb/a0000000c.spx";
+    explorgdb_test_paths::test_data_path(
+        "test_data/gdb/test_spatial_gdb.gdb/test_spatial_gdb.gdb/a0000000c.spx").string();
 
 static const std::string kLargeSpx =
-    "/Users/edgarlqs/Downloads/daydaydaywork/dailyWork/convert/gdal/"
-    "fast_gdb/test_data/large/large_test.gdb/a00000009.spx";
+    explorgdb_test_paths::test_data_path(
+        "test_data/large/large_test.gdb/a00000009.spx").string();
 
 // ── parse() 测试 ──
 

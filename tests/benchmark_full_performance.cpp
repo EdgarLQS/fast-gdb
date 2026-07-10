@@ -104,12 +104,8 @@ protected:
             {10000000, "10M", test_data_dir + "/perf_10m.gdb"}
         };
 
-        // 为每个 GDB 生成独立路径（避免测试间干扰）
-        // 只清理小规模数据（< 1M），10M 数据保留以复用
         for (auto& cfg : configs) {
-            if (cfg.count <= 1000000) {
-                fs::remove_all(cfg.gdb_path);
-            }
+            fs::remove_all(cfg.gdb_path);
         }
     }
 
@@ -171,6 +167,8 @@ protected:
         Timing t;
         auto t_total = Clock::now();
 
+        fs::remove_all(gdb_path);
+
         // 创建 schema
         auto t0 = Clock::now();
         CreateSchema(gdb_path);
@@ -225,6 +223,8 @@ protected:
     Timing GenerateWithBatchWriter(int count, const std::string& gdb_path) {
         Timing t;
         auto t_total = Clock::now();
+
+        fs::remove_all(gdb_path);
 
         // 创建 schema
         auto t0 = Clock::now();
@@ -286,6 +286,8 @@ protected:
     Timing GenerateWithWriter(int count, const std::string& gdb_path) {
         Timing t;
         auto t_total = Clock::now();
+
+        fs::remove_all(gdb_path);
 
         // 先用 GDAL 创建 schema
         auto t0 = Clock::now();

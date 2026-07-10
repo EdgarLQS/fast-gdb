@@ -22,9 +22,23 @@ TEST(CapabilityReportTest, UnsupportedGeometryBlocksLayer) {
 TEST(CapabilityReportTest, DegradedRasterAndCurveRemainReadable) {
     CapabilityReport report;
     report.curve_geometry = {CapabilityState::Degraded, "curves are explicit"};
-    report.multipatch = {CapabilityState::Supported, "standard WKT"};
+    report.multipatch = {CapabilityState::Supported, "not a multipatch layer"};
     report.raster = {CapabilityState::Degraded, "raster pixels are not read"};
     EXPECT_TRUE(report.can_read_layer());
+}
+
+TEST(CapabilityReportTest, DegradedMultiPatchRemainsReadableWithExplicitBoundary) {
+    CapabilityReport report;
+    report.curve_geometry = {CapabilityState::Supported, "none"};
+    report.multipatch = {
+        CapabilityState::Degraded,
+        "coordinates exposed; part type and surface topology are not preserved"
+    };
+    report.raster = {CapabilityState::Supported, "none"};
+
+    EXPECT_TRUE(report.can_read_layer());
+    EXPECT_EQ(report.multipatch.state, CapabilityState::Degraded);
+    EXPECT_NE(report.multipatch.reason.find("topology"), std::string::npos);
 }
 
 TEST(CapabilityReportTest, StateNamesAreStable) {

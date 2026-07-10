@@ -734,7 +734,7 @@ inline std::vector<uint8_t> build_geom_multipatch_m() {
     return buf;
 }
 
-// 构造 GeneralPolyline (type=50): like Polyline but with nCurves varuint
+// 构造 GeneralPolyline (type=50): like Polyline; no curve flag means no nCurves header
 // Z/M flags from high bits of geom_type
 // Plain GeneralPolyline (no Z/M): geom_type = 50
 inline std::vector<uint8_t> build_geom_general_polyline() {
@@ -742,7 +742,6 @@ inline std::vector<uint8_t> build_geom_general_polyline() {
     write_varuint(buf, 50);  // GeneralPolyline (no Z/M)
     write_varuint(buf, 3);   // nPoints
     write_varuint(buf, 1);   // nParts
-    write_varuint(buf, 0);   // nCurves = 0
     // BBox
     write_varuint(buf, 1); write_varuint(buf, 1);
     write_varuint(buf, 1000); write_varuint(buf, 1000);
@@ -753,13 +752,12 @@ inline std::vector<uint8_t> build_geom_general_polyline() {
     return buf;
 }
 
-// 构造 GeneralPolygon (type=51): like Polygon but with nCurves
+// 构造 GeneralPolygon (type=51): like Polygon; no curve flag means no nCurves header
 inline std::vector<uint8_t> build_geom_general_polygon() {
     std::vector<uint8_t> buf;
     write_varuint(buf, 51);  // GeneralPolygon (no Z/M)
     write_varuint(buf, 4);   // nPoints
     write_varuint(buf, 1);   // nParts
-    write_varuint(buf, 0);   // nCurves = 0
     // BBox
     write_varuint(buf, 1); write_varuint(buf, 1);
     write_varuint(buf, 1000); write_varuint(buf, 1000);

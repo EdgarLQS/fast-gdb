@@ -395,7 +395,6 @@ TEST(GeometryTest, GeneralPolylineWithZ) {
     explorgdb_test::write_varuint(buf, 50 | 0x80000000ULL);  // GeneralPolyline Z
     explorgdb_test::write_varuint(buf, 3);   // nPoints
     explorgdb_test::write_varuint(buf, 1);   // nParts
-    explorgdb_test::write_varuint(buf, 0);   // nCurves
     // BBox
     explorgdb_test::write_varuint(buf, 1); explorgdb_test::write_varuint(buf, 1);
     explorgdb_test::write_varuint(buf, 1000); explorgdb_test::write_varuint(buf, 1000);
@@ -418,7 +417,7 @@ TEST(GeometryTest, GeneralPolylineWithZ) {
 
 TEST(GeometryTest, GeneralPolylineWithCurvesIsExplicitlyUnsupported) {
     std::vector<uint8_t> buf;
-    explorgdb_test::write_varuint(buf, 50);
+    explorgdb_test::write_varuint(buf, 50 | 0x20000000ULL);
     explorgdb_test::write_varuint(buf, 2);
     explorgdb_test::write_varuint(buf, 1);
     explorgdb_test::write_varuint(buf, 1);
@@ -431,7 +430,7 @@ TEST(GeometryTest, GeneralPolylineWithCurvesIsExplicitlyUnsupported) {
 
 TEST(GeometryTest, GeneralPolygonWithCurvesIsExplicitlyUnsupported) {
     std::vector<uint8_t> buf;
-    explorgdb_test::write_varuint(buf, 51);
+    explorgdb_test::write_varuint(buf, 51 | 0x20000000ULL);
     explorgdb_test::write_varuint(buf, 4);
     explorgdb_test::write_varuint(buf, 1);
     explorgdb_test::write_varuint(buf, 2);
@@ -440,6 +439,25 @@ TEST(GeometryTest, GeneralPolygonWithCurvesIsExplicitlyUnsupported) {
     auto geom = decoder.decode(buf.data(), buf.size());
     EXPECT_NE(geom.wkt.find("UNSUPPORTED_CURVE_GEOMETRY"), std::string::npos);
     EXPECT_NE(geom.wkt.find("nCurves=2"), std::string::npos);
+}
+
+TEST(GeometryTest, GeneralWithoutCurveFlagIsNotUnsupportedCurve) {
+    auto buf = explorgdb_test::build_geom_general_polyline();
+    auto decoder = make_decoder_2d();
+    EXPECT_FALSE(decoder.has_unsupported_curve_geometry(buf.data(), buf.size()));
+}
+
+TEST(GeometryTest, GeneralCurveSpatialFilterFailsClosed) {
+    std::vector<uint8_t> buf;
+    explorgdb_test::write_varuint(buf, 50 | 0x20000000ULL);
+    explorgdb_test::write_varuint(buf, 2);  // nPoints
+    explorgdb_test::write_varuint(buf, 1);  // nParts
+    explorgdb_test::write_varuint(buf, 1);  // nCurves
+
+    auto decoder = make_decoder_2d();
+    EXPECT_TRUE(decoder.has_unsupported_curve_geometry(buf.data(), buf.size()));
+    EXPECT_FALSE(decoder.intersects_with_peek(buf.data(), buf.size(), -1.0, -1.0, 1.0, 1.0));
+    EXPECT_FALSE(decoder.geometry_intersects_bbox(buf.data(), buf.size(), -1.0, -1.0, 1.0, 1.0));
 }
 
 // ── peek_bbox 测试 ──

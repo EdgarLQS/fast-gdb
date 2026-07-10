@@ -117,6 +117,11 @@ bool GdbGeomDecoder::has_m_type(uint8_t base_type) const {
            base_type == 25 || base_type == 28 || base_type == 31;
 }
 
+bool GdbGeomDecoder::has_curve_descriptors(uint8_t base_type, uint64_t geom_type) const {
+    return (base_type == 50 || base_type == 51) &&
+           (geom_type & 0x20000000ULL) != 0;
+}
+
 std::string GdbGeomDecoder::geom_type_name(uint8_t base_type) const {
     switch (base_type) {
         case 0:  return "POINT";         // NULL → EMPTY
@@ -285,7 +290,7 @@ GdbGeometry GdbGeomDecoder::decode_polyline(DecodeState& s, uint8_t base_type, b
 
     uint64_t nParts = read_varuint(s);
     uint64_t nCurves = 0;
-    if (base_type >= 50) nCurves = read_varuint(s);
+    if (has_curve_descriptors(base_type, s.geom_type)) nCurves = read_varuint(s);
     if (nCurves > 0) {
         geom.wkt = "UNSUPPORTED_CURVE_GEOMETRY(nCurves=" + std::to_string(nCurves) + ")";
         return geom;
@@ -391,7 +396,7 @@ GdbGeometry GdbGeomDecoder::decode_polygon(DecodeState& s, uint8_t base_type, bo
 
     uint64_t nParts = read_varuint(s);
     uint64_t nCurves = 0;
-    if (base_type >= 50) nCurves = read_varuint(s);
+    if (has_curve_descriptors(base_type, s.geom_type)) nCurves = read_varuint(s);
     if (nCurves > 0) {
         geom.wkt = "UNSUPPORTED_CURVE_GEOMETRY(nCurves=" + std::to_string(nCurves) + ")";
         return geom;
@@ -662,6 +667,25 @@ GdbGeometry GdbGeomDecoder::decode_from_field(const uint8_t* data, size_t data_s
     return decode(data + prefix_len, data_size - prefix_len);
 }
 
+bool GdbGeomDecoder::has_unsupported_curve_geometry(const uint8_t* data, size_t size) {
+    if (data == nullptr || size == 0) return false;
+
+    DecodeState s;
+    s.ptr = data;
+    s.end = data + size;
+    s.geom_type = read_varuint(s);
+
+    const uint8_t base_type = s.geom_type & 0xFF;
+    if (!has_curve_descriptors(base_type, s.geom_type)) return false;
+
+    const uint64_t nPoints = read_varuint(s);
+    if (nPoints == 0 || s.ptr >= s.end) return false;
+
+    read_varuint(s);  // nParts
+    const uint64_t nCurves = read_varuint(s);
+    return nCurves > 0;
+}
+
 // ── 轻量 bbox peek：只读类型头 + 4 个 bbox varuints ──
 // 不读取所有坐标点，O(1) varint 操作
 // 注意：bbox varuint 解码公式 = raw / scale + origin（不同于点坐标的 (raw-1)/scale + origin）
@@ -719,8 +743,8 @@ std::optional<GdbBbox> GdbGeomDecoder::peek_bbox(const uint8_t* data, size_t siz
         read_varuint(s);  // nPoints
         if (s.ptr >= s.end) return std::nullopt;
         read_varuint(s);  // nParts
-        // General 类型可能有 nCurves（跳过）
-        if (base_type >= 50) read_varuint(s);
+        // General 曲线类型才有 nCurves（跳过）
+        if (has_curve_descriptors(base_type, s.geom_type)) read_varuint(s);
         // 读 4 bbox varuints
         uint64_t vxmin = read_varuint(s);
         uint64_t vymin = read_varuint(s);
@@ -844,7 +868,7 @@ bool GdbGeomDecoder::intersects_with_peek(const uint8_t* data, size_t size,
         nPoints = read_varuint(s);
         if (s.ptr >= s.end) return false;
         nParts = read_varuint(s);
-        if (base_type >= 50) read_varuint(s);  // nCurves
+        if (has_curve_descriptors(base_type, s.geom_type)) return false;
     }
 
     if (s.ptr + 4 > s.end) return false;  // 至少 4 字节给 4 个 varuint（每个最小 1 字节）
@@ -973,7 +997,7 @@ bool GdbGeomDecoder::intersects_with_peek(const uint8_t* data, size_t size,
         s.ptr = data;
         s.geom_type = read_varuint(s);
         read_varuint(s); read_varuint(s);
-        if (base_type >= 50) read_varuint(s);
+        if (has_curve_descriptors(base_type, s.geom_type)) return false;
         read_varuint(s); read_varuint(s); read_varuint(s); read_varuint(s);
         std::vector<uint64_t> part_sizes2(nParts);
         sum = 0;
@@ -1084,7 +1108,7 @@ bool GdbGeomDecoder::geometry_intersects_bbox(const uint8_t* data, size_t size,
         // Polyline/Polygon: nPoints + nParts [+ nCurves] + bbox
         can_peek_bbox = true;
         read_varuint(s); read_varuint(s);
-        if (base_type >= 50) read_varuint(s);
+        if (has_curve_descriptors(base_type, s.geom_type)) return false;
     }
     if (can_peek_bbox && s.ptr + 4 * sizeof(uint64_t) <= s.end) {
         uint64_t vxmin = read_varuint(s);
@@ -1141,7 +1165,7 @@ bool GdbGeomDecoder::geometry_intersects_bbox(const uint8_t* data, size_t size,
         if (nPoints == 0) return false;
 
         uint64_t nParts = read_varuint(s);
-        if (base_type >= 50) read_varuint(s);  // nCurves for General
+        if (has_curve_descriptors(base_type, s.geom_type)) return false;
 
         // 跳过 bbox
         read_varuint(s); read_varuint(s);
@@ -1202,7 +1226,7 @@ bool GdbGeomDecoder::geometry_intersects_bbox(const uint8_t* data, size_t size,
         if (nPoints == 0) return false;
 
         uint64_t nParts = read_varuint(s);
-        if (base_type >= 50) read_varuint(s);
+        if (has_curve_descriptors(base_type, s.geom_type)) return false;
 
         // 跳过 bbox
         read_varuint(s); read_varuint(s);
@@ -1268,7 +1292,7 @@ bool GdbGeomDecoder::geometry_intersects_bbox(const uint8_t* data, size_t size,
         s.ptr = geom_body_start;
         read_varuint(s);  // nPoints
         read_varuint(s);  // nParts
-        if (base_type >= 50) read_varuint(s);
+        if (has_curve_descriptors(base_type, s.geom_type)) return false;
         read_varuint(s); read_varuint(s); read_varuint(s); read_varuint(s);  // skip bbox
 
         // 重新读取 part_sizes

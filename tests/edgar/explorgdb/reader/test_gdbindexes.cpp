@@ -4,19 +4,19 @@
 
 #include "gdb_indexes.h"
 #include "gdb_catalog.h"
+#include "../test_paths.h"
 #include <gtest/gtest.h>
 
 using namespace explorgdb;
 
-// spx.gdb 测试数据路径
-static const char* SPX_GDB_PATH =
-    "/Users/edgarlqs/Downloads/daydaydaywork/dailyWork/code/dump_gdbtable/spx.gdb";
+static const auto SPX_GDB_PATH =
+    explorgdb_test_paths::test_data_path("test_data/gdb/test_spatial_gdb.gdb/test_spatial_gdb.gdb");
 
 // ── 基础解析测试 ──
 
 // 测试系统目录索引文件解析
 TEST(GdbIndexesTest, SystemCatalogIndexes) {
-    std::string idx_path = SPX_GDB_PATH;
+    std::string idx_path = SPX_GDB_PATH.string();
     idx_path += "/a00000001.gdbindexes";
 
     GdbIndexesParser parser(idx_path);
@@ -37,13 +37,13 @@ TEST(GdbIndexesTest, InvalidFile) {
 // 测试索引条目数量
 TEST(GdbIndexesTest, IndexCount) {
     GdbCatalog catalog;
-    catalog.scan(SPX_GDB_PATH);
+    catalog.scan(SPX_GDB_PATH.string());
 
     // 统计所有 .gdbindexes 文件的条目总数
     size_t total_indexes = 0;
     auto idx_files = catalog.find_by_extension(".gdbindexes");
     for (const auto* entry : idx_files) {
-        std::string idx_path = SPX_GDB_PATH;
+        std::string idx_path = SPX_GDB_PATH.string();
         idx_path += "/" + entry->filename;
 
         GdbIndexesParser parser(idx_path);
@@ -59,11 +59,11 @@ TEST(GdbIndexesTest, IndexCount) {
 // 测试索引名称非空
 TEST(GdbIndexesTest, IndexNamesNotEmpty) {
     GdbCatalog catalog;
-    catalog.scan(SPX_GDB_PATH);
+    catalog.scan(SPX_GDB_PATH.string());
 
     auto idx_files = catalog.find_by_extension(".gdbindexes");
     for (const auto* entry : idx_files) {
-        std::string idx_path = SPX_GDB_PATH;
+        std::string idx_path = SPX_GDB_PATH.string();
         idx_path += "/" + entry->filename;
 
         GdbIndexesParser parser(idx_path);
@@ -80,11 +80,11 @@ TEST(GdbIndexesTest, IndexNamesNotEmpty) {
 // 测试已知魔数元组 (2,0), (4,0), (16,65535)
 TEST(GdbIndexesTest, KnownMagicTuples) {
     GdbCatalog catalog;
-    catalog.scan(SPX_GDB_PATH);
+    catalog.scan(SPX_GDB_PATH.string());
 
     auto idx_files = catalog.find_by_extension(".gdbindexes");
     for (const auto* entry : idx_files) {
-        std::string idx_path = SPX_GDB_PATH;
+        std::string idx_path = SPX_GDB_PATH.string();
         idx_path += "/" + entry->filename;
 
         GdbIndexesParser parser(idx_path);
@@ -107,11 +107,11 @@ TEST(GdbIndexesTest, KnownMagicTuples) {
 // 测试 magic5 存在（所有条目末尾）
 TEST(GdbIndexesTest, Magic5Present) {
     GdbCatalog catalog;
-    catalog.scan(SPX_GDB_PATH);
+    catalog.scan(SPX_GDB_PATH.string());
 
     auto idx_files = catalog.find_by_extension(".gdbindexes");
     for (const auto* entry : idx_files) {
-        std::string idx_path = SPX_GDB_PATH;
+        std::string idx_path = SPX_GDB_PATH.string();
         idx_path += "/" + entry->filename;
 
         GdbIndexesParser parser(idx_path);
@@ -130,12 +130,12 @@ TEST(GdbIndexesTest, Magic5Present) {
 // 测试某些索引有非空列名
 TEST(GdbIndexesTest, SomeColumnNamesPresent) {
     GdbCatalog catalog;
-    catalog.scan(SPX_GDB_PATH);
+    catalog.scan(SPX_GDB_PATH.string());
 
     auto idx_files = catalog.find_by_extension(".gdbindexes");
     bool found_non_empty_col = false;
     for (const auto* entry : idx_files) {
-        std::string idx_path = SPX_GDB_PATH;
+        std::string idx_path = SPX_GDB_PATH.string();
         idx_path += "/" + entry->filename;
 
         GdbIndexesParser parser(idx_path);

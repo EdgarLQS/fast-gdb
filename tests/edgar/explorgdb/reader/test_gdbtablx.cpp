@@ -4,19 +4,19 @@
 
 #include "gdb_tablx.h"
 #include "gdb_catalog.h"
+#include "../test_paths.h"
 #include <gtest/gtest.h>
 
 using namespace explorgdb;
 
-// spx.gdb 测试数据路径
-static const char* SPX_GDB_PATH =
-    "/Users/edgarlqs/Downloads/daydaydaywork/dailyWork/code/dump_gdbtable/spx.gdb";
+static const auto SPX_GDB_PATH =
+    explorgdb_test_paths::test_data_path("test_data/gdb/test_spatial_gdb.gdb/test_spatial_gdb.gdb");
 
 // ── 头部解析测试 ──
 
 // 测试 .gdbtablx 头部（版本可能是 3 或 4）
 TEST(GdbTablxTest, HeaderVersion) {
-    std::string tablx_path = SPX_GDB_PATH;
+    std::string tablx_path = SPX_GDB_PATH.string();
     tablx_path += "/a00000001.gdbtablx";
 
     GdbTablxParser parser(tablx_path);
@@ -40,7 +40,7 @@ TEST(GdbTablxTest, InvalidFile) {
 
 // 测试偏移表条目数
 TEST(GdbTablxTest, OffsetCount) {
-    std::string tablx_path = SPX_GDB_PATH;
+    std::string tablx_path = SPX_GDB_PATH.string();
     tablx_path += "/a00000001.gdbtablx";
 
     GdbTablxParser parser(tablx_path);
@@ -59,7 +59,7 @@ TEST(GdbTablxTest, OffsetCount) {
 
 // 测试 FID→偏移查找
 TEST(GdbTablxTest, GetOffset) {
-    std::string tablx_path = SPX_GDB_PATH;
+    std::string tablx_path = SPX_GDB_PATH.string();
     tablx_path += "/a00000001.gdbtablx";
 
     GdbTablxParser parser(tablx_path);
@@ -75,7 +75,7 @@ TEST(GdbTablxTest, GetOffset) {
 
 // 测试存在非零偏移（真实要素）
 TEST(GdbTablxTest, HasNonNullOffsets) {
-    std::string tablx_path = SPX_GDB_PATH;
+    std::string tablx_path = SPX_GDB_PATH.string();
     tablx_path += "/a00000001.gdbtablx";
 
     GdbTablxParser parser(tablx_path);
@@ -93,7 +93,7 @@ TEST(GdbTablxTest, HasNonNullOffsets) {
 
 // 测试位图一致性：位图标记为 0 的块，偏移应为 0
 TEST(GdbTablxTest, BitmapConsistency) {
-    std::string tablx_path = SPX_GDB_PATH;
+    std::string tablx_path = SPX_GDB_PATH.string();
     tablx_path += "/a00000001.gdbtablx";
 
     GdbTablxParser parser(tablx_path);
@@ -139,7 +139,7 @@ TEST(GdbTablxTest, IsBlockActive) {
 // 测试不同表的偏移宽度可能不同
 TEST(GdbTablxTest, VariableOffsetWidth) {
     GdbCatalog catalog;
-    catalog.scan(SPX_GDB_PATH);
+    catalog.scan(SPX_GDB_PATH.string());
 
     // 收集所有 .gdbtablx 的 offset_size
     std::vector<uint32_t> sizes;
@@ -147,7 +147,7 @@ TEST(GdbTablxTest, VariableOffsetWidth) {
         const auto* entry = catalog.find_tablx(id);
         if (!entry) continue;
 
-        std::string tablx_path = SPX_GDB_PATH;
+        std::string tablx_path = SPX_GDB_PATH.string();
         tablx_path += "/" + entry->filename;
 
         GdbTablxParser parser(tablx_path);
@@ -169,7 +169,7 @@ TEST(GdbTablxTest, VariableOffsetWidth) {
 
 // 测试 valid_fids 包含非零偏移的 FID
 TEST(GdbTablxTest, ValidFids) {
-    std::string tablx_path = SPX_GDB_PATH;
+    std::string tablx_path = SPX_GDB_PATH.string();
     tablx_path += "/a00000001.gdbtablx";
 
     GdbTablxParser parser(tablx_path);

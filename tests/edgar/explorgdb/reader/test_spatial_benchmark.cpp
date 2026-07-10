@@ -33,11 +33,12 @@
 #include "gdb_catalog.h"
 #include "gdb_table.h"
 #include "gdb_spatial_index.h"
+#include "../test_paths.h"
 
 namespace fs = std::filesystem;
 
-static const char* const kGdbPath =
-    "../test_data/gdb/test_spatial_gdb.gdb/test_spatial_gdb.gdb";
+static const std::string kGdbPath =
+    explorgdb_test_paths::test_data_path("test_data/gdb/test_spatial_gdb.gdb/test_spatial_gdb.gdb").string();
 
 static const uint32_t kTableId = 0xC;  // a0000000c
 

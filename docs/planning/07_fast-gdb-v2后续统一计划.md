@@ -1,72 +1,66 @@
-# 07 - fast-gdb v2 后续统一计划
+# 07 — fast-gdb reader v2 收口结果
 
-本文档承接 [06_fast-gdb-v2开发计划.md](06_fast-gdb-v2开发计划.md) 的当前完成情况，并把 [02_GDAL功能对比矩阵.md](02_GDAL功能对比矩阵.md) 中 `9.2`、`9.3` 的后续项整理成两个可执行开发阶段。当前开发范围已明确取消“曲线几何标准输出”，本轮仅收口元数据、查询门面、WHERE 子集和关系类定义。
+**更新日期**：2026-07-10  
+**文档状态**：v2 收口记录  
+**后续计划**：[10_fast-gdb-v3几何正确性与真实数据计划.md](10_fast-gdb-v3几何正确性与真实数据计划.md)
 
-## 1. 当前 v2 状态
+## 1. v2 已完成
 
-v2 主体已经完成“避免静默错误”和“补齐常规只读生产路径”的目标，但曲线几何仍只做到显式保护，尚未还原曲线参数。
+- [x] nullable bitmap 旧记录兼容。
+- [x] DateTimeWithOffset 10 字节物理跳过。
+- [x] CatalogResolver、SRS、domain、Metadata item、Feature Dataset、relationship metadata。
+- [x] QueryEngine 和 WHERE 子集。
+- [x] GeneralPolyline / GeneralPolygon Curve flag/header 修正。
+- [x] `nCurves > 0` 明确 unsupported。
+- [x] 曲线空间过滤 fail closed，并返回 fallback reason。
+- [x] Raster capability degraded。
+- [x] MultiPatch capability 从 supported 修正为 degraded。
+- [x] 真实数据契约测试入口建立。
+- [x] 曲线格式分析建立。
 
-| v2 能力 | 当前状态 | 后续归属 |
-|---------|----------|----------|
-| 旧记录 nullable bitmap 兼容 | 已完成 | 无需进入后续计划 |
-| General 线/面 decode、peek_bbox、空间过滤一致性 | 已完成 | 无需进入后续计划 |
-| Raster 字段 capability degraded 标记 | 已完成 | Raster 像素读取不纳入本计划 |
-| MultiPatch 标准 `GEOMETRYCOLLECTION Z/ZM` 输出 | 已完成 | 后续仅做兼容性测试补强 |
-| 曲线几何 | 已完成 `nCurves>0` 显式 unsupported | 本轮取消，不进入当前交付范围 |
-| 字段域、关系类、高级元数据 API | 已完成 | 仅保留文档同步和必要补测 |
-| WHERE 子句过滤 | 已完成常见子集 | 保持只读过滤边界，不扩展为完整 SQL |
+## 2. 本地验证结果
 
-## 2. 后续阶段一：v2.1 高级元数据与查询门面
-
-目标：先补齐 GDAL 常用元数据能力，并把现有 reader、`.spx`、`.atx`、FID、顺序扫描统一收口到一个上层入口。该阶段优先解决上层集成成本，不引入完整 SQL 引擎。
-
-| 顺序 | 任务 | 主要内容 | 工作量 | 验收 |
-|:---:|------|----------|:------:|------|
-| 1 | 字段域支持 | 从 `GDB_Items` / XML 元数据解析 coded value domain 和 range domain | 已完成 | 字段可关联 domain；coded/range domain 已有结构化单测 |
-| 2 | 高级元数据 API | 提供 `GetMetadataItem` 风格 key/value 接口 | 已完成 | 可按 key 获取 SRS、domain、XML、图层摘要等元数据 |
-| 3 | 关系类 / Feature dataset 摘要 | 解析 `GDB_Items` 中的关联、分组和 item 类型信息 | 已完成 | 可列出 Feature dataset 分组、关系摘要、origin/destination 名称 |
-| 4 | fast-gdb 查询门面 | 封装顺序扫描、FID、`.spx`、`.atx` 查询入口 | 已完成 | 查询路径返回 execution path 和 fallback reason |
-
-建议接口方向：
-
-- 在 `MetadataReader` 中新增 domain、relationship summary、feature dataset summary 读取能力。
-- 新增或扩展 `QueryEngine::query(...)`，统一表达 FID、bbox、属性索引和顺序扫描请求。
-- 保留现有 `read_by_fid`、`scan`、`query_bbox`、`query_attribute_double/string`，先作为兼容入口和门面底层实现。
-
-建议验证：
-
-```bash
-cmake -S . -B build
-cmake --build build --target gdb_tutorial_test_runner
-./build/bin/gdb_tutorial_test_runner --gtest_filter='MetadataReaderTest.*:GdbCatalogTest.*:QueryEngineTest.*:QueryEngineIntegrationTest.*'
+```text
+CMake configure/build: PASS
+gdb_tutorial_test_runner: 401 passed / 11 skipped / 0 failed
+RealDataReleaseContractTest.*: 2 skipped（环境变量未设置）
 ```
 
-## 3. 后续阶段二：v3 表达式过滤与高级 GIS 能力
+跳过逻辑已验证：缺少 `FAST_GDB_REAL_DATASET` / `FAST_GDB_CURVE_DATASET` 时不会误报通过。
 
-目标：在 v2.1 元数据和查询门面稳定后，再处理更复杂、范围更大的能力。该阶段不复制完整 GDAL SQL，只做常见只读查询和曲线标准表达。
+修复后最终 CTest 输出未单独记录，因此不在本文件中声称 CTest 全通过。
 
-| 顺序 | 任务 | 主要内容 | 工作量 | 验收 |
-|:---:|------|----------|:------:|------|
-| 1 | 精简表达式过滤器 | 支持常见 WHERE 子句子集 | 已完成 | `field op value`、`AND/OR`、括号、`IN` 等基础表达式可执行 |
-| 2 | 完整关系类 | 解析关系类定义中的 key、cardinality、label、origin/destination | 已完成 | 已结构化暴露 relationship class 定义；不自动执行 join |
+## 3. v2 发布边界
 
-建议边界：
+v2 可以说明：
 
-- WHERE 子集只处理只读过滤，不做 `JOIN`、聚合、函数、子查询和 SQL 方言兼容。
-- 完整关系类只暴露元数据定义，不做跨表查询执行和写入级联行为。
-- 曲线几何继续保持 `nCurves>0` 显式 unsupported，不纳入本轮验收。
+> 常规 reader 主路径已实现并通过本地自动化；曲线和部分复杂几何有明确能力边界。
 
-建议验证：
+v2 不能说明：
 
-```bash
-cmake -S . -B build
-cmake --build build --target gdb_tutorial_test_runner
-./build/bin/gdb_tutorial_test_runner --gtest_filter='CapabilityReportTest.*:QueryEngineTest.*:MetadataReaderTest.*:QueryEngineIntegrationTest.*'
-```
+- 真实普通和曲线 FileGDB 已验收；
+- GeneralPoint / GeneralMultiPoint 已完整支持；
+- MultiPatch 与 GDAL 表面语义等价；
+- 曲线标准输出、完整 SQL、重投影、Raster 像素已实现；
+- writer 已达到 GDAL 兼容写入。
 
-## 4. 统一验收口径
+## 4. 转入 v3 的事项
 
-- 不把 GDAL 运行时 fallback 作为默认架构；GDAL 只用于 oracle 对照、基准和人工校验。
-- 每个新增能力都必须进入 `CapabilityReport` 或明确的 metadata/query result 状态，不允许静默降级。
-- 文档同步顺序：功能矩阵、项目状态、本计划、必要时补充 reader README。
-- 合并前至少运行对应专项测试；涉及通用 reader 行为时，补跑 `QueryEngineIntegrationTest.*` 和系统表相关测试。
+1. GeneralPoint / GeneralMultiPoint 完整 decode。
+2. MultiPoint / GeneralMultiPoint `peek_bbox` header 修正。
+3. Point 坐标转换公式统一。
+4. Curve flag + `nCurves == 0` decode/peek/filter 一致。
+5. 普通真实 FileGDB 回归。
+6. 真实曲线 FileGDB 回归。
+7. MultiPatch 完整 part type 语义为可选增强；未实现前维持 degraded。
+
+## 5. v2 关闭状态
+
+- [x] v2 计划内代码和能力定级已收口。
+- [x] 本地功能 runner 无失败。
+- [x] 数据依赖测试缺环境变量时正确 SKIPPED。
+- [x] planning 和功能矩阵已同步。
+- [ ] 真实普通 GDB PASSED —— 转 v3。
+- [ ] 真实曲线 GDB PASSED —— 转 v3。
+
+v2 文档到此关闭，后续不再向本文件追加新功能任务。
