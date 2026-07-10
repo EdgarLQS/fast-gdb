@@ -4,7 +4,7 @@
 
 `explorgdb` 是一个**纯 C++17** 实现的 ESRI FileGDB (`.gdb`) 二进制格式解析器，不依赖 GDAL。
 
-参考 [Even Rouault 的 `dump_gdbtable` Python 脚本](../../../../code/dump_gdbtable/) 反向工程而来，用于深入理解 FileGDB 内部二进制结构。
+最初参考 Even Rouault 的 `dump_gdbtable` Python 脚本和 GDAL OpenFileGDB 实现反向工程而来；这些外部参考不随本仓库分发。
 
 **定位**：探索和学习工具，不是生产级 GDB 读写库。
 
@@ -26,34 +26,42 @@
 7. gdb_table.h/cpp        → .gdbtable 表解析（最复杂，最后看）
    三遍读取：头部(版本 3/4) → 字段描述符(17 种类型) → 要素记录(依赖 .gdbtablx 偏移)
 
-8. gdb_indexes.h/cpp      → .gdbindexes 索引元数据（较短，约 60 行）
-
-9. explorgdb_cli.cpp      → CLI 工具：explore / dump-table / dump-tablx / dump-indexes / dump-records
+8. gdb_indexes.h/cpp      → .gdbindexes 索引元数据（目录中的索引目录）
+9. gdb_geometry.h/cpp     → 几何解码、peek_bbox、空间关系辅助判断
+10. gdb_spatial_index.h/cpp → .spx 空间索引（B+ 树导航 + LRU 页面缓存）
+11. gdb_attribute_index.h/cpp → .atx 属性索引（数值/字符串查询）
+12. explorgdb_cli.cpp     → CLI 工具：explore / dump-table / dump-tablx / dump-indexes / dump-records
 ```
 
 ## 文件结构
 
 ```
 src/edgar/explorgdb/
-├── binary_reader.h/cpp    # BinaryReader 类：基于 const uint8_t* 的光标读取器
-├── varint.h/cpp           # VarInt 编解码：encode_varuint / encode_varint
-├── utf16.h/cpp            # read_utf16: UTF-16LE → UTF-8 转换
-├── explorgdb_types.h      # 公共类型：FieldType, FieldDescriptor, FeatureRecord, CatalogEntry 等
-├── gdb_catalog.h/cpp      # GdbCatalog: 目录扫描 + 文件分类 + magic 验证
-├── gdb_table.h/cpp        # GdbTableParser: .gdbtable 头部/字段/记录解析
-├── gdb_tablx.h/cpp        # GdbTablxParser: .gdbtablx 偏移表 + 稀疏位图
-├── gdb_indexes.h/cpp      # GdbIndexesParser: .gdbindexes 索引元数据
-└── explorgdb_cli.cpp      # CLI 主程序：子命令入口
+├── common/
+│   ├── binary_reader.h/cpp   # BinaryReader 类：基于 const uint8_t* 的光标读取器
+│   ├── varint.h/cpp          # VarInt 编解码：encode_varuint / encode_varint
+│   ├── utf16.h/cpp           # read_utf16: UTF-16LE → UTF-8 转换
+│   ├── ole_date.h/cpp        # OLE DATE ↔ 时间表示转换
+│   └── explorgdb_types.h/cpp # 公共类型：FieldType, FieldDescriptor, FeatureRecord 等
+├── reader/
+│   ├── gdb_catalog.h/cpp     # GdbCatalog: 目录扫描 + 文件分类 + magic 验证
+│   ├── gdb_table.h/cpp       # GdbTableParser: .gdbtable 头部/字段/记录解析
+│   ├── gdb_tablx.h/cpp       # GdbTablxParser: .gdbtablx 偏移表 + 稀疏位图
+│   ├── gdb_indexes.h/cpp     # GdbIndexesParser: .gdbindexes 索引元数据
+│   ├── gdb_geometry.h/cpp    # 几何解码 + peek_bbox
+│   ├── gdb_spatial_index.h/cpp   # .spx 空间索引
+│   ├── gdb_attribute_index.h/cpp # .atx 属性索引
+│   └── explorgdb_cli.cpp     # CLI 主程序：子命令入口
+└── writer/
+    ├── gdb_table_writer.h/cpp # 二进制表写入器
+    └── gdb_index_creator.h/cpp # GDAL SQL 索引创建封装
 
 tests/edgar/explorgdb/
-├── test_binary_reader.cpp  # 11 个测试：基础读取、边界检查、seek/tell
-├── test_varint.cpp         # 9 个测试：往返编码、0/最大/负数
-├── test_catalog.cpp        # 7 个测试：目录扫描、magic、按扩展名查找
-├── test_gdbtable.cpp       # 9 个测试：头部、字段、几何、记录解析
-├── test_gdbtablx.cpp       # 9 个测试：头部、偏移表、位图、FID 查找
-├── test_gdbindexes.cpp     # 8 个测试：条目计数、名称、魔数
-├── test_full_audit.cpp     # 11 个测试：端到端完整审计
-└── test_varint.cpp         # 已合并到上方
+├── common/                 # 基础设施测试
+├── reader/                 # catalog/table/tablx/index/geometry/spatial/attribute 测试
+├── writer/                 # writer/index creator 测试
+├── test_fixture_explorgdb.h
+└── generate_large_gdb.cpp  # 大规模测试数据生成器
 ```
 
 ## 关键概念
@@ -67,8 +75,8 @@ tests/edgar/explorgdb/
   - `.gdbtable` — 表数据（头部 + 字段描述符 + 要素记录）
   - `.gdbtablx` — 偏移索引（FID → 文件偏移）
   - `.gdbindexes` — 索引元数据
-  - `.spx` — 空间索引（尚未解析）
-  - `.atx` — 属性索引（尚未解析）
+  - `.spx` — 空间索引（已支持解析和 bbox 查询）
+  - `.atx` — 属性索引（已支持解析和数值/字符串查询）
 
 ### .gdbtable 三遍读取
 
@@ -171,11 +179,9 @@ cmake -B build && cmake --build build
 
 | 来源 | 路径 | 说明 |
 |---|---|---|
-| Python 参考 | `dump_gdbtable/dump_gdbtable.py` | 1235 行，.gdbtable + .gdbtablx 解析 |
-| Python 参考 | `dump_gdbtable/dump_gdbindexes.py` | 97 行，.gdbindexes 解析 |
-| GDAL 源码 | `../../../../gdal/ogr/ogrsf_frmts/openfilegdb/filegdbtable.cpp` | FileGDB 读取实现 |
-| GDAL 源码 | `../../../../gdal/ogr/ogrsf_frmts/openfilegdb/filegdbtable_write.cpp` | FileGDB 写入实现 |
-| 测试数据 | `dump_gdbtable/spx.gdb/` | 6 层合成 GDB（70 文件） |
+| GDAL OpenFileGDB | 仓库外部参考 | FileGDB 读取/写入实现，可对照 `filegdbtable.cpp`、`filegdbtable_write.cpp` |
+| Even Rouault `dump_gdbtable` | 仓库外部参考 | `.gdbtable` / `.gdbtablx` / `.gdbindexes` 解析脚本 |
+| 本仓库测试数据 | `test_data/gdb/`、`test_data/large/`、`test_data/large_10m/` | 小规模、100K/10M 大数据集与索引基准 |
 
 ## Phase 状态
 
@@ -187,6 +193,8 @@ cmake -B build && cmake --build build
 | Phase 1 Step 4 | .gdbtablx 解析 | ✅ 完成 |
 | Phase 1 Step 5 | .gdbindexes 解析 | ✅ 完成 |
 | Phase 1 Step 6 | CLI 工具 | ✅ 完成 |
-| Phase 1 Step 7 | 测试覆盖 | ✅ 完成（65 用例） |
-| Phase 2 Step 9 | .spx 空间索引探索 | ⏸ 待开发 |
-| Phase 2 Step 10 | .atx 属性索引探索 | ⏸ 待开发 |
+| Phase 1 Step 7 | 基础 reader 测试 | ✅ 完成 |
+| Phase 2 Step 9 | .spx 空间索引探索与查询 | ✅ 完成 |
+| Phase 2 Step 10 | .atx 属性索引探索与查询 | ✅ 完成 |
+| Phase 2 Step 11 | 几何解码、peek_bbox、空间过滤 | ✅ 完成 |
+| Phase 3 Step 12 | writer / index creator / benchmark 扩展 | ✅ 完成 |

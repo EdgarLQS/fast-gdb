@@ -28,7 +28,7 @@ make -j$(sysctl -n hw.ncpu)
 - **三层操作路径**：GDAL CLI → usegdal 组件库 → explorgdb 二进制直写
 - **测试即教程**：369 个测试，阅读即学习
 - **不依赖 GDAL 的解析器**：explorgdb 可以直接读取 GDB 文件
-- **极高性能**：二进制直写 ~0.18 μs/feature，零拷贝读取比 GDAL 快 9-12x
+- **极高性能**：Phase C 直写器 ~0.18 μs/feature；`GdbTableWriter` 在 100K+ 规模约 4.3~4.5 μs/feature；零拷贝读取比 GDAL 快 9-12x
 
 ## 学习路线
 

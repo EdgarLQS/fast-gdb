@@ -912,7 +912,7 @@ flowchart TD
 |------|------|------|------|
 | [`src/edgar/usegdal/datasets.cpp`](../src/edgar/usegdal/datasets.cpp#L138) | 138 | `GdbDataset::query(const GdbQuery&)` | 属性过滤入口 |
 | [`src/edgar/usegdal/datasets.cpp`](../src/edgar/usegdal/datasets.cpp#L153) | 153 | `SetAttributeFilter()` | 设置属性过滤 |
-| [`src/edgar/explorgdb/reader/gdb_attribute_index.cpp`](../src/edgar/explorgdb/reader/gdb_attribute_index.cpp#L-`)` | - | `GdbAttributeIndexParser` | .atx B+ 树解析 |
+| [`src/edgar/explorgdb/reader/gdb_attribute_index.cpp`](../src/edgar/explorgdb/reader/gdb_attribute_index.cpp) | - | `GdbAttributeIndexParser` | .atx B+ 树解析 |
 
 ### 8.3 空间查询流程
 

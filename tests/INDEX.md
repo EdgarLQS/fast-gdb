@@ -20,7 +20,7 @@ tests/
 │   ├── test_008_pitfalls.cpp            #   008 常见问题与陷阱
 │   └── test_010_experiments.cpp         #   010 最小实验
 │
-├── usegdal/                              # usegdal 组件测试（T011~T015，85 用例）
+├── usegdal/                              # usegdal 组件测试（无单独维护用例数）
 │   ├── datasource_test.cpp              #   GdbDatasource 打开/关闭/事务能力
 │   ├── datasets_test.cpp                #   GdbDatasets 图层枚举/字段元数据
 │   ├── datasets_write_test.cpp          #   创建/删除图层
@@ -69,8 +69,10 @@ tests/
 
 ## 运行方式
 
+当前 `./build/bin/gdb_tutorial_test_runner --gtest_list_tests` 可枚举 369 个测试。为避免文档数字过期，本页只维护目录和命名规则，不单独维护各子目录的精确用例数。
+
 ```bash
-# 运行全部测试（tutorials + usegdal + explorgdb，112 用例）
+# 运行全部测试
 ./bin/gdb_tutorial_test_runner
 
 # 按分类运行
