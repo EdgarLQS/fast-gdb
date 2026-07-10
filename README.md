@@ -51,6 +51,7 @@ make -j$(sysctl -n hw.ncpu)
 | `docs/03_索引构建方案.md` | 混合工作流（ArcGIS Pro）、GDAL SQL 索引、API 参考 |
 | `docs/04_项目状态与规划.md` | 当前状态、已完成工作、待办事项、已知限制 |
 | `docs/05_技术探索与教训.md` | B+树分隔符发现、LRU Bug、mmap 优化、失败实验教训 |
+| `docs/07_GDB二进制格式图解教程.md` | 带图二进制格式教程（Mermaid + 源码链接） |
 
 ## 依赖
 
