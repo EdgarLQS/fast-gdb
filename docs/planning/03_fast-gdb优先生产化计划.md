@@ -80,13 +80,17 @@ struct GdbOpenContext {
 | 任务 | 交付物 | 验收 |
 |------|--------|------|
 | 统一字段宽度规则 | 提取固定/变长字段跳过逻辑，`peek_geometry_blob`、普通读取、`sequential_scan` 共用语义 | `DateTimeWithOffset` 位于几何字段前时，三条路径均不产生字段错位 |
+| 兼容旧记录 nullable bitmap 扩容 | 读取记录时对 bitmap 预读做安全收缩，schema 从 7 nullable 扩到 9 nullable 时旧记录不再错位 | `read_record_by_fid`、`parse_record_at_offset`、`sequential_scan` 对旧记录均返回正确旧字段值，新增字段统一为 null |
 | 系统表定位器 | `CatalogResolver` 可按表名定位 `GDB_SystemCatalog`、`GDB_SpatialRefs`、`GDB_Items` | 系统表编号变化时，仍能通过表名找到目标系统表 |
 | CapabilityReport v1 | open 后生成 SRS、曲线、MultiPatch、Raster、spx、atx 状态 | CLI 或单测能断言每项状态和 reason |
 | 曲线检测 | GeneralPolyline / GeneralPolygon 中发现曲线定义时标记 degraded 或 unsupported | 含曲线样本不再被当作普通线/面静默输出 |
+| General 几何 bbox 头部对齐 | `decode_polyline`、`decode_polygon` 与 `peek_bbox`/`intersects_with_peek` 统一读取 `nCurves` | GeneralPolyline / GeneralPolygon 全解码路径读出的 bbox 与 peek 路径一致，空间过滤不再依赖“轻量路径正确、全解码路径错误”的偶然状态 |
 
 Phase 1 完成标准：
 
 - 新增 `DateTimeWithOffset` 几何前置字段测试。
+- 新增旧记录 bitmap 扩容兼容测试，覆盖按 FID、全量解析、顺序扫描三条路径。
+- 新增 GeneralPolyline / GeneralPolygon 的全解码 bbox 对齐测试，断言与 `peek_bbox` 一致。
 - 新增系统表按名称定位测试。
 - 新增 capability report 单测，不只打印日志。
 - 原有 reader、spatial index、attribute index 测试通过。
