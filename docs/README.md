@@ -33,3 +33,4 @@
 | [04_fast-gdb-v1实施设计.md](planning/04_fast-gdb-v1实施设计.md) | v1 只读主路径的实现说明、验证口径和合并状态 |
 | [05_merge_readiness.md](planning/05_merge_readiness.md) | 合并前收尾检查单，避免夸大完成状态 |
 | [06_fast-gdb-v2开发计划.md](planning/06_fast-gdb-v2开发计划.md) | v2 下一步适配计划，覆盖 nullable bitmap、General 几何、曲线读取、Raster 标记和 MultiPatch |
+| [07_fast-gdb-v2后续统一计划.md](planning/07_fast-gdb-v2后续统一计划.md) | v2 完成状态后的统一后续计划，将 9.2/9.3 拆为 v2.1 和 v3 两个阶段 |

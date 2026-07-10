@@ -432,11 +432,11 @@ explorgdb 在常规点/线/面数据上提供了 **9-12x 的读取性能提升**
 
 | 顺序 | 任务 | 当前状态 | 交付物 | 验收 |
 |:---:|------|----------|--------|------|
-| 1 | 旧记录 nullable bitmap 兼容 | 待实现 | 记录解析按实际 bitmap 长度安全收缩，缺失新增字段统一返回 null | schema 扩字段后，`read_record_by_fid`、全量读取、`sequential_scan` 均不发生字段错位 |
-| 2 | General 几何 bbox 对齐 | 待实现 | `decode_polyline` / `decode_polygon` 与 `peek_bbox` 统一处理 `nCurves` 头部 | GeneralPolyline / GeneralPolygon 的全解码 bbox 与 peek 路径一致 |
-| 3 | 曲线几何读取 | 待实现 | 读取曲线段类型和参数，圆弧尽量输出圆心、半径、起止角 | 含曲线样本不再被当作普通线/面静默输出；不能标准表达时返回 degraded / unsupported |
-| 4 | Raster 字段标记 | 待实现 | Raster 字段进入 capability reason，不误判为完整可生产 | 含 Raster 字段图层返回明确 unsupported/degraded 状态 |
-| 5 | MultiPatch 标准表达 | 待实现 | 输出标准 GeometryCollection / TIN / PolyhedralSurface | 不再把描述文本或 unsupported 作为 v2 完成结果 |
+| 1 | 旧记录 nullable bitmap 兼容 | 已完成 | 记录解析按实际 bitmap 长度安全收缩，缺失新增字段统一返回 null | schema 扩字段后，`read_record_by_fid`、全量读取、`sequential_scan` 均不发生字段错位 |
+| 2 | General 几何 bbox 对齐 | 已完成 | `decode_polyline` / `decode_polygon` 与 `peek_bbox` 统一处理 `nCurves` 头部 | GeneralPolyline / GeneralPolygon 的全解码 bbox 与 peek 路径一致 |
+| 3 | 曲线几何读取 | 部分完成 | 已做到 `nCurves>0` 显式 unsupported；曲线段类型和参数还原进入后续 v3 | 含曲线样本不再被当作普通线/面静默输出；标准表达待补 |
+| 4 | Raster 字段标记 | 已完成 | Raster 字段进入 capability reason，不误判为完整可生产 | 含 Raster 字段图层返回明确 degraded 状态 |
+| 5 | MultiPatch 标准表达 | 已完成 | 输出标准 `GEOMETRYCOLLECTION Z/ZM` | 不再把描述文本或 unsupported 作为 v2 完成结果 |
 
 本轮不做完整 SQL 引擎、不做重投影、不做写入生产化。若某项能力暂时不能完整表达，优先让 `CapabilityReport` 给出明确状态和 reason，再决定是否继续实现标准输出。
 
@@ -448,7 +448,9 @@ cmake --build build --target gdb_tutorial_test_runner
 ./build/bin/gdb_tutorial_test_runner --gtest_filter='CapabilityReportTest.*:DateTimeWithOffsetBeforeGeometry_*:FieldLayoutTest.*:GeometryTest.*:GdbTableTest.*:QueryEngineTest.*:QueryEngineIntegrationTest.*'
 ```
 
-### 9.2 中期（2-4 周，中优先级）
+### 9.2 后续阶段一：v2.1 高级元数据与查询门面（2-4 周，中优先级）
+
+统一开发计划见 [07_fast-gdb-v2后续统一计划.md](07_fast-gdb-v2后续统一计划.md)。本阶段承接当前 v2 状态：nullable bitmap、General bbox、Raster 标记、MultiPatch 标准输出已完成；曲线参数还原和完整 SQL 不放在本阶段。
 
 | 阶段 | 内容 | 工作量 | 收益 |
 |------|------|:------:|:----:|
@@ -457,7 +459,9 @@ cmake --build build --target gdb_tutorial_test_runner
 | 关系类 / Feature dataset | 解析 GDB_Items 中的关联和分组信息 | 1-2 天 | 对齐更完整的图层元数据 |
 | fast-gdb 查询门面 | 封装顺序扫描、FID、.spx、.atx 查询入口 | 2-3 天 | 上层不直接拼底层 parser |
 
-### 9.3 长期（可选，低优先级）
+### 9.3 后续阶段二：v3 表达式过滤与高级 GIS 能力（长期，可选，低优先级）
+
+本阶段依赖 v2.1 的元数据模型和查询门面稳定后再展开，避免 WHERE 解析、曲线标准输出和完整关系类同时挤压 v2.1 的交付范围。
 
 | 阶段 | 内容 | 工作量 | 收益 |
 |------|------|:------:|:----:|
