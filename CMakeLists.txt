@@ -265,6 +265,7 @@ if(BUILD_TESTING)
                  ${TUTORIAL_SOURCES}
                  ${USEGDAL_TEST_SOURCES}
                  ${EXPLORGDB_WRITER_TEST_SOURCES}
+                 tests/edgar/explorgdb/curve_gdal/test_hybrid_geometry_reader.cpp
                  tests/benchmark_full_performance.cpp)
         endif()
 
@@ -277,6 +278,11 @@ if(BUILD_TESTING)
             tests/edgar/explorgdb/common
             tests/edgar/explorgdb/reader
             tests/edgar/explorgdb/writer)
+        if(FAST_GDB_WITH_GDAL)
+            target_include_directories(gdb_tutorial_test_runner PRIVATE
+                tests/edgar/explorgdb/curve_gdal
+                src/edgar/explorgdb/curve_gdal)
+        endif()
         target_link_libraries(gdb_tutorial_test_runner PRIVATE
             GTest::gtest explorgdb_reader_lib explorgdb_writer_lib)
         if(FAST_GDB_WITH_GDAL)
