@@ -15,10 +15,21 @@ using ssize_t = SSIZE_T;
 #define _SSIZE_T_DEFINED
 #endif
 
-// gdb_table.cpp uses the POSIX spellings. Keep the parser implementation
-// shared and map those spellings to 64-bit Windows CRT/Win32 equivalents.
-#define open _open
-#define close _close
+// Do not macro-map open/close: a macro would also rewrite
+// GdbTableParser::open() and close_file-related source tokens. Free wrappers
+// preserve the POSIX call sites without changing class member names.
+inline int open(const char* path, int flags) {
+    return _open(path, flags);
+}
+
+inline int open(const char* path, int flags, int mode) {
+    return _open(path, flags, mode);
+}
+
+inline int close(int fd) {
+    return _close(fd);
+}
+
 #define fstat _fstat64
 #define stat __stat64
 #define off_t __int64
