@@ -5,13 +5,18 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <vector>
 
 namespace explorgdb {
 
 enum class CurveBackendMode : uint8_t { Reject = 0, Builtin = 1, Gdal = 2 };
-enum class CurveSegmentKind : uint8_t { CircularArc = 1, CubicBezier = 4, EllipticArc = 5 };
+enum class CurveSegmentKind : uint8_t {
+    CircularArc = 1,
+    CubicBezier = 4,
+    EllipticArc = 5
+};
 
 struct CurveLinearizationOptions {
     // <= 0 chooses one quarter of the FileGDB XY grid resolution.
@@ -20,8 +25,41 @@ struct CurveLinearizationOptions {
     size_t max_segments_per_curve = 4096;
 };
 
+// Source-compatible checked index wrapper. It converts to size_t for maps and
+// indexing, while the expression `start_vertex + 1 >= point_count` used by the
+// linearizer becomes overflow-aware even for adversarial SIZE_MAX input.
+struct CurveVertexIndexSum {
+    size_t value = 0;
+    bool overflow = false;
+};
+
+struct CurveVertexIndex {
+    size_t value = 0;
+
+    constexpr CurveVertexIndex() = default;
+    constexpr CurveVertexIndex(size_t input) : value(input) {}
+
+    constexpr CurveVertexIndex& operator=(size_t input) {
+        value = input;
+        return *this;
+    }
+
+    constexpr operator size_t() const noexcept { return value; }
+};
+
+constexpr CurveVertexIndexSum operator+(
+    CurveVertexIndex index, size_t increment) noexcept {
+    if (increment > std::numeric_limits<size_t>::max() - index.value)
+        return {std::numeric_limits<size_t>::max(), true};
+    return {index.value + increment, false};
+}
+
+constexpr bool operator>=(CurveVertexIndexSum lhs, size_t rhs) noexcept {
+    return lhs.overflow || lhs.value >= rhs;
+}
+
 struct CurveDescriptor {
-    size_t start_vertex = 0;
+    CurveVertexIndex start_vertex;
     CurveSegmentKind kind = CurveSegmentKind::CircularArc;
     std::array<double, 5> values{};
     uint32_t flags = 0;
@@ -42,7 +80,10 @@ struct CurveLinearizationResult {
     std::vector<PointSequence> parts;
     GeometryStatus status = GeometryStatus::Valid;
     std::string diagnostic;
-    bool valid() const { return status == GeometryStatus::Valid || status == GeometryStatus::Empty; }
+    bool valid() const {
+        return status == GeometryStatus::Valid ||
+               status == GeometryStatus::Empty;
+    }
 };
 
 CurveLinearizationResult linearize_curves(const CurveRequest& request);
