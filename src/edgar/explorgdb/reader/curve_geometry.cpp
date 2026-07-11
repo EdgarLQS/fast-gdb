@@ -76,10 +76,11 @@ bool to_grid(double x, double y, double t,
     const long double gy =
         (static_cast<long double>(y) - request.transform.y_origin) *
         request.transform.xy_scale;
-    if (gx < std::numeric_limits<int64_t>::min() ||
-        gx > std::numeric_limits<int64_t>::max() ||
-        gy < std::numeric_limits<int64_t>::min() ||
-        gy > std::numeric_limits<int64_t>::max())
+    const long double min_grid =
+        static_cast<long double>(std::numeric_limits<int64_t>::min());
+    const long double exclusive_max_grid = -min_grid;
+    if (gx < min_grid || gx >= exclusive_max_grid ||
+        gy < min_grid || gy >= exclusive_max_grid)
         return false;
     output.x = static_cast<int64_t>(std::llround(gx));
     output.y = static_cast<int64_t>(std::llround(gy));
@@ -117,11 +118,29 @@ std::vector<RealSample> sample_arc_center(
     double start_angle, double sweep,
     const CurveRequest& request) {
     const size_t count = segment_count(sweep, radius, request);
-    std::vector<RealSample> samples;
-    samples.reserve(count + 1);
+    std::vector<double> parameters;
+    parameters.reserve(count + 5);
     for (size_t i = 0; i <= count; ++i) {
-        const double t = static_cast<double>(i) /
-                         static_cast<double>(count);
+        parameters.push_back(static_cast<double>(i) /
+                             static_cast<double>(count));
+    }
+    const double length = std::fabs(sweep);
+    for (size_t quadrant = 0; quadrant < 4; ++quadrant) {
+        const double angle = static_cast<double>(quadrant) * kPi / 2.0;
+        const double traveled = sweep >= 0.0
+            ? normalize_positive(angle - start_angle)
+            : normalize_positive(start_angle - angle);
+        if (traveled > 1e-12 && traveled < length - 1e-12)
+            parameters.push_back(traveled / length);
+    }
+    std::sort(parameters.begin(), parameters.end());
+    parameters.erase(std::unique(parameters.begin(), parameters.end(),
+        [](double lhs, double rhs) { return std::fabs(lhs - rhs) < 1e-12; }),
+        parameters.end());
+
+    std::vector<RealSample> samples;
+    samples.reserve(parameters.size());
+    for (double t : parameters) {
         const double angle = start_angle + sweep * t;
         samples.push_back({cx + radius * std::cos(angle),
                            cy + radius * std::sin(angle), t});
@@ -443,13 +462,29 @@ CurveLinearizationResult linearize_curves(const CurveRequest& request) {
         return result;
     }
 
+    std::vector<size_t> part_ends;
+    part_ends.reserve(request.part_sizes.size());
+    total = 0;
+    for (size_t part_size : request.part_sizes) {
+        total += part_size;
+        part_ends.push_back(total);
+    }
+
     std::map<size_t, const CurveDescriptor*> by_start;
     for (const auto& curve : request.curves) {
-        if (curve.start_vertex + 1 >= request.points.size() ||
+        if (curve.start_vertex >= request.points.size() - 1 ||
             !by_start.emplace(curve.start_vertex, &curve).second) {
             result.status = GeometryStatus::InvalidEncoding;
             result.diagnostic =
                 "invalid or duplicate curve start vertex";
+            return result;
+        }
+        const auto part_end = *std::upper_bound(
+            part_ends.begin(), part_ends.end(), curve.start_vertex);
+        if (curve.start_vertex >= part_end - 1) {
+            result.status = GeometryStatus::InvalidEncoding;
+            result.diagnostic =
+                "curve descriptor crosses a part boundary";
             return result;
         }
     }

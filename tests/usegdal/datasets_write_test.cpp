@@ -68,7 +68,7 @@ TEST_F(GdbTutorialFixture, T_Datasets_CreateWithSrs) {
     // 验证图层 SRS
     OGRLayer* native = layer.getNative();
     ASSERT_NE(native, nullptr);
-    OGRSpatialReference* layerSrs = native->GetSpatialRef();
+    const OGRSpatialReference* layerSrs = native->GetSpatialRef();
     ASSERT_NE(layerSrs, nullptr);
     EXPECT_EQ(layerSrs->GetAuthorityCode(nullptr), std::string("4326"));
 }

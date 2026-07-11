@@ -78,6 +78,7 @@ public:
     }
 
     const CapabilityReport& capabilities() const { return capabilities_; }
+    GdbTableParser* table() { return parser_.get(); }
     const GdbTableParser* table() const { return parser_.get(); }
 
 private:

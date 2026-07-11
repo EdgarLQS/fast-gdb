@@ -1,9 +1,9 @@
 # 11 — fast-gdb 几何正确性与曲线支持实施报告
 
-**实施分支**：`agent/geometry-wkb-curve-plan`  
-**基线分支**：`main`  
-**更新日期**：2026-07-11  
-**状态**：代码实施完成，自动化验证收口中；真实 ArcGIS Pro 曲线数据仍是发布门禁
+**实施分支**：`agent/geometry-wkb-curve-plan`
+**基线分支**：`main`
+**更新日期**：2026-07-11
+**状态**：代码和本机自动化验收完成；当前提交的远端三平台 CI 与 ArcGIS Pro 扩展曲线样本仍是发布门禁
 
 ## 1. 实施目标
 
@@ -186,13 +186,15 @@ MultiPatch 仍为 degraded：
 
 ## 5. 尚未由合成测试替代的发布门禁
 
-以下工作需要真实数据，不能通过继续编写合成单测虚构完成：
+仓库内 `test_data/gdb/testcurve.gdb` 已提供真实 CircularArc：GDAL 识别为
+`COMPOUNDCURVE/CIRCULARSTRING`，WKB-first 内置路径已与 GDAL 的类型、原生曲线 bbox
+和长度完成对比。以下工作仍需要额外真实数据，不能通过继续编写合成单测虚构完成：
 
-1. ArcGIS Pro 创建的 CircularArc、Bezier、Ellipse、完整圆/椭圆；
+1. ArcGIS Pro 创建的 Bezier、Ellipse、完整圆/椭圆；
 2. 2D/Z/M/ZM 曲线；
 3. 多 part 和曲线 Polygon 洞；
-4. GDAL `hasCurveGeometry(TRUE)` 确认；
-5. fast-gdb 与 GDAL 对比：类型、点数、bbox、面积、长度、点包含和空间查询；
+4. 上述样本的 GDAL `hasCurveGeometry(TRUE)` 确认；
+5. 面积、点包含和空间查询的曲线/曲线 Polygon 对比；
 6. ObjectID 与 GDAL FID 映射抽样；
 7. 真实复杂 Polygon、坏拓扑和 MultiPatch 数据集；
 8. 普通几何与曲线几何性能基线。
@@ -203,23 +205,30 @@ MultiPatch 仍为 degraded：
 
 ### 当前已确认
 
-- `FAST_GDB_CURVE_BACKEND=GDAL` 的 Hybrid 产品目标已在 GitHub Actions 成功编译一次；
-- 第一轮 CI 暴露并修复：
-  - `QueryGridBbox` 头/实现类型不一致；
-  - 曲线安全索引 `operator+` 重载歧义；
-  - Writer 的 GDAL include/link 边界；
-- 构建和测试日志已配置为 Actions artifact，失败不再只显示截断摘要。
+- macOS 本机纯 C++ 完整 CTest：`253/253` 通过；
+- macOS 本机 GDAL Hybrid 完整 CTest：`452/452` 通过；
+- macOS 本机 ASan/UBSan 几何专项：`88/88` 通过（macOS ASan 不支持
+  `detect_leaks=1`，Linux CI 保留该检查）；
+- `FAST_GDB_CURVE_BACKEND=GDAL` 产品目标 `fast_gdb_curve_gdal` 本机构建通过；
+- 普通真实 FileGDB release contract：
+  `test_data/gdb/test_spatial_gdb.gdb/test_spatial_gdb.gdb` 通过；
+- 真实 CircularArc WKB-first contract：`test_data/gdb/testcurve.gdb` 通过，包含
+  GDAL 原生曲线类型、bbox 和长度对比；
+- 当前分支的 CMake/CTest 支持源目录之外的构建目录，不再依赖构建目录恰好位于仓库内；
+- 第一轮 CI 暴露并修复 `QueryGridBbox` 头/实现类型、曲线安全索引重载歧义、
+  Writer GDAL include/link 边界和 Windows POSIX 宏冲突；Actions 日志已配置为 artifact。
 
 ### 待最终填写
 
-- [ ] Windows 纯 C++：构建/测试
-- [ ] Linux 纯 C++：构建/测试
-- [ ] macOS 纯 C++：构建/测试
-- [ ] Linux Hybrid：构建/测试
-- [ ] GDAL 默认后端：构建
-- [ ] ASan/UBSan：测试
-- [ ] 普通真实 FileGDB release contract
-- [ ] ArcGIS Pro 原生曲线差异数据
+- [ ] Windows 纯 C++：当前提交的远端构建/测试
+- [ ] Linux 纯 C++：当前提交的远端构建/测试
+- [x] macOS 纯 C++：本机构建/测试
+- [ ] Linux Hybrid：当前提交的远端构建/测试
+- [x] GDAL 默认后端：本机构建
+- [x] ASan/UBSan：本机几何核心（Linux LSan 仍由 CI 覆盖）
+- [x] 普通真实 FileGDB release contract
+- [x] 仓库真实 CircularArc WKB-first/GDAL 对比
+- [ ] ArcGIS Pro Bezier/Ellipse/ZM/曲线 Polygon 差异数据
 
 ## 7. 分支与合并状态
 
@@ -227,3 +236,8 @@ MultiPatch 仍为 degraded：
 - `main` 未直接修改；
 - Draft PR #1 仅用于 CI 和代码审阅；
 - 在自动化和真实发布门禁未满足前，不应自动合并。
+
+## 8. 后续兼容性收口
+
+后续可实现项、外部数据依赖和验收顺序见
+[12_fast-gdb几何兼容性收口计划.md](12_fast-gdb几何兼容性收口计划.md)。

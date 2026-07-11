@@ -191,4 +191,11 @@ TEST(CurveGeometryContract, RejectsInvalidOptionsAndDescriptors) {
     auto overflow_start = linearize_curves(request);
     EXPECT_FALSE(overflow_start.valid());
     EXPECT_EQ(overflow_start.status, GeometryStatus::InvalidEncoding);
+
+    request.points = {{0, 0}, {1000, 0}, {2000, 0}, {3000, 0}};
+    request.part_sizes = {2, 2};
+    request.curves[0].start_vertex = 1;
+    auto cross_part = linearize_curves(request);
+    EXPECT_FALSE(cross_part.valid());
+    EXPECT_EQ(cross_part.status, GeometryStatus::InvalidEncoding);
 }

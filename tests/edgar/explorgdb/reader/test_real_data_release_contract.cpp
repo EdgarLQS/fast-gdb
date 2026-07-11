@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <filesystem>
 #include <string>
@@ -250,4 +252,102 @@ TEST(RealDataReleaseContractTest, CurveFileGdbIsExplicitlyUnsupported) {
     GDALClose(dataset);
     EXPECT_TRUE(fast_found_explicit_unsupported)
         << "curve geometry must return UNSUPPORTED_CURVE_GEOMETRY instead of a linear WKT";
+}
+
+TEST(RealDataReleaseContractTest, CurveFileGdbUsesBuiltinWkbFirstPath) {
+    const char* dataset_path = required_dataset_from_env("FAST_GDB_CURVE_DATASET");
+    if (dataset_path == nullptr) {
+        GTEST_SKIP() << "Set FAST_GDB_CURVE_DATASET to a real .gdb containing curve geometry";
+    }
+
+    GDALAllRegister();
+    GDALDataset* dataset = static_cast<GDALDataset*>(
+        GDALOpenEx(dataset_path, GDAL_OF_VECTOR | GDAL_OF_READONLY,
+                   nullptr, nullptr, nullptr));
+    ASSERT_NE(dataset, nullptr) << dataset_path;
+
+    GdbCatalog catalog;
+    ASSERT_TRUE(catalog.scan(dataset_path));
+    CatalogResolver resolver(catalog);
+    ASSERT_TRUE(resolver.load());
+
+    bool verified_curve = false;
+    for (int layer_index = 0;
+         layer_index < dataset->GetLayerCount() && !verified_curve;
+         ++layer_index) {
+        OGRLayer* layer = dataset->GetLayer(layer_index);
+        ASSERT_NE(layer, nullptr);
+        const auto resolved = resolver.resolve(layer->GetName());
+        ASSERT_TRUE(resolved.has_value()) << layer->GetName();
+
+        QueryEngine engine(catalog, *resolved);
+        ASSERT_TRUE(engine.open()) << layer->GetName();
+        ASSERT_NE(engine.table(), nullptr);
+        layer->ResetReading();
+        while (OGRFeature* feature = layer->GetNextFeature()) {
+            const OGRGeometry* geometry = feature->GetGeometryRef();
+            const GIntBig gdal_fid = feature->GetFID();
+            if (!geometry_is_curve_like(geometry) || gdal_fid <= 0) {
+                OGRFeature::DestroyFeature(feature);
+                continue;
+            }
+
+            GeometryModel model;
+            ASSERT_TRUE(engine.table()->read_geometry_model(
+                static_cast<uint32_t>(gdal_fid - 1), model))
+                << "layer=" << layer->GetName()
+                << ", gdal_fid=" << gdal_fid
+                << ", diagnostic=" << model.diagnostic;
+            EXPECT_TRUE(model.source_was_curve);
+            EXPECT_TRUE(model.linearized);
+            EXPECT_EQ(model.backend, GeometryBackend::BuiltinCurve);
+
+            GeometryValue value;
+            ASSERT_TRUE(engine.table()->read_geometry_value(
+                static_cast<uint32_t>(gdal_fid - 1), value))
+                << value.diagnostic;
+            EXPECT_FALSE(value.wkb.empty());
+            EXPECT_TRUE(value.source_was_curve);
+            EXPECT_TRUE(value.linearized);
+
+            OGRGeometry* gdal_linear = geometry->getLinearGeometry();
+            ASSERT_NE(gdal_linear, nullptr);
+            OGRGeometry* fast_linear = nullptr;
+            ASSERT_EQ(OGRGeometryFactory::createFromWkb(
+                value.wkb.data(), nullptr, &fast_linear,
+                static_cast<int>(value.wkb.size())), OGRERR_NONE);
+            ASSERT_NE(fast_linear, nullptr);
+            EXPECT_EQ(wkbFlatten(fast_linear->getGeometryType()),
+                      wkbFlatten(gdal_linear->getGeometryType()));
+
+            OGREnvelope gdal_envelope;
+            OGREnvelope fast_envelope;
+            geometry->getEnvelope(&gdal_envelope);
+            fast_linear->getEnvelope(&fast_envelope);
+            const double envelope_tolerance = 1e-3;
+            EXPECT_NEAR(fast_envelope.MinX, gdal_envelope.MinX,
+                        envelope_tolerance);
+            EXPECT_NEAR(fast_envelope.MinY, gdal_envelope.MinY,
+                        envelope_tolerance);
+            EXPECT_NEAR(fast_envelope.MaxX, gdal_envelope.MaxX,
+                        envelope_tolerance);
+            EXPECT_NEAR(fast_envelope.MaxY, gdal_envelope.MaxY,
+                        envelope_tolerance);
+            const double fast_length = OGR_G_Length(
+                reinterpret_cast<OGRGeometryH>(fast_linear));
+            const double gdal_length = OGR_G_Length(
+                reinterpret_cast<OGRGeometryH>(
+                    const_cast<OGRGeometry*>(geometry)));
+            EXPECT_NEAR(fast_length, gdal_length,
+                        std::max(1.0, gdal_length * 1e-3));
+            OGRGeometryFactory::destroyGeometry(fast_linear);
+            OGRGeometryFactory::destroyGeometry(gdal_linear);
+            verified_curve = true;
+            OGRFeature::DestroyFeature(feature);
+            break;
+        }
+    }
+
+    GDALClose(dataset);
+    EXPECT_TRUE(verified_curve);
 }

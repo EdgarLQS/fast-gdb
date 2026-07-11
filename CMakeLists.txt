@@ -291,6 +291,8 @@ if(BUILD_TESTING)
             tests/edgar/explorgdb/common
             tests/edgar/explorgdb/reader
             tests/edgar/explorgdb/writer)
+        target_compile_definitions(gdb_tutorial_test_runner PRIVATE
+            FAST_GDB_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
         if(FAST_GDB_WITH_GDAL)
             target_include_directories(gdb_tutorial_test_runner PRIVATE
                 tests/edgar/explorgdb/curve_gdal

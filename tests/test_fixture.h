@@ -60,7 +60,7 @@ inline int countFeatures(OGRLayer* layer) {
     return count;
 }
 
-inline int getEpsgCode(OGRSpatialReference* srs) {
+inline int getEpsgCode(const OGRSpatialReference* srs) {
     if (!srs) return 0;
     const char* authCode = srs->GetAuthorityCode(nullptr);
     if (authCode) return atoi(authCode);

@@ -1,6 +1,6 @@
 # 几何 WKB-first、Polygon 拓扑与曲线支持迁移指南
 
-**适用分支**：`agent/geometry-wkb-curve-plan` 及后续版本  
+**适用分支**：`agent/geometry-wkb-curve-plan` 及后续版本
 **目标读者**：Reader API 调用方、空间查询调用方、发布和部署人员
 
 ## 1. 迁移摘要
@@ -270,8 +270,9 @@ Polygon 判断遵循：
 - [ ] Linux GDAL Hybrid 编译和测试通过；
 - [ ] GDAL 默认后端单独构建通过；
 - [ ] ASan/UBSan 通过；
-- [ ] 普通真实 FileGDB 回归通过；
-- [ ] ArcGIS Pro 原生 Arc/Bezier/Ellipse 样本与 GDAL 对比；
+- [x] 普通真实 FileGDB 回归通过；
+- [x] 仓库真实 CircularArc 样本与 GDAL 类型、bbox、长度对比；
+- [ ] ArcGIS Pro 原生 Bezier/Ellipse/ZM/曲线 Polygon 样本与 GDAL 对比；
 - [ ] ObjectID/GDAL FID 映射抽样通过；
 - [ ] Polygon 数量、洞数量、面积、bbox 和点包含结果对比；
 - [ ] 性能基线记录普通几何和曲线数据；
