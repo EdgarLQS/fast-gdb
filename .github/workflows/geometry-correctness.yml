@@ -51,8 +51,25 @@ jobs:
           name: build-log-pure-${{ matrix.os }}
           path: build.log
           if-no-files-found: warn
-      - name: Test
-        run: ctest --test-dir build-core -C Release --output-on-failure
+      - name: Test (POSIX)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -o pipefail
+          ctest --test-dir build-core -C Release --output-on-failure 2>&1 | tee test.log
+      - name: Test (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          ctest --test-dir build-core -C Release --output-on-failure *>&1 | Tee-Object -FilePath test.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Upload test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-log-pure-${{ matrix.os }}
+          path: test.log
+          if-no-files-found: warn
 
   gdal-hybrid-tests:
     name: gdal-hybrid-tests-linux
@@ -83,7 +100,17 @@ jobs:
           path: build.log
           if-no-files-found: warn
       - name: Test
-        run: ctest --test-dir build-hybrid --output-on-failure
+        shell: bash
+        run: |
+          set -o pipefail
+          ctest --test-dir build-hybrid --output-on-failure 2>&1 | tee test.log
+      - name: Upload test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-log-gdal-hybrid
+          path: test.log
+          if-no-files-found: warn
 
   gdal-default-build:
     name: gdal-default-backend-build
@@ -148,4 +175,14 @@ jobs:
         env:
           ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
           UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
-        run: ctest --test-dir build-sanitize --output-on-failure -R '^geometry\.'
+        shell: bash
+        run: |
+          set -o pipefail
+          ctest --test-dir build-sanitize --output-on-failure -R '^geometry\.' 2>&1 | tee test.log
+      - name: Upload test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-log-sanitizer
+          path: test.log
+          if-no-files-found: warn
