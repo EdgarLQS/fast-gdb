@@ -7,10 +7,10 @@
 namespace explorgdb {
 
 struct QueryGridBbox {
-    int64_t xmin = 0;
-    int64_t ymin = 0;
-    int64_t xmax = 0;
-    int64_t ymax = 0;
+    long double xmin = 0;
+    long double ymin = 0;
+    long double xmax = 0;
+    long double ymax = 0;
 };
 
 enum class PointGeometryLocation : uint8_t { Outside = 0, Inside = 1, Boundary = 2 };
