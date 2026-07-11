@@ -54,6 +54,16 @@ constexpr CurveVertexIndexSum operator+(
     return {index.value + increment, false};
 }
 
+// Integer literals have type int. Providing an exact overload avoids
+// ambiguity with the implicit size_t conversion while retaining overflow
+// checks. Negative increments are treated as invalid/overflowed sums.
+constexpr CurveVertexIndexSum operator+(
+    CurveVertexIndex index, int increment) noexcept {
+    if (increment < 0)
+        return {index.value, true};
+    return index + static_cast<size_t>(increment);
+}
+
 constexpr bool operator>=(CurveVertexIndexSum lhs, size_t rhs) noexcept {
     return lhs.overflow || lhs.value >= rhs;
 }
