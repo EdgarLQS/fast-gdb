@@ -7,21 +7,25 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstring>
 #include <vector>
 
 using namespace explorgdb;
 
 namespace {
 
-PointSequence square(int64_t xmin, int64_t ymin, int64_t xmax, int64_t ymax,
+PointSequence square(int64_t xmin, int64_t ymin,
+                     int64_t xmax, int64_t ymax,
                      bool reverse = false) {
-    PointSequence ring{{xmin, ymin}, {xmax, ymin}, {xmax, ymax},
-                       {xmin, ymax}, {xmin, ymin}};
+    PointSequence ring{{xmin, ymin}, {xmax, ymin},
+                       {xmax, ymax}, {xmin, ymax},
+                       {xmin, ymin}};
     if (reverse) std::reverse(ring.begin(), ring.end());
     return ring;
 }
 
-uint32_t read_u32_le(const std::vector<uint8_t>& bytes, size_t offset) {
+uint32_t read_u32_le(const std::vector<uint8_t>& bytes,
+                     size_t offset) {
     return static_cast<uint32_t>(bytes.at(offset)) |
            (static_cast<uint32_t>(bytes.at(offset + 1)) << 8) |
            (static_cast<uint32_t>(bytes.at(offset + 2)) << 16) |
@@ -38,8 +42,9 @@ void write_varuint(std::vector<uint8_t>& out, uint64_t value) {
 }
 
 void write_varint(std::vector<uint8_t>& out, int64_t value) {
-    uint64_t magnitude = value < 0 ? static_cast<uint64_t>(-value)
-                                   : static_cast<uint64_t>(value);
+    uint64_t magnitude = value < 0
+        ? static_cast<uint64_t>(-value)
+        : static_cast<uint64_t>(value);
     uint8_t first = static_cast<uint8_t>(magnitude & 0x3f);
     magnitude >>= 6;
     if (value < 0) first |= 0x40;
@@ -53,7 +58,22 @@ void write_varint(std::vector<uint8_t>& out, int64_t value) {
     }
 }
 
-void write_bbox(std::vector<uint8_t>& out, uint64_t xmin, uint64_t ymin,
+void write_u32_le(std::vector<uint8_t>& out, uint32_t value) {
+    out.push_back(static_cast<uint8_t>(value & 0xff));
+    out.push_back(static_cast<uint8_t>((value >> 8) & 0xff));
+    out.push_back(static_cast<uint8_t>((value >> 16) & 0xff));
+    out.push_back(static_cast<uint8_t>((value >> 24) & 0xff));
+}
+
+void write_double_le(std::vector<uint8_t>& out, double value) {
+    uint64_t raw = 0;
+    std::memcpy(&raw, &value, sizeof(value));
+    for (unsigned i = 0; i < 8; ++i)
+        out.push_back(static_cast<uint8_t>((raw >> (8 * i)) & 0xff));
+}
+
+void write_bbox(std::vector<uint8_t>& out,
+                uint64_t xmin, uint64_t ymin,
                 uint64_t dx, uint64_t dy) {
     write_varuint(out, xmin);
     write_varuint(out, ymin);
@@ -64,25 +84,28 @@ void write_bbox(std::vector<uint8_t>& out, uint64_t xmin, uint64_t ymin,
 std::vector<uint8_t> build_point() {
     std::vector<uint8_t> out;
     write_varuint(out, 1);
-    write_varuint(out, 1001); // grid 1000 -> 1.0
-    write_varuint(out, 2001); // grid 2000 -> 2.0
+    write_varuint(out, 1001);
+    write_varuint(out, 2001);
     return out;
 }
 
 std::vector<uint8_t> build_polygon_with_hole_and_island() {
     std::vector<uint8_t> out;
     write_varuint(out, 5);
-    write_varuint(out, 12); // points
-    write_varuint(out, 3);  // parts
+    write_varuint(out, 12);
+    write_varuint(out, 3);
     write_bbox(out, 0, 0, 10000, 10000);
     write_varuint(out, 4);
     write_varuint(out, 4);
 
     // Deliberately shuffled: hole, outer, island. Directions are mixed.
     const std::vector<std::pair<int64_t, int64_t>> points{
-        {3000, 3000}, {7000, 3000}, {7000, 7000}, {3000, 7000},
-        {0, 0}, {10000, 0}, {10000, 10000}, {0, 10000},
-        {4000, 4000}, {6000, 4000}, {6000, 6000}, {4000, 6000}};
+        {3000, 3000}, {7000, 3000},
+        {7000, 7000}, {3000, 7000},
+        {0, 0}, {10000, 0},
+        {10000, 10000}, {0, 10000},
+        {4000, 4000}, {6000, 4000},
+        {6000, 6000}, {4000, 6000}};
     int64_t x = 0, y = 0;
     for (const auto& point : points) {
         write_varint(out, point.first - x);
@@ -90,6 +113,25 @@ std::vector<uint8_t> build_polygon_with_hole_and_island() {
         x = point.first;
         y = point.second;
     }
+    return out;
+}
+
+std::vector<uint8_t> build_general_arc() {
+    std::vector<uint8_t> out;
+    write_varuint(out, 50 | 0x20000000ULL);
+    write_varuint(out, 2); // nPoints
+    write_varuint(out, 1); // nParts
+    write_varuint(out, 1); // nCurves
+    write_bbox(out, 0, 0, 2000, 1000);
+    write_varint(out, 1000);
+    write_varint(out, 0);
+    write_varint(out, -2000);
+    write_varint(out, 0);
+    write_varuint(out, 0); // start vertex
+    write_varuint(out, 1); // circular arc
+    write_double_le(out, 0.0); // intermediate X
+    write_double_le(out, 1.0); // intermediate Y
+    write_u32_le(out, 0x80);   // intermediate-point form
     return out;
 }
 
@@ -102,11 +144,13 @@ GdbGeomDecoder make_decoder() {
 
 } // namespace
 
-TEST(PolygonTopologyContract, OrganizesHoleAndIslandIndependentOfOrderAndDirection) {
+TEST(PolygonTopologyContract,
+     OrganizesHoleAndIslandIndependentOfOrderAndDirection) {
     PolygonTopologyBuilder builder;
-    auto result = builder.build({square(3000, 3000, 7000, 7000, true),
-                                 square(0, 0, 10000, 10000, true),
-                                 square(4000, 4000, 6000, 6000)});
+    auto result = builder.build({
+        square(3000, 3000, 7000, 7000, true),
+        square(0, 0, 10000, 10000, true),
+        square(4000, 4000, 6000, 6000)});
     ASSERT_TRUE(result.valid()) << result.diagnostic;
     EXPECT_EQ(result.model.polygons.size(), 2u);
     size_t holes = 0;
@@ -115,29 +159,35 @@ TEST(PolygonTopologyContract, OrganizesHoleAndIslandIndependentOfOrderAndDirecti
     EXPECT_EQ(holes, 1u);
 
     for (const auto& polygon : result.model.polygons) {
-        EXPECT_GT(result.model.rings[polygon.exterior_ring].signed_area2, 0.0L);
+        EXPECT_GT(result.model.rings[
+            polygon.exterior_ring].signed_area2, 0.0L);
         for (size_t hole : polygon.interior_rings)
             EXPECT_LT(result.model.rings[hole].signed_area2, 0.0L);
     }
 }
 
-TEST(PolygonTopologyContract, RejectsSelfIntersectionDuplicateAndDegenerateRings) {
+TEST(PolygonTopologyContract,
+     RejectsSelfIntersectionDuplicateAndDegenerateRings) {
     PolygonTopologyBuilder builder;
-    auto bow_tie = builder.build({{{0, 0}, {10, 10}, {0, 10}, {10, 0}}});
+    auto bow_tie = builder.build(
+        {{{0, 0}, {10, 10}, {0, 10}, {10, 0}}});
     EXPECT_FALSE(bow_tie.valid());
     EXPECT_EQ(bow_tie.status, TopologyStatus::SelfIntersection);
 
-    auto duplicate = builder.build({square(0, 0, 10, 10),
-                                    square(0, 0, 10, 10, true)});
+    auto duplicate = builder.build({
+        square(0, 0, 10, 10),
+        square(0, 0, 10, 10, true)});
     EXPECT_FALSE(duplicate.valid());
     EXPECT_EQ(duplicate.status, TopologyStatus::DuplicateRing);
 
-    auto line = builder.build({{{0, 0}, {1, 0}, {2, 0}}});
+    auto line = builder.build(
+        {{{0, 0}, {1, 0}, {2, 0}}});
     EXPECT_FALSE(line.valid());
     EXPECT_EQ(line.status, TopologyStatus::DegenerateRing);
 }
 
-TEST(PolygonTopologyContract, KeepsZAndMAttachedWhenOrientationIsReversed) {
+TEST(PolygonTopologyContract,
+     KeepsZAndMAttachedWhenOrientationIsReversed) {
     PointSequence clockwise{{0, 0, 10.0, 100.0},
                             {0, 10, 20.0, 200.0},
                             {10, 10, 30.0, 300.0},
@@ -146,10 +196,22 @@ TEST(PolygonTopologyContract, KeepsZAndMAttachedWhenOrientationIsReversed) {
     ASSERT_TRUE(result.valid());
     const auto& points = result.model.rings.front().points;
     for (const auto& point : points) {
-        if (point.x == 0 && point.y == 0) { EXPECT_DOUBLE_EQ(point.z, 10.0); EXPECT_DOUBLE_EQ(point.m, 100.0); }
-        if (point.x == 0 && point.y == 10) { EXPECT_DOUBLE_EQ(point.z, 20.0); EXPECT_DOUBLE_EQ(point.m, 200.0); }
-        if (point.x == 10 && point.y == 10) { EXPECT_DOUBLE_EQ(point.z, 30.0); EXPECT_DOUBLE_EQ(point.m, 300.0); }
-        if (point.x == 10 && point.y == 0) { EXPECT_DOUBLE_EQ(point.z, 40.0); EXPECT_DOUBLE_EQ(point.m, 400.0); }
+        if (point.x == 0 && point.y == 0) {
+            EXPECT_DOUBLE_EQ(point.z, 10.0);
+            EXPECT_DOUBLE_EQ(point.m, 100.0);
+        }
+        if (point.x == 0 && point.y == 10) {
+            EXPECT_DOUBLE_EQ(point.z, 20.0);
+            EXPECT_DOUBLE_EQ(point.m, 200.0);
+        }
+        if (point.x == 10 && point.y == 10) {
+            EXPECT_DOUBLE_EQ(point.z, 30.0);
+            EXPECT_DOUBLE_EQ(point.m, 300.0);
+        }
+        if (point.x == 10 && point.y == 0) {
+            EXPECT_DOUBLE_EQ(point.z, 40.0);
+            EXPECT_DOUBLE_EQ(point.m, 400.0);
+        }
     }
 }
 
@@ -170,7 +232,8 @@ TEST(WkbContract, WritesValidStableMultiPolygonStructure) {
     EXPECT_EQ(read_u32_le(value.wkb, 5), 2u);
 }
 
-TEST(GeometryModelDecoder, DecodesPointAndProducesWkbWithoutWktRoundTrip) {
+TEST(GeometryModelDecoder,
+     DecodesPointAndProducesWkbWithoutWktRoundTrip) {
     auto blob = build_point();
     auto decoder = make_decoder();
     auto model = decoder.decode_model(blob.data(), blob.size());
@@ -185,19 +248,20 @@ TEST(GeometryModelDecoder, DecodesPointAndProducesWkbWithoutWktRoundTrip) {
     EXPECT_EQ(value.wkb.size(), 21u);
 }
 
-TEST(GeometryModelDecoder, PolygonWkbAndSpatialFilterShareTopology) {
+TEST(GeometryModelDecoder,
+     PolygonWkbAndSpatialFilterShareTopology) {
     auto blob = build_polygon_with_hole_and_island();
     auto decoder = make_decoder();
     auto model = decoder.decode_model(blob.data(), blob.size());
     ASSERT_TRUE(model.valid()) << model.diagnostic;
     ASSERT_EQ(model.multipolygon.polygons.size(), 2u);
 
-    EXPECT_TRUE(decoder.model_intersects_bbox(blob.data(), blob.size(),
-                                              1.0, 1.0, 2.0, 2.0));
-    EXPECT_FALSE(decoder.model_intersects_bbox(blob.data(), blob.size(),
-                                               3.5, 3.5, 3.6, 3.6));
-    EXPECT_TRUE(decoder.model_intersects_bbox(blob.data(), blob.size(),
-                                              4.5, 4.5, 4.6, 4.6));
+    EXPECT_TRUE(decoder.model_intersects_bbox(
+        blob.data(), blob.size(), 1.0, 1.0, 2.0, 2.0));
+    EXPECT_FALSE(decoder.model_intersects_bbox(
+        blob.data(), blob.size(), 3.5, 3.5, 3.6, 3.6));
+    EXPECT_TRUE(decoder.model_intersects_bbox(
+        blob.data(), blob.size(), 4.5, 4.5, 4.6, 4.6));
 
     auto value = decoder.decode_value(blob.data(), blob.size());
     ASSERT_TRUE(value.valid()) << value.diagnostic;
@@ -205,21 +269,30 @@ TEST(GeometryModelDecoder, PolygonWkbAndSpatialFilterShareTopology) {
     EXPECT_EQ(read_u32_le(value.wkb, 5), 2u);
 }
 
-TEST(GeometryModelDecoder, ReportsTruncationAndCurvesExplicitly) {
-    auto blob = build_polygon_with_hole_and_island();
+TEST(GeometryModelDecoder,
+     ReportsTruncationAndSupportsExplicitCurveModes) {
+    auto polygon = build_polygon_with_hole_and_island();
     auto decoder = make_decoder();
-    auto truncated = decoder.decode_model(blob.data(), blob.size() - 1);
+    auto truncated = decoder.decode_model(
+        polygon.data(), polygon.size() - 1);
     EXPECT_FALSE(truncated.valid());
     EXPECT_EQ(truncated.status, GeometryStatus::InvalidEncoding);
 
-    std::vector<uint8_t> curve;
-    write_varuint(curve, 50 | 0x20000000ULL);
-    write_varuint(curve, 3);
-    write_varuint(curve, 1);
-    write_varuint(curve, 1);
-    auto unsupported = decoder.decode_model(curve.data(), curve.size());
-    EXPECT_FALSE(unsupported.valid());
-    EXPECT_TRUE(unsupported.source_was_curve);
-    EXPECT_EQ(unsupported.backend, GeometryBackend::Reject);
-    EXPECT_EQ(unsupported.status, GeometryStatus::UnsupportedCurve);
+    auto curve = build_general_arc();
+    auto builtin = decoder.decode_model(curve.data(), curve.size());
+    ASSERT_TRUE(builtin.valid()) << builtin.diagnostic;
+    EXPECT_TRUE(builtin.source_was_curve);
+    EXPECT_TRUE(builtin.linearized);
+    EXPECT_EQ(builtin.backend, GeometryBackend::BuiltinCurve);
+    ASSERT_EQ(builtin.lines.size(), 1u);
+    EXPECT_GT(builtin.lines.front().size(), 3u);
+    EXPECT_TRUE(decoder.model_intersects_bbox(
+        curve.data(), curve.size(), -0.1, 0.9, 0.1, 1.1));
+
+    decoder.set_curve_backend(CurveBackendMode::Reject);
+    auto rejected = decoder.decode_model(curve.data(), curve.size());
+    EXPECT_FALSE(rejected.valid());
+    EXPECT_TRUE(rejected.source_was_curve);
+    EXPECT_EQ(rejected.backend, GeometryBackend::Reject);
+    EXPECT_EQ(rejected.status, GeometryStatus::UnsupportedCurve);
 }
