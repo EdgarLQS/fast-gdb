@@ -45,10 +45,17 @@ public:
                             const uint8_t*& blob_data,
                             size_t& blob_size);
 
+    // WKB-first geometry APIs. They decode directly from the row geometry
+    // blob and do not round-trip through the legacy WKT FieldValue.
+    bool read_geometry_model(uint32_t fid, GeometryModel& model);
+    bool read_geometry_value(uint32_t fid, GeometryValue& value);
+
     int nullable_field_count() const;
 
     using ScanCallback =
-        std::function<bool(uint32_t fid, const FieldRef* fields, int field_count)>;
+        std::function<bool(uint32_t fid,
+                           const FieldRef* fields,
+                           int field_count)>;
     uint64_t sequential_scan(ScanCallback callback);
 
 private:
@@ -62,6 +69,7 @@ private:
                               uint32_t fid,
                               FeatureRecord& record);
     GdbGeomDecoder make_geom_decoder(const FieldDescriptor& field) const;
+    const FieldDescriptor* geometry_field_descriptor() const;
 
     std::string file_path_;
     std::vector<uint8_t> file_data_;

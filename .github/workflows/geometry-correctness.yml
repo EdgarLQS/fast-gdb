@@ -1,0 +1,192 @@
+name: geometry-correctness
+
+on:
+  push:
+    branches:
+      - agent/geometry-wkb-curve-plan
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: geometry-correctness-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pure-cpp:
+    name: pure-cpp-${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - name: Install macOS dependencies
+        if: runner.os == 'macOS'
+        run: brew install ninja
+      - name: Configure
+        run: >-
+          cmake -S . -B build-core
+          -DFAST_GDB_WITH_GDAL=OFF
+          -DFAST_GDB_CURVE_BACKEND=BUILTIN
+          -DFAST_GDB_GEOMETRY_OUTPUT=STANDARD_WKB
+          -DFAST_GDB_BUILD_TOOLS=OFF
+          -DFAST_GDB_BUILD_FULL_TESTS=ON
+          -DBUILD_TESTING=ON
+      - name: Build (POSIX)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -o pipefail
+          cmake --build build-core --config Release --parallel --verbose 2>&1 | tee build.log
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cmake --build build-core --config Release --parallel --verbose *>&1 | Tee-Object -FilePath build.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-pure-${{ matrix.os }}
+          path: build.log
+          if-no-files-found: warn
+      - name: Test (POSIX)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -o pipefail
+          ctest --test-dir build-core -C Release --output-on-failure 2>&1 | tee test.log
+      - name: Test (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          ctest --test-dir build-core -C Release --output-on-failure *>&1 | Tee-Object -FilePath test.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Upload test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-log-pure-${{ matrix.os }}
+          path: test.log
+          if-no-files-found: warn
+
+  gdal-hybrid-tests:
+    name: gdal-hybrid-tests-linux
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libgdal-dev
+      - name: Configure
+        run: >-
+          cmake -S . -B build-hybrid -G Ninja
+          -DFAST_GDB_WITH_GDAL=ON
+          -DFAST_GDB_CURVE_BACKEND=BUILTIN
+          -DFAST_GDB_GEOMETRY_OUTPUT=STANDARD_WKB
+          -DFAST_GDB_BUILD_TOOLS=OFF
+          -DFAST_GDB_BUILD_FULL_TESTS=ON
+          -DBUILD_TESTING=ON
+      - name: Build
+        shell: bash
+        run: |
+          set -o pipefail
+          cmake --build build-hybrid --parallel --verbose 2>&1 | tee build.log
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-gdal-hybrid
+          path: build.log
+          if-no-files-found: warn
+      - name: Test
+        shell: bash
+        run: |
+          set -o pipefail
+          ctest --test-dir build-hybrid --output-on-failure 2>&1 | tee test.log
+      - name: Upload test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-log-gdal-hybrid
+          path: test.log
+          if-no-files-found: warn
+
+  gdal-default-build:
+    name: gdal-default-backend-build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libgdal-dev
+      - name: Configure
+        run: >-
+          cmake -S . -B build-gdal-default -G Ninja
+          -DFAST_GDB_WITH_GDAL=ON
+          -DFAST_GDB_CURVE_BACKEND=GDAL
+          -DFAST_GDB_GEOMETRY_OUTPUT=STANDARD_WKB
+          -DFAST_GDB_BUILD_TOOLS=OFF
+          -DBUILD_TESTING=OFF
+      - name: Build hybrid product
+        shell: bash
+        run: |
+          set -o pipefail
+          cmake --build build-gdal-default --target fast_gdb_curve_gdal --parallel --verbose 2>&1 | tee build.log
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-gdal-default
+          path: build.log
+          if-no-files-found: warn
+
+  sanitizer-core:
+    name: geometry-core-asan-ubsan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - name: Configure
+        env:
+          CXXFLAGS: -fsanitize=address,undefined -fno-omit-frame-pointer
+          LDFLAGS: -fsanitize=address,undefined
+        run: >-
+          cmake -S . -B build-sanitize -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DFAST_GDB_WITH_GDAL=OFF
+          -DFAST_GDB_CURVE_BACKEND=BUILTIN
+          -DFAST_GDB_BUILD_TOOLS=OFF
+          -DFAST_GDB_BUILD_FULL_TESTS=OFF
+          -DBUILD_TESTING=ON
+      - name: Build
+        shell: bash
+        run: |
+          set -o pipefail
+          cmake --build build-sanitize --target fast_gdb_geometry_test_runner --parallel --verbose 2>&1 | tee build.log
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-sanitizer
+          path: build.log
+          if-no-files-found: warn
+      - name: Test
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        shell: bash
+        run: |
+          set -o pipefail
+          ctest --test-dir build-sanitize --output-on-failure -R '^geometry\.' 2>&1 | tee test.log
+      - name: Upload test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-log-sanitizer
+          path: test.log
+          if-no-files-found: warn

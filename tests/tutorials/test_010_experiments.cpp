@@ -171,7 +171,7 @@ TEST_F(GdbTutorialFixture, T010_Experiment4_DifferentCrs) {
     layer4326 = ds->GetLayerByName("geo_layer");
     ASSERT_NE(layer4326, nullptr);
     {
-        OGRSpatialReference* srs = layer4326->GetSpatialRef();
+        const OGRSpatialReference* srs = layer4326->GetSpatialRef();
         ASSERT_NE(srs, nullptr);
         EXPECT_EQ(getEpsgCode(srs), 4326) << "geo_layer 的 CRS 应为 EPSG:4326";
     }
@@ -179,7 +179,7 @@ TEST_F(GdbTutorialFixture, T010_Experiment4_DifferentCrs) {
     layer3857 = ds->GetLayerByName("proj_layer");
     ASSERT_NE(layer3857, nullptr);
     {
-        OGRSpatialReference* srs = layer3857->GetSpatialRef();
+        const OGRSpatialReference* srs = layer3857->GetSpatialRef();
         ASSERT_NE(srs, nullptr);
         EXPECT_EQ(getEpsgCode(srs), 3857) << "proj_layer 的 CRS 应为 EPSG:3857";
     }

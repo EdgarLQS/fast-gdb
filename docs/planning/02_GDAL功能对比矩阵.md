@@ -2,138 +2,188 @@
 
 **更新日期**：2026-07-11  
 **文档状态**：当前权威能力矩阵  
-**对比对象**：`explorgdb reader` 与 GDAL OpenFileGDB 只读能力
+**对比对象**：`fast_gdb_linear`、`fast_gdb_hybrid` 与 GDAL OpenFileGDB 只读能力
 
 ## 1. 状态约定
 
 | 标记 | 含义 |
-|------|------|
-| ✅ | 已实现，自动化边界明确 |
-| 🧪 | 已实现并通过本地自动化，但缺真实 FileGDB 验收 |
+|---|---|
+| ✅ | 已实现并有自动化/真实样本验收 |
+| 🧪 | 已实现且有合成契约测试，仍需专门真实 FileGDB 差异验收 |
 | ⚠️ | 部分实现或降级支持 |
 | ❌ | 当前不支持 |
-| ⏸️ | 当前版本明确不实施 |
+| ⏸️ | 明确不在当前版本范围 |
 
 ## 2. 快速结论
 
-| 维度 | fast-gdb | 结论 |
-|------|:---:|------|
-| 常规点/线/面/多点 | ✅ | 本地自动化通过，内置真实普通样本已验收 |
-| GeneralPolyline / GeneralPolygon | 🧪 | Curve flag/header 已修正；曲线记录明确 unsupported |
-| GeneralPoint / GeneralMultiPoint | 🧪 | 主 decode 和本地自动化已覆盖；仍待包含 GeneralPoint/GeneralMultiPoint 的真实样本兜底 |
-| 曲线标准输出 | ❌ | 不还原参数、不线性化 |
-| MultiPatch | ⚠️ | 坐标和 WKT 语法可输出；part type/拓扑不保留，capability 为 degraded |
-| 字段类型 | ⚠️ | 物理记录可解析；Raster 和 DateTimeWithOffset 有边界 |
-| SRS | ✅ | WKT/WKID/LatestWKID；不重投影 |
-| 高级元数据 | ✅/⚠️ | domain、relationship、Feature Dataset 已实现；Annotation/Dimension 未实现 |
-| 查询 | ✅/⚠️ | FID、scan、bbox、`.spx`、`.atx`、WHERE 子集；不是完整 SQL/OGRLayer |
+| 维度 | `fast_gdb_linear` | `fast_gdb_hybrid` | 当前边界 |
+|---|:---:|:---:|---|
+| 常规点/线/面/多点 | ✅ | ✅ | 主路径均为纯 C++ |
+| Polygon 洞/多面/岛中岛 | 🧪 | 🧪/GDAL 兜底 | 整数网格包含树；专门复杂真实样本仍需扩充 |
+| ISO WKB-first | 🧪 | 🧪 | 2D/Z/M/ZM 合成契约覆盖 |
+| CircularArc | 🧪 | 🧪/GDAL | 内置折线化或 GDAL 回退 |
+| Cubic Bezier | 🧪 | 🧪/GDAL | 内置自适应折线化或 GDAL 回退 |
+| EllipticArc | 🧪 | 🧪/GDAL | minor/major/complete/rotation |
+| 原生曲线 WKB | ❌ | 🧪 | 仅显式 `NATIVE_CURVE_WKB` + GDAL |
+| MultiPatch | ⚠️ | ⚠️/GDAL 兜底 | 纯 C++ 仍不保留完整 part type/表面拓扑 |
+| `.spx` 空间查询 | ✅ | ✅ | 候选后必须做精确判断 |
+| GDAL Dataset/Layer 缓存 | 不适用 | 🧪 | 线程本地缓存，不逐要素重开 |
+| Windows/Linux/macOS | CI | CI | 纯 C++ 三平台；Hybrid 当前 Linux CI |
 
 ## 3. 几何类型
 
-### 3.1 常规类型
+### 3.1 常规与 General 类型
 
-| 类型 | fast-gdb | 当前边界 |
-|------|:---:|----------|
-| Point / PointZ / PointM / PointZM | ✅ | decode、peek、空间过滤坐标公式已统一；内置真实普通样本已验收 |
-| MultiPoint 及 Z/M/ZM | ✅ | decode 已实现；`peek_bbox` 按 `nPoints + bbox` 布局读取；内置真实普通样本已验收 |
-| Polyline 及 Z/M/ZM | ✅ | 输出 `MULTILINESTRING`；内置真实普通样本已验收 |
-| Polygon 及 Z/M/ZM | ✅ | 输出 `MULTIPOLYGON`；环拓扑不宣称与 OGR 完全等价 |
-| Null / Empty | ✅ | 有明确 EMPTY 输出 |
+| 类型 | 纯 C++状态 | 说明 |
+|---|:---:|---|
+| Point / Z / M / ZM | ✅ | Point 使用 `(raw-1)/scale+origin`；统一 decode/peek/query |
+| MultiPoint / Z / M / ZM | ✅ | `nPoints + bbox + delta arrays` |
+| Polyline / Z / M / ZM | ✅ | 内部 MultiLineString 模型 |
+| Polygon / Z / M / ZM | 🧪 | 环顺序/方向无关；洞和岛中岛 |
+| GeneralPoint (52) | 🧪 | Z/M 从 General flags 读取 |
+| GeneralMultiPoint (53) | 🧪 | General flags 和普通布局 |
+| GeneralPolyline (50) | 🧪 | Curve flag 控制 `nCurves` |
+| GeneralPolygon (51) | 🧪 | Curve flag + 统一 Polygon 拓扑 |
+| GeneralMultiPatch (54) | ⚠️ | 与 MultiPatch 相同的降级边界 |
+| Null / Empty | ✅ | 与非法编码区分 |
 
-### 3.2 General 类型
-
-| 类型 | fast-gdb | 当前边界 |
-|------|:---:|----------|
-| GeneralPoint (52) | 🧪 | 完整 `decode()` 已接入 point 解码；本地自动化覆盖，真实样本待验收 |
-| GeneralMultiPoint (53) | 🧪 | 完整 `decode()` 已接入 multipoint 解码；本地自动化覆盖，真实样本待验收 |
-| GeneralPolyline (50) | 🧪 | 非曲线 header 已修正；真实样本待验收 |
-| GeneralPolygon (51) | 🧪 | 非曲线 header 已修正；真实样本待验收 |
-| GeneralMultiPatch (54) | ⚠️ | 与 MultiPatch 相同的降级语义 |
-
-General 线面的当前规则：
+General 线面只在以下条件读取 `nCurves`：
 
 ```cpp
-const bool has_curve_desc =
-    (base_type == 50 || base_type == 51) &&
-    (geom_type & 0x20000000ULL) != 0;
+(base_type == 50 || base_type == 51) &&
+(geom_type & 0x20000000ULL) != 0
 ```
 
-只有 Curve flag 置位时读取 `nCurves`；`nCurves > 0` 返回 `UNSUPPORTED_CURVE_GEOMETRY`，空间过滤 fail closed；`nCurves == 0` 按普通 General 线面继续 decode、peek 和空间过滤。
+`Curve flag + nCurves == 0` 继续按普通 General 线面处理。
+
+### 3.2 Polygon 拓扑
+
+| 能力 | 状态 | 说明 |
+|---|:---:|---|
+| 环闭合标准化 | ✅ | 内部保存开放环，Writer 输出时闭合 |
+| 连续重复点去除 | ✅ | 保留 Z/M 与顶点绑定 |
+| 方向无关外环/洞识别 | 🧪 | 最小直接包含父环 |
+| 多外环 / MultiPolygon | 🧪 | 偶数深度环形成 Polygon |
+| 岛中岛 | 🧪 | 深度 2 形成新 Polygon |
+| Z/M 方向反转 | ✅ | 整个 `GridPoint` 反转 |
+| 自交检测 | ✅ | 整数网格精确方向符号 |
+| 重复环检测 | ✅ | 起点和方向无关 |
+| 环相切/重叠 | ✅ | 明确状态，不静默猜测 |
+| `int64` 极值安全 | 🧪 | 跨平台 64x64→128 符号比较，无 `__int128` 依赖 |
 
 ### 3.3 曲线
 
-| 曲线类型 | fast-gdb | 发布行为 |
-|----------|:---:|----------|
-| CircularArc | ❌ | 明确 unsupported |
-| Cubic Bezier | ❌ | 明确 unsupported |
-| EllipticArc | ❌ | 明确 unsupported |
+| 曲线 | BUILTIN | GDAL Hybrid | 输出 |
+|---|:---:|:---:|---|
+| 三点 CircularArc | 🧪 | ✅（GDAL 能力） | 默认线性 ISO WKB |
+| 圆心 CircularArc | 🧪 | ✅ | 默认线性 ISO WKB |
+| 完整圆 | 🧪 | ✅ | 闭合折线 |
+| Cubic Bezier | 🧪 | ✅ | 自适应折线 |
+| EllipticArc minor | 🧪 | ✅ | 线性 ISO WKB |
+| EllipticArc major | 🧪 | ✅ | 线性 ISO WKB |
+| 完整椭圆 | 🧪 | ✅ | 闭合折线 |
+| 旋转椭圆 | 🧪 | ✅ | FileGDB/GDAL 旋转约定已对齐 |
+| 混合直线/曲线 part | 🧪 | ✅ | 保持 part 顺序 |
+| Z/M 曲线插值 | 🧪 | GDAL | 按参数同步插值 |
+| 原生 curve WKB | ❌ | 🧪 | 显式 opt-in，不是默认契约 |
 
-不输出 `CIRCULARSTRING` / `COMPOUNDCURVE`，不把端点弦线伪装成真实曲线。
+内置后端受以下上限控制：
+
+- 最大弦高误差；
+- 最大角步长；
+- 每段最大细分数；
+- 非法起点、跨 part、截断描述符和数值溢出 fail closed。
 
 ### 3.4 MultiPatch
 
-| 能力 | fast-gdb |
-|------|:---:|
-| XY/Z/M 坐标读取 | ✅ |
-| `GEOMETRYCOLLECTION Z/ZM` 输出 | ✅ |
-| part type 语义保留 | ❌ |
-| TriangleStrip / TriangleFan 重建 | ❌ |
-| Ring/Outer/Inner 表面拓扑 | ❌ |
-| capability | ⚠️ degraded |
+| 能力 | 纯 C++ |
+|---|:---:|
+| XY/Z/M 读取 | ✅ |
+| 有限 `GEOMETRYCOLLECTION` WKT | ✅ |
+| part type 完整保留 | ❌ |
+| TriangleStrip / TriangleFan | ❌ |
+| Outer/Inner Ring 表面拓扑 | ❌ |
+| 标准线性 GeometryModel | ❌ |
+| 能力级别 | ⚠️ degraded |
 
-因此 MultiPatch 可读但不是完整语义等价。
+Hybrid 可将 `UnsupportedType` 配置为 GDAL 回退，但这不等于纯 C++ 已完成 MultiPatch 语义。
 
-## 4. 字段、SRS 和元数据
+## 4. 输出契约
+
+| 输出 | 状态 | 说明 |
+|---|:---:|---|
+| ISO WKB 2D | 🧪 | Point 至 MultiPolygon |
+| ISO WKB Z/M/ZM | 🧪 | 1000/2000/3000 类型偏移 |
+| `GeometryValue` 元数据 | ✅ | backend/status/curve/linearized/diagnostic |
+| Debug/兼容 WKT | ✅ | 与 WKB 共用同一模型 |
+| WKT → WKB 中转 | ⏸️ | 新路径禁止 |
+
+WKT 兼容接口保留至少一个稳定大版本；正式性能和互操作契约是 ISO WKB。
+
+## 5. 空间查询
 
 | 能力 | fast-gdb | 说明 |
-|------|:---:|------|
+|---|:---:|---|
+| 顺序扫描 / FID | ✅ | `QueryEngine` |
+| `.spx` 候选 | ✅ | 有效空候选不触发全表扫描 |
+| 精确 Point/MultiPoint | ✅ | 连续查询框 |
+| 精确 Line bbox | 🧪 | 线段裁剪，不依赖顶点落框 |
+| 精确 Polygon bbox | 🧪 | 外环/洞/岛统一模型 |
+| 曲线精确查询 | 🧪 | BUILTIN 使用同一折线；Hybrid 可 GDAL |
+| Hybrid `.spx` + GDAL fallback | 🧪 | `HybridQueryEngine` |
+| `.atx` 数值/字符串 | ✅ | 索引入口已实现 |
+| WHERE 子集 | ✅ | 比较、AND/OR、括号、IN |
+| 完整 SQL/JOIN/聚合 | ❌ | 不在范围 |
+
+`QueryGridBbox` 保持连续 `long double` 网格坐标，避免子网格查询框被整数取整后漏判。
+
+## 6. GDAL Hybrid 边界
+
+| 项目 | 行为 |
+|---|---|
+| 普通几何 | fast-gdb 主路径，不调用 GDAL |
+| 内置可处理曲线 | 默认 fast-gdb；可配置优先 GDAL |
+| fast-gdb 拒绝/不支持曲线 | 缓存式 GDAL FID 回退 |
+| 非法/不可靠 Polygon 拓扑 | 可配置 GDAL 回退 |
+| Dataset/Layer 生命周期 | 线程本地缓存 |
+| FID 默认映射 | `gdal_fid = fast_fid + 1` |
+| 映射错误 | 明确失败，不尝试多个偏移 |
+| 原生 curve WKB | 仅显式配置 |
+
+真实发布必须验证目标数据的 ObjectID/GDAL FID 映射。
+
+## 7. 字段、SRS 和元数据
+
+| 能力 | fast-gdb | 说明 |
+|---|:---:|---|
 | 常规数值/字符串/XML/Binary/GUID/GlobalID/Int64 | ✅ | 已暴露 |
-| DateTimeWithOffset | ⚠️ | 10 字节物理读取安全；offset 未独立暴露 |
+| DateTimeWithOffset | ⚠️ | 10 字节物理读取安全；offset 尚未独立暴露 |
 | Raster | ⚠️ | 检测并 degraded，不读像素 |
-| SRS WKT/WKID/LatestWKID/SRSName | ✅ | 不提供重投影 |
-| Definition / Documentation XML | ✅ | 已读取 |
+| SRS WKT/WKID/LatestWKID/SRSName | ✅ | 不重投影 |
 | coded/range domain | ✅ | 已结构化解析 |
 | Feature Dataset | ✅ | 已提供摘要 |
-| relationship summary/definition | ✅ | 不执行 join/级联 |
+| relationship | ✅/⚠️ | 摘要/定义；不执行 join/级联 |
 | Annotation / Dimension | ❌ | 未实现专用语义 |
 
-## 5. 查询
+## 8. 自动化与真实数据状态
 
-| 能力 | fast-gdb | 说明 |
-|------|:---:|------|
-| 顺序扫描 / FID | ✅ | QueryEngine |
-| bbox / `.spx` | ✅ | 缺索引时可顺序过滤 |
-| `.atx` 数值/字符串 | ✅ | 索引入口已实现 |
-| WHERE 比较、AND/OR、括号、IN | ✅ | 明确子集 |
-| execution path / fallback reason | ✅ | 曲线跳过也会说明 |
-| 完整 SQL/JOIN/聚合/函数 | ❌ | 不在范围 |
-| 持久 OGRLayer 状态 | ❌ | 每次 QueryRequest 显式传入 |
+自动化矩阵：
 
-## 6. 本地验证
+- Windows/Linux/macOS 纯 C++完整构建；
+- Linux GDAL Hybrid 构建和测试；
+- `FAST_GDB_CURVE_BACKEND=GDAL` 独立构建；
+- ASan/UBSan 几何核心；
+- 截断前缀和确定性随机垃圾输入；
+- Polygon、WKB、空间过滤和曲线合成契约。
 
-- 构建通过。
-- `GeometryTest.*`：`68 passed / 0 failed`。
-- 查询和真实数据契约专项：无真实样本环境变量时 `9 passed / 2 skipped / 0 failed`。
-- 内置普通真实样本：`RealDataReleaseContractTest.RegularFileGdbMatchesCoreReadContract` 已通过，路径为 `test_data/gdb/test_spatial_gdb.gdb/test_spatial_gdb.gdb`。
-- 全量 runner：`410 passed / 17 skipped / 0 failed`。
-- CTest：`427 tests, 0 failed, 17 skipped`。
-- 10M benchmark 默认跳过；仅在 `FAST_GDB_RUN_10M_BENCHMARKS=1` 时单独运行。
-- 两项真实数据测试在无环境变量时正确 SKIPPED。
-- 曲线真实 FileGDB 尚未验收；内置普通样本不包含 GDAL 可识别的原生曲线，不能作为 `FAST_GDB_CURVE_DATASET`。
+真实数据：
 
-## 7. v3 状态
+- 仓库普通 FileGDB 样本用于常规读取 release contract；
+- GeneralPoint/GeneralMultiPoint 专门真实样本仍应扩充；
+- ArcGIS Pro 原生 CircularArc/Bezier/Ellipse 数据集仍是发布前差异验收必需项；
+- 没有配置真实曲线样本时，文档和 CI 不声称已完成 ArcGIS/GDAL 全量等价验证。
 
-以下 v3 P0 几何正确性项已有本地自动化覆盖，其中常规真实 FileGDB 已用内置样本验收；General 类型和曲线仍需专门真实样本兜底：
+详细迁移、FID 和发布检查见：
 
-1. GeneralPoint / GeneralMultiPoint 主 decode。
-2. MultiPoint / GeneralMultiPoint `peek_bbox` header。
-3. Point 坐标公式在 decode、peek、空间过滤中的一致性。
-4. Curve flag + `nCurves == 0` 的一致行为。
-
-仍未关闭的差距：
-
-1. 包含 GeneralPoint / GeneralMultiPoint / GeneralPolyline / GeneralPolygon 的真实 FileGDB 回归。
-2. 真实曲线 FileGDB 回归。
-3. MultiPatch 完整 part type 语义（可选；未实现前维持 degraded）。
-
-曲线标准输出、GDAL 替换边界和更详细的历史分析已归档到 `archive/`，这里只保留当前能力矩阵。
+- `docs/usage/02_几何WKB曲线支持与迁移.md`
+- `docs/planning/10_fast-gdb几何正确性与曲线支持执行计划.md`
