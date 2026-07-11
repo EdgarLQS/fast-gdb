@@ -1,23 +1,10 @@
 // src/edgar/explorgdb/gdb_geometry.h
 // 几何 blob 解码器 — 支持兼容 WKT、统一 GeometryModel 和标准 WKB
-//
-// FileGDB 几何编码特点：
-//   - 坐标不是原始 double，而是 varuint/varint delta 编码的整数
-//   - 转换公式: real_coord = cumulative_int / scale + origin
-//   - origin/scale 来自几何字段描述符（在表头部），每个几何字段共用同一组
-//
-// 几何类型码（geom_type varuint 的低字节）：
-//   0=NULL, 1=Point, 3=Arc(Polyline), 5=Polygon, 8=MultiPoint
-//   9=PointZ, 10=ArcZ, 11=PointZM, 13=ArcZM, 15=PolygonZM
-//   18=MultiPointZM, 19=PolygonZ, 20=MultiPointZ, 21=PointM
-//   23=ArcM, 25=PolygonM, 28=MultiPointM
-//   31=MultiPatchM, 32=MultiPatch
-//   50=GeneralPolyline, 51=GeneralPolygon, 52=GeneralPoint
-//   53=GeneralMultiPoint, 54=GeneralMultiPatch
 
 #ifndef EXPLORGDB_GDB_GEOMETRY_H
 #define EXPLORGDB_GDB_GEOMETRY_H
 
+#include "curve_geometry.h"
 #include "geometry_model.h"
 
 #include <cstdint>
@@ -84,15 +71,24 @@ public:
     GeometryValue decode_value(const uint8_t* data, size_t size);
     GeometryValue decode_value_from_field(const uint8_t* data, size_t data_size);
 
+    void set_curve_backend(CurveBackendMode mode);
+    CurveBackendMode curve_backend() const;
+    void set_curve_linearization_options(
+        const CurveLinearizationOptions& options);
+    const CurveLinearizationOptions& curve_linearization_options() const;
+
     // Spatial filtering over the same GeometryModel used by WKB output.
     bool model_intersects_bbox(const uint8_t* data, size_t size,
-                               double xmin, double ymin, double xmax, double ymax);
+                               double xmin, double ymin,
+                               double xmax, double ymax);
 
     std::optional<GdbBbox> peek_bbox(const uint8_t* data, size_t size);
     bool intersects_with_peek(const uint8_t* data, size_t size,
-                              double xmin, double ymin, double xmax, double ymax);
+                              double xmin, double ymin,
+                              double xmax, double ymax);
     bool geometry_intersects_bbox(const uint8_t* data, size_t size,
-                                  double xmin, double ymin, double xmax, double ymax);
+                                  double xmin, double ymin,
+                                  double xmax, double ymax);
     bool has_unsupported_curve_geometry(const uint8_t* data, size_t size);
 
 private:
@@ -104,24 +100,33 @@ private:
 
     uint64_t read_varuint(DecodeState& s);
     int64_t read_varint(DecodeState& s);
-    double decode_point_raw_coord(uint64_t raw_val, double origin, double scale);
-    double decode_delta_cumulative_coord(int64_t cumulative, double origin, double scale);
-    double decode_bbox_raw_coord(uint64_t raw_val, double origin, double scale);
+    double decode_point_raw_coord(uint64_t raw_val,
+                                  double origin, double scale);
+    double decode_delta_cumulative_coord(int64_t cumulative,
+                                         double origin, double scale);
+    double decode_bbox_raw_coord(uint64_t raw_val,
+                                 double origin, double scale);
     std::string format_coord(double x, double y);
     std::string format_coord_z(double x, double y, double z);
     std::string format_coord_m(double x, double y, double m);
-    std::string format_coord_zm(double x, double y, double z, double m);
+    std::string format_coord_zm(double x, double y,
+                                double z, double m);
 
     GdbGeometry decode_point(DecodeState& s, uint8_t base_type);
-    GdbGeometry decode_multipoint(DecodeState& s, uint8_t base_type, bool has_z, bool has_m);
-    GdbGeometry decode_polyline(DecodeState& s, uint8_t base_type, bool has_z, bool has_m);
-    GdbGeometry decode_polygon(DecodeState& s, uint8_t base_type, bool has_z, bool has_m);
+    GdbGeometry decode_multipoint(DecodeState& s, uint8_t base_type,
+                                  bool has_z, bool has_m);
+    GdbGeometry decode_polyline(DecodeState& s, uint8_t base_type,
+                                bool has_z, bool has_m);
+    GdbGeometry decode_polygon(DecodeState& s, uint8_t base_type,
+                               bool has_z, bool has_m);
     GdbGeometry decode_multipatch(DecodeState& s, uint8_t base_type);
 
     bool has_z_type(uint8_t base_type) const;
     bool has_m_type(uint8_t base_type) const;
-    bool has_curve_descriptors(uint8_t base_type, uint64_t geom_type) const;
-    std::string geom_type_name(uint8_t base_type, uint64_t geom_type = 0) const;
+    bool has_curve_descriptors(uint8_t base_type,
+                               uint64_t geom_type) const;
+    std::string geom_type_name(uint8_t base_type,
+                               uint64_t geom_type = 0) const;
 
     double xorig_, yorig_, xyscale_;
     double zorig_, zscale_;
@@ -131,6 +136,13 @@ private:
     double inv_xyscale_ = 0.0;
     double inv_zscale_ = 0.0;
     double inv_mscale_ = 0.0;
+
+#if defined(FAST_GDB_CURVE_BACKEND_REJECT)
+    CurveBackendMode curve_backend_mode_ = CurveBackendMode::Reject;
+#else
+    CurveBackendMode curve_backend_mode_ = CurveBackendMode::Builtin;
+#endif
+    CurveLinearizationOptions curve_options_;
 };
 
 } // namespace explorgdb
