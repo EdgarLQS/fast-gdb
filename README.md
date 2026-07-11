@@ -20,6 +20,17 @@ cmake --build build --target gdb_tutorial_test_runner -j
 ```
 
 大型 benchmark 建议与 correctness 测试分开运行，避免基准进程状态影响功能验收结论。
+10M benchmark 默认跳过；仅在性能验收时通过 `FAST_GDB_RUN_10M_BENCHMARKS=1` 显式运行。
+
+仓库内置的普通真实 FileGDB 样本可用于 release contract 验证：
+
+```bash
+FAST_GDB_REAL_DATASET="$PWD/test_data/gdb/test_spatial_gdb.gdb/test_spatial_gdb.gdb" \
+./build/bin/gdb_tutorial_test_runner \
+  --gtest_filter='RealDataReleaseContractTest.RegularFileGdbMatchesCoreReadContract'
+```
+
+注意该样本目录是双层 `.gdb` 包装，环境变量必须指向内层目录。它不包含 GDAL 可识别的原生曲线，不能作为 `FAST_GDB_CURVE_DATASET`；曲线契约仍需单独准备 ArcGIS Pro 原生曲线样本。
 
 ## 项目组成
 

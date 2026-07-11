@@ -123,8 +123,9 @@ private:
 
     uint64_t read_varuint(DecodeState& s);
     int64_t read_varint(DecodeState& s);
-    double decode_coord(uint64_t raw_val, double origin, double scale);
-    int64_t decode_delta_coord(int64_t cumulative, double origin, double scale);
+    double decode_point_raw_coord(uint64_t raw_val, double origin, double scale);
+    double decode_delta_cumulative_coord(int64_t cumulative, double origin, double scale);
+    double decode_bbox_raw_coord(uint64_t raw_val, double origin, double scale);
     std::string format_coord(double x, double y);
     std::string format_coord_z(double x, double y, double z);
     std::string format_coord_m(double x, double y, double m);
@@ -139,7 +140,7 @@ private:
     bool has_z_type(uint8_t base_type) const;
     bool has_m_type(uint8_t base_type) const;
     bool has_curve_descriptors(uint8_t base_type, uint64_t geom_type) const;
-    std::string geom_type_name(uint8_t base_type) const;
+    std::string geom_type_name(uint8_t base_type, uint64_t geom_type = 0) const;
 
     double xorig_, yorig_, xyscale_;
     double zorig_, zscale_;

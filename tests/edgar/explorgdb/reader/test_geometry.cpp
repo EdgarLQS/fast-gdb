@@ -197,6 +197,111 @@ static GdbGeomDecoder make_decoder_m() {
         false, true);
 }
 
+static constexpr uint64_t kGeneralZFlag = 0x80000000ULL;
+static constexpr uint64_t kGeneralMFlag = 0x40000000ULL;
+static constexpr uint64_t kGeneralCurveFlag = 0x20000000ULL;
+
+static void expect_no_unknown(const GdbGeometry& geom) {
+    EXPECT_EQ(geom.wkt.find("UNKNOWN"), std::string::npos) << geom.wkt;
+}
+
+static void write_test_bbox(std::vector<uint8_t>& buf,
+                            uint64_t xmin, uint64_t ymin,
+                            uint64_t dx, uint64_t dy) {
+    explorgdb_test::write_varuint(buf, xmin);
+    explorgdb_test::write_varuint(buf, ymin);
+    explorgdb_test::write_varuint(buf, dx);
+    explorgdb_test::write_varuint(buf, dy);
+}
+
+static std::vector<uint8_t> build_general_point(bool has_z, bool has_m) {
+    std::vector<uint8_t> buf;
+    uint64_t geom_type = 52;
+    if (has_z) geom_type |= kGeneralZFlag;
+    if (has_m) geom_type |= kGeneralMFlag;
+    explorgdb_test::write_varuint(buf, geom_type);
+    explorgdb_test::write_varuint(buf, 12346);  // (12346 - 1) / 1000 = 12.345
+    explorgdb_test::write_varuint(buf, 67891);  // (67891 - 1) / 1000 = 67.89
+    if (has_z) explorgdb_test::write_varuint(buf, 7001);
+    if (has_m) explorgdb_test::write_varuint(buf, 9001);
+    return buf;
+}
+
+static std::vector<uint8_t> build_boundary_point() {
+    std::vector<uint8_t> buf;
+    explorgdb_test::write_varuint(buf, 1);
+    explorgdb_test::write_varuint(buf, 1001);  // exact x = 1.0 only with (raw - 1)
+    explorgdb_test::write_varuint(buf, 2001);  // exact y = 2.0 only with (raw - 1)
+    return buf;
+}
+
+static std::vector<uint8_t> build_multipoint_with_bbox(uint64_t geom_type,
+                                                        uint64_t xmin,
+                                                        uint64_t ymin,
+                                                        uint64_t dx,
+                                                        uint64_t dy,
+                                                        bool has_z,
+                                                        bool has_m) {
+    std::vector<uint8_t> buf;
+    explorgdb_test::write_varuint(buf, geom_type);
+    explorgdb_test::write_varuint(buf, 2);  // nPoints; MultiPoint has no nParts header
+    write_test_bbox(buf, xmin, ymin, dx, dy);
+    explorgdb_test::write_svarint(buf, static_cast<int64_t>(xmin));
+    explorgdb_test::write_svarint(buf, static_cast<int64_t>(ymin));
+    explorgdb_test::write_svarint(buf, static_cast<int64_t>(dx));
+    explorgdb_test::write_svarint(buf, static_cast<int64_t>(dy));
+    if (has_z) {
+        explorgdb_test::write_svarint(buf, 5000);
+        explorgdb_test::write_svarint(buf, 1000);
+    }
+    if (has_m) {
+        explorgdb_test::write_svarint(buf, 7000);
+        explorgdb_test::write_svarint(buf, 1000);
+    }
+    return buf;
+}
+
+static std::vector<uint8_t> build_general_multipoint(bool has_z, bool has_m) {
+    uint64_t geom_type = 53;
+    if (has_z) geom_type |= kGeneralZFlag;
+    if (has_m) geom_type |= kGeneralMFlag;
+    return build_multipoint_with_bbox(geom_type, 21000, 31000, 2000, 3000, has_z, has_m);
+}
+
+static std::vector<uint8_t> build_general_polyline_with_curve_count(uint64_t nCurves) {
+    std::vector<uint8_t> buf;
+    explorgdb_test::write_varuint(buf, 50 | kGeneralCurveFlag);
+    explorgdb_test::write_varuint(buf, 3);  // nPoints
+    explorgdb_test::write_varuint(buf, 1);  // nParts
+    explorgdb_test::write_varuint(buf, nCurves);
+    write_test_bbox(buf, 1, 1, 1000, 1000);
+    explorgdb_test::write_svarint(buf, 1);
+    explorgdb_test::write_svarint(buf, 1);
+    explorgdb_test::write_svarint(buf, 1000);
+    explorgdb_test::write_svarint(buf, 0);
+    explorgdb_test::write_svarint(buf, 0);
+    explorgdb_test::write_svarint(buf, 1000);
+    return buf;
+}
+
+static std::vector<uint8_t> build_general_polygon_with_curve_count(uint64_t nCurves) {
+    std::vector<uint8_t> buf;
+    explorgdb_test::write_varuint(buf, 51 | kGeneralCurveFlag);
+    explorgdb_test::write_varuint(buf, 4);  // nPoints
+    explorgdb_test::write_varuint(buf, 1);  // nParts
+    explorgdb_test::write_varuint(buf, nCurves);
+    write_test_bbox(buf, 1, 1, 1000, 1000);
+    explorgdb_test::write_svarint(buf, 1);
+    explorgdb_test::write_svarint(buf, 1);
+    explorgdb_test::write_svarint(buf, 1000);
+    explorgdb_test::write_svarint(buf, 0);
+    explorgdb_test::write_svarint(buf, 0);
+    explorgdb_test::write_svarint(buf, 1000);
+    explorgdb_test::write_svarint(buf, -1000);
+    explorgdb_test::write_svarint(buf, 0);
+    return buf;
+}
+
 TEST(GeometryTest, MultiPointZ) {
     auto buf = explorgdb_test::build_geom_multipoint_z();
     auto decoder = make_decoder_z();
@@ -219,6 +324,66 @@ TEST(GeometryTest, MultiPointM) {
     EXPECT_FALSE(geom.has_z);
     EXPECT_TRUE(geom.has_m);
     EXPECT_NE(geom.wkt.find("MULTIPOINT"), std::string::npos);
+}
+
+TEST(GeometryTest, GeneralMultiPoint2DDecode) {
+    auto buf = build_general_multipoint(false, false);
+    auto decoder = make_decoder_2d();
+    auto geom = decoder.decode(buf.data(), buf.size());
+
+    EXPECT_EQ(geom.type, GdbGeomType::GeneralMultiPoint);
+    EXPECT_FALSE(geom.is_empty);
+    EXPECT_FALSE(geom.has_z);
+    EXPECT_FALSE(geom.has_m);
+    expect_no_unknown(geom);
+    EXPECT_EQ(geom.wkt.rfind("MULTIPOINT", 0), 0u) << geom.wkt;
+    EXPECT_NE(geom.wkt.find("(21 31)"), std::string::npos) << geom.wkt;
+    EXPECT_NE(geom.wkt.find("(23 34)"), std::string::npos) << geom.wkt;
+}
+
+TEST(GeometryTest, GeneralMultiPointZDecode) {
+    auto buf = build_general_multipoint(true, false);
+    auto decoder = make_decoder_2d();
+    auto geom = decoder.decode(buf.data(), buf.size());
+
+    EXPECT_EQ(geom.type, GdbGeomType::GeneralMultiPoint);
+    EXPECT_FALSE(geom.is_empty);
+    EXPECT_TRUE(geom.has_z);
+    EXPECT_FALSE(geom.has_m);
+    expect_no_unknown(geom);
+    EXPECT_EQ(geom.wkt.rfind("MULTIPOINT Z", 0), 0u) << geom.wkt;
+    EXPECT_NE(geom.wkt.find("(21 31 5)"), std::string::npos) << geom.wkt;
+    EXPECT_NE(geom.wkt.find("(23 34 6)"), std::string::npos) << geom.wkt;
+}
+
+TEST(GeometryTest, GeneralMultiPointMDecode) {
+    auto buf = build_general_multipoint(false, true);
+    auto decoder = make_decoder_2d();
+    auto geom = decoder.decode(buf.data(), buf.size());
+
+    EXPECT_EQ(geom.type, GdbGeomType::GeneralMultiPoint);
+    EXPECT_FALSE(geom.is_empty);
+    EXPECT_FALSE(geom.has_z);
+    EXPECT_TRUE(geom.has_m);
+    expect_no_unknown(geom);
+    EXPECT_EQ(geom.wkt.rfind("MULTIPOINT M", 0), 0u) << geom.wkt;
+    EXPECT_NE(geom.wkt.find("(21 31 7)"), std::string::npos) << geom.wkt;
+    EXPECT_NE(geom.wkt.find("(23 34 8)"), std::string::npos) << geom.wkt;
+}
+
+TEST(GeometryTest, GeneralMultiPointZMDecode) {
+    auto buf = build_general_multipoint(true, true);
+    auto decoder = make_decoder_2d();
+    auto geom = decoder.decode(buf.data(), buf.size());
+
+    EXPECT_EQ(geom.type, GdbGeomType::GeneralMultiPoint);
+    EXPECT_FALSE(geom.is_empty);
+    EXPECT_TRUE(geom.has_z);
+    EXPECT_TRUE(geom.has_m);
+    expect_no_unknown(geom);
+    EXPECT_EQ(geom.wkt.rfind("MULTIPOINT ZM", 0), 0u) << geom.wkt;
+    EXPECT_NE(geom.wkt.find("(21 31 5 7)"), std::string::npos) << geom.wkt;
+    EXPECT_NE(geom.wkt.find("(23 34 6 8)"), std::string::npos) << geom.wkt;
 }
 
 TEST(GeometryTest, PolylineZ) {
@@ -321,6 +486,62 @@ TEST(GeometryTest, PointZM) {
     EXPECT_TRUE(geom.has_m);
     // geom_type_name(11) = "POINT ZM"
     EXPECT_NE(geom.wkt.find("POINT ZM"), std::string::npos);
+}
+
+TEST(GeometryTest, GeneralPoint2DDecode) {
+    auto buf = build_general_point(false, false);
+    auto decoder = make_decoder_2d();
+    auto geom = decoder.decode(buf.data(), buf.size());
+
+    EXPECT_EQ(geom.type, GdbGeomType::GeneralPoint);
+    EXPECT_FALSE(geom.is_empty);
+    EXPECT_FALSE(geom.has_z);
+    EXPECT_FALSE(geom.has_m);
+    expect_no_unknown(geom);
+    EXPECT_EQ(geom.wkt.rfind("POINT", 0), 0u) << geom.wkt;
+    EXPECT_NE(geom.wkt.find("12.345 67.89"), std::string::npos) << geom.wkt;
+}
+
+TEST(GeometryTest, GeneralPointZDecode) {
+    auto buf = build_general_point(true, false);
+    auto decoder = make_decoder_2d();
+    auto geom = decoder.decode(buf.data(), buf.size());
+
+    EXPECT_EQ(geom.type, GdbGeomType::GeneralPoint);
+    EXPECT_FALSE(geom.is_empty);
+    EXPECT_TRUE(geom.has_z);
+    EXPECT_FALSE(geom.has_m);
+    expect_no_unknown(geom);
+    EXPECT_EQ(geom.wkt.rfind("POINT Z", 0), 0u) << geom.wkt;
+    EXPECT_NE(geom.wkt.find("12.345 67.89 7"), std::string::npos) << geom.wkt;
+}
+
+TEST(GeometryTest, GeneralPointMDecode) {
+    auto buf = build_general_point(false, true);
+    auto decoder = make_decoder_2d();
+    auto geom = decoder.decode(buf.data(), buf.size());
+
+    EXPECT_EQ(geom.type, GdbGeomType::GeneralPoint);
+    EXPECT_FALSE(geom.is_empty);
+    EXPECT_FALSE(geom.has_z);
+    EXPECT_TRUE(geom.has_m);
+    expect_no_unknown(geom);
+    EXPECT_EQ(geom.wkt.rfind("POINT M", 0), 0u) << geom.wkt;
+    EXPECT_NE(geom.wkt.find("12.345 67.89 9"), std::string::npos) << geom.wkt;
+}
+
+TEST(GeometryTest, GeneralPointZMDecode) {
+    auto buf = build_general_point(true, true);
+    auto decoder = make_decoder_2d();
+    auto geom = decoder.decode(buf.data(), buf.size());
+
+    EXPECT_EQ(geom.type, GdbGeomType::GeneralPoint);
+    EXPECT_FALSE(geom.is_empty);
+    EXPECT_TRUE(geom.has_z);
+    EXPECT_TRUE(geom.has_m);
+    expect_no_unknown(geom);
+    EXPECT_EQ(geom.wkt.rfind("POINT ZM", 0), 0u) << geom.wkt;
+    EXPECT_NE(geom.wkt.find("12.345 67.89 7 9"), std::string::npos) << geom.wkt;
 }
 
 // ── MultiPatch 测试 ──
@@ -448,14 +669,63 @@ TEST(GeometryTest, GeneralWithoutCurveFlagIsNotUnsupportedCurve) {
 }
 
 TEST(GeometryTest, GeneralCurveSpatialFilterFailsClosed) {
-    std::vector<uint8_t> buf;
-    explorgdb_test::write_varuint(buf, 50 | 0x20000000ULL);
-    explorgdb_test::write_varuint(buf, 2);  // nPoints
-    explorgdb_test::write_varuint(buf, 1);  // nParts
-    explorgdb_test::write_varuint(buf, 1);  // nCurves
+    auto buf = build_general_polyline_with_curve_count(1);
 
     auto decoder = make_decoder_2d();
     EXPECT_TRUE(decoder.has_unsupported_curve_geometry(buf.data(), buf.size()));
+    EXPECT_FALSE(decoder.peek_bbox(buf.data(), buf.size()).has_value());
+    EXPECT_FALSE(decoder.intersects_with_peek(buf.data(), buf.size(), -1.0, -1.0, 1.0, 1.0));
+    EXPECT_FALSE(decoder.geometry_intersects_bbox(buf.data(), buf.size(), -1.0, -1.0, 1.0, 1.0));
+}
+
+TEST(GeometryTest, GeneralPolylineCurveFlagWithZeroCurvesBehavesLikeNormalPolyline) {
+    auto buf = build_general_polyline_with_curve_count(0);
+    auto decoder = make_decoder_2d();
+    auto geom = decoder.decode(buf.data(), buf.size());
+
+    EXPECT_FALSE(decoder.has_unsupported_curve_geometry(buf.data(), buf.size()));
+    EXPECT_FALSE(geom.is_empty);
+    expect_no_unknown(geom);
+    EXPECT_EQ(geom.wkt.find("UNSUPPORTED_CURVE_GEOMETRY"), std::string::npos) << geom.wkt;
+    EXPECT_NE(geom.wkt.find("MULTILINESTRING"), std::string::npos) << geom.wkt;
+
+    auto bbox = decoder.peek_bbox(buf.data(), buf.size());
+    ASSERT_TRUE(bbox.has_value());
+    EXPECT_DOUBLE_EQ(bbox->xmin, 0.001);
+    EXPECT_DOUBLE_EQ(bbox->ymin, 0.001);
+    EXPECT_DOUBLE_EQ(bbox->xmax, 1.001);
+    EXPECT_DOUBLE_EQ(bbox->ymax, 1.001);
+    EXPECT_TRUE(decoder.intersects_with_peek(buf.data(), buf.size(), -1.0, -1.0, 5.0, 5.0));
+    EXPECT_TRUE(decoder.geometry_intersects_bbox(buf.data(), buf.size(), -1.0, -1.0, 5.0, 5.0));
+}
+
+TEST(GeometryTest, GeneralPolygonCurveFlagWithZeroCurvesBehavesLikeNormalPolygon) {
+    auto buf = build_general_polygon_with_curve_count(0);
+    auto decoder = make_decoder_2d();
+    auto geom = decoder.decode(buf.data(), buf.size());
+
+    EXPECT_FALSE(decoder.has_unsupported_curve_geometry(buf.data(), buf.size()));
+    EXPECT_FALSE(geom.is_empty);
+    expect_no_unknown(geom);
+    EXPECT_EQ(geom.wkt.find("UNSUPPORTED_CURVE_GEOMETRY"), std::string::npos) << geom.wkt;
+    EXPECT_NE(geom.wkt.find("MULTIPOLYGON"), std::string::npos) << geom.wkt;
+
+    auto bbox = decoder.peek_bbox(buf.data(), buf.size());
+    ASSERT_TRUE(bbox.has_value());
+    EXPECT_DOUBLE_EQ(bbox->xmin, 0.001);
+    EXPECT_DOUBLE_EQ(bbox->ymin, 0.001);
+    EXPECT_DOUBLE_EQ(bbox->xmax, 1.001);
+    EXPECT_DOUBLE_EQ(bbox->ymax, 1.001);
+    EXPECT_TRUE(decoder.intersects_with_peek(buf.data(), buf.size(), -1.0, -1.0, 5.0, 5.0));
+    EXPECT_TRUE(decoder.geometry_intersects_bbox(buf.data(), buf.size(), -1.0, -1.0, 5.0, 5.0));
+}
+
+TEST(GeometryTest, GeneralPolygonCurveSpatialFilterFailsClosed) {
+    auto buf = build_general_polygon_with_curve_count(2);
+    auto decoder = make_decoder_2d();
+
+    EXPECT_TRUE(decoder.has_unsupported_curve_geometry(buf.data(), buf.size()));
+    EXPECT_FALSE(decoder.peek_bbox(buf.data(), buf.size()).has_value());
     EXPECT_FALSE(decoder.intersects_with_peek(buf.data(), buf.size(), -1.0, -1.0, 1.0, 1.0));
     EXPECT_FALSE(decoder.geometry_intersects_bbox(buf.data(), buf.size(), -1.0, -1.0, 1.0, 1.0));
 }
@@ -483,6 +753,30 @@ TEST(GeometryTest, PeekBbox_MultiPoint) {
     EXPECT_LT(bbox->ymin, bbox->ymax);
 }
 
+TEST(GeometryTest, PeekBbox_MultiPointReadsNPointsThenBbox) {
+    auto buf = build_multipoint_with_bbox(8, 11000, 22000, 33000, 44000, false, false);
+    auto decoder = make_decoder_2d();
+    auto bbox = decoder.peek_bbox(buf.data(), buf.size());
+
+    ASSERT_TRUE(bbox.has_value());
+    EXPECT_DOUBLE_EQ(bbox->xmin, 11.0);
+    EXPECT_DOUBLE_EQ(bbox->ymin, 22.0);
+    EXPECT_DOUBLE_EQ(bbox->xmax, 44.0);
+    EXPECT_DOUBLE_EQ(bbox->ymax, 66.0);
+}
+
+TEST(GeometryTest, PeekBbox_GeneralMultiPointReadsNPointsThenBboxWithoutNParts) {
+    auto buf = build_multipoint_with_bbox(53, 11000, 22000, 33000, 44000, false, false);
+    auto decoder = make_decoder_2d();
+    auto bbox = decoder.peek_bbox(buf.data(), buf.size());
+
+    ASSERT_TRUE(bbox.has_value());
+    EXPECT_DOUBLE_EQ(bbox->xmin, 11.0);
+    EXPECT_DOUBLE_EQ(bbox->ymin, 22.0);
+    EXPECT_DOUBLE_EQ(bbox->xmax, 44.0);
+    EXPECT_DOUBLE_EQ(bbox->ymax, 66.0);
+}
+
 TEST(GeometryTest, PeekBbox_Polyline) {
     auto buf = explorgdb_test::build_geom_polyline();
     auto decoder = make_decoder_2d();
@@ -508,6 +802,20 @@ TEST(GeometryTest, IntersectsWithPeek_PointInside) {
     auto decoder = make_decoder_2d();
     // bbox 包含点 (1.0, 2.0)
     EXPECT_TRUE(decoder.intersects_with_peek(buf.data(), buf.size(), 0.5, 1.5, 1.5, 2.5));
+}
+
+TEST(GeometryTest, PointBoundaryUsesRawMinusOneCoordinateFormula) {
+    auto buf = build_boundary_point();
+    auto decoder = make_decoder_2d();
+
+    auto bbox = decoder.peek_bbox(buf.data(), buf.size());
+    ASSERT_TRUE(bbox.has_value());
+    EXPECT_DOUBLE_EQ(bbox->xmin, 1.0);
+    EXPECT_DOUBLE_EQ(bbox->ymin, 2.0);
+    EXPECT_DOUBLE_EQ(bbox->xmax, 1.0);
+    EXPECT_DOUBLE_EQ(bbox->ymax, 2.0);
+    EXPECT_TRUE(decoder.intersects_with_peek(buf.data(), buf.size(), 1.0, 2.0, 1.0, 2.0));
+    EXPECT_TRUE(decoder.geometry_intersects_bbox(buf.data(), buf.size(), 1.0, 2.0, 1.0, 2.0));
 }
 
 TEST(GeometryTest, IntersectsWithPeek_PointOutside) {

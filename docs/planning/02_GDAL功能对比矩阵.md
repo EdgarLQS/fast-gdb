@@ -18,9 +18,9 @@
 
 | 维度 | fast-gdb | 结论 |
 |------|:---:|------|
-| 常规点/线/面/多点 | 🧪 | 本地自动化通过，真实普通样本待验收 |
+| 常规点/线/面/多点 | ✅ | 本地自动化通过，内置真实普通样本已验收 |
 | GeneralPolyline / GeneralPolygon | 🧪 | Curve flag/header 已修正；曲线记录明确 unsupported |
-| GeneralPoint / GeneralMultiPoint | ❌ | 完整 decode 主入口尚未接入，进入 v3 |
+| GeneralPoint / GeneralMultiPoint | 🧪 | 主 decode 和本地自动化已覆盖；仍待包含 GeneralPoint/GeneralMultiPoint 的真实样本兜底 |
 | 曲线标准输出 | ❌ | 不还原参数、不线性化 |
 | MultiPatch | ⚠️ | 坐标和 WKT 语法可输出；part type/拓扑不保留，capability 为 degraded |
 | 字段类型 | ⚠️ | 物理记录可解析；Raster 和 DateTimeWithOffset 有边界 |
@@ -34,18 +34,18 @@
 
 | 类型 | fast-gdb | 当前边界 |
 |------|:---:|----------|
-| Point / PointZ / PointM / PointZM | 🧪 | decode 已实现；v3 统一点在 peek/空间过滤中的坐标公式 |
-| MultiPoint 及 Z/M/ZM | 🧪 | decode 已实现；v3 修正 `peek_bbox` 不应读取 `nParts` |
-| Polyline 及 Z/M/ZM | 🧪 | 输出 `MULTILINESTRING` |
-| Polygon 及 Z/M/ZM | 🧪 | 输出 `MULTIPOLYGON`；环拓扑不宣称与 OGR 完全等价 |
+| Point / PointZ / PointM / PointZM | ✅ | decode、peek、空间过滤坐标公式已统一；内置真实普通样本已验收 |
+| MultiPoint 及 Z/M/ZM | ✅ | decode 已实现；`peek_bbox` 按 `nPoints + bbox` 布局读取；内置真实普通样本已验收 |
+| Polyline 及 Z/M/ZM | ✅ | 输出 `MULTILINESTRING`；内置真实普通样本已验收 |
+| Polygon 及 Z/M/ZM | ✅ | 输出 `MULTIPOLYGON`；环拓扑不宣称与 OGR 完全等价 |
 | Null / Empty | ✅ | 有明确 EMPTY 输出 |
 
 ### 3.2 General 类型
 
 | 类型 | fast-gdb | 当前边界 |
 |------|:---:|----------|
-| GeneralPoint (52) | ❌ | 空间辅助路径识别，但完整 `decode()` 未接入 |
-| GeneralMultiPoint (53) | ❌ | 空间辅助路径识别，但完整 `decode()` 未接入 |
+| GeneralPoint (52) | 🧪 | 完整 `decode()` 已接入 point 解码；本地自动化覆盖，真实样本待验收 |
+| GeneralMultiPoint (53) | 🧪 | 完整 `decode()` 已接入 multipoint 解码；本地自动化覆盖，真实样本待验收 |
 | GeneralPolyline (50) | 🧪 | 非曲线 header 已修正；真实样本待验收 |
 | GeneralPolygon (51) | 🧪 | 非曲线 header 已修正；真实样本待验收 |
 | GeneralMultiPatch (54) | ⚠️ | 与 MultiPatch 相同的降级语义 |
@@ -58,7 +58,7 @@ const bool has_curve_desc =
     (geom_type & 0x20000000ULL) != 0;
 ```
 
-只有 Curve flag 置位时读取 `nCurves`；`nCurves > 0` 返回 `UNSUPPORTED_CURVE_GEOMETRY`，空间过滤 fail closed。
+只有 Curve flag 置位时读取 `nCurves`；`nCurves > 0` 返回 `UNSUPPORTED_CURVE_GEOMETRY`，空间过滤 fail closed；`nCurves == 0` 按普通 General 线面继续 decode、peek 和空间过滤。
 
 ### 3.3 曲线
 
@@ -112,19 +112,28 @@ const bool has_curve_desc =
 ## 6. 本地验证
 
 - 构建通过。
-- 最终功能 runner：`401 passed / 11 skipped / 0 failed`。
+- `GeometryTest.*`：`68 passed / 0 failed`。
+- 查询和真实数据契约专项：无真实样本环境变量时 `9 passed / 2 skipped / 0 failed`。
+- 内置普通真实样本：`RealDataReleaseContractTest.RegularFileGdbMatchesCoreReadContract` 已通过，路径为 `test_data/gdb/test_spatial_gdb.gdb/test_spatial_gdb.gdb`。
+- 全量 runner：`410 passed / 17 skipped / 0 failed`。
+- CTest：`427 tests, 0 failed, 17 skipped`。
+- 10M benchmark 默认跳过；仅在 `FAST_GDB_RUN_10M_BENCHMARKS=1` 时单独运行。
 - 两项真实数据测试在无环境变量时正确 SKIPPED。
-- 普通和曲线真实 FileGDB 尚未验收。
+- 曲线真实 FileGDB 尚未验收；内置普通样本不包含 GDAL 可识别的原生曲线，不能作为 `FAST_GDB_CURVE_DATASET`。
 
-## 7. v3 差距
+## 7. v3 状态
 
-以下不再作为 v2 阻塞，统一进入 [10_fast-gdb-v3几何正确性与真实数据计划.md](10_fast-gdb-v3几何正确性与真实数据计划.md)：
+以下 v3 P0 几何正确性项已有本地自动化覆盖，其中常规真实 FileGDB 已用内置样本验收；General 类型和曲线仍需专门真实样本兜底：
 
 1. GeneralPoint / GeneralMultiPoint 主 decode。
 2. MultiPoint / GeneralMultiPoint `peek_bbox` header。
 3. Point 坐标公式在 decode、peek、空间过滤中的一致性。
 4. Curve flag + `nCurves == 0` 的一致行为。
-5. 普通真实和真实曲线 FileGDB 回归。
-6. MultiPatch 完整 part type 语义（可选；未实现前维持 degraded）。
+
+仍未关闭的差距：
+
+1. 包含 GeneralPoint / GeneralMultiPoint / GeneralPolyline / GeneralPolygon 的真实 FileGDB 回归。
+2. 真实曲线 FileGDB 回归。
+3. MultiPatch 完整 part type 语义（可选；未实现前维持 degraded）。
 
 曲线标准输出、GDAL 替换边界和更详细的历史分析已归档到 `archive/`，这里只保留当前能力矩阵。

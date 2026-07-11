@@ -66,17 +66,21 @@ int64_t GdbGeomDecoder::read_varint(DecodeState& s) {
 }
 
 // ── 坐标转换 ──
-double GdbGeomDecoder::decode_coord(uint64_t raw_val, double origin, double scale) {
+double GdbGeomDecoder::decode_point_raw_coord(uint64_t raw_val, double origin, double scale) {
     if (raw_val == 0) return std::nan("");  // 0 表示空坐标
     double s = (scale == 0.0) ? 1e-15 : scale;
     return static_cast<double>(raw_val - 1) / s + origin;
 }
 
-// Delta 编码坐标：cumulative 是累积的整数坐标值
-int64_t GdbGeomDecoder::decode_delta_coord(int64_t cumulative, double origin, double scale) {
+double GdbGeomDecoder::decode_delta_cumulative_coord(int64_t cumulative, double origin, double scale) {
     double s = (scale == 0.0) ? 1e-15 : scale;
-    // 注意：cumulative 已经是累积后的整数，直接转换
-    return static_cast<int64_t>(static_cast<double>(cumulative) / s + origin * s);
+    return static_cast<double>(cumulative) / s + origin;
+}
+
+double GdbGeomDecoder::decode_bbox_raw_coord(uint64_t raw_val, double origin, double scale) {
+    if (raw_val == 0) return std::nan("");
+    double s = (scale == 0.0) ? 1e-15 : scale;
+    return static_cast<double>(raw_val) / s + origin;
 }
 
 // ── 坐标格式化 ──
@@ -122,7 +126,16 @@ bool GdbGeomDecoder::has_curve_descriptors(uint8_t base_type, uint64_t geom_type
            (geom_type & 0x20000000ULL) != 0;
 }
 
-std::string GdbGeomDecoder::geom_type_name(uint8_t base_type) const {
+std::string GdbGeomDecoder::geom_type_name(uint8_t base_type, uint64_t geom_type) const {
+    auto general_suffix = [geom_type]() -> std::string {
+        const bool has_z = (geom_type & 0x80000000ULL) != 0;
+        const bool has_m = (geom_type & 0x40000000ULL) != 0;
+        if (has_z && has_m) return " ZM";
+        if (has_z) return " Z";
+        if (has_m) return " M";
+        return "";
+    };
+
     switch (base_type) {
         case 0:  return "POINT";         // NULL → EMPTY
         case 1:  return "POINT";
@@ -143,6 +156,8 @@ std::string GdbGeomDecoder::geom_type_name(uint8_t base_type) const {
         case 28: return "MULTIPOINT M";
         case 31: return "MultiPatch M";
         case 32: return "MultiPatch";
+        case 52: return "POINT" + general_suffix();
+        case 53: return "MULTIPOINT" + general_suffix();
         default: return "UNKNOWN";
     }
 }
@@ -162,21 +177,21 @@ GdbGeometry GdbGeomDecoder::decode_point(DecodeState& s, uint8_t base_type) {
     if (x_raw == 0) {
         // EMPTY point
         geom.is_empty = true;
-        geom.wkt = geom_type_name(base_type) + " EMPTY";
+        geom.wkt = geom_type_name(base_type, s.geom_type) + " EMPTY";
         return geom;
     }
 
-    double x = decode_coord(x_raw, xorig_, xyscale_);
-    double y = decode_coord(y_raw, yorig_, xyscale_);
+    double x = decode_point_raw_coord(x_raw, xorig_, xyscale_);
+    double y = decode_point_raw_coord(y_raw, yorig_, xyscale_);
 
     double z = 0, m = 0;
     if (geom.has_z) {
         uint64_t z_raw = read_varuint(s);
-        z = decode_coord(z_raw, zorig_, zscale_);
+        z = decode_point_raw_coord(z_raw, zorig_, zscale_);
     }
     if (geom.has_m) {
         uint64_t m_raw = read_varuint(s);
-        m = decode_coord(m_raw, morig_, mscale_);
+        m = decode_point_raw_coord(m_raw, morig_, mscale_);
     }
 
     std::string coords;
@@ -190,7 +205,7 @@ GdbGeometry GdbGeomDecoder::decode_point(DecodeState& s, uint8_t base_type) {
         coords = format_coord(x, y);
     }
 
-    geom.wkt = geom_type_name(base_type) + " (" + coords + ")";
+    geom.wkt = geom_type_name(base_type, s.geom_type) + " (" + coords + ")";
     return geom;
 }
 
@@ -206,7 +221,7 @@ GdbGeometry GdbGeomDecoder::decode_multipoint(DecodeState& s, uint8_t base_type,
     uint64_t nPoints = read_varuint(s);
     if (nPoints == 0) {
         geom.is_empty = true;
-        geom.wkt = geom_type_name(base_type) + " EMPTY";
+        geom.wkt = geom_type_name(base_type, s.geom_type) + " EMPTY";
         return geom;
     }
 
@@ -220,8 +235,8 @@ GdbGeometry GdbGeomDecoder::decode_multipoint(DecodeState& s, uint8_t base_type,
     for (uint64_t i = 0; i < nPoints; ++i) {
         cx += read_varint(s);
         cy += read_varint(s);
-        xs[i] = static_cast<double>(cx) * inv_xyscale_ + xorig_;
-        ys[i] = static_cast<double>(cy) * inv_xyscale_ + yorig_;
+        xs[i] = decode_delta_cumulative_coord(cx, xorig_, xyscale_);
+        ys[i] = decode_delta_cumulative_coord(cy, yorig_, xyscale_);
     }
 
     // 读取 Z 坐标（delta 编码）
@@ -231,7 +246,7 @@ GdbGeometry GdbGeomDecoder::decode_multipoint(DecodeState& s, uint8_t base_type,
         int64_t cz = 0;
         for (uint64_t i = 0; i < nPoints; ++i) {
             cz += read_varint(s);
-            zs[i] = static_cast<double>(cz) * inv_zscale_ + zorig_;
+            zs[i] = decode_delta_cumulative_coord(cz, zorig_, zscale_);
         }
     }
 
@@ -247,14 +262,14 @@ GdbGeometry GdbGeomDecoder::decode_multipoint(DecodeState& s, uint8_t base_type,
             } else {
                 cm += d;  // 后续是 delta
             }
-            ms[i] = static_cast<double>(cm) * inv_mscale_ + morig_;
+            ms[i] = decode_delta_cumulative_coord(cm, morig_, mscale_);
         }
     }
 
     // 组装 WKT（预分配避免 realloc）
     std::string wkt;
     wkt.reserve(50 + nPoints * 30);  // 类型名 + 每个坐标约 30 字符
-    wkt = geom_type_name(base_type) + " (";
+    wkt = geom_type_name(base_type, s.geom_type) + " (";
     for (uint64_t i = 0; i < nPoints; ++i) {
         if (i > 0) wkt += ", ";
         if (has_z && has_m) {
@@ -621,9 +636,11 @@ GdbGeometry GdbGeomDecoder::decode(const uint8_t* data, size_t size) {
 
     switch (base_type) {
         case 1: case 9: case 11: case 21:
+        case 52:  // GeneralPoint
             return decode_point(s, base_type);
 
         case 8: case 18: case 20: case 28:
+        case 53:  // GeneralMultiPoint
             return decode_multipoint(s, base_type, type_has_z, type_has_m);
 
         case 3: case 10: case 13: case 23:
@@ -703,20 +720,13 @@ std::optional<GdbBbox> GdbGeomDecoder::peek_bbox(const uint8_t* data, size_t siz
     if (!type_has_z && base_type < 50) type_has_z = type_has_z || layer_has_z_;
     if (!type_has_m && base_type < 50) type_has_m = type_has_m || layer_has_m_;
 
-    // BBox 专用解码函数：raw / scale + origin（无 -1 偏移）
-    auto decode_bbox_coord = [](uint64_t raw_val, double origin, double scale) -> double {
-        if (raw_val == 0) return std::nan("");
-        double s = (scale == 0.0) ? 1e-15 : scale;
-        return static_cast<double>(raw_val) / s + origin;
-    };
-
     // Point: x_raw + y_raw → 单点 bbox
     if (base_type == 1 || base_type == 9 || base_type == 11 || base_type == 21 || base_type == 52) {
         uint64_t x_raw = read_varuint(s);
         uint64_t y_raw = read_varuint(s);
         if (x_raw == 0) return std::nullopt;  // EMPTY
-        double x = decode_bbox_coord(x_raw, xorig_, xyscale_);
-        double y = decode_bbox_coord(y_raw, yorig_, xyscale_);
+        double x = decode_point_raw_coord(x_raw, xorig_, xyscale_);
+        double y = decode_point_raw_coord(y_raw, yorig_, xyscale_);
         return GdbBbox{x, y, x, y};
     }
 
@@ -731,29 +741,46 @@ std::optional<GdbBbox> GdbGeomDecoder::peek_bbox(const uint8_t* data, size_t siz
         uint64_t vymin = read_varuint(s);
         uint64_t vdx = read_varuint(s);
         uint64_t vdy = read_varuint(s);
-        double xmin = decode_bbox_coord(vxmin, xorig_, xyscale_);
-        double ymin = decode_bbox_coord(vymin, yorig_, xyscale_);
-        double xmax = xmin + decode_bbox_coord(vdx, 0.0, xyscale_);
-        double ymax = ymin + decode_bbox_coord(vdy, 0.0, xyscale_);
+        double xmin = decode_bbox_raw_coord(vxmin, xorig_, xyscale_);
+        double ymin = decode_bbox_raw_coord(vymin, yorig_, xyscale_);
+        double xmax = xmin + decode_bbox_raw_coord(vdx, 0.0, xyscale_);
+        double ymax = ymin + decode_bbox_raw_coord(vdy, 0.0, xyscale_);
         return GdbBbox{xmin, ymin, xmax, ymax};
     }
 
-    // Polyline / Polygon / MultiPoint: nPoints + nParts [+ nCurves] + bbox
+    // MultiPoint / GeneralMultiPoint: nPoints + bbox
+    if (base_type == 8 || base_type == 18 || base_type == 20 || base_type == 28 || base_type == 53) {
+        uint64_t nPoints = read_varuint(s);
+        if (nPoints == 0 || s.ptr >= s.end) return std::nullopt;
+        uint64_t vxmin = read_varuint(s);
+        uint64_t vymin = read_varuint(s);
+        uint64_t vdx = read_varuint(s);
+        uint64_t vdy = read_varuint(s);
+        double xmin = decode_bbox_raw_coord(vxmin, xorig_, xyscale_);
+        double ymin = decode_bbox_raw_coord(vymin, yorig_, xyscale_);
+        double xmax = xmin + decode_bbox_raw_coord(vdx, 0.0, xyscale_);
+        double ymax = ymin + decode_bbox_raw_coord(vdy, 0.0, xyscale_);
+        return GdbBbox{xmin, ymin, xmax, ymax};
+    }
+
+    // Polyline / Polygon: nPoints + nParts [+ nCurves] + bbox
     {
         read_varuint(s);  // nPoints
         if (s.ptr >= s.end) return std::nullopt;
         read_varuint(s);  // nParts
-        // General 曲线类型才有 nCurves（跳过）
-        if (has_curve_descriptors(base_type, s.geom_type)) read_varuint(s);
+        if (has_curve_descriptors(base_type, s.geom_type)) {
+            const uint64_t nCurves = read_varuint(s);
+            if (nCurves > 0) return std::nullopt;
+        }
         // 读 4 bbox varuints
         uint64_t vxmin = read_varuint(s);
         uint64_t vymin = read_varuint(s);
         uint64_t vdx = read_varuint(s);
         uint64_t vdy = read_varuint(s);
-        double xmin = decode_bbox_coord(vxmin, xorig_, xyscale_);
-        double ymin = decode_bbox_coord(vymin, yorig_, xyscale_);
-        double xmax = xmin + decode_bbox_coord(vdx, 0.0, xyscale_);
-        double ymax = ymin + decode_bbox_coord(vdy, 0.0, xyscale_);
+        double xmin = decode_bbox_raw_coord(vxmin, xorig_, xyscale_);
+        double ymin = decode_bbox_raw_coord(vymin, yorig_, xyscale_);
+        double xmax = xmin + decode_bbox_raw_coord(vdx, 0.0, xyscale_);
+        double ymax = ymin + decode_bbox_raw_coord(vdy, 0.0, xyscale_);
         return GdbBbox{xmin, ymin, xmax, ymax};
     }
 }
@@ -833,19 +860,13 @@ bool GdbGeomDecoder::intersects_with_peek(const uint8_t* data, size_t size,
 
     double scale = (xyscale_ == 0.0) ? 1e-15 : xyscale_;
 
-    auto decode_bbox_coord = [](uint64_t raw_val, double origin, double sc) -> double {
-        if (raw_val == 0) return std::nan("");
-        double s = (sc == 0.0) ? 1e-15 : sc;
-        return static_cast<double>(raw_val) / s + origin;
-    };
-
     // ── Point 类型 ──
     if (base_type == 1 || base_type == 9 || base_type == 11 || base_type == 21 || base_type == 52) {
         uint64_t x_raw = read_varuint(s);
         uint64_t y_raw = read_varuint(s);
         if (x_raw == 0) return false;
-        double x = static_cast<double>(static_cast<int64_t>(x_raw)) / scale + xorig_;
-        double y = static_cast<double>(static_cast<int64_t>(y_raw)) / scale + yorig_;
+        double x = decode_point_raw_coord(x_raw, xorig_, xyscale_);
+        double y = decode_point_raw_coord(y_raw, yorig_, xyscale_);
         return x >= qminx && x <= qmaxx && y >= qminy && y <= qmaxy;
     }
 
@@ -868,7 +889,10 @@ bool GdbGeomDecoder::intersects_with_peek(const uint8_t* data, size_t size,
         nPoints = read_varuint(s);
         if (s.ptr >= s.end) return false;
         nParts = read_varuint(s);
-        if (has_curve_descriptors(base_type, s.geom_type)) return false;
+        if (has_curve_descriptors(base_type, s.geom_type)) {
+            const uint64_t nCurves = read_varuint(s);
+            if (nCurves > 0) return false;
+        }
     }
 
     if (s.ptr + 4 > s.end) return false;  // 至少 4 字节给 4 个 varuint（每个最小 1 字节）
@@ -877,10 +901,10 @@ bool GdbGeomDecoder::intersects_with_peek(const uint8_t* data, size_t size,
     uint64_t vymin = read_varuint(s);
     uint64_t vdx = read_varuint(s);
     uint64_t vdy = read_varuint(s);
-    double g_xmin = decode_bbox_coord(vxmin, xorig_, xyscale_);
-    double g_ymin = decode_bbox_coord(vymin, yorig_, xyscale_);
-    double g_xmax = g_xmin + decode_bbox_coord(vdx, 0.0, xyscale_);
-    double g_ymax = g_ymin + decode_bbox_coord(vdy, 0.0, xyscale_);
+    double g_xmin = decode_bbox_raw_coord(vxmin, xorig_, xyscale_);
+    double g_ymin = decode_bbox_raw_coord(vymin, yorig_, xyscale_);
+    double g_xmax = g_xmin + decode_bbox_raw_coord(vdx, 0.0, xyscale_);
+    double g_ymax = g_ymin + decode_bbox_raw_coord(vdy, 0.0, xyscale_);
 
     if (g_xmax < qminx || g_xmin > qmaxx || g_ymax < qminy || g_ymin > qmaxy) {
         return false;
@@ -928,8 +952,8 @@ bool GdbGeomDecoder::intersects_with_peek(const uint8_t* data, size_t size,
                 cy += read_varint(s);
                 // 整数快速判断点在 bbox 内
                 if (cx >= cx_min && cx <= cx_max && cy >= cy_min && cy <= cy_max) return true;
-                double x = static_cast<double>(cx) / scale + xorig_;
-                double y = static_cast<double>(cy) / scale + yorig_;
+                double x = decode_delta_cumulative_coord(cx, xorig_, xyscale_);
+                double y = decode_delta_cumulative_coord(cy, yorig_, xyscale_);
                 if (!need_prev) {
                     if (seg_rect_intersects(prev_x, prev_y, x, y, qminx, qminy, qmaxx, qmaxy))
                         return true;
@@ -967,20 +991,20 @@ bool GdbGeomDecoder::intersects_with_peek(const uint8_t* data, size_t size,
                 cx += read_varint(s);
                 cy += read_varint(s);
                 if (i == 0) {
-                    first_x = static_cast<double>(cx) / scale + xorig_;
-                    first_y = static_cast<double>(cy) / scale + yorig_;
+                    first_x = decode_delta_cumulative_coord(cx, xorig_, xyscale_);
+                    first_y = decode_delta_cumulative_coord(cy, yorig_, xyscale_);
                 }
                 // 整数比较快速判断点在 bbox 内（等价于 double(cx)/scale+xorig_ >= qminx）
                 if (cx >= cx_min && cx <= cx_max && cy >= cy_min && cy <= cy_max) return true;
                 if (!need_prev) {
-                    double x = static_cast<double>(cx) / scale + xorig_;
-                    double y = static_cast<double>(cy) / scale + yorig_;
+                    double x = decode_delta_cumulative_coord(cx, xorig_, xyscale_);
+                    double y = decode_delta_cumulative_coord(cy, yorig_, xyscale_);
                     if (seg_rect_intersects(prev_x, prev_y, x, y, qminx, qminy, qmaxx, qmaxy))
                         return true;
                     prev_x = x; prev_y = y;
                 } else {
-                    prev_x = static_cast<double>(cx) / scale + xorig_;
-                    prev_y = static_cast<double>(cy) / scale + yorig_;
+                    prev_x = decode_delta_cumulative_coord(cx, xorig_, xyscale_);
+                    prev_y = decode_delta_cumulative_coord(cy, yorig_, xyscale_);
                     need_prev = false;
                 }
             }
@@ -997,7 +1021,10 @@ bool GdbGeomDecoder::intersects_with_peek(const uint8_t* data, size_t size,
         s.ptr = data;
         s.geom_type = read_varuint(s);
         read_varuint(s); read_varuint(s);
-        if (has_curve_descriptors(base_type, s.geom_type)) return false;
+        if (has_curve_descriptors(base_type, s.geom_type)) {
+            const uint64_t nCurves = read_varuint(s);
+            if (nCurves > 0) return false;
+        }
         read_varuint(s); read_varuint(s); read_varuint(s); read_varuint(s);
         std::vector<uint64_t> part_sizes2(nParts);
         sum = 0;
@@ -1011,8 +1038,8 @@ bool GdbGeomDecoder::intersects_with_peek(const uint8_t* data, size_t size,
         for (uint64_t i = 0; i < nPoints; ++i) {
             cx += read_varint(s);
             cy += read_varint(s);
-            xs[i] = static_cast<double>(cx) / scale + xorig_;
-            ys[i] = static_cast<double>(cy) / scale + yorig_;
+            xs[i] = decode_delta_cumulative_coord(cx, xorig_, xyscale_);
+            ys[i] = decode_delta_cumulative_coord(cy, yorig_, xyscale_);
         }
         return pip((qminx + qmaxx) * 0.5, (qminy + qmaxy) * 0.5, xs, ys, part_sizes2);
     }
@@ -1038,8 +1065,8 @@ bool GdbGeomDecoder::intersects_with_peek(const uint8_t* data, size_t size,
                 cy += read_varint(s);
                 // 整数快速判断点在 bbox 内
                 if (cx >= cx_min && cx <= cx_max && cy >= cy_min && cy <= cy_max) return true;
-                double x = static_cast<double>(cx) / scale + xorig_;
-                double y = static_cast<double>(cy) / scale + yorig_;
+                double x = decode_delta_cumulative_coord(cx, xorig_, xyscale_);
+                double y = decode_delta_cumulative_coord(cy, yorig_, xyscale_);
                 if (!need_prev) {
                     if (seg_rect_intersects(prev_x, prev_y, x, y, qminx, qminy, qmaxx, qmaxy))
                         return true;
@@ -1079,15 +1106,6 @@ bool GdbGeomDecoder::geometry_intersects_bbox(const uint8_t* data, size_t size,
     if (!type_has_z && base_type < 50) type_has_z = layer_has_z_;
     if (!type_has_m && base_type < 50) type_has_m = layer_has_m_;
 
-    double scale = (xyscale_ == 0.0) ? 1e-15 : xyscale_;
-
-    // BBox 解码辅助函数：raw / scale + origin
-    auto decode_bbox_coord = [](uint64_t raw_val, double origin, double sc) -> double {
-        if (raw_val == 0) return std::nan("");
-        double s = (sc == 0.0) ? 1e-15 : sc;
-        return static_cast<double>(raw_val) / s + origin;
-    };
-
     // ── Bbox 快速排除：读取几何的包围盒，与查询 bbox 做重叠测试 ──
     // 先保存当前指针位置，如果 bbox 重叠则恢复继续解析
     auto saved_ptr = s.ptr;
@@ -1108,17 +1126,20 @@ bool GdbGeomDecoder::geometry_intersects_bbox(const uint8_t* data, size_t size,
         // Polyline/Polygon: nPoints + nParts [+ nCurves] + bbox
         can_peek_bbox = true;
         read_varuint(s); read_varuint(s);
-        if (has_curve_descriptors(base_type, s.geom_type)) return false;
+        if (has_curve_descriptors(base_type, s.geom_type)) {
+            const uint64_t nCurves = read_varuint(s);
+            if (nCurves > 0) return false;
+        }
     }
     if (can_peek_bbox && s.ptr + 4 * sizeof(uint64_t) <= s.end) {
         uint64_t vxmin = read_varuint(s);
         uint64_t vymin = read_varuint(s);
         uint64_t vdx = read_varuint(s);
         uint64_t vdy = read_varuint(s);
-        double g_xmin = decode_bbox_coord(vxmin, xorig_, xyscale_);
-        double g_ymin = decode_bbox_coord(vymin, yorig_, xyscale_);
-        double g_xmax = g_xmin + decode_bbox_coord(vdx, 0.0, xyscale_);
-        double g_ymax = g_ymin + decode_bbox_coord(vdy, 0.0, xyscale_);
+        double g_xmin = decode_bbox_raw_coord(vxmin, xorig_, xyscale_);
+        double g_ymin = decode_bbox_raw_coord(vymin, yorig_, xyscale_);
+        double g_xmax = g_xmin + decode_bbox_raw_coord(vdx, 0.0, xyscale_);
+        double g_ymax = g_ymin + decode_bbox_raw_coord(vdy, 0.0, xyscale_);
 
         // bbox 重叠测试
         if (g_xmax < qminx || g_xmin > qmaxx || g_ymax < qminy || g_ymin > qmaxy) {
@@ -1134,8 +1155,8 @@ bool GdbGeomDecoder::geometry_intersects_bbox(const uint8_t* data, size_t size,
         uint64_t x_raw = read_varuint(s);
         uint64_t y_raw = read_varuint(s);
         if (x_raw == 0) return false;  // EMPTY
-        double x = static_cast<double>(static_cast<int64_t>(x_raw)) / scale + xorig_;
-        double y = static_cast<double>(static_cast<int64_t>(y_raw)) / scale + yorig_;
+        double x = decode_point_raw_coord(x_raw, xorig_, xyscale_);
+        double y = decode_point_raw_coord(y_raw, yorig_, xyscale_);
         return x >= qminx && x <= qmaxx && y >= qminy && y <= qmaxy;
     }
 
@@ -1152,8 +1173,8 @@ bool GdbGeomDecoder::geometry_intersects_bbox(const uint8_t* data, size_t size,
         for (uint64_t i = 0; i < nPoints; ++i) {
             cx += read_varint(s);
             cy += read_varint(s);
-            double x = static_cast<double>(cx) / scale + xorig_;
-            double y = static_cast<double>(cy) / scale + yorig_;
+            double x = decode_delta_cumulative_coord(cx, xorig_, xyscale_);
+            double y = decode_delta_cumulative_coord(cy, yorig_, xyscale_);
             if (x >= qminx && x <= qmaxx && y >= qminy && y <= qmaxy) return true;
         }
         return false;
@@ -1165,7 +1186,10 @@ bool GdbGeomDecoder::geometry_intersects_bbox(const uint8_t* data, size_t size,
         if (nPoints == 0) return false;
 
         uint64_t nParts = read_varuint(s);
-        if (has_curve_descriptors(base_type, s.geom_type)) return false;
+        if (has_curve_descriptors(base_type, s.geom_type)) {
+            const uint64_t nCurves = read_varuint(s);
+            if (nCurves > 0) return false;
+        }
 
         // 跳过 bbox
         read_varuint(s); read_varuint(s);
@@ -1190,8 +1214,8 @@ bool GdbGeomDecoder::geometry_intersects_bbox(const uint8_t* data, size_t size,
             for (uint64_t i = 0; i < part_sizes[p]; ++i) {
                 cx += read_varint(s);
                 cy += read_varint(s);
-                double x = static_cast<double>(cx) / scale + xorig_;
-                double y = static_cast<double>(cy) / scale + yorig_;
+                double x = decode_delta_cumulative_coord(cx, xorig_, xyscale_);
+                double y = decode_delta_cumulative_coord(cy, yorig_, xyscale_);
 
                 // 点在 bbox 内
                 if (x >= qminx && x <= qmaxx && y >= qminy && y <= qmaxy)
@@ -1226,7 +1250,10 @@ bool GdbGeomDecoder::geometry_intersects_bbox(const uint8_t* data, size_t size,
         if (nPoints == 0) return false;
 
         uint64_t nParts = read_varuint(s);
-        if (has_curve_descriptors(base_type, s.geom_type)) return false;
+        if (has_curve_descriptors(base_type, s.geom_type)) {
+            const uint64_t nCurves = read_varuint(s);
+            if (nCurves > 0) return false;
+        }
 
         // 跳过 bbox
         read_varuint(s); read_varuint(s);
@@ -1254,8 +1281,8 @@ bool GdbGeomDecoder::geometry_intersects_bbox(const uint8_t* data, size_t size,
             for (uint64_t i = 0; i < part_n; ++i) {
                 cx += read_varint(s);
                 cy += read_varint(s);
-                double x = static_cast<double>(cx) / scale + xorig_;
-                double y = static_cast<double>(cy) / scale + yorig_;
+                double x = decode_delta_cumulative_coord(cx, xorig_, xyscale_);
+                double y = decode_delta_cumulative_coord(cy, yorig_, xyscale_);
 
                 if (i == 0) { first_x = x; first_y = y; }
 
@@ -1292,7 +1319,10 @@ bool GdbGeomDecoder::geometry_intersects_bbox(const uint8_t* data, size_t size,
         s.ptr = geom_body_start;
         read_varuint(s);  // nPoints
         read_varuint(s);  // nParts
-        if (has_curve_descriptors(base_type, s.geom_type)) return false;
+        if (has_curve_descriptors(base_type, s.geom_type)) {
+            const uint64_t nCurves = read_varuint(s);
+            if (nCurves > 0) return false;
+        }
         read_varuint(s); read_varuint(s); read_varuint(s); read_varuint(s);  // skip bbox
 
         // 重新读取 part_sizes
@@ -1310,8 +1340,8 @@ bool GdbGeomDecoder::geometry_intersects_bbox(const uint8_t* data, size_t size,
         for (uint64_t i = 0; i < nPoints; ++i) {
             cx += read_varint(s);
             cy += read_varint(s);
-            xs[i] = static_cast<double>(cx) / scale + xorig_;
-            ys[i] = static_cast<double>(cy) / scale + yorig_;
+            xs[i] = decode_delta_cumulative_coord(cx, xorig_, xyscale_);
+            ys[i] = decode_delta_cumulative_coord(cy, yorig_, xyscale_);
         }
 
         double cx_q = (qminx + qmaxx) * 0.5;
@@ -1352,8 +1382,8 @@ bool GdbGeomDecoder::geometry_intersects_bbox(const uint8_t* data, size_t size,
             for (uint64_t i = 0; i < part_sizes[p]; ++i) {
                 cx += read_varint(s);
                 cy += read_varint(s);
-                double x = static_cast<double>(cx) / scale + xorig_;
-                double y = static_cast<double>(cy) / scale + yorig_;
+                double x = decode_delta_cumulative_coord(cx, xorig_, xyscale_);
+                double y = decode_delta_cumulative_coord(cy, yorig_, xyscale_);
 
                 if (x >= qminx && x <= qmaxx && y >= qminy && y <= qmaxy)
                     return true;

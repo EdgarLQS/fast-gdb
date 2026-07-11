@@ -4,7 +4,7 @@
  * 目标：建立完整的读写性能基准，对比 GDAL 与 explorgdb，验证混合工作流性能
  *
  * 测试矩阵：
- *   数据规模：1K / 10K / 100K / 1M（4 个级别）
+ *   数据规模：1K / 10K / 100K / 1M（常规性能级别），10M 为显式性能测试
  *   数据类型：Polygon + 4 属性字段（population, name, category, area）
  *   测试项：写入（6）+ 读取（6）+ 综合（6）= 18 个测试用例
  *
@@ -17,11 +17,14 @@
  *   ./bin/gdb_tutorial_test_runner --gtest_filter='PerformanceBenchmarkFixture.W*'  # 仅写入
  *   ./bin/gdb_tutorial_test_runner --gtest_filter='PerformanceBenchmarkFixture.R*'  # 仅读取
  *   ./bin/gdb_tutorial_test_runner --gtest_filter='PerformanceBenchmarkFixture.C*'  # 仅综合
+ *   FAST_GDB_RUN_10M_BENCHMARKS=1 ./bin/gdb_tutorial_test_runner \
+ *     --gtest_filter='PerformanceBenchmarkFixture.*10M*:Large10mDataBenchmarkFixture.*'
  */
 
 #include <gtest/gtest.h>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -83,7 +86,11 @@ struct TestConfig {
 // ── 常量 ──
 static const std::string LAYER_NAME = "features";
 static const int QUERY_ITERATIONS = 10;  // 查询重复次数（取平均）
-static const double QUERY_WINDOW_SIZE = 5000.0;  // 空间查询窗口大小（坐标单位）
+
+static bool Run10mBenchmarks() {
+    const char* value = std::getenv("FAST_GDB_RUN_10M_BENCHMARKS");
+    return value != nullptr && std::string(value) == "1";
+}
 
 // ── 测试 Fixture ──
 class PerformanceBenchmarkFixture : public ::testing::Test {
@@ -881,6 +888,9 @@ TEST_F(PerformanceBenchmarkFixture, W3_Writer_Binary_1M) {
 
 // W3 扩展: 10M 规模写入
 TEST_F(PerformanceBenchmarkFixture, W3_Writer_Binary_10M) {
+    if (!Run10mBenchmarks()) {
+        GTEST_SKIP() << "Set FAST_GDB_RUN_10M_BENCHMARKS=1 to run 10M performance benchmarks";
+    }
     printf("\n=== W3: GdbTableWriter 二进制写入 10M ===\n");
     printf("  ⚠️  预计磁盘占用 ~1.1GB，写入时间 ~45 秒\n");
     GenerateWithWriter(10000000, configs[4].gdb_path);
@@ -953,6 +963,9 @@ TEST_F(PerformanceBenchmarkFixture, R2_Explorgdb_SequentialRead_100K) {
 
 // R1 扩展: 10M 规模顺序读取
 TEST_F(PerformanceBenchmarkFixture, R1_GDAL_SequentialRead_10M) {
+    if (!Run10mBenchmarks()) {
+        GTEST_SKIP() << "Set FAST_GDB_RUN_10M_BENCHMARKS=1 to run 10M performance benchmarks";
+    }
     printf("\n=== R1: GDAL 顺序读取 10M ===\n");
 
     if (!fs::exists(configs[4].gdb_path)) {
@@ -965,6 +978,9 @@ TEST_F(PerformanceBenchmarkFixture, R1_GDAL_SequentialRead_10M) {
 
 // R2 扩展: 10M 规模顺序读取
 TEST_F(PerformanceBenchmarkFixture, R2_Explorgdb_SequentialRead_10M) {
+    if (!Run10mBenchmarks()) {
+        GTEST_SKIP() << "Set FAST_GDB_RUN_10M_BENCHMARKS=1 to run 10M performance benchmarks";
+    }
     printf("\n=== R2: explorgdb 顺序读取 10M ===\n");
 
     if (!fs::exists(configs[4].gdb_path)) {
@@ -1016,6 +1032,9 @@ TEST_F(PerformanceBenchmarkFixture, R2_ReadMethodComparison) {
 
 // R2b 扩展: 10M 规模读取方式对比
 TEST_F(PerformanceBenchmarkFixture, R2_ReadMethodComparison_10M) {
+    if (!Run10mBenchmarks()) {
+        GTEST_SKIP() << "Set FAST_GDB_RUN_10M_BENCHMARKS=1 to run 10M performance benchmarks";
+    }
     printf("\n=== R2b: 读取方式对比 10M ===\n");
 
     if (!fs::exists(configs[4].gdb_path)) {
@@ -1130,6 +1149,9 @@ TEST_F(PerformanceBenchmarkFixture, R4_SpatialQuery_WindowSize_100K) {
 
 // R4 扩展: 10M 规模空间查询规模效应
 TEST_F(PerformanceBenchmarkFixture, R4_SpatialQuery_WindowSize_10M) {
+    if (!Run10mBenchmarks()) {
+        GTEST_SKIP() << "Set FAST_GDB_RUN_10M_BENCHMARKS=1 to run 10M performance benchmarks";
+    }
     printf("\n=== R4: 空间查询规模效应 10M ===\n");
 
     if (!fs::exists(configs[4].gdb_path)) {
@@ -1440,6 +1462,11 @@ TEST_F(PerformanceBenchmarkFixture, C6_DiskSpace_Statistics) {
     std::vector<DiskStats> stats;
 
     for (const auto& cfg : configs) {
+        if (cfg.count >= 10000000 && !Run10mBenchmarks()) {
+            printf("  [SKIP] 10M disk statistics require FAST_GDB_RUN_10M_BENCHMARKS=1\n");
+            continue;
+        }
+
         DiskStats s;
         s.scale = cfg.name;
         s.count = cfg.count;

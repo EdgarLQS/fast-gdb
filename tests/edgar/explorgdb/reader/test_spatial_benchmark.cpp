@@ -13,6 +13,7 @@
 #include <gtest/gtest.h>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -743,6 +744,11 @@ static const char* const kLarge10mGdbPath =
 
 static const uint32_t kLarge10mTableId = 0x9;  // a00000009
 
+static bool run_10m_benchmarks() {
+    const char* value = std::getenv("FAST_GDB_RUN_10M_BENCHMARKS");
+    return value != nullptr && std::string(value) == "1";
+}
+
 // 查询 bbox（数据范围相同 [0,0,100000,100000]，用相同比例）
 static const BenchmarkCase kLarge10mCases[] = {
     {"Point_10M (~局部)",    40000, 40000, 41000, 41000},
@@ -869,6 +875,10 @@ protected:
     void SetUp() override {
         GDALAllRegister();
         CPLSetConfigOption("CPL_DEBUG", "NO");
+
+        if (!run_10m_benchmarks()) {
+            GTEST_SKIP() << "Set FAST_GDB_RUN_10M_BENCHMARKS=1 to run 10M performance benchmarks";
+        }
 
         FILE* f = fopen(
             "/Users/edgarlqs/Downloads/daydaydaywork/dailyWork/convert/gdal/fast_gdb/"

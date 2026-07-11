@@ -45,6 +45,32 @@ bool record_has_explicit_curve_unsupported(const FeatureRecord& record,
     return false;
 }
 
+bool geometry_is_curve_like(const OGRGeometry* geometry) {
+    if (geometry == nullptr) return false;
+    if (geometry->hasCurveGeometry(TRUE)) return true;
+
+    const char* geometry_name = geometry->getGeometryName();
+    if (geometry_name != nullptr) {
+        const std::string name(geometry_name);
+        if (name.find("MULTICURVE") != std::string::npos ||
+            name.find("COMPOUNDCURVE") != std::string::npos ||
+            name.find("CIRCULARSTRING") != std::string::npos) {
+            return true;
+        }
+    }
+
+    char* wkt = nullptr;
+    if (geometry->exportToWkt(&wkt) == OGRERR_NONE && wkt != nullptr) {
+        const std::string text(wkt);
+        CPLFree(wkt);
+        return text.find("MULTICURVE") != std::string::npos ||
+               text.find("COMPOUNDCURVE") != std::string::npos ||
+               text.find("CIRCULARSTRING") != std::string::npos;
+    }
+    CPLFree(wkt);
+    return false;
+}
+
 void expect_no_silent_geometry_decode(const FeatureRecord& record,
                                       const std::vector<size_t>& geometry_indexes,
                                       const std::string& layer_name,
@@ -180,7 +206,7 @@ TEST(RealDataReleaseContractTest, CurveFileGdbIsExplicitlyUnsupported) {
         layer->ResetReading();
         while (OGRFeature* feature = layer->GetNextFeature()) {
             OGRGeometry* geometry = feature->GetGeometryRef();
-            if (geometry != nullptr && geometry->hasCurveGeometry(TRUE)) {
+            if (geometry_is_curve_like(geometry)) {
                 gdal_found_curve = true;
             }
             OGRFeature::DestroyFeature(feature);
