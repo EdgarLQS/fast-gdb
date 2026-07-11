@@ -1,11 +1,13 @@
 #include "gdb_table.h"
+#include "wkb_writer.h"
 
 namespace explorgdb {
 
 const FieldDescriptor* GdbTableParser::geometry_field_descriptor() const {
     if (geometry_field_index_ >= 0 &&
         static_cast<size_t>(geometry_field_index_) < fields_.size()) {
-        const auto& field = fields_[static_cast<size_t>(geometry_field_index_)];
+        const auto& field =
+            fields_[static_cast<size_t>(geometry_field_index_)];
         if (field.type == FieldType::Geometry) return &field;
     }
     for (const auto& field : fields_) {
