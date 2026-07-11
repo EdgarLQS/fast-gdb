@@ -22,5 +22,8 @@ inline void* mmap(void*, size_t, int, int, int, __int64) {
 inline int munmap(void*, size_t) { return 0; }
 inline int madvise(void*, size_t, int) { return 0; }
 
-#endif // _WIN32
+#else
+#include_next <sys/mman.h>
+#endif
+
 #endif
