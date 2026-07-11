@@ -3,6 +3,8 @@
 
 #ifdef _WIN32
 #include "windows_posix_compat.h"
+#else
+#include_next <unistd.h>
 #endif
 
 #endif
