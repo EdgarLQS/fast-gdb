@@ -4,7 +4,9 @@
 #include <ogrsf_frmts.h>
 
 #include <cerrno>
+#include <cstdint>
 #include <cstdlib>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -19,9 +21,17 @@ struct DatasetCloser {
     }
 };
 
+struct GeometryCloser {
+    void operator()(OGRGeometry* geometry) const {
+        if (geometry != nullptr)
+            OGRGeometryFactory::destroyGeometry(geometry);
+    }
+};
+
 using DatasetPtr = std::unique_ptr<GDALDataset, DatasetCloser>;
-using FeaturePtr = std::unique_ptr<OGRFeature, decltype(&OGRFeature::DestroyFeature)>;
-using GeometryPtr = std::unique_ptr<OGRGeometry>;
+using FeaturePtr = std::unique_ptr<
+    OGRFeature, decltype(&OGRFeature::DestroyFeature)>;
+using GeometryPtr = std::unique_ptr<OGRGeometry, GeometryCloser>;
 
 struct CacheEntry {
     DatasetPtr dataset;
@@ -74,7 +84,7 @@ FeaturePtr read_feature(CacheEntry& entry,
     if (raw == nullptr) {
         diagnostic = "GDAL feature not found for FID " +
                      std::to_string(request.fid) +
-                     "; verify ObjectID/FID mapping";
+                     "; verify the configured fast-gdb/GDAL FID mapping";
     }
     return FeaturePtr(raw, &OGRFeature::DestroyFeature);
 }
@@ -82,33 +92,25 @@ FeaturePtr read_feature(CacheEntry& entry,
 const OGRGeometry* select_geometry(const OGRFeature& feature,
                                    const GdalCurveRequest& request,
                                    GeometryPtr& owned,
+                                   bool& source_has_curve,
                                    std::string& diagnostic) {
     const OGRGeometry* source = feature.GetGeometryRef();
     if (source == nullptr || source->IsEmpty()) {
         diagnostic = "GDAL feature has an empty geometry";
         return nullptr;
     }
+
+    source_has_curve = request.source_was_curve ||
+                       source->hasCurveGeometry(TRUE) != 0;
     if (request.native_curve_wkb) return source;
 
     owned.reset(source->getLinearGeometry(
         request.max_angle_step_degrees, nullptr));
     if (!owned) {
-        diagnostic = "GDAL failed to linearize curve geometry";
+        diagnostic = "GDAL failed to linearize/clone geometry";
         return nullptr;
     }
     return owned.get();
-}
-
-GeometryKind geometry_kind(OGRwkbGeometryType type) {
-    switch (wkbFlatten(type)) {
-        case wkbPoint: return GeometryKind::Point;
-        case wkbLineString: return GeometryKind::LineString;
-        case wkbPolygon: return GeometryKind::Polygon;
-        case wkbMultiPoint: return GeometryKind::MultiPoint;
-        case wkbMultiLineString: return GeometryKind::MultiLineString;
-        case wkbMultiPolygon: return GeometryKind::MultiPolygon;
-        default: return GeometryKind::Unknown;
-    }
 }
 
 int32_t geometry_srid(const OGRGeometry& geometry) {
@@ -117,20 +119,31 @@ int32_t geometry_srid(const OGRGeometry& geometry) {
     if (spatial_ref == nullptr) return 0;
     const char* code = spatial_ref->GetAuthorityCode(nullptr);
     if (code == nullptr) return 0;
+
     errno = 0;
     char* end = nullptr;
     const long value = std::strtol(code, &end, 10);
     if (errno != 0 || end == code || *end != '\0' ||
-        value < INT32_MIN || value > INT32_MAX)
+        value < std::numeric_limits<int32_t>::min() ||
+        value > std::numeric_limits<int32_t>::max())
         return 0;
     return static_cast<int32_t>(value);
 }
 
+uint32_t iso_geometry_type(OGRwkbGeometryType type) {
+    const uint32_t base = static_cast<uint32_t>(wkbFlatten(type));
+    const bool has_z = OGR_GT_HasZ(type) != 0;
+    const bool has_m = OGR_GT_HasM(type) != 0;
+    return base + (has_z && has_m ? 3000u
+                 : (has_z ? 1000u : (has_m ? 2000u : 0u)));
+}
+
 GeometryValue error_value(GeometryStatus status,
-                          const std::string& diagnostic) {
+                          const std::string& diagnostic,
+                          bool source_was_curve) {
     GeometryValue value;
     value.backend = GeometryBackend::Gdal;
-    value.source_was_curve = true;
+    value.source_was_curve = source_was_curve;
     value.status = status;
     value.diagnostic = diagnostic;
     return value;
@@ -143,33 +156,36 @@ GeometryValue GdalCurveBackendBridge::read_geometry(
     std::string diagnostic;
     CacheEntry* entry = open_cached(request, diagnostic);
     if (entry == nullptr)
-        return error_value(GeometryStatus::InvalidEncoding, diagnostic);
+        return error_value(GeometryStatus::InvalidEncoding,
+                           diagnostic, request.source_was_curve);
 
     auto feature = read_feature(*entry, request, diagnostic);
     if (!feature)
-        return error_value(GeometryStatus::InvalidEncoding, diagnostic);
+        return error_value(GeometryStatus::InvalidEncoding,
+                           diagnostic, request.source_was_curve);
 
     GeometryPtr owned;
-    const OGRGeometry* geometry =
-        select_geometry(*feature, request, owned, diagnostic);
+    bool source_has_curve = request.source_was_curve;
+    const OGRGeometry* geometry = select_geometry(
+        *feature, request, owned, source_has_curve, diagnostic);
     if (geometry == nullptr) {
-        const GeometryStatus status = feature->GetGeometryRef() == nullptr ||
-                                      feature->GetGeometryRef()->IsEmpty()
-            ? GeometryStatus::Empty
-            : GeometryStatus::InvalidTopology;
-        return error_value(status, diagnostic);
+        const GeometryStatus status =
+            feature->GetGeometryRef() == nullptr ||
+            feature->GetGeometryRef()->IsEmpty()
+                ? GeometryStatus::Empty
+                : GeometryStatus::InvalidTopology;
+        return error_value(status, diagnostic, source_has_curve);
     }
 
     GeometryValue value;
     value.srid = geometry_srid(*geometry);
     value.has_z = OGR_GT_HasZ(geometry->getGeometryType()) != 0;
     value.has_m = OGR_GT_HasM(geometry->getGeometryType()) != 0;
-    value.source_was_curve = true;
-    value.linearized = !request.native_curve_wkb;
+    value.source_was_curve = source_has_curve;
+    value.linearized = !request.native_curve_wkb && source_has_curve;
     value.backend = GeometryBackend::Gdal;
     value.status = GeometryStatus::Valid;
-    value.geometry_type = static_cast<uint32_t>(geometry_kind(
-        geometry->getGeometryType()));
+    value.geometry_type = iso_geometry_type(geometry->getGeometryType());
 
     const size_t wkb_size = geometry->WkbSize();
     value.wkb.resize(wkb_size);
@@ -177,7 +193,8 @@ GeometryValue GdalCurveBackendBridge::read_geometry(
                               wkbVariantIso) != OGRERR_NONE) {
         value.wkb.clear();
         value.status = GeometryStatus::InvalidEncoding;
-        value.diagnostic = "GDAL failed to export geometry as ISO WKB";
+        value.diagnostic =
+            "GDAL failed to export geometry as ISO WKB";
     }
     return value;
 }
@@ -207,8 +224,9 @@ GdalSpatialResult GdalCurveBackendBridge::intersects_bbox(
     }
 
     GeometryPtr owned;
-    const OGRGeometry* geometry =
-        select_geometry(*feature, request, owned, diagnostic);
+    bool source_has_curve = request.source_was_curve;
+    const OGRGeometry* geometry = select_geometry(
+        *feature, request, owned, source_has_curve, diagnostic);
     if (geometry == nullptr) {
         result.status = feature->GetGeometryRef() == nullptr ||
                         feature->GetGeometryRef()->IsEmpty()
