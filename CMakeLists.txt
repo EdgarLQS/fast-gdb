@@ -167,7 +167,6 @@ endif()
 target_compile_features(explorgdb_writer_lib PUBLIC cxx_std_17)
 fast_gdb_enable_warnings(explorgdb_writer_lib)
 
-# Product A: dependency-free FileGDB reader with built-in curve capability.
 add_library(fast_gdb_linear INTERFACE)
 target_link_libraries(fast_gdb_linear INTERFACE explorgdb_reader_lib)
 
@@ -248,6 +247,20 @@ if(BUILD_TESTING)
             list(REMOVE_ITEM EXPLORGDB_READER_TEST_SOURCES
                              "${geometry_test_abs}")
         endforeach()
+
+        # These tests intentionally compare against GDAL or use the shared
+        # GDAL fixture. They belong to the hybrid matrix, not the dependency-
+        # free Reader test target.
+        if(NOT FAST_GDB_WITH_GDAL)
+            list(FILTER EXPLORGDB_READER_TEST_SOURCES EXCLUDE REGEX
+                 ".*test_metadata_reader\\.cpp$")
+            list(FILTER EXPLORGDB_READER_TEST_SOURCES EXCLUDE REGEX
+                 ".*test_query_engine_integration\\.cpp$")
+            list(FILTER EXPLORGDB_READER_TEST_SOURCES EXCLUDE REGEX
+                 ".*test_real_data_release_contract\\.cpp$")
+            list(FILTER EXPLORGDB_READER_TEST_SOURCES EXCLUDE REGEX
+                 ".*test_spatial_benchmark\\.cpp$")
+        endif()
 
         set(FULL_TEST_SOURCES
             tests/test_runner.cpp
