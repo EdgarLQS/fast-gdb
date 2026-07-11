@@ -210,7 +210,9 @@ void GdbSpatialIndexParser::collect_fids_btree(
 
     uint32_t entry_count;
     std::memcpy(&entry_count, page + 4, 4);
-    if (entry_count == 0) return;
+    if (entry_count == 0 || entry_count >
+        static_cast<uint32_t>(max_per_page_))
+        return;
 
     uint32_t q_min_cx = static_cast<uint32_t>((start_raw >> 31) & 0x7FFFFFFF);
     uint32_t q_max_cx = static_cast<uint32_t>((end_raw >> 31) & 0x7FFFFFFF);
@@ -225,7 +227,7 @@ void GdbSpatialIndexParser::collect_fids_btree(
             uint64_t v; std::memcpy(&v, page + values_offset_ + i * 8, 8);
             if (v >= start_raw && v <= end_raw) {
                 uint32_t fid; std::memcpy(&fid, (uint8_t*)page + 12 + i * 4, 4);
-                out_fids.push_back(fid - 1);
+                if (fid != 0) out_fids.push_back(fid - 1);
             }
         }
     } else {
@@ -278,15 +280,27 @@ std::vector<uint32_t> GdbSpatialIndexParser::query_bbox(
     clear_cache();
 
     std::vector<uint32_t> result_fids;
-    if (mapped_size_ == 0 || grid_resolutions.empty() || trailer_.tree_depth == 0)
+    if (mapped_size_ == 0 || grid_resolutions.empty() ||
+        grid_resolutions.size() > kMaxDepth || trailer_.tree_depth == 0 ||
+        !std::isfinite(xmin) || !std::isfinite(ymin) ||
+        !std::isfinite(xmax) || !std::isfinite(ymax) ||
+        xmin > xmax || ymin > ymax)
         return result_fids;
 
+    for (double resolution : grid_resolutions) {
+        if (!std::isfinite(resolution) || resolution <= 0.0)
+            return result_fids;
+    }
+
     for (size_t level = 0; level < grid_resolutions.size(); ++level) {
-        double scale_factor = grid_resolutions[level] / grid_resolutions[0];
-        auto clamp31 = [](int64_t v) -> int64_t {
-            if (v < 0) return 0;
-            if (v > 0x7FFFFFFF) return 0x7FFFFFFF;
-            return v;
+        const long double scale_factor =
+            static_cast<long double>(grid_resolutions[level]) /
+            static_cast<long double>(grid_resolutions[0]);
+        auto clamp31 = [](long double value) -> int64_t {
+            if (std::isnan(value) || value <= 0.0L) return 0;
+            if (!std::isfinite(value) || value >= 0x7FFFFFFF)
+                return 0x7FFFFFFF;
+            return static_cast<int64_t>(value);
         };
 
         // Cell computation matching GDAL GetScaledCoord:
@@ -296,14 +310,16 @@ std::vector<uint32_t> GdbSpatialIndexParser::query_bbox(
         // For max boundaries, add +1 to catch features whose geometry extends
         // into the query bbox but whose cell index is just outside.
         auto cell_for_min = [&](double coord) -> int64_t {
-            double raw = std::floor(coord / grid_resolutions[0]);
-            double scaled = std::floor(raw / scale_factor);
-            return clamp31(static_cast<int64_t>(scaled) + (1LL << 29));
+            const long double raw = std::floor(
+                static_cast<long double>(coord) / grid_resolutions[0]);
+            const long double scaled = std::floor(raw / scale_factor);
+            return clamp31(scaled + (1LL << 29));
         };
         auto cell_for_max = [&](double coord) -> int64_t {
-            double raw = std::floor(coord / grid_resolutions[0]);
-            double scaled = std::floor(raw / scale_factor);
-            return clamp31(static_cast<int64_t>(scaled) + (1LL << 29) + 1);
+            const long double raw = std::floor(
+                static_cast<long double>(coord) / grid_resolutions[0]);
+            const long double scaled = std::floor(raw / scale_factor);
+            return clamp31(scaled + (1LL << 29) + 1);
         };
 
         int64_t cell_min_x = cell_for_min(xmin);

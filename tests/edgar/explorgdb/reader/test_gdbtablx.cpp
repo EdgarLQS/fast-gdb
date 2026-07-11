@@ -5,6 +5,8 @@
 #include "gdb_tablx.h"
 #include "gdb_catalog.h"
 #include "../test_paths.h"
+#include <filesystem>
+#include <fstream>
 #include <gtest/gtest.h>
 
 using namespace explorgdb;
@@ -34,6 +36,39 @@ TEST(GdbTablxTest, HeaderVersion) {
 TEST(GdbTablxTest, InvalidFile) {
     GdbTablxParser parser("/nonexistent/a00000001.gdbtablx");
     EXPECT_FALSE(parser.parse());
+}
+
+TEST(GdbTablxTest, RejectsTruncatedOrInvalidOffsetTables) {
+    const std::string truncated_path = "/tmp/test_truncated_table.gdbtablx";
+    const std::string invalid_width_path = "/tmp/test_invalid_width.gdbtablx";
+    auto write_u32 = [](std::ofstream& stream, uint32_t value) {
+        const uint8_t bytes[] = {
+            static_cast<uint8_t>(value & 0xff),
+            static_cast<uint8_t>((value >> 8) & 0xff),
+            static_cast<uint8_t>((value >> 16) & 0xff),
+            static_cast<uint8_t>((value >> 24) & 0xff)};
+        stream.write(reinterpret_cast<const char*>(bytes), sizeof(bytes));
+    };
+
+    {
+        std::ofstream stream(truncated_path, std::ios::binary);
+        write_u32(stream, 3);
+        write_u32(stream, 1);
+        write_u32(stream, 1024);
+        write_u32(stream, 4);
+    }
+    {
+        std::ofstream stream(invalid_width_path, std::ios::binary);
+        write_u32(stream, 3);
+        write_u32(stream, 0);
+        write_u32(stream, 0);
+        write_u32(stream, 7);
+    }
+
+    EXPECT_FALSE(GdbTablxParser(truncated_path).parse());
+    EXPECT_FALSE(GdbTablxParser(invalid_width_path).parse());
+    std::filesystem::remove(truncated_path);
+    std::filesystem::remove(invalid_width_path);
 }
 
 // ── 偏移表测试 ──
@@ -187,8 +222,6 @@ TEST(GdbTablxTest, ValidFids) {
 
 // ── 合成文件测试（覆盖 v4、6字节偏移、错误路径）──
 
-#include <fstream>
-#include <filesystem>
 namespace fs = std::filesystem;
 
 // 合成 v4 .gdbtablx 文件

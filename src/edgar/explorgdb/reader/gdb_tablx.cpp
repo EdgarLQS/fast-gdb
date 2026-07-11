@@ -29,6 +29,8 @@
 #include "binary_reader.h"
 #include <fstream>
 #include <iostream>
+#include <limits>
+#include <mutex>
 
 namespace explorgdb {
 
@@ -37,84 +39,107 @@ GdbTablxParser::GdbTablxParser(const std::string& file_path)
 
 // ── 主解析入口 ──
 bool GdbTablxParser::parse() {
+    std::unique_lock<std::shared_mutex> lock(mutex_);
+    file_data_.clear();
+    offsets_.clear();
+    block_bitmap_.clear();
+    valid_offsets_.clear();
+    hdr_ = {};
+
     std::ifstream ifs(file_path_, std::ios::binary | std::ios::ate);
     if (!ifs.is_open()) return false;
 
-    auto file_size = ifs.tellg();
-    ifs.seekg(0, std::ios::beg);
-    file_data_.resize(file_size);
-    ifs.read(reinterpret_cast<char*>(file_data_.data()), file_size);
-
-    BinaryReader br(file_data_);
-
-    // ── 读取文件头部 ──
-    hdr_.version = br.read_u32();
-
-    if (hdr_.version == 3) {
-        // v3 头部: 16 字节（无额外 padding）
-        hdr_.n1024blocks_v3 = br.read_u32();
-        hdr_.nfeatures_v3 = br.read_u32();
-        hdr_.size_tablx_offsets = br.read_u32();
-    } else if (hdr_.version == 4) {
-        // v4 头部: 24 字节（含 padding）
-        hdr_.unknown_v4 = br.read_u32();
-        hdr_.size_tablx_offsets = br.read_u32();
-        br.skip(8);  // 8 字节 padding
-    } else {
-        std::cerr << "Unknown .gdbtablx version: " << hdr_.version << "\n";
+    const auto file_size = ifs.tellg();
+    if (file_size < 0 ||
+        static_cast<uintmax_t>(file_size) >
+            std::numeric_limits<size_t>::max())
         return false;
-    }
+    ifs.seekg(0, std::ios::beg);
+    file_data_.resize(static_cast<size_t>(file_size));
+    if (!file_data_.empty() && !ifs.read(
+            reinterpret_cast<char*>(file_data_.data()), file_size))
+        return false;
 
-    // ── 读取偏移表 ──
-    // 条目总数 = n1024blocks × 1024
-    // 每个条目宽度由 size_tablx_offsets 决定（4/5/6 字节）
-    size_t n_blocks = hdr_.n1024blocks_v3;
-    size_t n_entries = n_blocks * 1024;
-    int entry_size = static_cast<int>(hdr_.size_tablx_offsets);
-    const uint8_t* offset_data = file_data_.data() + br.tell();
+    try {
+        BinaryReader br(file_data_);
+        hdr_.version = br.read_u32();
 
-    offsets_.resize(n_entries);
-    for (size_t i = 0; i < n_entries; ++i) {
-        offsets_[i] = read_offset(offset_data + i * entry_size, entry_size);
-        // 记录非零偏移的 FID（表示有效要素）
-        if (offsets_[i] != 0) {
-            valid_offsets_.push_back(static_cast<uint32_t>(i));
+        if (hdr_.version == 3) {
+            hdr_.n1024blocks_v3 = br.read_u32();
+            hdr_.nfeatures_v3 = br.read_u32();
+            hdr_.size_tablx_offsets = br.read_u32();
+        } else if (hdr_.version == 4) {
+            hdr_.unknown_v4 = br.read_u32();
+            hdr_.size_tablx_offsets = br.read_u32();
+            br.skip(8);
+        } else {
+            std::cerr << "Unknown .gdbtablx version: " << hdr_.version << "\n";
+            return false;
         }
-    }
 
-    br.seek(br.tell() + n_entries * entry_size);
+        const int entry_size = static_cast<int>(hdr_.size_tablx_offsets);
+        if (entry_size != 4 && entry_size != 5 && entry_size != 6)
+            return false;
 
-    // ── 读取稀疏块位图（v3）或 v4 尾部 ──
-    if (hdr_.version == 3) {
-        // 稀疏位图元数据
-        if (br.can_read(4)) {
-            uint32_t n_bitmap_int32 = br.read_u32();
-            uint32_t n_bits_for_block_map = br.read_u32();
-            uint32_t n1024blocks_bis = br.read_u32();
-            uint32_t n_leading_nonzero = br.read_u32();
-            (void)n_bitmap_int32; (void)n_bits_for_block_map;
-            (void)n1024blocks_bis; (void)n_leading_nonzero;
+        const size_t n_blocks = hdr_.n1024blocks_v3;
+        if (n_blocks > std::numeric_limits<uint32_t>::max() / 1024)
+            return false;
+        const size_t n_entries = n_blocks * 1024;
+        if (n_entries >
+            (file_data_.size() - br.tell()) /
+                static_cast<size_t>(entry_size))
+            return false;
+        const size_t table_bytes =
+            n_entries * static_cast<size_t>(entry_size);
+        const uint8_t* offset_data = file_data_.data() + br.tell();
 
-            // 读取位图: 每 bit 对应一个块
-            // 字节数向上取整: (n_bits + 7) / 8
-            size_t bitmap_bytes = (n_bits_for_block_map + 7) / 8;
-            if (bitmap_bytes > 0 && br.can_read(bitmap_bytes)) {
+        offsets_.resize(n_entries);
+        for (size_t i = 0; i < n_entries; ++i) {
+            offsets_[i] = read_offset(
+                offset_data + i * entry_size, entry_size);
+            if (offsets_[i] != 0)
+                valid_offsets_.push_back(static_cast<uint32_t>(i));
+        }
+        br.skip(table_bytes);
+
+        if (hdr_.version == 3) {
+            if (!br.can_read(16)) return false;
+            const uint32_t n_bitmap_int32 = br.read_u32();
+            const uint32_t n_bits_for_block_map = br.read_u32();
+            const uint32_t n1024blocks_bis = br.read_u32();
+            const uint32_t n_leading_nonzero = br.read_u32();
+            (void)n1024blocks_bis;
+            (void)n_leading_nonzero;
+
+            // A zero bitmap-word count denotes the format's implicit
+            // "all blocks active" representation, even when the metadata
+            // retains a non-zero logical bit count.
+            if (n_bitmap_int32 != 0) {
+                const size_t bitmap_bytes =
+                    (static_cast<size_t>(n_bits_for_block_map) + 7) / 8;
+                if (!br.can_read(bitmap_bytes)) return false;
                 block_bitmap_.resize(n_bits_for_block_map);
                 for (size_t i = 0; i < bitmap_bytes; ++i) {
-                    uint8_t byte = br.read_u8();
+                    const uint8_t byte = br.read_u8();
                     for (int bit = 0; bit < 8; ++bit) {
-                        size_t idx = i * 8 + bit;
-                        if (idx < n_bits_for_block_map) {
-                            block_bitmap_[idx] = (byte >> bit) & 1;
-                        }
+                        const size_t index = i * 8 + bit;
+                        if (index < n_bits_for_block_map)
+                            block_bitmap_[index] = (byte >> bit) & 1;
                     }
                 }
             }
+        } else {
+            if (!br.can_read(12)) return false;
+            hdr_.nfeatures_v4 = br.read_u64();
+            hdr_.sizeof_varying_section = br.read_u32();
         }
-    } else if (hdr_.version == 4) {
-        // v4 尾部
-        hdr_.nfeatures_v4 = br.read_u64();
-        hdr_.sizeof_varying_section = br.read_u32();
+    } catch (const std::exception&) {
+        file_data_.clear();
+        offsets_.clear();
+        block_bitmap_.clear();
+        valid_offsets_.clear();
+        hdr_ = {};
+        return false;
     }
 
     return true;

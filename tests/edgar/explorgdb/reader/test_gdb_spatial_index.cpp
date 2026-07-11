@@ -5,8 +5,12 @@
 #include <gtest/gtest.h>
 #include "gdb_spatial_index.h"
 #include "../test_paths.h"
+#include <cmath>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <limits>
+#include <vector>
 
 namespace fs = std::filesystem;
 using namespace explorgdb;
@@ -57,6 +61,31 @@ TEST(SpatialIndexTest, ParseTruncated) {
     GdbSpatialIndexParser parser(tmp_path);
     EXPECT_FALSE(parser.parse());
     fs::remove(tmp_path);
+}
+
+TEST(SpatialIndexTest, RejectsPageWithTooManyEntries) {
+    const std::string path = "/tmp/test_invalid_entry_count.spx";
+    std::vector<uint8_t> data(
+        GdbSpatialIndexParser::kPageSize +
+        GdbSpatialIndexParser::kTrailerSize, 0);
+    const uint32_t invalid_count = 341;
+    std::memcpy(data.data() + 4, &invalid_count,
+                sizeof(invalid_count));
+
+    const size_t trailer = GdbSpatialIndexParser::kPageSize;
+    data[trailer] = 8;
+    const uint32_t magic = 1;
+    const uint32_t depth = 1;
+    std::memcpy(data.data() + trailer + 2, &magic, sizeof(magic));
+    std::memcpy(data.data() + trailer + 6, &depth, sizeof(depth));
+    std::ofstream(path, std::ios::binary).write(
+        reinterpret_cast<const char*>(data.data()), data.size());
+
+    GdbSpatialIndexParser parser(path);
+    ASSERT_TRUE(parser.parse());
+    EXPECT_TRUE(parser.query_bbox(
+        0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, {1.0}).empty());
+    fs::remove(path);
 }
 
 // ── query_bbox() 测试 ──
@@ -121,6 +150,17 @@ TEST(SpatialIndexTest, QueryEmptyGridResolutions) {
         0, 0, 1e9, std::vector<double>{});
 
     EXPECT_EQ(fids.size(), 0u);
+}
+
+TEST(SpatialIndexTest, RejectsInvalidQueryInputs) {
+    GdbSpatialIndexParser parser(kSmallSpx);
+    ASSERT_TRUE(parser.parse());
+
+    EXPECT_TRUE(parser.query_bbox(
+        std::numeric_limits<double>::quiet_NaN(), 0.0, 1.0, 1.0,
+        0.0, 0.0, 1.0, {1.0}).empty());
+    EXPECT_TRUE(parser.query_bbox(
+        0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, {0.0}).empty());
 }
 
 // ── 结果排序验证 ──

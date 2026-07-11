@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <algorithm>
+#include <limits>
 #include <filesystem>
 #include <string>
 
@@ -84,6 +85,22 @@ TEST_F(QueryEngineIntegrationTest, OpenReadScanAndQueryBboxOnGeneratedGdb) {
     ASSERT_EQ(bbox_result.matched_fids.size(), 1u);
     EXPECT_EQ(bbox_result.matched_fids.front(), 0u);
     EXPECT_FALSE(bbox_result.execution_path.empty());
+
+    QueryRequest invalid_bbox;
+    invalid_bbox.kind = QueryKind::SpatialBbox;
+    invalid_bbox.xmin = std::numeric_limits<double>::quiet_NaN();
+    invalid_bbox.ymin = 0.0;
+    invalid_bbox.xmax = 1.0;
+    invalid_bbox.ymax = 1.0;
+    const auto invalid_result = engine.query(invalid_bbox);
+    EXPECT_TRUE(invalid_result.matched_fids.empty());
+    EXPECT_EQ(invalid_result.execution_path, "bbox:invalid");
+    EXPECT_EQ(invalid_result.fallback_reason, "invalid query bbox");
+
+    const auto unified_invalid = engine.query_bbox_unified(
+        0.0, 0.0, std::numeric_limits<double>::infinity(), 1.0);
+    EXPECT_EQ(unified_invalid.execution_path, "bbox:model:invalid");
+    EXPECT_EQ(unified_invalid.fallback_reason, "invalid query bbox");
 
     QueryRequest scan_request;
     scan_request.kind = QueryKind::SequentialScan;

@@ -15,7 +15,9 @@ QueryResult QueryEngine::query_bbox_unified(
         result.fallback_reason = "table not open";
         return result;
     }
-    if (xmin > xmax || ymin > ymax) {
+    if (!std::isfinite(xmin) || !std::isfinite(ymin) ||
+        !std::isfinite(xmax) || !std::isfinite(ymax) ||
+        xmin > xmax || ymin > ymax) {
         result.execution_path = "bbox:model:invalid";
         result.fallback_reason = "invalid query bbox";
         return result;

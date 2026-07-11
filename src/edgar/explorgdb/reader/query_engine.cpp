@@ -492,6 +492,10 @@ std::vector<uint32_t> QueryEngine::query_bbox(double xmin, double ymin,
                                               double xmax, double ymax,
                                               bool* skipped_unsupported_curve) {
     std::vector<uint32_t> candidates;
+    if (!std::isfinite(xmin) || !std::isfinite(ymin) ||
+        !std::isfinite(xmax) || !std::isfinite(ymax) ||
+        xmin > xmax || ymin > ymax)
+        return candidates;
     const auto* geom_field = geometry_field();
     if (!parser_ || !geom_field) return candidates;
 
@@ -538,6 +542,13 @@ QueryResult QueryEngine::query_spatial(const QueryRequest& request) {
     if (!parser_) {
         result.execution_path = "bbox:unavailable";
         result.fallback_reason = "table not open";
+        return result;
+    }
+    if (!std::isfinite(request.xmin) || !std::isfinite(request.ymin) ||
+        !std::isfinite(request.xmax) || !std::isfinite(request.ymax) ||
+        request.xmin > request.xmax || request.ymin > request.ymax) {
+        result.execution_path = "bbox:invalid";
+        result.fallback_reason = "invalid query bbox";
         return result;
     }
 
