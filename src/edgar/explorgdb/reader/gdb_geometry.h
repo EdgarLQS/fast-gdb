@@ -139,6 +139,8 @@ private:
 
 #if defined(FAST_GDB_CURVE_BACKEND_REJECT)
     CurveBackendMode curve_backend_mode_ = CurveBackendMode::Reject;
+#elif defined(FAST_GDB_CURVE_BACKEND_GDAL)
+    CurveBackendMode curve_backend_mode_ = CurveBackendMode::Gdal;
 #else
     CurveBackendMode curve_backend_mode_ = CurveBackendMode::Builtin;
 #endif
