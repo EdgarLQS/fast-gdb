@@ -7,6 +7,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+concurrency:
+  group: geometry-correctness-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   pure-cpp:
     name: pure-cpp-${{ matrix.os }}
