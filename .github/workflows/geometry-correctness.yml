@@ -1,0 +1,57 @@
+name: geometry-correctness
+
+on:
+  push:
+    branches:
+      - agent/geometry-wkb-curve-plan
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  pure-cpp:
+    name: pure-cpp-${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libgtest-dev
+      - name: Install macOS dependencies
+        if: runner.os == 'macOS'
+        run: brew install ninja googletest
+      - name: Configure
+        run: >-
+          cmake -S . -B build-core
+          -DFAST_GDB_WITH_GDAL=OFF
+          -DFAST_GDB_CURVE_BACKEND=BUILTIN
+          -DFAST_GDB_GEOMETRY_OUTPUT=STANDARD_WKB
+          -DFAST_GDB_BUILD_TOOLS=OFF
+          -DBUILD_TESTING=ON
+      - name: Build
+        run: cmake --build build-core --config Release --parallel
+      - name: Test
+        run: ctest --test-dir build-core -C Release --output-on-failure
+
+  gdal-hybrid:
+    name: gdal-hybrid-linux
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libgtest-dev libgdal-dev
+      - name: Configure
+        run: >-
+          cmake -S . -B build-hybrid -G Ninja
+          -DFAST_GDB_WITH_GDAL=ON
+          -DFAST_GDB_CURVE_BACKEND=GDAL
+          -DFAST_GDB_GEOMETRY_OUTPUT=STANDARD_WKB
+          -DFAST_GDB_BUILD_TOOLS=OFF
+          -DBUILD_TESTING=ON
+      - name: Build
+        run: cmake --build build-hybrid --parallel
+      - name: Test
+        run: ctest --test-dir build-hybrid --output-on-failure
