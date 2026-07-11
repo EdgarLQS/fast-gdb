@@ -412,14 +412,16 @@ GeometryModel GdbGeomDecoder::decode_model(
         uint64_t point_count = 0;
         uint64_t part_count = 0;
         uint64_t curve_count = 0;
-        if (!cursor.read_varuint(point_count) ||
-            !cursor.read_varuint(part_count))
+        if (!cursor.read_varuint(point_count))
             return fail(GeometryStatus::InvalidEncoding,
-                        "truncated multipart header");
+                        "truncated multipart point count");
         if (point_count == 0) {
             model.status = GeometryStatus::Empty;
             return model;
         }
+        if (!cursor.read_varuint(part_count))
+            return fail(GeometryStatus::InvalidEncoding,
+                        "truncated multipart part count");
         if (curve_header(base_type, geom_type)) {
             if (!cursor.read_varuint(curve_count))
                 return fail(GeometryStatus::InvalidEncoding,
