@@ -107,7 +107,6 @@ endif()
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 # ===== Portable geometry core =====
-# This target is intentionally independent from FileGDB table I/O and GDAL.
 set(FAST_GDB_GEOMETRY_SOURCES
     src/edgar/explorgdb/reader/curve_geometry.cpp
     src/edgar/explorgdb/reader/gdb_geometry.cpp
@@ -150,12 +149,21 @@ target_link_libraries(explorgdb_reader_lib PUBLIC
 target_compile_features(explorgdb_reader_lib PUBLIC cxx_std_17)
 fast_gdb_enable_warnings(explorgdb_reader_lib)
 
+# The data writer is pure C++, while gdb_index_creator.cpp uses GDAL to ask
+# the reference driver to build indexes. Keep the index helper out of the
+# dependency-free product, and attach GDAL explicitly when it is enabled.
 file(GLOB WRITER_SOURCES CONFIGURE_DEPENDS
      src/edgar/explorgdb/writer/*.cpp)
+if(NOT FAST_GDB_WITH_GDAL)
+    list(FILTER WRITER_SOURCES EXCLUDE REGEX ".*gdb_index_creator\\.cpp$")
+endif()
 add_library(explorgdb_writer_lib STATIC ${WRITER_SOURCES})
 target_include_directories(explorgdb_writer_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/writer)
 target_link_libraries(explorgdb_writer_lib PUBLIC explorgdb_common_lib)
+if(FAST_GDB_WITH_GDAL)
+    target_link_libraries(explorgdb_writer_lib PRIVATE ${FAST_GDB_GDAL_TARGET})
+endif()
 target_compile_features(explorgdb_writer_lib PUBLIC cxx_std_17)
 fast_gdb_enable_warnings(explorgdb_writer_lib)
 
