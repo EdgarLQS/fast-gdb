@@ -4,10 +4,13 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 using namespace explorgdb;
 
 namespace {
+
+constexpr double kPi = 3.141592653589793238462643383279502884;
 
 CurveRequest base_request(GridPoint start, GridPoint end) {
     CurveRequest request;
@@ -82,7 +85,8 @@ TEST(CurveGeometryContract, LinearizesBezierAndInterpolatesZAndM) {
     auto result = linearize_curves(request);
     ASSERT_TRUE(result.valid()) << result.diagnostic;
     ASSERT_GT(result.parts.front().size(), 3u);
-    const auto middle = result.parts.front()[result.parts.front().size() / 2];
+    const auto middle = result.parts.front()[
+        result.parts.front().size() / 2];
     EXPECT_GT(middle.y, 500);
     EXPECT_GT(middle.z, 10.0);
     EXPECT_LT(middle.z, 20.0);
@@ -115,6 +119,28 @@ TEST(CurveGeometryContract, LinearizesMinorMajorAndCompleteEllipse) {
                         complete_result.parts.front().back()));
 }
 
+TEST(CurveGeometryContract, UsesConventionalRotationAfterDescriptorNormalization) {
+    // +90 degree Cartesian rotation: major-axis endpoints are (0, +/-2)
+    // and the positive-parameter half passes through (-1, 0).
+    auto request = base_request({0, 2000}, {0, -2000});
+    CurveDescriptor ellipse;
+    ellipse.kind = CurveSegmentKind::EllipticArc;
+    ellipse.values[0] = 0.0;
+    ellipse.values[1] = 0.0;
+    ellipse.values[2] = kPi / 2.0;
+    ellipse.values[3] = 2.0;
+    ellipse.values[4] = 0.5;
+    ellipse.flags = 0x1000;
+    request.curves = {ellipse};
+
+    auto result = linearize_curves(request);
+    ASSERT_TRUE(result.valid()) << result.diagnostic;
+    int64_t min_x = 0;
+    for (const auto& point : result.parts.front())
+        min_x = std::min(min_x, point.x);
+    EXPECT_LE(min_x, -999);
+}
+
 TEST(CurveGeometryContract, ReconstructsMixedLinearAndCurveSegments) {
     CurveRequest request;
     request.transform.xy_scale = 1000.0;
@@ -132,8 +158,10 @@ TEST(CurveGeometryContract, ReconstructsMixedLinearAndCurveSegments) {
     auto result = linearize_curves(request);
     ASSERT_TRUE(result.valid()) << result.diagnostic;
     ASSERT_GT(result.parts.front().size(), 4u);
-    EXPECT_TRUE(same_xy(result.parts.front().front(), request.points.front()));
-    EXPECT_TRUE(same_xy(result.parts.front().back(), request.points.back()));
+    EXPECT_TRUE(same_xy(result.parts.front().front(),
+                        request.points.front()));
+    EXPECT_TRUE(same_xy(result.parts.front().back(),
+                        request.points.back()));
     EXPECT_TRUE(std::any_of(result.parts.front().begin(),
                             result.parts.front().end(),
                             [](const GridPoint& point) {
@@ -157,4 +185,10 @@ TEST(CurveGeometryContract, RejectsInvalidOptionsAndDescriptors) {
     auto invalid_start = linearize_curves(request);
     EXPECT_FALSE(invalid_start.valid());
     EXPECT_EQ(invalid_start.status, GeometryStatus::InvalidEncoding);
+
+    request.curves[0].start_vertex =
+        std::numeric_limits<size_t>::max();
+    auto overflow_start = linearize_curves(request);
+    EXPECT_FALSE(overflow_start.valid());
+    EXPECT_EQ(overflow_start.status, GeometryStatus::InvalidEncoding);
 }
