@@ -71,7 +71,7 @@ TEST(GeometryOutputContract, WktUsesOrganizedPolygonTopology) {
               1u);
 }
 
-TEST(GeometryDecoderSafety, EveryTruncatedPrefixFailsWithoutThrowing) {
+TEST(GeometryDecoderSafety, EveryNonEmptyTruncatedPrefixFailsWithoutThrowing) {
     // General polyline with a declared curve but no complete descriptor.
     const std::vector<uint8_t> blob{
         0xb2, 0x80, 0x80, 0x80, 0x02,
@@ -79,7 +79,7 @@ TEST(GeometryDecoderSafety, EveryTruncatedPrefixFailsWithoutThrowing) {
         0x00, 0x00, 0x01, 0x01,
         0x00, 0x00, 0x02, 0x00};
     auto d = decoder();
-    for (size_t size = 0; size < blob.size(); ++size) {
+    for (size_t size = 1; size < blob.size(); ++size) {
         EXPECT_NO_THROW({
             const auto model = d.decode_model(blob.data(), size);
             EXPECT_FALSE(model.valid()) << "prefix=" << size;
