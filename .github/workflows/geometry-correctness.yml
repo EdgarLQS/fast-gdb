@@ -32,8 +32,25 @@ jobs:
           -DFAST_GDB_BUILD_TOOLS=OFF
           -DFAST_GDB_BUILD_FULL_TESTS=ON
           -DBUILD_TESTING=ON
-      - name: Build
-        run: cmake --build build-core --config Release --parallel
+      - name: Build (POSIX)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -o pipefail
+          cmake --build build-core --config Release --parallel --verbose 2>&1 | tee build.log
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cmake --build build-core --config Release --parallel --verbose *>&1 | Tee-Object -FilePath build.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-pure-${{ matrix.os }}
+          path: build.log
+          if-no-files-found: warn
       - name: Test
         run: ctest --test-dir build-core -C Release --output-on-failure
 
@@ -54,7 +71,17 @@ jobs:
           -DFAST_GDB_BUILD_FULL_TESTS=ON
           -DBUILD_TESTING=ON
       - name: Build
-        run: cmake --build build-hybrid --parallel
+        shell: bash
+        run: |
+          set -o pipefail
+          cmake --build build-hybrid --parallel --verbose 2>&1 | tee build.log
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-gdal-hybrid
+          path: build.log
+          if-no-files-found: warn
       - name: Test
         run: ctest --test-dir build-hybrid --output-on-failure
 
@@ -74,7 +101,17 @@ jobs:
           -DFAST_GDB_BUILD_TOOLS=OFF
           -DBUILD_TESTING=OFF
       - name: Build hybrid product
-        run: cmake --build build-gdal-default --target fast_gdb_curve_gdal --parallel
+        shell: bash
+        run: |
+          set -o pipefail
+          cmake --build build-gdal-default --target fast_gdb_curve_gdal --parallel --verbose 2>&1 | tee build.log
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-gdal-default
+          path: build.log
+          if-no-files-found: warn
 
   sanitizer-core:
     name: geometry-core-asan-ubsan
@@ -96,7 +133,17 @@ jobs:
           -DFAST_GDB_BUILD_FULL_TESTS=OFF
           -DBUILD_TESTING=ON
       - name: Build
-        run: cmake --build build-sanitize --target fast_gdb_geometry_test_runner --parallel
+        shell: bash
+        run: |
+          set -o pipefail
+          cmake --build build-sanitize --target fast_gdb_geometry_test_runner --parallel --verbose 2>&1 | tee build.log
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-sanitizer
+          path: build.log
+          if-no-files-found: warn
       - name: Test
         env:
           ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
