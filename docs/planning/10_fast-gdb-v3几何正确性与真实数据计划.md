@@ -4,6 +4,8 @@
 **状态**：当前后续计划  
 **前置版本**：v2 reader 收口分支 `chore/fast-gdb-release-hardening`
 
+曲线标准输出、v1/v2 历史计划和 GDAL 替换边界分析已归档到 `archive/`；本文只保留当前 v3 执行计划。
+
 ## 1. v3 目标
 
 v3 不扩展完整 SQL、写入生产化或曲线标准输出，优先处理 reader 中仍可能影响真实数据正确性的几何边界，并完成真实 FileGDB 验收。
@@ -74,6 +76,8 @@ v3 可二选一：
 
 CircularArc、Cubic Bezier、EllipticArc 参数还原仍为可选独立工作包。若启动，必须同时实现曲线描述符解析、part 重建、标准表达或带误差模型的线性化、空间过滤共用曲线模型，以及真实 ArcGIS Pro 曲线样本。
 
+背景分析见 `archive/09_fast-gdb曲线几何分析.md`。
+
 ## 4. P0：真实数据验收
 
 ### 4.1 普通真实 FileGDB
@@ -115,3 +119,5 @@ GDAL 必须确认含非线性几何，fast-gdb 必须明确 unsupported。
 - [ ] 真实曲线 FileGDB 回归 PASSED。
 - [ ] correctness 全量测试无失败并记录结果。
 - [ ] 功能矩阵和发布文档按最终实现同步。
+
+架构边界和替代 GDAL 的分析原则见 `archive/11_fast-gdb替换GDAL矢量能力分析.md`。

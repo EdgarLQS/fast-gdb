@@ -1,6 +1,6 @@
 # 02 — fast-gdb / GDAL 功能对比矩阵
 
-**更新日期**：2026-07-10  
+**更新日期**：2026-07-11  
 **文档状态**：当前权威能力矩阵  
 **对比对象**：`explorgdb reader` 与 GDAL OpenFileGDB 只读能力
 
@@ -126,3 +126,5 @@ const bool has_curve_desc =
 4. Curve flag + `nCurves == 0` 的一致行为。
 5. 普通真实和真实曲线 FileGDB 回归。
 6. MultiPatch 完整 part type 语义（可选；未实现前维持 degraded）。
+
+曲线标准输出、GDAL 替换边界和更详细的历史分析已归档到 `archive/`，这里只保留当前能力矩阵。
