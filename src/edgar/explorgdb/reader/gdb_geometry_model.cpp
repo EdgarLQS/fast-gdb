@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <limits>
 #include <stdexcept>
 
@@ -26,8 +27,11 @@ public:
         for (unsigned count = 0; count < 10; ++count) {
             if (current_ == nullptr || current_ >= end_) return false;
             const uint8_t byte = *current_++;
-            if (shift == 63 && (byte & 0x7e) != 0) return false;
-            value |= static_cast<uint64_t>(byte & 0x7f) << shift;
+            const uint64_t payload = byte & 0x7f;
+            if (shift >= 64 || payload >
+                (std::numeric_limits<uint64_t>::max() >> shift))
+                return false;
+            value |= payload << shift;
             if ((byte & 0x80) == 0) return true;
             shift += 7;
         }
@@ -43,17 +47,45 @@ public:
         for (unsigned count = 1; byte & 0x80; ++count) {
             if (count >= 10 || current_ >= end_) return false;
             byte = *current_++;
-            if (shift >= 63 && (byte & 0x7f) != 0) return false;
-            magnitude |= static_cast<uint64_t>(byte & 0x7f) << shift;
+            const uint64_t payload = byte & 0x7f;
+            if (shift >= 63 || payload >
+                (static_cast<uint64_t>(
+                    std::numeric_limits<int64_t>::max()) >> shift))
+                return false;
+            magnitude |= payload << shift;
             shift += 7;
         }
-        if (magnitude > static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) return false;
-        value = negative ? -static_cast<int64_t>(magnitude) : static_cast<int64_t>(magnitude);
+        if (magnitude > static_cast<uint64_t>(
+                std::numeric_limits<int64_t>::max()))
+            return false;
+        value = negative ? -static_cast<int64_t>(magnitude)
+                         : static_cast<int64_t>(magnitude);
         return true;
     }
 
+    bool read_le_u32(uint32_t& value) {
+        if (remaining() < 4) return false;
+        value = static_cast<uint32_t>(current_[0]) |
+                (static_cast<uint32_t>(current_[1]) << 8) |
+                (static_cast<uint32_t>(current_[2]) << 16) |
+                (static_cast<uint32_t>(current_[3]) << 24);
+        current_ += 4;
+        return true;
+    }
+
+    bool read_le_double(double& value) {
+        if (remaining() < 8) return false;
+        uint64_t raw = 0;
+        for (unsigned i = 0; i < 8; ++i)
+            raw |= static_cast<uint64_t>(current_[i]) << (8 * i);
+        current_ += 8;
+        std::memcpy(&value, &raw, sizeof(value));
+        return std::isfinite(value);
+    }
+
     size_t consumed(const uint8_t* begin) const {
-        return current_ && begin ? static_cast<size_t>(current_ - begin) : 0;
+        return current_ && begin
+            ? static_cast<size_t>(current_ - begin) : 0;
     }
 
     size_t remaining() const {
@@ -66,18 +98,24 @@ private:
     const uint8_t* end_;
 };
 
-bool type_has_z(uint8_t base_type, uint64_t geom_type, bool layer_has_z) {
-    if (base_type >= 50) return (geom_type & kGeneralZFlag) != 0;
-    return layer_has_z || base_type == 9 || base_type == 10 || base_type == 11 ||
-           base_type == 13 || base_type == 15 || base_type == 18 ||
-           base_type == 19 || base_type == 20 || base_type == 31 || base_type == 32;
+bool type_has_z(uint8_t base_type, uint64_t geom_type,
+                bool layer_has_z) {
+    if (base_type >= 50)
+        return (geom_type & kGeneralZFlag) != 0;
+    return layer_has_z || base_type == 9 || base_type == 10 ||
+           base_type == 11 || base_type == 13 || base_type == 15 ||
+           base_type == 18 || base_type == 19 || base_type == 20 ||
+           base_type == 31 || base_type == 32;
 }
 
-bool type_has_m(uint8_t base_type, uint64_t geom_type, bool layer_has_m) {
-    if (base_type >= 50) return (geom_type & kGeneralMFlag) != 0;
-    return layer_has_m || base_type == 11 || base_type == 13 || base_type == 15 ||
-           base_type == 18 || base_type == 21 || base_type == 23 ||
-           base_type == 25 || base_type == 28 || base_type == 31;
+bool type_has_m(uint8_t base_type, uint64_t geom_type,
+                bool layer_has_m) {
+    if (base_type >= 50)
+        return (geom_type & kGeneralMFlag) != 0;
+    return layer_has_m || base_type == 11 || base_type == 13 ||
+           base_type == 15 || base_type == 18 || base_type == 21 ||
+           base_type == 23 || base_type == 25 || base_type == 28 ||
+           base_type == 31;
 }
 
 bool curve_header(uint8_t base_type, uint64_t geom_type) {
@@ -89,16 +127,22 @@ GeometryStatus topology_geometry_status(TopologyStatus status) {
     switch (status) {
         case TopologyStatus::Valid: return GeometryStatus::Valid;
         case TopologyStatus::Empty: return GeometryStatus::Empty;
-        case TopologyStatus::DegenerateRing: return GeometryStatus::DegenerateRing;
-        case TopologyStatus::SelfIntersection: return GeometryStatus::SelfIntersection;
-        case TopologyStatus::TouchingRings: return GeometryStatus::TouchingRings;
-        case TopologyStatus::DuplicateRing: return GeometryStatus::DuplicateRing;
-        case TopologyStatus::ParentCycle: return GeometryStatus::InvalidTopology;
+        case TopologyStatus::DegenerateRing:
+            return GeometryStatus::DegenerateRing;
+        case TopologyStatus::SelfIntersection:
+            return GeometryStatus::SelfIntersection;
+        case TopologyStatus::TouchingRings:
+            return GeometryStatus::TouchingRings;
+        case TopologyStatus::DuplicateRing:
+            return GeometryStatus::DuplicateRing;
+        case TopologyStatus::ParentCycle:
+            return GeometryStatus::InvalidTopology;
     }
     return GeometryStatus::InvalidTopology;
 }
 
-GeometryModel error_model(GeometryStatus status, const char* diagnostic) {
+GeometryModel error_model(GeometryStatus status,
+                          const char* diagnostic) {
     GeometryModel model;
     model.status = status;
     model.diagnostic = diagnostic;
@@ -107,21 +151,28 @@ GeometryModel error_model(GeometryStatus status, const char* diagnostic) {
 
 bool read_bbox(Cursor& cursor) {
     uint64_t ignored = 0;
-    return cursor.read_varuint(ignored) && cursor.read_varuint(ignored) &&
-           cursor.read_varuint(ignored) && cursor.read_varuint(ignored);
+    return cursor.read_varuint(ignored) &&
+           cursor.read_varuint(ignored) &&
+           cursor.read_varuint(ignored) &&
+           cursor.read_varuint(ignored);
 }
 
-bool read_part_sizes(Cursor& cursor, uint64_t n_points, uint64_t n_parts,
+bool read_part_sizes(Cursor& cursor, uint64_t n_points,
+                     uint64_t n_parts,
                      std::vector<size_t>& part_sizes) {
     if (n_parts == 0 || n_parts > n_points ||
         n_points > std::numeric_limits<uint32_t>::max() ||
-        n_parts > cursor.remaining() + 1) return false;
+        n_parts > cursor.remaining() + 1)
+        return false;
     part_sizes.assign(static_cast<size_t>(n_parts), 0);
     uint64_t sum = 0;
     for (uint64_t i = 0; i + 1 < n_parts; ++i) {
         uint64_t part = 0;
-        if (!cursor.read_varuint(part) || part == 0 || part > n_points - sum) return false;
-        part_sizes[static_cast<size_t>(i)] = static_cast<size_t>(part);
+        if (!cursor.read_varuint(part) || part == 0 ||
+            part > n_points - sum)
+            return false;
+        part_sizes[static_cast<size_t>(i)] =
+            static_cast<size_t>(part);
         sum += part;
     }
     const uint64_t last = n_points - sum;
@@ -130,26 +181,34 @@ bool read_part_sizes(Cursor& cursor, uint64_t n_points, uint64_t n_parts,
     return true;
 }
 
-bool read_xy(Cursor& cursor, size_t count, std::vector<GridPoint>& points) {
+bool add_checked(int64_t& value, int64_t delta) {
+    if ((delta > 0 && value >
+         std::numeric_limits<int64_t>::max() - delta) ||
+        (delta < 0 && value <
+         std::numeric_limits<int64_t>::min() - delta))
+        return false;
+    value += delta;
+    return true;
+}
+
+bool read_xy(Cursor& cursor, size_t count,
+             std::vector<GridPoint>& points) {
     if (count > cursor.remaining() / 2) return false;
     points.assign(count, {});
     int64_t x = 0, y = 0;
     for (size_t i = 0; i < count; ++i) {
         int64_t dx = 0, dy = 0;
-        if (!cursor.read_varint(dx) || !cursor.read_varint(dy)) return false;
-        if ((dx > 0 && x > std::numeric_limits<int64_t>::max() - dx) ||
-            (dx < 0 && x < std::numeric_limits<int64_t>::min() - dx) ||
-            (dy > 0 && y > std::numeric_limits<int64_t>::max() - dy) ||
-            (dy < 0 && y < std::numeric_limits<int64_t>::min() - dy)) return false;
-        x += dx;
-        y += dy;
+        if (!cursor.read_varint(dx) || !cursor.read_varint(dy) ||
+            !add_checked(x, dx) || !add_checked(y, dy))
+            return false;
         points[i].x = x;
         points[i].y = y;
     }
     return true;
 }
 
-bool read_ordinates(Cursor& cursor, std::vector<GridPoint>& points,
+bool read_ordinates(Cursor& cursor,
+                    std::vector<GridPoint>& points,
                     bool has_z, bool has_m,
                     double z_origin, double z_scale,
                     double m_origin, double m_scale) {
@@ -157,11 +216,11 @@ bool read_ordinates(Cursor& cursor, std::vector<GridPoint>& points,
         int64_t value = 0;
         for (auto& point : points) {
             int64_t delta = 0;
-            if (!cursor.read_varint(delta)) return false;
-            if ((delta > 0 && value > std::numeric_limits<int64_t>::max() - delta) ||
-                (delta < 0 && value < std::numeric_limits<int64_t>::min() - delta)) return false;
-            value += delta;
-            point.z = z_scale == 0.0 ? z_origin
+            if (!cursor.read_varint(delta) ||
+                !add_checked(value, delta))
+                return false;
+            point.z = z_scale == 0.0
+                ? z_origin
                 : static_cast<double>(value) / z_scale + z_origin;
         }
     }
@@ -172,24 +231,69 @@ bool read_ordinates(Cursor& cursor, std::vector<GridPoint>& points,
             if (!cursor.read_varint(encoded)) return false;
             if (i == 0) {
                 value = encoded;
-            } else {
-                if ((encoded > 0 && value > std::numeric_limits<int64_t>::max() - encoded) ||
-                    (encoded < 0 && value < std::numeric_limits<int64_t>::min() - encoded)) return false;
-                value += encoded;
+            } else if (!add_checked(value, encoded)) {
+                return false;
             }
-            points[i].m = m_scale == 0.0 ? m_origin
+            points[i].m = m_scale == 0.0
+                ? m_origin
                 : static_cast<double>(value) / m_scale + m_origin;
         }
     }
     return true;
 }
 
+bool read_curve_descriptors(
+    Cursor& cursor, uint64_t count, uint64_t point_count,
+    std::vector<CurveDescriptor>& curves) {
+    if (count > cursor.remaining() / 2 ||
+        count > std::numeric_limits<uint32_t>::max())
+        return false;
+    curves.clear();
+    curves.reserve(static_cast<size_t>(count));
+    size_t previous = 0;
+    for (uint64_t i = 0; i < count; ++i) {
+        uint64_t start = 0, type = 0;
+        if (!cursor.read_varuint(start) ||
+            !cursor.read_varuint(type) ||
+            start + 1 >= point_count ||
+            (i > 0 && start <= previous))
+            return false;
+        CurveDescriptor descriptor;
+        descriptor.start_vertex = static_cast<size_t>(start);
+        previous = descriptor.start_vertex;
+        if (type == 1) {
+            descriptor.kind = CurveSegmentKind::CircularArc;
+            if (!cursor.read_le_double(descriptor.values[0]) ||
+                !cursor.read_le_double(descriptor.values[1]) ||
+                !cursor.read_le_u32(descriptor.flags))
+                return false;
+        } else if (type == 4) {
+            descriptor.kind = CurveSegmentKind::CubicBezier;
+            for (size_t j = 0; j < 4; ++j)
+                if (!cursor.read_le_double(descriptor.values[j]))
+                    return false;
+        } else if (type == 5) {
+            descriptor.kind = CurveSegmentKind::EllipticArc;
+            for (size_t j = 0; j < 5; ++j)
+                if (!cursor.read_le_double(descriptor.values[j]))
+                    return false;
+            if (!cursor.read_le_u32(descriptor.flags))
+                return false;
+        } else {
+            return false;
+        }
+        curves.push_back(descriptor);
+    }
+    return true;
+}
+
 } // namespace
 
-GeometryModel GdbGeomDecoder::decode_model(const uint8_t* data, size_t size) {
+GeometryModel GdbGeomDecoder::decode_model(
+    const uint8_t* data, size_t size) {
     GeometryModel model;
-    model.transform = {xorig_, yorig_, xyscale_, zorig_, zscale_,
-                       morig_, mscale_};
+    model.transform = {xorig_, yorig_, xyscale_,
+                       zorig_, zscale_, morig_, mscale_};
     if (data == nullptr || size == 0) {
         model.kind = GeometryKind::Point;
         model.status = GeometryStatus::Empty;
@@ -202,7 +306,8 @@ GeometryModel GdbGeomDecoder::decode_model(const uint8_t* data, size_t size) {
     if (!cursor.read_varuint(geom_type))
         return error_model(GeometryStatus::InvalidEncoding,
                            "invalid geometry type varuint");
-    const uint8_t base_type = static_cast<uint8_t>(geom_type & 0xff);
+    const uint8_t base_type =
+        static_cast<uint8_t>(geom_type & 0xff);
     model.has_z = type_has_z(base_type, geom_type, layer_has_z_);
     model.has_m = type_has_m(base_type, geom_type, layer_has_m_);
 
@@ -212,21 +317,24 @@ GeometryModel GdbGeomDecoder::decode_model(const uint8_t* data, size_t size) {
         return model;
     }
 
-    if (base_type == 1 || base_type == 9 || base_type == 11 ||
-        base_type == 21 || base_type == 52) {
+    if (base_type == 1 || base_type == 9 ||
+        base_type == 11 || base_type == 21 || base_type == 52) {
         model.kind = GeometryKind::Point;
         uint64_t x_raw = 0, y_raw = 0;
-        if (!cursor.read_varuint(x_raw) || !cursor.read_varuint(y_raw))
+        if (!cursor.read_varuint(x_raw) ||
+            !cursor.read_varuint(y_raw))
             return error_model(GeometryStatus::InvalidEncoding,
                                "truncated point coordinates");
         if (x_raw == 0 || y_raw == 0) {
             model.status = GeometryStatus::Empty;
             return model;
         }
-        if (x_raw - 1 > static_cast<uint64_t>(std::numeric_limits<int64_t>::max()) ||
-            y_raw - 1 > static_cast<uint64_t>(std::numeric_limits<int64_t>::max()))
+        if (x_raw - 1 > static_cast<uint64_t>(
+                std::numeric_limits<int64_t>::max()) ||
+            y_raw - 1 > static_cast<uint64_t>(
+                std::numeric_limits<int64_t>::max()))
             return error_model(GeometryStatus::NumericOverflow,
-                               "point coordinate exceeds integer grid range");
+                "point coordinate exceeds integer grid range");
         model.point.x = static_cast<int64_t>(x_raw - 1);
         model.point.y = static_cast<int64_t>(y_raw - 1);
         if (model.has_z) {
@@ -234,24 +342,28 @@ GeometryModel GdbGeomDecoder::decode_model(const uint8_t* data, size_t size) {
             if (!cursor.read_varuint(raw))
                 return error_model(GeometryStatus::InvalidEncoding,
                                    "truncated point Z");
-            model.point.z = raw == 0 ? std::numeric_limits<double>::quiet_NaN()
+            model.point.z = raw == 0
+                ? std::numeric_limits<double>::quiet_NaN()
                 : (zscale_ == 0.0 ? zorig_
-                   : static_cast<double>(raw - 1) / zscale_ + zorig_);
+                   : static_cast<double>(raw - 1) /
+                     zscale_ + zorig_);
         }
         if (model.has_m) {
             uint64_t raw = 0;
             if (!cursor.read_varuint(raw))
                 return error_model(GeometryStatus::InvalidEncoding,
                                    "truncated point M");
-            model.point.m = raw == 0 ? std::numeric_limits<double>::quiet_NaN()
+            model.point.m = raw == 0
+                ? std::numeric_limits<double>::quiet_NaN()
                 : (mscale_ == 0.0 ? morig_
-                   : static_cast<double>(raw - 1) / mscale_ + morig_);
+                   : static_cast<double>(raw - 1) /
+                     mscale_ + morig_);
         }
         return model;
     }
 
-    if (base_type == 8 || base_type == 18 || base_type == 20 ||
-        base_type == 28 || base_type == 53) {
+    if (base_type == 8 || base_type == 18 ||
+        base_type == 20 || base_type == 28 || base_type == 53) {
         model.kind = GeometryKind::MultiPoint;
         uint64_t n_points = 0;
         if (!cursor.read_varuint(n_points))
@@ -261,48 +373,42 @@ GeometryModel GdbGeomDecoder::decode_model(const uint8_t* data, size_t size) {
             model.status = GeometryStatus::Empty;
             return model;
         }
-        if (n_points > std::numeric_limits<uint32_t>::max() || !read_bbox(cursor))
+        if (n_points > std::numeric_limits<uint32_t>::max() ||
+            !read_bbox(cursor))
             return error_model(GeometryStatus::InvalidEncoding,
                                "invalid multipoint header");
-        if (!read_xy(cursor, static_cast<size_t>(n_points), model.points) ||
-            !read_ordinates(cursor, model.points, model.has_z, model.has_m,
+        if (!read_xy(cursor, static_cast<size_t>(n_points),
+                     model.points) ||
+            !read_ordinates(cursor, model.points,
+                            model.has_z, model.has_m,
                             zorig_, zscale_, morig_, mscale_))
             return error_model(GeometryStatus::InvalidEncoding,
-                               "truncated multipoint coordinate arrays");
+                "truncated multipoint coordinate arrays");
         return model;
     }
 
-    if (base_type == 3 || base_type == 10 || base_type == 13 ||
-        base_type == 23 || base_type == 50 || base_type == 5 ||
-        base_type == 15 || base_type == 19 || base_type == 25 ||
-        base_type == 51) {
+    if (base_type == 3 || base_type == 10 ||
+        base_type == 13 || base_type == 23 || base_type == 50 ||
+        base_type == 5 || base_type == 15 ||
+        base_type == 19 || base_type == 25 || base_type == 51) {
         const bool polygon = base_type == 5 || base_type == 15 ||
                              base_type == 19 || base_type == 25 ||
                              base_type == 51;
         model.kind = polygon ? GeometryKind::MultiPolygon
                              : GeometryKind::MultiLineString;
-        uint64_t n_points = 0, n_parts = 0;
-        if (!cursor.read_varuint(n_points) || !cursor.read_varuint(n_parts))
+        uint64_t n_points = 0, n_parts = 0, n_curves = 0;
+        if (!cursor.read_varuint(n_points) ||
+            !cursor.read_varuint(n_parts))
             return error_model(GeometryStatus::InvalidEncoding,
                                "truncated multipart header");
         if (n_points == 0) {
             model.status = GeometryStatus::Empty;
             return model;
         }
-        if (curve_header(base_type, geom_type)) {
-            uint64_t n_curves = 0;
-            if (!cursor.read_varuint(n_curves))
-                return error_model(GeometryStatus::InvalidEncoding,
-                                   "truncated curve count");
-            if (n_curves > 0) {
-                model.source_was_curve = true;
-                model.backend = GeometryBackend::Reject;
-                model.status = GeometryStatus::UnsupportedCurve;
-                model.diagnostic =
-                    "native curve descriptors require a configured curve backend";
-                return model;
-            }
-        }
+        if (curve_header(base_type, geom_type) &&
+            !cursor.read_varuint(n_curves))
+            return error_model(GeometryStatus::InvalidEncoding,
+                               "truncated curve count");
         if (!read_bbox(cursor))
             return error_model(GeometryStatus::InvalidEncoding,
                                "truncated multipart bbox");
@@ -312,24 +418,56 @@ GeometryModel GdbGeomDecoder::decode_model(const uint8_t* data, size_t size) {
                                "invalid multipart sizes");
         std::vector<GridPoint> points;
         if (!read_xy(cursor, static_cast<size_t>(n_points), points) ||
-            !read_ordinates(cursor, points, model.has_z, model.has_m,
+            !read_ordinates(cursor, points,
+                            model.has_z, model.has_m,
                             zorig_, zscale_, morig_, mscale_))
             return error_model(GeometryStatus::InvalidEncoding,
-                               "truncated multipart coordinate arrays");
+                "truncated multipart coordinate arrays");
+
+        if (n_curves > 0) {
+            std::vector<CurveDescriptor> curves;
+            if (!read_curve_descriptors(cursor, n_curves,
+                                        n_points, curves))
+                return error_model(GeometryStatus::InvalidEncoding,
+                    "invalid or truncated curve descriptors");
+            CurveRequest request;
+            request.points = std::move(points);
+            request.part_sizes = part_sizes;
+            request.curves = std::move(curves);
+            request.transform = model.transform;
+            request.polygon = polygon;
+            request.has_z = model.has_z;
+            request.has_m = model.has_m;
+            request.options = curve_options_;
+            if (curve_backend_mode_ == CurveBackendMode::Reject)
+                return RejectCurveBackend().read_geometry(request);
+            if (curve_backend_mode_ == CurveBackendMode::Builtin)
+                return BuiltinLinearizingCurveBackend().read_geometry(
+                    request);
+            model.source_was_curve = true;
+            model.backend = GeometryBackend::Gdal;
+            model.status = GeometryStatus::UnsupportedCurve;
+            model.diagnostic =
+                "GDAL curve mode requires the dataset/FID bridge";
+            return model;
+        }
+
         std::vector<PointSequence> parts;
         parts.reserve(part_sizes.size());
         size_t offset = 0;
         for (size_t part_size : part_sizes) {
             parts.emplace_back(
                 points.begin() + static_cast<std::ptrdiff_t>(offset),
-                points.begin() + static_cast<std::ptrdiff_t>(offset + part_size));
+                points.begin() +
+                    static_cast<std::ptrdiff_t>(offset + part_size));
             offset += part_size;
         }
         if (!polygon) {
             model.lines = std::move(parts);
             return model;
         }
-        const auto topology = PolygonTopologyBuilder().build(std::move(parts));
+        const auto topology =
+            PolygonTopologyBuilder().build(std::move(parts));
         model.multipolygon = topology.model;
         model.status = topology_geometry_status(topology.status);
         model.diagnostic = topology.diagnostic;
@@ -342,9 +480,10 @@ GeometryModel GdbGeomDecoder::decode_model(const uint8_t* data, size_t size) {
     return model;
 }
 
-GeometryModel GdbGeomDecoder::decode_model_from_field(const uint8_t* data,
-                                                       size_t data_size) {
-    if (data == nullptr || data_size == 0) return decode_model(nullptr, 0);
+GeometryModel GdbGeomDecoder::decode_model_from_field(
+    const uint8_t* data, size_t data_size) {
+    if (data == nullptr || data_size == 0)
+        return decode_model(nullptr, 0);
     Cursor cursor(data, data_size);
     uint64_t geometry_size = 0;
     if (!cursor.read_varuint(geometry_size))
@@ -353,38 +492,63 @@ GeometryModel GdbGeomDecoder::decode_model_from_field(const uint8_t* data,
     const size_t prefix = cursor.consumed(data);
     if (geometry_size > data_size - prefix)
         return error_model(GeometryStatus::InvalidEncoding,
-                           "geometry field length exceeds available bytes");
-    return decode_model(data + prefix, static_cast<size_t>(geometry_size));
+            "geometry field length exceeds available bytes");
+    return decode_model(data + prefix,
+                        static_cast<size_t>(geometry_size));
 }
 
-GeometryValue GdbGeomDecoder::decode_value(const uint8_t* data, size_t size) {
+GeometryValue GdbGeomDecoder::decode_value(
+    const uint8_t* data, size_t size) {
     return WkbWriter::write(decode_model(data, size));
 }
 
-GeometryValue GdbGeomDecoder::decode_value_from_field(const uint8_t* data,
-                                                       size_t data_size) {
-    return WkbWriter::write(decode_model_from_field(data, data_size));
+GeometryValue GdbGeomDecoder::decode_value_from_field(
+    const uint8_t* data, size_t data_size) {
+    return WkbWriter::write(
+        decode_model_from_field(data, data_size));
 }
 
-bool GdbGeomDecoder::model_intersects_bbox(const uint8_t* data, size_t size,
-                                           double xmin, double ymin,
-                                           double xmax, double ymax) {
-    if (xmin > xmax || ymin > ymax || xyscale_ == 0.0) return false;
+void GdbGeomDecoder::set_curve_backend(CurveBackendMode mode) {
+    curve_backend_mode_ = mode;
+}
+
+CurveBackendMode GdbGeomDecoder::curve_backend() const {
+    return curve_backend_mode_;
+}
+
+void GdbGeomDecoder::set_curve_linearization_options(
+    const CurveLinearizationOptions& options) {
+    curve_options_ = options;
+}
+
+const CurveLinearizationOptions&
+GdbGeomDecoder::curve_linearization_options() const {
+    return curve_options_;
+}
+
+bool GdbGeomDecoder::model_intersects_bbox(
+    const uint8_t* data, size_t size,
+    double xmin, double ymin, double xmax, double ymax) {
+    if (xmin > xmax || ymin > ymax || xyscale_ == 0.0)
+        return false;
     GeometryModel model = decode_model(data, size);
     if (!model.valid()) return false;
     auto to_grid = [this](double value, double origin) {
         const long double raw =
             (static_cast<long double>(value) - origin) * xyscale_;
         if (!std::isfinite(static_cast<double>(raw)))
-            throw std::overflow_error("query coordinate outside integer grid");
+            throw std::overflow_error(
+                "query coordinate outside integer grid");
         return raw;
     };
     try {
         QueryGridBbox query{
             to_grid(xmin, xorig_), to_grid(ymin, yorig_),
             to_grid(xmax, xorig_), to_grid(ymax, yorig_)};
-        if (query.xmin > query.xmax) std::swap(query.xmin, query.xmax);
-        if (query.ymin > query.ymax) std::swap(query.ymin, query.ymax);
+        if (query.xmin > query.xmax)
+            std::swap(query.xmin, query.xmax);
+        if (query.ymin > query.ymax)
+            std::swap(query.ymin, query.ymax);
         return SpatialPredicate::intersects_bbox(model, query);
     } catch (const std::overflow_error&) {
         return false;
