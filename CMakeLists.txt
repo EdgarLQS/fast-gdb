@@ -5,174 +5,271 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# ===== 代码覆盖率（可选） =====
+include(CTest)
+
 option(ENABLE_COVERAGE "Enable code coverage with gcov/lcov" OFF)
-if(ENABLE_COVERAGE)
-    message(STATUS "Coverage: ENABLED (--coverage)")
-    add_compile_options(--coverage -fprofile-arcs -ftest-coverage)
-    add_link_options(--coverage)
+option(FAST_GDB_WITH_GDAL
+       "Build GDAL-dependent components and the hybrid curve bridge" ON)
+option(FAST_GDB_BUILD_TOOLS "Build command-line validation tools" ON)
+
+set(FAST_GDB_CURVE_BACKEND "BUILTIN" CACHE STRING
+    "Default curve backend: REJECT, BUILTIN, or GDAL")
+set_property(CACHE FAST_GDB_CURVE_BACKEND PROPERTY STRINGS
+             REJECT BUILTIN GDAL)
+
+set(FAST_GDB_GEOMETRY_OUTPUT "STANDARD_WKB" CACHE STRING
+    "Default geometry output: STANDARD_WKB, NATIVE_CURVE_WKB, or DEBUG_WKT")
+set_property(CACHE FAST_GDB_GEOMETRY_OUTPUT PROPERTY STRINGS
+             STANDARD_WKB NATIVE_CURVE_WKB DEBUG_WKT)
+
+string(TOUPPER "${FAST_GDB_CURVE_BACKEND}" FAST_GDB_CURVE_BACKEND)
+string(TOUPPER "${FAST_GDB_GEOMETRY_OUTPUT}" FAST_GDB_GEOMETRY_OUTPUT)
+
+if(NOT FAST_GDB_CURVE_BACKEND MATCHES "^(REJECT|BUILTIN|GDAL)$")
+    message(FATAL_ERROR
+        "FAST_GDB_CURVE_BACKEND must be REJECT, BUILTIN, or GDAL")
+endif()
+if(NOT FAST_GDB_GEOMETRY_OUTPUT MATCHES
+       "^(STANDARD_WKB|NATIVE_CURVE_WKB|DEBUG_WKT)$")
+    message(FATAL_ERROR
+        "FAST_GDB_GEOMETRY_OUTPUT must be STANDARD_WKB, NATIVE_CURVE_WKB, or DEBUG_WKT")
+endif()
+if(FAST_GDB_CURVE_BACKEND STREQUAL "GDAL" AND NOT FAST_GDB_WITH_GDAL)
+    message(FATAL_ERROR
+        "FAST_GDB_CURVE_BACKEND=GDAL requires FAST_GDB_WITH_GDAL=ON")
+endif()
+if(FAST_GDB_GEOMETRY_OUTPUT STREQUAL "NATIVE_CURVE_WKB" AND
+   NOT FAST_GDB_WITH_GDAL)
+    message(FATAL_ERROR
+        "NATIVE_CURVE_WKB requires FAST_GDB_WITH_GDAL=ON")
 endif()
 
-# GDAL 3.9.3
-set(GDAL_ROOT "/Users/edgarlqs/local/gdal-3.9.3")
-set(GDAL_INCLUDE_DIR "${GDAL_ROOT}/include")
-set(GDAL_LIBRARY "${GDAL_ROOT}/lib/libgdal.dylib")
+if(ENABLE_COVERAGE)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        add_compile_options(--coverage -fprofile-arcs -ftest-coverage)
+        add_link_options(--coverage)
+    else()
+        message(WARNING "Coverage flags are only configured for GCC/Clang")
+    endif()
+endif()
 
-# Runtime path
-set(CMAKE_BUILD_RPATH "${GDAL_ROOT}/lib")
-set(CMAKE_INSTALL_RPATH "${GDAL_ROOT}/lib")
+function(fast_gdb_enable_warnings target)
+    if(MSVC)
+        target_compile_options(${target} PRIVATE /W4 /wd4100 /wd4244)
+    else()
+        target_compile_options(${target} PRIVATE -Wall -Wextra
+                               -Wno-unused-result)
+    endif()
+endfunction()
 
-# Output directory
+# GDAL is optional for the pure C++ product. Use GDAL_ROOT,
+# CMAKE_PREFIX_PATH, or the platform package manager to select a build.
+set(FAST_GDB_GDAL_TARGET "")
+if(FAST_GDB_WITH_GDAL)
+    find_package(GDAL REQUIRED)
+    if(TARGET GDAL::GDAL)
+        set(FAST_GDB_GDAL_TARGET GDAL::GDAL)
+    else()
+        add_library(fast_gdb_gdal_dependency INTERFACE)
+        target_include_directories(fast_gdb_gdal_dependency INTERFACE
+                                   ${GDAL_INCLUDE_DIRS} ${GDAL_INCLUDE_DIR})
+        target_link_libraries(fast_gdb_gdal_dependency INTERFACE
+                              ${GDAL_LIBRARIES} ${GDAL_LIBRARY})
+        set(FAST_GDB_GDAL_TARGET fast_gdb_gdal_dependency)
+    endif()
+endif()
+
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
-include_directories(${GDAL_INCLUDE_DIR})
+# ===== usegdal: existing GDAL high-level API component =====
+if(FAST_GDB_WITH_GDAL)
+    file(GLOB USEGDAL_SOURCES CONFIGURE_DEPENDS
+         src/edgar/usegdal/*.cpp)
+    add_library(gdb_component STATIC ${USEGDAL_SOURCES})
+    target_include_directories(gdb_component PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/usegdal)
+    target_link_libraries(gdb_component PRIVATE ${FAST_GDB_GDAL_TARGET})
+    target_compile_features(gdb_component PUBLIC cxx_std_17)
+    fast_gdb_enable_warnings(gdb_component)
+endif()
 
-# ===== usegdal: 原有 GDAL 高层 API 组件 =====
-file(GLOB USEGDAL_SOURCES src/edgar/usegdal/*.cpp)
-add_library(gdb_component STATIC ${USEGDAL_SOURCES})
-target_include_directories(gdb_component PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/usegdal
-    ${GDAL_INCLUDE_DIR}
-)
-target_link_libraries(gdb_component PRIVATE ${GDAL_LIBRARY})
-target_compile_features(gdb_component PUBLIC cxx_std_17)
-target_compile_options(gdb_component PRIVATE -Wall -Wno-unused-result)
-
-# ===== explorgdb: 纯 C++ GDB 二进制解析器（不依赖 GDAL） =====
-
-# common — 读写共享基础设施
-file(GLOB COMMON_SOURCES src/edgar/explorgdb/common/*.cpp)
+# ===== explorgdb: pure C++ FileGDB binary parser =====
+file(GLOB COMMON_SOURCES CONFIGURE_DEPENDS
+     src/edgar/explorgdb/common/*.cpp)
 add_library(explorgdb_common_lib STATIC ${COMMON_SOURCES})
 target_include_directories(explorgdb_common_lib PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/common
-)
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/common)
 target_compile_features(explorgdb_common_lib PUBLIC cxx_std_17)
-target_compile_options(explorgdb_common_lib PRIVATE -Wall -Wno-unused-result)
+fast_gdb_enable_warnings(explorgdb_common_lib)
 
-# reader — GDB 读取器
-file(GLOB READER_SOURCES src/edgar/explorgdb/reader/*.cpp)
+file(GLOB READER_SOURCES CONFIGURE_DEPENDS
+     src/edgar/explorgdb/reader/*.cpp)
 list(FILTER READER_SOURCES EXCLUDE REGEX ".*explorgdb_cli\\.cpp$")
 add_library(explorgdb_reader_lib STATIC ${READER_SOURCES})
 target_include_directories(explorgdb_reader_lib PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader
-)
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader)
 target_link_libraries(explorgdb_reader_lib PUBLIC explorgdb_common_lib)
 target_compile_features(explorgdb_reader_lib PUBLIC cxx_std_17)
-target_compile_options(explorgdb_reader_lib PRIVATE -Wall -Wno-unused-result)
+fast_gdb_enable_warnings(explorgdb_reader_lib)
 
-# writer — GDB 写入器（纯 C++，不依赖 GDAL）
-file(GLOB WRITER_SOURCES src/edgar/explorgdb/writer/*.cpp)
+if(FAST_GDB_CURVE_BACKEND STREQUAL "REJECT")
+    target_compile_definitions(explorgdb_reader_lib PUBLIC
+        FAST_GDB_CURVE_BACKEND_REJECT=1)
+elseif(FAST_GDB_CURVE_BACKEND STREQUAL "GDAL")
+    target_compile_definitions(explorgdb_reader_lib PUBLIC
+        FAST_GDB_CURVE_BACKEND_GDAL=1)
+else()
+    target_compile_definitions(explorgdb_reader_lib PUBLIC
+        FAST_GDB_CURVE_BACKEND_BUILTIN=1)
+endif()
+
+if(FAST_GDB_GEOMETRY_OUTPUT STREQUAL "DEBUG_WKT")
+    target_compile_definitions(explorgdb_reader_lib PUBLIC
+        FAST_GDB_GEOMETRY_OUTPUT_DEBUG_WKT=1)
+elseif(FAST_GDB_GEOMETRY_OUTPUT STREQUAL "NATIVE_CURVE_WKB")
+    target_compile_definitions(explorgdb_reader_lib PUBLIC
+        FAST_GDB_GEOMETRY_OUTPUT_NATIVE_CURVE_WKB=1)
+else()
+    target_compile_definitions(explorgdb_reader_lib PUBLIC
+        FAST_GDB_GEOMETRY_OUTPUT_STANDARD_WKB=1)
+endif()
+
+file(GLOB WRITER_SOURCES CONFIGURE_DEPENDS
+     src/edgar/explorgdb/writer/*.cpp)
 add_library(explorgdb_writer_lib STATIC ${WRITER_SOURCES})
 target_include_directories(explorgdb_writer_lib PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/writer
-)
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/writer)
 target_link_libraries(explorgdb_writer_lib PUBLIC explorgdb_common_lib)
 target_compile_features(explorgdb_writer_lib PUBLIC cxx_std_17)
-target_compile_options(explorgdb_writer_lib PRIVATE -Wall -Wno-unused-result)
+fast_gdb_enable_warnings(explorgdb_writer_lib)
 
-# CLI 工具（不依赖 GDAL）
-add_executable(explorgdb_cli src/edgar/explorgdb/reader/explorgdb_cli.cpp)
-target_link_libraries(explorgdb_cli explorgdb_reader_lib)
-target_compile_options(explorgdb_cli PRIVATE -Wall -Wno-unused-result -Wno-format)
+# Product A: dependency-free linear reader.
+add_library(fast_gdb_linear INTERFACE)
+target_link_libraries(fast_gdb_linear INTERFACE explorgdb_reader_lib)
+
+# Product B: reader plus cached GDAL curve fallback bridge.
+if(FAST_GDB_WITH_GDAL)
+    add_library(fast_gdb_curve_gdal STATIC
+        src/edgar/explorgdb/curve_gdal/gdal_curve_backend.cpp)
+    target_include_directories(fast_gdb_curve_gdal PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/curve_gdal
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader)
+    target_link_libraries(fast_gdb_curve_gdal PUBLIC
+        explorgdb_reader_lib ${FAST_GDB_GDAL_TARGET})
+    target_compile_features(fast_gdb_curve_gdal PUBLIC cxx_std_17)
+    fast_gdb_enable_warnings(fast_gdb_curve_gdal)
+
+    add_library(fast_gdb_hybrid INTERFACE)
+    target_link_libraries(fast_gdb_hybrid INTERFACE
+                          fast_gdb_curve_gdal)
+endif()
+
+add_executable(explorgdb_cli
+    src/edgar/explorgdb/reader/explorgdb_cli.cpp)
+target_link_libraries(explorgdb_cli PRIVATE explorgdb_reader_lib)
+fast_gdb_enable_warnings(explorgdb_cli)
 
 # ===== Google Test =====
-find_package(GTest REQUIRED)
-enable_testing()
+if(BUILD_TESTING)
+    find_package(GTest REQUIRED)
+    include(GoogleTest)
 
-# Test sources
-file(GLOB USEGDAL_TEST_SOURCES tests/usegdal/*.cpp)
-file(GLOB TUTORIAL_SOURCES tests/tutorials/*.cpp)
-file(GLOB EXPLORGDB_COMMON_TEST_SOURCES tests/edgar/explorgdb/common/*.cpp)
-file(GLOB EXPLORGDB_READER_TEST_SOURCES tests/edgar/explorgdb/reader/*.cpp)
-file(GLOB EXPLORGDB_WRITER_TEST_SOURCES tests/edgar/explorgdb/writer/*.cpp)
-set(TEST_SOURCES
-    tests/test_runner.cpp
-    tests/test_fixture.h
-    ${TUTORIAL_SOURCES}
-    ${USEGDAL_TEST_SOURCES}
-    ${EXPLORGDB_COMMON_TEST_SOURCES}
-    ${EXPLORGDB_READER_TEST_SOURCES}
-    ${EXPLORGDB_WRITER_TEST_SOURCES}
-    tests/benchmark_full_performance.cpp
-)
+    file(GLOB EXPLORGDB_COMMON_TEST_SOURCES CONFIGURE_DEPENDS
+         tests/edgar/explorgdb/common/*.cpp)
+    file(GLOB EXPLORGDB_READER_TEST_SOURCES CONFIGURE_DEPENDS
+         tests/edgar/explorgdb/reader/*.cpp)
 
-add_executable(gdb_tutorial_test_runner ${TEST_SOURCES})
-target_include_directories(gdb_tutorial_test_runner PRIVATE
-    ${GDAL_INCLUDE_DIR}
-    tests
-    tests/tutorials
-    tests/usegdal
-    tests/edgar/explorgdb
-    tests/edgar/explorgdb/common
-    tests/edgar/explorgdb/reader
-    tests/edgar/explorgdb/writer
-)
-target_link_libraries(gdb_tutorial_test_runner PRIVATE
-    ${GDAL_LIBRARY} GTest::gtest GTest::gtest_main
-    gdb_component
-    explorgdb_reader_lib
-    explorgdb_writer_lib
-)
-target_compile_options(gdb_tutorial_test_runner PRIVATE -Wall -Wno-unused-result)
+    set(TEST_SOURCES
+        tests/test_runner.cpp
+        ${EXPLORGDB_COMMON_TEST_SOURCES}
+        ${EXPLORGDB_READER_TEST_SOURCES})
 
-gtest_discover_tests(gdb_tutorial_test_runner)
+    if(FAST_GDB_WITH_GDAL)
+        file(GLOB USEGDAL_TEST_SOURCES CONFIGURE_DEPENDS
+             tests/usegdal/*.cpp)
+        file(GLOB TUTORIAL_SOURCES CONFIGURE_DEPENDS
+             tests/tutorials/*.cpp)
+        file(GLOB EXPLORGDB_WRITER_TEST_SOURCES CONFIGURE_DEPENDS
+             tests/edgar/explorgdb/writer/*.cpp)
+        list(APPEND TEST_SOURCES
+             ${TUTORIAL_SOURCES}
+             ${USEGDAL_TEST_SOURCES}
+             ${EXPLORGDB_WRITER_TEST_SOURCES}
+             tests/benchmark_full_performance.cpp)
+    endif()
 
-# ===== 大规模测试数据生成器 =====
-add_executable(generate_large_gdb tests/edgar/explorgdb/generate_large_gdb.cpp)
-target_include_directories(generate_large_gdb PRIVATE ${GDAL_INCLUDE_DIR})
-target_link_libraries(generate_large_gdb PRIVATE ${GDAL_LIBRARY})
-target_compile_options(generate_large_gdb PRIVATE -Wall -Wno-unused-result)
+    add_executable(gdb_tutorial_test_runner ${TEST_SOURCES})
+    target_include_directories(gdb_tutorial_test_runner PRIVATE
+        tests
+        tests/tutorials
+        tests/usegdal
+        tests/edgar/explorgdb
+        tests/edgar/explorgdb/common
+        tests/edgar/explorgdb/reader
+        tests/edgar/explorgdb/writer)
+    target_link_libraries(gdb_tutorial_test_runner PRIVATE
+        GTest::gtest GTest::gtest_main
+        explorgdb_reader_lib explorgdb_writer_lib)
+    if(FAST_GDB_WITH_GDAL)
+        target_link_libraries(gdb_tutorial_test_runner PRIVATE
+            ${FAST_GDB_GDAL_TARGET} gdb_component fast_gdb_curve_gdal)
+    endif()
+    fast_gdb_enable_warnings(gdb_tutorial_test_runner)
+    gtest_discover_tests(gdb_tutorial_test_runner)
+endif()
 
-# ===== 10 万面数据生成器（用于 ArcGIS Pro 索引测试）=====
-add_executable(generate_100k_polygons tests/tools/generate_100k_polygons.cpp)
-target_include_directories(generate_100k_polygons PRIVATE ${GDAL_INCLUDE_DIR})
-target_link_libraries(generate_100k_polygons PRIVATE explorgdb_writer_lib ${GDAL_LIBRARY})
-target_compile_options(generate_100k_polygons PRIVATE -Wall -Wno-unused-result)
+# ===== Optional tools =====
+if(FAST_GDB_BUILD_TOOLS)
+    add_executable(verify_arcgis_indexes
+        tests/tools/verify_arcgis_indexes.cpp)
+    target_link_libraries(verify_arcgis_indexes PRIVATE
+                          explorgdb_reader_lib)
+    fast_gdb_enable_warnings(verify_arcgis_indexes)
 
-# ===== ArcGIS Pro 索引验证工具 =====
-add_executable(verify_arcgis_indexes tests/tools/verify_arcgis_indexes.cpp)
-target_link_libraries(verify_arcgis_indexes PRIVATE explorgdb_reader_lib)
-target_compile_options(verify_arcgis_indexes PRIVATE -Wall -Wno-unused-result)
+    add_executable(verify_gdal_indexes
+        tests/tools/verify_gdal_indexes.cpp)
+    target_include_directories(verify_gdal_indexes PRIVATE src/edgar)
+    target_link_libraries(verify_gdal_indexes PRIVATE
+                          explorgdb_reader_lib)
+    fast_gdb_enable_warnings(verify_gdal_indexes)
 
-# ===== 二进制写入后索引创建验证 =====
-add_executable(verify_binary_write_index tests/tools/verify_binary_write_index.cpp)
-target_include_directories(verify_binary_write_index PRIVATE ${GDAL_INCLUDE_DIR} src/edgar)
-target_link_libraries(verify_binary_write_index PRIVATE explorgdb_writer_lib ${GDAL_LIBRARY})
-target_compile_options(verify_binary_write_index PRIVATE -Wall -Wno-unused-result)
+    if(FAST_GDB_WITH_GDAL)
+        add_executable(generate_large_gdb
+            tests/edgar/explorgdb/generate_large_gdb.cpp)
+        target_link_libraries(generate_large_gdb PRIVATE
+                              ${FAST_GDB_GDAL_TARGET})
+        fast_gdb_enable_warnings(generate_large_gdb)
 
-# ===== 性能基准测试：索引创建 =====
-add_executable(benchmark_index_creation tests/tools/benchmark_index_creation.cpp)
-target_include_directories(benchmark_index_creation PRIVATE ${GDAL_INCLUDE_DIR} src/edgar)
-target_link_libraries(benchmark_index_creation PRIVATE explorgdb_writer_lib ${GDAL_LIBRARY})
-target_compile_options(benchmark_index_creation PRIVATE -Wall -Wno-unused-result)
+        add_executable(generate_100k_polygons
+            tests/tools/generate_100k_polygons.cpp)
+        target_include_directories(generate_100k_polygons PRIVATE src/edgar)
+        target_link_libraries(generate_100k_polygons PRIVATE
+            explorgdb_writer_lib ${FAST_GDB_GDAL_TARGET})
+        fast_gdb_enable_warnings(generate_100k_polygons)
 
-# ===== GDAL 兼容性验证工具 =====
-add_executable(verify_gdal_indexes tests/tools/verify_gdal_indexes.cpp)
-target_include_directories(verify_gdal_indexes PRIVATE src/edgar)
-target_link_libraries(verify_gdal_indexes PRIVATE explorgdb_reader_lib)
-target_compile_options(verify_gdal_indexes PRIVATE -Wall -Wno-unused-result)
+        add_executable(verify_binary_write_index
+            tests/tools/verify_binary_write_index.cpp)
+        target_include_directories(verify_binary_write_index PRIVATE src/edgar)
+        target_link_libraries(verify_binary_write_index PRIVATE
+            explorgdb_writer_lib ${FAST_GDB_GDAL_TARGET})
+        fast_gdb_enable_warnings(verify_binary_write_index)
 
-# ===== Build Info =====
+        add_executable(benchmark_index_creation
+            tests/tools/benchmark_index_creation.cpp)
+        target_include_directories(benchmark_index_creation PRIVATE src/edgar)
+        target_link_libraries(benchmark_index_creation PRIVATE
+            explorgdb_writer_lib ${FAST_GDB_GDAL_TARGET})
+        fast_gdb_enable_warnings(benchmark_index_creation)
+    endif()
+endif()
+
 message(STATUS "")
-message(STATUS "=== GDB Tutorial ===")
-message(STATUS "Component: gdb_component (usegdal — GDAL 高层 API)")
-message(STATUS "Component: explorgdb_common_lib (纯 C++ 共享基础设施)")
-message(STATUS "Component: explorgdb_reader_lib (纯 C++ GDB 二进制解析)")
-message(STATUS "Component: explorgdb_writer_lib (纯 C++ GDB 写入器)")
-message(STATUS "GDAL: ${GDAL_ROOT}")
-message(STATUS "Target: explorgdb_cli - GDB 二进制探索工具")
-message(STATUS "Target: gdb_tutorial_test_runner - 教程配套测试")
-message(STATUS "Target: benchmark_index_creation - 索引创建性能基准测试")
-message(STATUS "Target: verify_gdal_indexes - GDAL 兼容性验证工具")
-message(STATUS "")
-message(STATUS "  ./build/bin/explorgdb_cli explore <gdb_path>          # 探索 GDB 目录")
-message(STATUS "  ./build/bin/explorgdb_cli dump-table <file>           # 解析 .gdbtable")
-message(STATUS "  ./build/bin/explorgdb_cli dump-tablx <file>           # 解析 .gdbtablx")
-message(STATUS "  ./build/bin/explorgdb_cli dump-indexes <file>         # 解析 .gdbindexes")
-message(STATUS "  ./build/bin/explorgdb_cli dump-records <file>         # 解析要素记录")
-message(STATUS "  ./build/bin/gdb_tutorial_test_runner                  # 运行全部测试")
-message(STATUS "  ./build/bin/gdb_tutorial_test_runner --gtest_filter='T001_*'  # 运行 001 格式测试")
-message(STATUS "  ./build/bin/benchmark_index_creation [gdb_path]       # 索引创建性能基准测试")
-message(STATUS "  ./build/bin/verify_gdal_indexes [gdb_path]            # GDAL 兼容性验证工具")
-message(STATUS "  ctest --output-on-failure                             # 通过 CTest 运行")
+message(STATUS "=== fast-gdb geometry build ===")
+message(STATUS "Curve backend: ${FAST_GDB_CURVE_BACKEND}")
+message(STATUS "Geometry output: ${FAST_GDB_GEOMETRY_OUTPUT}")
+message(STATUS "GDAL components: ${FAST_GDB_WITH_GDAL}")
+message(STATUS "Pure C++ product: fast_gdb_linear")
+if(FAST_GDB_WITH_GDAL)
+    message(STATUS "Hybrid product: fast_gdb_hybrid")
+endif()
 message(STATUS "")
