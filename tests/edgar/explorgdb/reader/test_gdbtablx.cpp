@@ -152,7 +152,7 @@ TEST(GdbTablxTest, BitmapConsistency) {
 
 // 测试 is_block_active 方法
 TEST(GdbTablxTest, IsBlockActive) {
-    std::string tablx_path = SPX_GDB_PATH;
+    std::string tablx_path = SPX_GDB_PATH.string();
     tablx_path += "/a00000001.gdbtablx";
 
     GdbTablxParser parser(tablx_path);

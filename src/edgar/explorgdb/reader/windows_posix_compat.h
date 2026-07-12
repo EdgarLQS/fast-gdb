@@ -18,6 +18,8 @@ using ssize_t = SSIZE_T;
 // Do not macro-map open/close: a macro would also rewrite
 // GdbTableParser::open() and close_file-related source tokens. Free wrappers
 // preserve the POSIX call sites without changing class member names.
+// MinGW-w64 already provides open/close via <io.h>, so skip the wrappers.
+#if !defined(__MINGW32__)
 inline int open(const char* path, int flags) {
     return _open(path, flags);
 }
@@ -29,6 +31,7 @@ inline int open(const char* path, int flags, int mode) {
 inline int close(int fd) {
     return _close(fd);
 }
+#endif
 
 #define fstat _fstat64
 #define stat __stat64

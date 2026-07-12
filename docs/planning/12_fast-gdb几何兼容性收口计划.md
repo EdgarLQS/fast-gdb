@@ -21,6 +21,12 @@
    圆/椭圆、FID 间断和坏拓扑样本；干净构建的完整 CTest 为 455/455 通过。
 8. 最新数据的曲线显式失败契约和内置 WKB-first 曲线契约均已通过；Bezier 的 GDAL
    展示仍为线性化 `MULTILINESTRING`，原生来源和逐要素等价性保持待确认。
+9. **Windows 平台 (MSYS2 UCRT64) 构建通过**：GCC 16.1.0 + GDAL 3.13.1，
+   7 个文件最小化兼容修改（`open()` 冲突、`std::isfinite` 缺失、`fs::path` 隐式转换）；
+   几何核心 88/88 测试通过，OleDate 日期格式化改用便携算法。
+10. **testcurve.gdb 在 Windows 上逐表验证通过**：P0 基线全部通过（Point/MultiPoint/
+    Polyline/Polygon/Z/M/ZM/CircularArc/Bezier/Ellipse/FID Gap/MultiPatch），
+   共 25 个数据表可读，FID 间断在 3 个表中确认。
 
 ## 3. 尚待外部证据的发布门禁
 

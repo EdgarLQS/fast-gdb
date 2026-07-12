@@ -76,7 +76,7 @@ TEST(GdbCatalogTest, FindById) {
 // 测试不存在的 ID 返回 nullptr
 TEST(GdbCatalogTest, FindNonExistent) {
     GdbCatalog catalog;
-    catalog.scan(SPX_GDB_PATH);
+    catalog.scan(SPX_GDB_PATH.string());
 
     EXPECT_EQ(catalog.find_table(999), nullptr);
     EXPECT_EQ(catalog.find_tablx(999), nullptr);
@@ -140,7 +140,7 @@ TEST(GdbCatalogTest, FindAllAtx) {
 // 测试文件条目的 numeric_id 和 file_size
 TEST(GdbCatalogTest, EntryInfo) {
     GdbCatalog catalog;
-    catalog.scan(SPX_GDB_PATH.string());
+    ASSERT_TRUE(catalog.scan(SPX_GDB_PATH.string()));
 
     auto tables = catalog.find_by_extension(".gdbtable");
     // 第一个表 id 应该是 1

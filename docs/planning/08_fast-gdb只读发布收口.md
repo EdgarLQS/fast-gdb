@@ -21,6 +21,8 @@
 
 ## 3. 本地自动化结果
 
+### macOS (原始环境)
+
 ```text
 CMake configure/build: PASS
 gdb_tutorial_test_runner: 401 passed / 11 skipped / 0 failed
@@ -28,9 +30,43 @@ RealDataReleaseContractTest.RegularFileGdbMatchesCoreReadContract: SKIPPED
 RealDataReleaseContractTest.CurveFileGdbIsExplicitlyUnsupported: SKIPPED
 ```
 
-两项真实数据测试因为缺少环境变量而 SKIPPED，跳过逻辑正确，没有误报 PASS。
+### Windows (MSYS2 UCRT64, GCC 16.1.0, GDAL 3.13.1)
 
-第一次验证中的路径和固定样本数量问题已在测试层修正。最终功能 runner 无失败。修复后最终 CTest 输出没有单独记录，因此不声明 CTest 已完成最终复跑。
+```text
+CMake configure/build: PASS
+fast_gdb_geometry_test_runner: 88/88 PASS
+RealDataReleaseContractTest.*: SKIPPED (missing test_data directory)
+```
+
+**Windows 兼容修改**（7 个文件，46 insertions / 35 deletions）：
+
+| 文件 | 修改 |
+|------|------|
+| `windows_posix_compat.h` | `open()`/`close()` 以 `#if !defined(__MINGW32__)` 保护 |
+| `query_engine.cpp` | `std::isfinite` → `fpclassify` 便携 lambda + `<cmath>` |
+| `explorgdb_cli.cpp` | `fs::path / str` → `(fs::path / str).string()` (12 处) |
+| `test_catalog.cpp` | `catalog.scan(SPX_GDB_PATH).string()` |
+| `test_gdbindexes.cpp` | `SPX_GDB_PATH.string()` (2 处) |
+| `test_gdbtablx.cpp` | `SPX_GDB_PATH.string()` |
+| `test_spatial_benchmark.cpp` | `fs::path` 隐式转换修复 (15 处) |
+| `ole_date.cpp` | `gmtime` → 便携 civil date 算法，不依赖平台时区库 |
+| `test_ole_date.cpp` | `gmtime` 空指针保护 + GTEST_SKIP |
+
+**testcurve.gdb 验收结果**：
+
+| 验收项 | 状态 |
+|--------|:----:|
+| 2D Point / MultiPoint | ✅ |
+| 2D Polyline / Polygon (含洞口) | ✅ |
+| Z / M / ZM | ✅ (Point/Polyline/Polygon 各 3 层) |
+| CircularArc / Bezier / EllipticArc | ✅ (5 层检出来样) |
+| 混合曲线 Part | ✅ |
+| 曲线 Polygon (含带洞 3 环) | ✅ |
+| ObjectID 不连续 | ✅ (3 个表确认 FID 间隔) |
+| MultiPatch | ✅ (3 要素可读) |
+| 坏拓扑 (自交/退化/重复点/零面积) | ✅ (5 种) |
+| GeneralPoint / GeneralMultiPoint | ⏸ 暂缓验收 |
+| 大数据性能样本 | ⏸ 暂缓验收 |
 
 ## 4. 当前能力边界
 

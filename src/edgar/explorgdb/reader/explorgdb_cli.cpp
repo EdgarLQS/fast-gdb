@@ -101,7 +101,7 @@ static void cmd_explore(const std::string& gdb_path) {
     if (!tables.empty()) {
         printf("\n=== .gdbtable details ===\n");
         for (const auto* te : tables) {
-            std::string table_path = fs::path(gdb_path) / te->filename;
+            std::string table_path = (fs::path(gdb_path) / te->filename).string();
             explorgdb::GdbTableParser parser(table_path);
             if (parser.parse_header()) {
                 printf("\n  File: %s (id=%u, size=%lu bytes)\n",
@@ -137,7 +137,7 @@ static void cmd_explore(const std::string& gdb_path) {
     if (!tablxes.empty()) {
         printf("\n=== .gdbtablx details ===\n");
         for (const auto* te : tablxes) {
-            std::string tablx_path = fs::path(gdb_path) / te->filename;
+            std::string tablx_path = (fs::path(gdb_path) / te->filename).string();
             explorgdb::GdbTablxParser parser(tablx_path);
             if (parser.parse()) {
                 printf("\n  File: %s (id=%u, size=%lu bytes)\n",
@@ -161,7 +161,7 @@ static void cmd_explore(const std::string& gdb_path) {
     if (!indexes.empty()) {
         printf("\n=== .gdbindexes details ===\n");
         for (const auto* ie : indexes) {
-            std::string idx_path = fs::path(gdb_path) / ie->filename;
+            std::string idx_path = (fs::path(gdb_path) / ie->filename).string();
             explorgdb::GdbIndexesParser parser(idx_path);
             if (parser.parse()) {
                 printf("\n  File: %s (id=%u, size=%lu bytes)\n",
@@ -181,7 +181,7 @@ static void cmd_explore(const std::string& gdb_path) {
     if (!spx_files.empty()) {
         printf("\n=== .spx spatial index files ===\n");
         for (const auto* se : spx_files) {
-            std::string spx_path = fs::path(gdb_path) / se->filename;
+            std::string spx_path = (fs::path(gdb_path) / se->filename).string();
             explorgdb::GdbSpatialIndexParser parser(spx_path);
             if (parser.parse()) {
                 const auto& tr = parser.trailer();
@@ -198,7 +198,7 @@ static void cmd_explore(const std::string& gdb_path) {
     if (!atx_files.empty()) {
         printf("\n=== .atx attribute index files ===\n");
         for (const auto* ae : atx_files) {
-            std::string atx_path = fs::path(gdb_path) / ae->filename;
+            std::string atx_path = (fs::path(gdb_path) / ae->filename).string();
             explorgdb::GdbAttributeIndexParser parser(atx_path);
             if (parser.parse()) {
                 const auto& tr = parser.trailer();
@@ -561,7 +561,7 @@ static void cmd_query(const std::string& gdb_path, uint32_t table_id,
         std::cerr << "Table id=" << table_id << " not found\n";
         return;
     }
-    std::string table_path = fs::path(gdb_path) / table_entry->filename;
+    std::string table_path = (fs::path(gdb_path) / table_entry->filename).string();
     GdbTableParser table_parser(table_path);
     if (!table_parser.load_file() || !table_parser.parse_header() || !table_parser.parse_fields()) {
         std::cerr << "Failed to parse table: " << table_path << "\n";
@@ -574,7 +574,7 @@ static void cmd_query(const std::string& gdb_path, uint32_t table_id,
         std::cerr << "No .gdbtablx for table id=" << table_id << "\n";
         return;
     }
-    std::string tablx_path = fs::path(gdb_path) / tablx_entry->filename;
+    std::string tablx_path = (fs::path(gdb_path) / tablx_entry->filename).string();
     if (!table_parser.load_tablx(tablx_path)) {
         std::cerr << "Failed to load .gdbtablx: " << tablx_path << "\n";
         return;
@@ -601,7 +601,7 @@ static void cmd_query(const std::string& gdb_path, uint32_t table_id,
             std::cerr << "No .spx for table id=" << table_id << "\n";
             return;
         }
-        std::string spx_file = fs::path(gdb_path) / spx_entry->filename;
+        std::string spx_file = (fs::path(gdb_path) / spx_entry->filename).string();
         GdbSpatialIndexParser spx_parser(spx_file);
         if (!spx_parser.parse()) {
             std::cerr << "Failed to parse .spx: " << spx_file << "\n";
@@ -651,7 +651,7 @@ static void cmd_query(const std::string& gdb_path, uint32_t table_id,
             return;
         }
 
-        std::string atx_file = fs::path(gdb_path) / atx_entry->filename;
+        std::string atx_file = (fs::path(gdb_path) / atx_entry->filename).string();
         GdbAttributeIndexParser atx_parser(atx_file);
         if (!atx_parser.parse()) {
             std::cerr << "Failed to parse .atx: " << atx_file << "\n";
@@ -705,7 +705,7 @@ static void cmd_bench_spatial(const std::string& gdb_path, uint32_t table_id) {
     // 加载 .gdbtable
     const auto* table_entry = catalog.find_table(table_id);
     if (!table_entry) { std::cerr << "Table id=" << table_id << " not found\n"; return; }
-    std::string table_path = fs::path(gdb_path) / table_entry->filename;
+    std::string table_path = (fs::path(gdb_path) / table_entry->filename).string();
     GdbTableParser table_parser(table_path);
     if (!table_parser.load_file() || !table_parser.parse_header() || !table_parser.parse_fields()) {
         std::cerr << "Failed to parse table: " << table_path << "\n"; return;
@@ -714,13 +714,13 @@ static void cmd_bench_spatial(const std::string& gdb_path, uint32_t table_id) {
     // 加载 .gdbtablx
     const auto* tablx_entry = catalog.find_tablx(table_id);
     if (!tablx_entry) { std::cerr << "No .gdbtablx for table id=" << table_id << "\n"; return; }
-    std::string tablx_path = fs::path(gdb_path) / tablx_entry->filename;
+    std::string tablx_path = (fs::path(gdb_path) / tablx_entry->filename).string();
     if (!table_parser.load_tablx(tablx_path)) { std::cerr << "Failed to load .gdbtablx\n"; return; }
 
     // 加载 .spx
     const auto* spx_entry = catalog.find_spx(table_id);
     if (!spx_entry) { std::cerr << "No .spx for table id=" << table_id << "\n"; return; }
-    std::string spx_file = fs::path(gdb_path) / spx_entry->filename;
+    std::string spx_file = (fs::path(gdb_path) / spx_entry->filename).string();
     GdbSpatialIndexParser spx_parser(spx_file);
     if (!spx_parser.parse()) { std::cerr << "Failed to parse .spx\n"; return; }
 

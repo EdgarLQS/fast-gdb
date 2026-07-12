@@ -4,6 +4,7 @@
 #include "gdb_spatial_index.h"
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <unordered_map>
@@ -492,8 +493,12 @@ std::vector<uint32_t> QueryEngine::query_bbox(double xmin, double ymin,
                                               double xmax, double ymax,
                                               bool* skipped_unsupported_curve) {
     std::vector<uint32_t> candidates;
-    if (!std::isfinite(xmin) || !std::isfinite(ymin) ||
-        !std::isfinite(xmax) || !std::isfinite(ymax) ||
+    // isfinite via fpclassify — portable across libstdc++ versions
+    auto port_isfinite = [](double v) {
+        return std::fpclassify(v) != FP_INFINITE && std::fpclassify(v) != FP_NAN;
+    };
+    if (!port_isfinite(xmin) || !port_isfinite(ymin) ||
+        !port_isfinite(xmax) || !port_isfinite(ymax) ||
         xmin > xmax || ymin > ymax)
         return candidates;
     const auto* geom_field = geometry_field();
@@ -544,8 +549,11 @@ QueryResult QueryEngine::query_spatial(const QueryRequest& request) {
         result.fallback_reason = "table not open";
         return result;
     }
-    if (!std::isfinite(request.xmin) || !std::isfinite(request.ymin) ||
-        !std::isfinite(request.xmax) || !std::isfinite(request.ymax) ||
+    auto port_isfinite = [](double v) {
+        return std::fpclassify(v) != FP_INFINITE && std::fpclassify(v) != FP_NAN;
+    };
+    if (!port_isfinite(request.xmin) || !port_isfinite(request.ymin) ||
+        !port_isfinite(request.xmax) || !port_isfinite(request.ymax) ||
         request.xmin > request.xmax || request.ymin > request.ymax) {
         result.execution_path = "bbox:invalid";
         result.fallback_reason = "invalid query bbox";

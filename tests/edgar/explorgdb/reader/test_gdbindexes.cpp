@@ -157,12 +157,12 @@ TEST(GdbIndexesTest, SomeColumnNamesPresent) {
 // 测试全部 .gdbindexes 文件解析不崩溃
 TEST(GdbIndexesTest, AllIndexesParseWithoutCrash) {
     GdbCatalog catalog;
-    catalog.scan(SPX_GDB_PATH);
+    catalog.scan(SPX_GDB_PATH.string());
 
     auto idx_files = catalog.find_by_extension(".gdbindexes");
     int success_count = 0;
     for (const auto* entry : idx_files) {
-        std::string idx_path = SPX_GDB_PATH;
+        std::string idx_path = SPX_GDB_PATH.string();
         idx_path += "/" + entry->filename;
 
         GdbIndexesParser parser(idx_path);

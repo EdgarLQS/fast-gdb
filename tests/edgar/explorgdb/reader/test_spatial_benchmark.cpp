@@ -79,7 +79,7 @@ static Timing query_explorgdb(double xmin, double ymin, double xmax, double ymax
     // 2. 加载 .gdbtable (header + fields) — 按需读取模式
     const auto* table_entry = catalog.find_table(kTableId);
     if (!table_entry) return t;
-    std::string table_path = fs::path(kGdbPath) / table_entry->filename;
+    std::string table_path = (fs::path(kGdbPath) / table_entry->filename).string();
     explorgdb::GdbTableParser table_parser(table_path);
     if (!table_parser.open())
         return t;
@@ -87,7 +87,7 @@ static Timing query_explorgdb(double xmin, double ymin, double xmax, double ymax
     // 3. 加载 .gdbtablx
     const auto* tablx_entry = catalog.find_tablx(kTableId);
     if (!tablx_entry) return t;
-    std::string tablx_path = fs::path(kGdbPath) / tablx_entry->filename;
+    std::string tablx_path = (fs::path(kGdbPath) / tablx_entry->filename).string();
     if (!table_parser.load_tablx(tablx_path)) return t;
 
     // 4. 提取几何字段的坐标系参数
@@ -114,7 +114,7 @@ static Timing query_explorgdb(double xmin, double ymin, double xmax, double ymax
     // 5. 加载 .spx
     const auto* spx_entry = catalog.find_spx(kTableId);
     if (!spx_entry) return t;
-    std::string spx_file = fs::path(kGdbPath) / spx_entry->filename;
+    std::string spx_file = (fs::path(kGdbPath) / spx_entry->filename).string();
     explorgdb::GdbSpatialIndexParser spx_parser(spx_file);
     if (!spx_parser.parse()) return t;
 
@@ -429,14 +429,14 @@ static DetailedTiming query_explorgdb_large(double xmin, double ymin, double xma
 
     const auto* table_entry = catalog.find_table(kLargeTableId);
     if (!table_entry) return t;
-    std::string table_path = fs::path(kLargeGdbPath) / table_entry->filename;
+    std::string table_path = (fs::path(kLargeGdbPath) / table_entry->filename).string();
     explorgdb::GdbTableParser table_parser(table_path);
     if (!table_parser.open())
         return t;
 
     const auto* tablx_entry = catalog.find_tablx(kLargeTableId);
     if (!tablx_entry) return t;
-    std::string tablx_path = fs::path(kLargeGdbPath) / tablx_entry->filename;
+    std::string tablx_path = (fs::path(kLargeGdbPath) / tablx_entry->filename).string();
     if (!table_parser.load_tablx(tablx_path)) return t;
 
     double xorig = 0, yorig = 0, xyscale = 0;
@@ -456,7 +456,7 @@ static DetailedTiming query_explorgdb_large(double xmin, double ymin, double xma
 
     const auto* spx_entry = catalog.find_spx(kLargeTableId);
     if (!spx_entry) return t;
-    std::string spx_file = fs::path(kLargeGdbPath) / spx_entry->filename;
+    std::string spx_file = (fs::path(kLargeGdbPath) / spx_entry->filename).string();
     explorgdb::GdbSpatialIndexParser spx_parser(spx_file);
     if (!spx_parser.parse()) return t;
 
@@ -565,13 +565,13 @@ protected:
 
         const auto* table_entry = catalog_.find_table(kLargeTableId);
         if (!table_entry) return;
-        std::string table_path = fs::path(kLargeGdbPath) / table_entry->filename;
+        std::string table_path = (fs::path(kLargeGdbPath) / table_entry->filename).string();
         table_parser_ = new explorgdb::GdbTableParser(table_path);
         if (!table_parser_->open()) return;
 
         const auto* tablx_entry = catalog_.find_tablx(kLargeTableId);
         if (tablx_entry) {
-            std::string tablx_path = fs::path(kLargeGdbPath) / tablx_entry->filename;
+            std::string tablx_path = (fs::path(kLargeGdbPath) / tablx_entry->filename).string();
             table_parser_->load_tablx(tablx_path);
         }
 
@@ -587,7 +587,7 @@ protected:
 
         const auto* spx_entry = catalog_.find_spx(kLargeTableId);
         if (spx_entry) {
-            std::string spx_file = fs::path(kLargeGdbPath) / spx_entry->filename;
+            std::string spx_file = (fs::path(kLargeGdbPath) / spx_entry->filename).string();
             spx_parser_ = new explorgdb::GdbSpatialIndexParser(spx_file);
             spx_parser_->parse();  // 加载 + 填充 all_entries_
         }
@@ -766,7 +766,7 @@ static DetailedTiming query_explorgdb_10m(double xmin, double ymin, double xmax,
 
     const auto* table_entry = catalog.find_table(kLarge10mTableId);
     if (!table_entry) return t;
-    std::string table_path = fs::path(kLarge10mGdbPath) / table_entry->filename;
+    std::string table_path = (fs::path(kLarge10mGdbPath) / table_entry->filename).string();
     explorgdb::GdbTableParser table_parser(table_path);
     if (!table_parser.open())
         return t;
@@ -785,7 +785,7 @@ static DetailedTiming query_explorgdb_10m(double xmin, double ymin, double xmax,
 
     const auto* tablx_entry = catalog.find_tablx(kLarge10mTableId);
     if (tablx_entry) {
-        std::string tablx_path = fs::path(kLarge10mGdbPath) / tablx_entry->filename;
+        std::string tablx_path = (fs::path(kLarge10mGdbPath) / tablx_entry->filename).string();
         table_parser.load_tablx(tablx_path);
     }
     auto t_load = Clock::now();
@@ -793,7 +793,7 @@ static DetailedTiming query_explorgdb_10m(double xmin, double ymin, double xmax,
 
     const auto* spx_entry = catalog.find_spx(kLarge10mTableId);
     if (!spx_entry) return t;
-    std::string spx_path = fs::path(kLarge10mGdbPath) / spx_entry->filename;
+    std::string spx_path = (fs::path(kLarge10mGdbPath) / spx_entry->filename).string();
 
     auto t_spx0 = Clock::now();
     explorgdb::GdbSpatialIndexParser spx_parser(spx_path);
@@ -889,13 +889,13 @@ protected:
 
         const auto* table_entry = catalog_.find_table(kLarge10mTableId);
         if (!table_entry) return;
-        std::string table_path = fs::path(kLarge10mGdbPath) / table_entry->filename;
+        std::string table_path = (fs::path(kLarge10mGdbPath) / table_entry->filename).string();
         table_parser_ = new explorgdb::GdbTableParser(table_path);
         if (!table_parser_->open()) return;
 
         const auto* tablx_entry = catalog_.find_tablx(kLarge10mTableId);
         if (tablx_entry) {
-            std::string tablx_path = fs::path(kLarge10mGdbPath) / tablx_entry->filename;
+            std::string tablx_path = (fs::path(kLarge10mGdbPath) / tablx_entry->filename).string();
             table_parser_->load_tablx(tablx_path);
         }
 
@@ -911,7 +911,7 @@ protected:
 
         const auto* spx_entry = catalog_.find_spx(kLarge10mTableId);
         if (spx_entry) {
-            std::string spx_file = fs::path(kLarge10mGdbPath) / spx_entry->filename;
+            std::string spx_file = (fs::path(kLarge10mGdbPath) / spx_entry->filename).string();
             spx_parser_ = new explorgdb::GdbSpatialIndexParser(spx_file);
             spx_parser_->parse();
         }
