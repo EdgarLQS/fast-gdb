@@ -176,12 +176,16 @@ WKT 兼容接口保留至少一个稳定大版本；正式性能和互操作契�
 - 截断前缀和确定性随机垃圾输入；
 - Polygon、WKB、空间过滤和曲线合成契约。
 
-真实数据：
+真实数据（2026-07-12 第一轮）：
 
 - 仓库普通 FileGDB 样本用于常规读取 release contract；
-- GeneralPoint/GeneralMultiPoint 专门真实样本仍应扩充；
-- ArcGIS Pro 原生 CircularArc/Bezier/Ellipse 数据集仍是发布前差异验收必需项；
-- 没有配置真实曲线样本时，文档和 CI 不声称已完成 ArcGIS/GDAL 全量等价验证。
+- `testcurve.gdb` 已提供 25 个图层、54 个要素，覆盖 Z/M/ZM、CircularArc、Bezier 场景、
+  完整圆、Ellipse、旋转 Ellipse、Ellipse Arc、曲线 Polygon、FID 间断和坏拓扑；
+- 当前数据的 CircularArc 内置 WKB-first 和曲线显式失败契约已通过；
+- Bezier 样本在 GDAL 中展示为已线性化 `MULTILINESTRING`，原生来源和逐要素等价性仍需确认；
+- 曲线 Polygon 的面积、点包含、空间查询和 FID 间断 Hybrid 映射仍需专项对照；
+- 非空 MultiPatch、性能基线、远端 CI 和 ArcGIS/GDAL 全量等价验证仍未完成；
+- 因此当前只能声明“第一轮真实数据验收完成”，不能声明 ArcGIS/GDAL 全量等价验收完成。
 
 详细迁移、FID 和发布检查见：
 

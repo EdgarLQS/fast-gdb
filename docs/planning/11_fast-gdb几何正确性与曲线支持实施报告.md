@@ -2,8 +2,8 @@
 
 **实施来源分支**：`agent/geometry-wkb-curve-plan`（已合入 `main`）
 **基线分支**：`main`
-**更新日期**：2026-07-11
-**状态**：代码和本机自动化验收完成；当前提交的远端三平台 CI 与 ArcGIS Pro 扩展曲线样本仍是发布门禁
+**更新日期**：2026-07-12
+**状态**：代码和第一轮真实数据验收完成；远端三平台 CI、非空 MultiPatch、性能基线和最终 ArcGIS/GDAL 等价证据仍是发布门禁
 
 ## 1. 实施目标
 
@@ -186,18 +186,19 @@ MultiPatch 仍为 degraded：
 
 ## 5. 尚未由合成测试替代的发布门禁
 
-仓库内 `test_data/gdb/testcurve.gdb` 已提供真实 CircularArc：GDAL 识别为
-`COMPOUNDCURVE/CIRCULARSTRING`，WKB-first 内置路径已与 GDAL 的类型、原生曲线 bbox
-和长度完成对比。以下工作仍需要额外真实数据，不能通过继续编写合成单测虚构完成：
+仓库内最新 `test_data/gdb/testcurve.gdb` 已提供一组阶段性真实样本。GDAL 可识别其中的
+CircularArc、混合曲线、完整圆、Ellipse、旋转 Ellipse、Ellipse Arc 和曲线 Polygon；
+Bezier 命名样本在 GDAL 输出中表现为已采样的 `MULTILINESTRING`，因此其原生曲线来源
+和等价性仍需单独确认。以下工作仍需要额外真实数据或补充对照，不能通过继续编写合成
+单测虚构完成：
 
-1. ArcGIS Pro 创建的 Bezier、Ellipse、完整圆/椭圆；
-2. 2D/Z/M/ZM 曲线；
-3. 多 part 和曲线 Polygon 洞；
-4. 上述样本的 GDAL `hasCurveGeometry(TRUE)` 确认；
-5. 面积、点包含和空间查询的曲线/曲线 Polygon 对比；
-6. ObjectID 与 GDAL FID 映射抽样；
-7. 真实复杂 Polygon、坏拓扑和 MultiPatch 数据集；
-8. 普通几何与曲线几何性能基线。
+1. ArcGIS Pro 来源的原生 Bezier、Ellipse、完整圆/椭圆 provenance 和逐要素对照；
+2. 曲线 2D/Z/M/ZM 的完整组合与 GDAL `hasCurveGeometry(TRUE)` 确认；
+3. 曲线 Polygon 的明确岛中岛样本，以及面积、点包含和空间查询对比；
+4. `Point_FIDGap`、`Polyline_FIDGap`、`Polygon_FIDGap` 的 Hybrid FID 逐要素映射抽样；
+5. 非空 MultiPatch 及完整 part type/表面拓扑边界；
+6. 普通几何与曲线几何性能基线；
+7. 当前提交的远端 Windows/Linux/macOS 和 Linux Hybrid CI。
 
 这些是发布验收数据要求，不是当前代码中可用猜测替代的未实现函数。
 
@@ -228,7 +229,33 @@ MultiPatch 仍为 degraded：
 - [x] ASan/UBSan：本机几何核心（Linux LSan 仍由 CI 覆盖）
 - [x] 普通真实 FileGDB release contract
 - [x] 仓库真实 CircularArc WKB-first/GDAL 对比
-- [ ] ArcGIS Pro Bezier/Ellipse/ZM/曲线 Polygon 差异数据
+- [x] `testcurve.gdb` 第一轮真实数据快照和 GDAL 图层基准
+- [x] `testcurve.gdb` 的 Z/M/ZM、圆/椭圆、FID 间断和坏拓扑样本已发现
+- [ ] Bezier 原生来源、曲线 Polygon 岛中岛和逐要素等价对照
+- [ ] 非空 MultiPatch、性能基线和远端 CI
+
+### 6.1 第一轮真实数据验收：`testcurve.gdb`
+
+验收路径：`test_data/gdb/testcurve.gdb`（当前为单层 FileGDB 目录）。GDAL
+OpenFileGDB 基准发现 25 个图层、54 个要素、32 个 `.gdbtable` 和 26 个 `.spx`。
+样本覆盖普通 Point/MultiPoint/Polyline/Polygon、洞和岛中岛、Z/M/ZM、CircularArc、
+Bezier 场景、混合曲线、完整圆、Ellipse、旋转 Ellipse、Ellipse Arc、曲线 Polygon、
+FID 间断、自交、退化环、重复点和零面积 Polygon；`Multipatch_FC` 存在但要素数为 0。
+
+本机在源目录之外的干净构建目录使用 `BUILTIN + STANDARD_WKB` 配置重新构建成功。
+完整 CTest 结果为 `455/455` 通过、0 失败；其中环境门控的真实数据测试和大规模/事务
+测试按设计跳过。专项真实数据结果如下：
+
+- 普通样本 `test_spatial_gdb.gdb`：`RegularFileGdbMatchesCoreReadContract` 通过；
+- 最新 `testcurve.gdb`：`CurveFileGdbIsExplicitlyUnsupported` 通过；
+- 最新 `testcurve.gdb`：`CurveFileGdbUsesBuiltinWkbFirstPath` 通过；
+- Bezier 样本由 GDAL 展示为已线性化 `MULTILINESTRING`，尚不能单凭当前数据确认
+  ArcGIS 原生 Bezier 等价性；
+- FID 间断、坏拓扑和曲线 Polygon 已完成结构发现，但逐要素 Hybrid/FID、面积、点包含
+  和空间查询对照仍待专项执行。
+
+本节结论为“第一轮真实数据验收完成”，不是正式发布完成。后续补充数据时在本节追加
+结果，不覆盖本轮证据。
 
 ## 7. 分支与合并状态
 
