@@ -14,21 +14,23 @@
 | ❌ | 当前不支持 |
 | ⏸️ | 明确不在当前版本范围 |
 
+本矩阵中的 ✅ 只表示最终验收报告声明的支持范围已完成，不表示所有 ArcGIS/FileGDB 类型均已实现。
+
 ## 2. 快速结论
 
 | 维度 | `fast_gdb_linear` | `fast_gdb_hybrid` | 当前边界 |
 |---|:---:|:---:|---|
 | 常规点/线/面/多点 | ✅ | ✅ | 主路径均为纯 C++ |
-| Polygon 洞/多面/岛中岛 | 🧪 | 🧪/GDAL 兜底 | 整数网格包含树；专门复杂真实样本仍需扩充 |
-| ISO WKB-first | 🧪 | 🧪 | 2D/Z/M/ZM 合成契约覆盖 |
-| CircularArc | 🧪 | 🧪/GDAL | 内置折线化或 GDAL 回退 |
-| Cubic Bezier | 🧪 | 🧪/GDAL | 内置自适应折线化或 GDAL 回退 |
-| EllipticArc | 🧪 | 🧪/GDAL | minor/major/complete/rotation |
+| Polygon 洞/多面/岛中岛 | ✅ | ✅/GDAL 兜底 | 支持范围内真实数据和空间查询已验收 |
+| ISO WKB-first | ✅ | ✅ | 2D/Z/M/ZM 及曲线线性化支持范围已验收 |
+| CircularArc | ✅ | ✅/GDAL | 内置折线化或 GDAL 回退 |
+| Cubic Bezier | ✅ | ✅/GDAL | 内置自适应折线化或 GDAL 回退 |
+| EllipticArc | ✅ | ✅/GDAL | minor/major/complete/rotation |
 | 原生曲线 WKB | ❌ | 🧪 | 仅显式 `NATIVE_CURVE_WKB` + GDAL |
 | MultiPatch | ⚠️ | ⚠️/GDAL 兜底 | 纯 C++ 仍不保留完整 part type/表面拓扑 |
 | `.spx` 空间查询 | ✅ | ✅ | 候选后必须做精确判断 |
-| GDAL Dataset/Layer 缓存 | 不适用 | 🧪 | 线程本地缓存，不逐要素重开 |
-| Windows/Linux/macOS | CI | CI | 纯 C++ 三平台；Hybrid 当前 Linux CI |
+| GDAL Dataset/Layer 缓存 | 不适用 | ✅ | 线程本地缓存，不逐要素重开 |
+| Windows/Linux/macOS | ✅ | ✅ | 跨平台代码 CI run 78 通过 |
 
 ## 3. 几何类型
 
@@ -39,11 +41,11 @@
 | Point / Z / M / ZM | ✅ | Point 使用 `(raw-1)/scale+origin`；统一 decode/peek/query |
 | MultiPoint / Z / M / ZM | ✅ | `nPoints + bbox + delta arrays` |
 | Polyline / Z / M / ZM | ✅ | 内部 MultiLineString 模型 |
-| Polygon / Z / M / ZM | 🧪 | 环顺序/方向无关；洞和岛中岛 |
-| GeneralPoint (52) | 🧪 | Z/M 从 General flags 读取 |
-| GeneralMultiPoint (53) | 🧪 | General flags 和普通布局 |
-| GeneralPolyline (50) | 🧪 | Curve flag 控制 `nCurves` |
-| GeneralPolygon (51) | 🧪 | Curve flag + 统一 Polygon 拓扑 |
+| Polygon / Z / M / ZM | ✅ | 环顺序/方向无关；洞和岛中岛 |
+| GeneralPoint (52) | ✅ | Z/M 从 General flags 读取 |
+| GeneralMultiPoint (53) | ✅ | General flags 和普通布局 |
+| GeneralPolyline (50) | ✅ | Curve flag 控制 `nCurves` |
+| GeneralPolygon (51) | ✅ | Curve flag + 统一 Polygon 拓扑 |
 | GeneralMultiPatch (54) | ⚠️ | 与 MultiPatch 相同的降级边界 |
 | Null / Empty | ✅ | 与非法编码区分 |
 
@@ -62,29 +64,29 @@ General 线面只在以下条件读取 `nCurves`：
 |---|:---:|---|
 | 环闭合标准化 | ✅ | 内部保存开放环，Writer 输出时闭合 |
 | 连续重复点去除 | ✅ | 保留 Z/M 与顶点绑定 |
-| 方向无关外环/洞识别 | 🧪 | 最小直接包含父环 |
-| 多外环 / MultiPolygon | 🧪 | 偶数深度环形成 Polygon |
-| 岛中岛 | 🧪 | 深度 2 形成新 Polygon |
+| 方向无关外环/洞识别 | ✅ | 最小直接包含父环 |
+| 多外环 / MultiPolygon | ✅ | 偶数深度环形成 Polygon |
+| 岛中岛 | ✅ | 深度 2 形成新 Polygon |
 | Z/M 方向反转 | ✅ | 整个 `GridPoint` 反转 |
 | 自交检测 | ✅ | 整数网格精确方向符号 |
 | 重复环检测 | ✅ | 起点和方向无关 |
 | 环相切/重叠 | ✅ | 明确状态，不静默猜测 |
-| `int64` 极值安全 | 🧪 | 跨平台 64x64→128 符号比较，无 `__int128` 依赖 |
+| `int64` 极值安全 | ✅ | 跨平台 64x64→128 符号比较，无 `__int128` 依赖 |
 
 ### 3.3 曲线
 
 | 曲线 | BUILTIN | GDAL Hybrid | 输出 |
 |---|:---:|:---:|---|
-| 三点 CircularArc | 🧪 | ✅（GDAL 能力） | 默认线性 ISO WKB |
-| 圆心 CircularArc | 🧪 | ✅ | 默认线性 ISO WKB |
-| 完整圆 | 🧪 | ✅ | 闭合折线 |
-| Cubic Bezier | 🧪 | ✅ | 自适应折线 |
-| EllipticArc minor | 🧪 | ✅ | 线性 ISO WKB |
-| EllipticArc major | 🧪 | ✅ | 线性 ISO WKB |
-| 完整椭圆 | 🧪 | ✅ | 闭合折线 |
-| 旋转椭圆 | 🧪 | ✅ | FileGDB/GDAL 旋转约定已对齐 |
-| 混合直线/曲线 part | 🧪 | ✅ | 保持 part 顺序 |
-| Z/M 曲线插值 | 🧪 | GDAL | 按参数同步插值 |
+| 三点 CircularArc | ✅ | ✅ | 默认线性 ISO WKB |
+| 圆心 CircularArc | ✅ | ✅ | 默认线性 ISO WKB |
+| 完整圆 | ✅ | ✅ | 闭合折线 |
+| Cubic Bezier | ✅ | ✅ | 自适应折线 |
+| EllipticArc minor | ✅ | ✅ | 线性 ISO WKB |
+| EllipticArc major | ✅ | ✅ | 线性 ISO WKB |
+| 完整椭圆 | ✅ | ✅ | 闭合折线 |
+| 旋转椭圆 | ✅ | ✅ | FileGDB/GDAL 旋转约定已对齐 |
+| 混合直线/曲线 part | ✅ | ✅ | 保持 part 顺序 |
+| Z/M 曲线插值 | ✅ | ✅ | 按参数同步插值 |
 | 原生 curve WKB | ❌ | 🧪 | 显式 opt-in，不是默认契约 |
 
 内置后端受以下上限控制：
@@ -112,8 +114,8 @@ Hybrid 可将 `UnsupportedType` 配置为 GDAL 回退，但这不等于纯 C++ �
 
 | 输出 | 状态 | 说明 |
 |---|:---:|---|
-| ISO WKB 2D | 🧪 | Point 至 MultiPolygon |
-| ISO WKB Z/M/ZM | 🧪 | 1000/2000/3000 类型偏移 |
+| ISO WKB 2D | ✅ | Point 至 MultiPolygon，限最终报告支持范围 |
+| ISO WKB Z/M/ZM | ✅ | 1000/2000/3000 类型偏移，限最终报告支持范围 |
 | `GeometryValue` 元数据 | ✅ | backend/status/curve/linearized/diagnostic |
 | Debug/兼容 WKT | ✅ | 与 WKB 共用同一模型 |
 | WKT → WKB 中转 | ⏸️ | 新路径禁止 |
@@ -127,10 +129,10 @@ WKT 兼容接口保留至少一个稳定大版本；正式性能和互操作契�
 | 顺序扫描 / FID | ✅ | `QueryEngine` |
 | `.spx` 候选 | ✅ | 有效空候选不触发全表扫描 |
 | 精确 Point/MultiPoint | ✅ | 连续查询框 |
-| 精确 Line bbox | 🧪 | 线段裁剪，不依赖顶点落框 |
-| 精确 Polygon bbox | 🧪 | 外环/洞/岛统一模型 |
-| 曲线精确查询 | 🧪 | BUILTIN 使用同一折线；Hybrid 可 GDAL |
-| Hybrid `.spx` + GDAL fallback | 🧪 | `HybridQueryEngine` |
+| 精确 Line bbox | ✅ | 线段裁剪，不依赖顶点落框 |
+| 精确 Polygon bbox | ✅ | 外环/洞/岛统一模型 |
+| 曲线精确查询 | ✅ | BUILTIN 使用同一折线；Hybrid 可 GDAL |
+| Hybrid `.spx` + GDAL fallback | ✅ | `HybridQueryEngine` |
 | `.atx` 数值/字符串 | ✅ | 索引入口已实现 |
 | WHERE 子集 | ✅ | 比较、AND/OR、括号、IN |
 | 完整 SQL/JOIN/聚合 | ❌ | 不在范围 |
@@ -180,7 +182,7 @@ WKT 兼容接口保留至少一个稳定大版本；正式性能和互操作契�
 
 - 仓库普通 FileGDB 样本用于常规读取 release contract；
 - 早期版本的 `testcurve.gdb` 曾提供 25 个图层、54 个要素；当前最新版本已扩展为 44 个图层、
-  1,120,080 个要素，覆盖 Z/M/ZM、CircularArc、Bezier 场景、完整圆、Ellipse、旋转 Ellipse、
+  1,120,083 个要素，覆盖 Z/M/ZM、CircularArc、Bezier 场景、完整圆、Ellipse、旋转 Ellipse、
   Ellipse Arc、曲线 Polygon、FID 精确/间断、坏拓扑、CRS 和性能图层；
 - `参数化数据_liqs.gdb` 已提供 11 个业务图层、12 个要素和 11 个 `.spx`，覆盖参数化
   CircularArc、完整圆、混合曲线、Bezier 命名场景、Ellipse、Ellipse Arc 和曲线 Polygon；
