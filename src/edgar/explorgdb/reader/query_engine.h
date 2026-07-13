@@ -35,11 +35,21 @@ struct QueryRequest {
     AttrOp attr_op = AttrOp::Eq;
 };
 
+struct SpatialQueryMetrics {
+    size_t feature_count = 0;
+    size_t candidate_count = 0;
+    size_t bbox_rejected = 0;
+    size_t exact_tested = 0;
+    size_t invalid_geometries = 0;
+    double candidate_ratio = 0.0;
+};
+
 struct QueryResult {
     std::vector<uint32_t> matched_fids;
     std::optional<FeatureRecord> record;
     std::string execution_path;
     std::string fallback_reason;
+    SpatialQueryMetrics spatial_metrics;
 };
 
 class QueryEngine {
@@ -57,9 +67,10 @@ public:
         bool* skipped_unsupported_curve = nullptr);
 
     // Formal geometry-correct path: .spx candidate lookup followed by one
-    // GeometryModel interpretation shared with WKB output. Holes, islands,
-    // multipart polygons, reversed rings, and built-in curves therefore use
-    // identical semantics in reads and spatial predicates.
+    // GeometryModel interpretation shared with WKB output. The implementation
+    // selects candidate access or a sequential mmap scan from candidate density,
+    // while preserving holes, islands, multipart polygons, reversed rings,
+    // built-in curves, FIDs, and Hybrid fallback semantics.
     QueryResult query_bbox_unified(double xmin, double ymin,
                                    double xmax, double ymax);
 
