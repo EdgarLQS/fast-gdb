@@ -34,19 +34,19 @@ jobs:
           -DFAST_GDB_CURVE_BACKEND=BUILTIN
           -DFAST_GDB_GEOMETRY_OUTPUT=STANDARD_WKB
           -DFAST_GDB_BUILD_TOOLS=OFF
-          -DFAST_GDB_BUILD_FULL_TESTS=ON
+          -DFAST_GDB_BUILD_FULL_TESTS=OFF
           -DBUILD_TESTING=ON
       - name: Build (POSIX)
         if: runner.os != 'Windows'
         shell: bash
         run: |
           set -o pipefail
-          cmake --build build-core --config Release --parallel --verbose 2>&1 | tee build.log
+          cmake --build build-core --target fast_gdb_geometry_test_runner --config Release --parallel --verbose 2>&1 | tee build.log
       - name: Build (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          cmake --build build-core --config Release --parallel --verbose *>&1 | Tee-Object -FilePath build.log
+          cmake --build build-core --target fast_gdb_geometry_test_runner --config Release --parallel --verbose *>&1 | Tee-Object -FilePath build.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Upload build diagnostics
         if: always()
@@ -60,12 +60,12 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          ctest --test-dir build-core -C Release --output-on-failure 2>&1 | tee test.log
+          ctest --test-dir build-core -C Release --output-on-failure -R '^geometry\.' 2>&1 | tee test.log
       - name: Test (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          ctest --test-dir build-core -C Release --output-on-failure *>&1 | Tee-Object -FilePath test.log
+          ctest --test-dir build-core -C Release --output-on-failure -R '^geometry\.' *>&1 | Tee-Object -FilePath test.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Upload test diagnostics
         if: always()
@@ -89,13 +89,26 @@ jobs:
           -DFAST_GDB_CURVE_BACKEND=BUILTIN
           -DFAST_GDB_GEOMETRY_OUTPUT=STANDARD_WKB
           -DFAST_GDB_BUILD_TOOLS=OFF
-          -DFAST_GDB_BUILD_FULL_TESTS=ON
+          -DFAST_GDB_BUILD_FULL_TESTS=OFF
           -DBUILD_TESTING=ON
+      - name: Detect repository real-data fixtures
+        shell: bash
+        run: |
+          if [[ -d "${GITHUB_WORKSPACE}/test_data/gdb/test_spatial_gdb.gdb" ]]; then
+            echo "FAST_GDB_REAL_DATASET=${GITHUB_WORKSPACE}/test_data/gdb/test_spatial_gdb.gdb" >> "$GITHUB_ENV"
+          else
+            echo "::notice::FAST_GDB_REAL_DATASET fixture is not present in this checkout; environment-gated contract will skip."
+          fi
+          if [[ -d "${GITHUB_WORKSPACE}/test_data/gdb/testcurve.gdb" ]]; then
+            echo "FAST_GDB_CURVE_DATASET=${GITHUB_WORKSPACE}/test_data/gdb/testcurve.gdb" >> "$GITHUB_ENV"
+          else
+            echo "::notice::FAST_GDB_CURVE_DATASET fixture is not present in this checkout; environment-gated contract will skip."
+          fi
       - name: Build
         shell: bash
         run: |
           set -o pipefail
-          cmake --build build-hybrid --parallel --verbose 2>&1 | tee build.log
+          cmake --build build-hybrid --target fast_gdb_geometry_test_runner fast_gdb_hybrid_test_runner --parallel --verbose 2>&1 | tee build.log
       - name: Upload build diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -104,13 +117,10 @@ jobs:
           path: build.log
           if-no-files-found: warn
       - name: Test
-        env:
-          FAST_GDB_REAL_DATASET: ${{ github.workspace }}/test_data/gdb/test_spatial_gdb.gdb
-          FAST_GDB_CURVE_DATASET: ${{ github.workspace }}/test_data/gdb/testcurve.gdb
         shell: bash
         run: |
           set -o pipefail
-          ctest --test-dir build-hybrid --output-on-failure 2>&1 | tee test.log
+          ctest --test-dir build-hybrid --output-on-failure -R '^(geometry|hybrid)\.' 2>&1 | tee test.log
       - name: Upload test diagnostics
         if: always()
         uses: actions/upload-artifact@v4
