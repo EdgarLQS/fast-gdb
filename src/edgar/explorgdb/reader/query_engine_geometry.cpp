@@ -1,5 +1,4 @@
 #include "query_engine.h"
-#include "gdb_spatial_index.h"
 #include "spatial_predicate.h"
 
 #include <algorithm>
@@ -83,36 +82,47 @@ QueryResult QueryEngine::query_bbox_unified(
 
     std::vector<uint32_t> candidates;
     const auto candidate_start = SpatialClock::now();
-    const auto* spx = catalog_.find_spx(resolved_.id);
-    bool spx_parse_ok = false;
-    if (spx != nullptr) {
-        GdbSpatialIndexParser index(
-            catalog_.path() + "/" + spx->filename);
-        spx_parse_ok = index.parse();
-        if (spx_parse_ok) {
-            candidates = index.query_bbox(
-                xmin, ymin, xmax, ymax,
-                geom_field->xorig, geom_field->yorig,
-                geom_field->xyscale, geom_field->grid_sizes,
-                static_cast<uint32_t>(feature_count));
-            std::sort(candidates.begin(), candidates.end());
-            candidates.erase(
-                std::unique(candidates.begin(), candidates.end()),
-                candidates.end());
-        } else {
-            capabilities_.spatial_index = {
-                CapabilityState::Degraded,
-                ".spx exists but could not be parsed; "
-                "falling back to sequential model filtering"};
+
+    // Parse the .spx once per QueryEngine. Reusing the open descriptor and its
+    // page cache is essential for hot-query measurements and avoids charging
+    // index setup to every bbox request.
+    if (!spatial_index_initialized_) {
+        spatial_index_initialized_ = true;
+        const auto* spx = catalog_.find_spx(resolved_.id);
+        spatial_index_present_ = spx != nullptr;
+        if (spx != nullptr) {
+            auto index = std::make_unique<GdbSpatialIndexParser>(
+                catalog_.path() + "/" + spx->filename);
+            if (index->parse()) {
+                spatial_index_ = std::move(index);
+            } else {
+                capabilities_.spatial_index = {
+                    CapabilityState::Degraded,
+                    ".spx exists but could not be parsed; "
+                    "falling back to sequential model filtering"};
+            }
         }
     }
 
-    if (spx == nullptr || !spx_parse_ok) {
+    const bool spx_parse_ok = spatial_index_ != nullptr;
+    if (spx_parse_ok) {
+        candidates = spatial_index_->query_bbox(
+            xmin, ymin, xmax, ymax,
+            geom_field->xorig, geom_field->yorig,
+            geom_field->xyscale, geom_field->grid_sizes,
+            static_cast<uint32_t>(feature_count));
+        std::sort(candidates.begin(), candidates.end());
+        candidates.erase(
+            std::unique(candidates.begin(), candidates.end()),
+            candidates.end());
+    }
+
+    if (!spatial_index_present_ || !spx_parse_ok) {
         candidates.reserve(feature_count);
         for (uint32_t fid = 0; fid < feature_count; ++fid)
             candidates.push_back(fid);
         result.execution_path = "bbox:model:sequential-fallback";
-        result.fallback_reason = spx == nullptr
+        result.fallback_reason = !spatial_index_present_
             ? "spatial index missing; sequential model filtering used"
             : capabilities_.spatial_index.reason;
     }
