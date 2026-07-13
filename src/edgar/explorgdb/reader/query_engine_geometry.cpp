@@ -304,13 +304,8 @@ QueryResult QueryEngine::query_bbox_unified(
         evaluate_candidates();
     }
 
-    std::sort(result.matched_fids.begin(),
-              result.matched_fids.end());
-    result.matched_fids.erase(
-        std::unique(result.matched_fids.begin(),
-                    result.matched_fids.end()),
-        result.matched_fids.end());
-
+    // Both execution paths traverse sorted, unique FIDs, so matches are already
+    // ordered and duplicate-free. Avoid an O(N log N) post-sort on large results.
     if (result.spatial_metrics.invalid_geometries != 0) {
         if (!result.fallback_reason.empty())
             result.fallback_reason += "; ";
