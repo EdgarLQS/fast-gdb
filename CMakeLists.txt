@@ -236,6 +236,30 @@ if(BUILD_TESTING)
     gtest_discover_tests(fast_gdb_geometry_test_runner
                          TEST_PREFIX "geometry.")
 
+    # Release-gate Hybrid target intentionally excludes the legacy usegdal
+    # component and writer/tutorial suites. It validates only the GDAL bridge,
+    # real FileGDB read contracts, FID mapping, and pure reader integration.
+    if(FAST_GDB_WITH_GDAL)
+        add_executable(fast_gdb_hybrid_test_runner
+            tests/test_runner.cpp
+            tests/edgar/explorgdb/curve_gdal/test_hybrid_geometry_reader.cpp
+            tests/edgar/explorgdb/reader/test_real_data_release_contract.cpp)
+        target_include_directories(fast_gdb_hybrid_test_runner PRIVATE
+            tests
+            tests/edgar/explorgdb
+            tests/edgar/explorgdb/common
+            tests/edgar/explorgdb/reader
+            tests/edgar/explorgdb/curve_gdal
+            src/edgar/explorgdb/curve_gdal)
+        target_compile_definitions(fast_gdb_hybrid_test_runner PRIVATE
+            FAST_GDB_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+        target_link_libraries(fast_gdb_hybrid_test_runner PRIVATE
+            GTest::gtest fast_gdb_curve_gdal ${FAST_GDB_GDAL_TARGET})
+        fast_gdb_enable_warnings(fast_gdb_hybrid_test_runner)
+        gtest_discover_tests(fast_gdb_hybrid_test_runner
+                             TEST_PREFIX "hybrid.")
+    endif()
+
     if(FAST_GDB_BUILD_FULL_TESTS)
         file(GLOB EXPLORGDB_COMMON_TEST_SOURCES CONFIGURE_DEPENDS
              tests/edgar/explorgdb/common/*.cpp)
