@@ -2,6 +2,8 @@
 
 ESRI FileGDB 格式研究和 C++ 组件库。项目采用“测试即教程”的方式记录二进制格式、API、兼容边界和性能决策。
 
+当前正式版本：**v0.1.0**。
+
 ## 几何子系统概览
 
 当前几何读取链路为：
@@ -21,18 +23,19 @@ FileGDB geometry blob
 - Polygon 外环、洞、多面、岛中岛，环顺序和方向无关；
 - 重复环、自交、相切、退化环返回明确状态；
 - CircularArc、三次 Bezier、EllipticArc、完整圆/椭圆和混合 part；
+- M-enabled 二维 ArcGIS 曲线的 FileGDB `0x42` 缺失-M 数组编码；
 - `.spx` 候选过滤后复用同一个几何模型做精确判断；
 - 标准 ISO WKB-first API，无需从 WKT 二次解析；
 - 可选 GDAL Hybrid 回退，只处理曲线或 fast-gdb 无法可靠组织的拓扑。
 
-MultiPatch 仍属于兼容/降级路径：可以保留坐标和有限 WKT 表达，但尚未纳入标准线性 `GeometryModel` 的完整表面拓扑。
+MultiPatch 仍属于兼容/降级路径：可以通过 Hybrid 回退读取，但尚未纳入标准线性 `GeometryModel` 的完整表面拓扑。
 
 ## 两个正式构建产物
 
-| 产物 | GDAL 依赖 | 曲线策略 | 适用场景 |
-|---|---:|---|---|
-| `fast_gdb_linear` | 无 | 内置算法折线化 | 轻量部署、服务端批量读取 |
-| `fast_gdb_hybrid` | 有 | fast-gdb 优先，按需缓存式 GDAL 回退 | 需要 GDAL 对照或复杂拓扑兜底 |
+| 源码目标 | 安装后目标 | GDAL 依赖 | 曲线策略 | 适用场景 |
+|---|---|---:|---|---|
+| `fast_gdb_linear` | `fast_gdb::linear` | 无 | 内置算法折线化 | 轻量部署、服务端批量读取 |
+| `fast_gdb_hybrid` | `fast_gdb::hybrid` | 有 | fast-gdb 优先，按需缓存式 GDAL 回退 | 需要 GDAL 对照或复杂拓扑兜底 |
 
 普通非曲线几何在两个产物中都走纯 C++ fast-gdb 主路径。
 
@@ -45,9 +48,11 @@ cmake -S . -B build-linear \
   -DFAST_GDB_WITH_GDAL=OFF \
   -DFAST_GDB_CURVE_BACKEND=BUILTIN \
   -DFAST_GDB_GEOMETRY_OUTPUT=STANDARD_WKB \
+  -DFAST_GDB_BUILD_TOOLS=OFF \
+  -DFAST_GDB_BUILD_FULL_TESTS=OFF \
   -DBUILD_TESTING=ON
 cmake --build build-linear --parallel
-ctest --test-dir build-linear --output-on-failure
+ctest --test-dir build-linear --output-on-failure -R '^geometry\.'
 ```
 
 ### GDAL Hybrid
@@ -55,14 +60,62 @@ ctest --test-dir build-linear --output-on-failure
 ```bash
 cmake -S . -B build-hybrid \
   -DFAST_GDB_WITH_GDAL=ON \
-  -DFAST_GDB_CURVE_BACKEND=GDAL \
+  -DFAST_GDB_CURVE_BACKEND=BUILTIN \
   -DFAST_GDB_GEOMETRY_OUTPUT=STANDARD_WKB \
+  -DFAST_GDB_BUILD_TOOLS=OFF \
+  -DFAST_GDB_BUILD_FULL_TESTS=OFF \
   -DBUILD_TESTING=ON
-cmake --build build-hybrid --parallel
-ctest --test-dir build-hybrid --output-on-failure
+cmake --build build-hybrid --target fast_gdb_geometry_test_runner fast_gdb_hybrid_test_runner --parallel
+ctest --test-dir build-hybrid --output-on-failure -R '^(geometry|hybrid)\.'
 ```
 
-CMake 使用 `find_package(GDAL)`；不再绑定某台机器的 GDAL 安装路径。Google Test 未安装时由 CMake FetchContent 获取。
+CMake 使用 `find_package(GDAL)`；不绑定某台机器的 GDAL 安装路径。Google Test 未安装时由 CMake FetchContent 获取。
+
+## 安装与 CMake 消费
+
+### 安装
+
+```bash
+cmake --install build-linear --prefix /path/to/fast-gdb
+```
+
+### 纯 C++ 消费项目
+
+```cmake
+find_package(fast_gdb 0.1 CONFIG REQUIRED)
+target_link_libraries(my_app PRIVATE fast_gdb::linear)
+```
+
+### Hybrid 消费项目
+
+```cmake
+find_package(GDAL REQUIRED)
+find_package(fast_gdb 0.1 CONFIG REQUIRED)
+target_link_libraries(my_app PRIVATE fast_gdb::hybrid)
+```
+
+安装包包含静态库、公共头文件、可重定位的 `fast_gdbConfig.cmake`、变更记录和发布验收证据。
+
+## CPack 打包
+
+```bash
+cmake -S . -B build-package \
+  -DFAST_GDB_WITH_GDAL=OFF \
+  -DFAST_GDB_BUILD_TOOLS=OFF \
+  -DFAST_GDB_BUILD_FULL_TESTS=OFF \
+  -DFAST_GDB_PACKAGE_VARIANT=linear \
+  -DBUILD_TESTING=OFF
+cmake --build build-package --target explorgdb_reader_lib --config Release --parallel
+cpack --config build-package/CPackConfig.cmake -C Release -G TGZ
+```
+
+仓库的 `release` 工作流会为 v0.1.0 生成：
+
+- Windows x64 纯 C++ ZIP；
+- Linux x64 纯 C++ TGZ；
+- macOS 纯 C++ TGZ；
+- Linux x64 Hybrid TGZ；
+- 全部归档的 `SHA256SUMS.txt`。
 
 ## WKB-first API
 
@@ -111,7 +164,10 @@ FAST_GDB_REAL_DATASET="$PWD/test_data/gdb/test_spatial_gdb.gdb/test_spatial_gdb.
   --gtest_filter='RealDataReleaseContractTest.RegularFileGdbMatchesCoreReadContract'
 ```
 
-该目录是双层 `.gdb` 包装，环境变量必须指向内层目录。该样本不包含 GDAL 可识别的原生曲线；ArcGIS Pro 原生曲线差异测试仍需单独配置曲线数据集。
+该目录是双层 `.gdb` 包装，环境变量必须指向内层目录。ArcGIS Pro 原生曲线验收结果见：
+
+- `docs/evidence/curve-polyline-m-real-acceptance-2026-07-13.md`；
+- `docs/planning/13_fast-gdb最终等价与发布验收报告.md`。
 
 ## 项目组成
 
@@ -121,10 +177,12 @@ FAST_GDB_REAL_DATASET="$PWD/test_data/gdb/test_spatial_gdb.gdb/test_spatial_gdb.
 | `explorgdb/common` | `src/edgar/explorgdb/common/` | 二进制、公共类型和共享基础设施 |
 | `explorgdb/reader` | `src/edgar/explorgdb/reader/` | 纯 C++ Reader、几何模型、WKB、拓扑和查询 |
 | `explorgdb/curve_gdal` | `src/edgar/explorgdb/curve_gdal/` | 可选缓存式 GDAL Hybrid Bridge |
-| `explorgdb/writer` | `src/edgar/explorgdb/writer/` | 纯 C++ 写入器；系统表同步仍需继续完善 |
+| `explorgdb/writer` | `src/edgar/explorgdb/writer/` | 实验性纯 C++ 写入器；不在 v0.1.0 生产支持声明内 |
 
 ## 文档
 
+- `CHANGELOG.md`
+- `docs/releases/v0.1.0.md`
 - `docs/overview/01_fast-gdb项目介绍与当前状态.md`
 - `docs/planning/00_规划文档状态索引.md`
 - `docs/planning/13_fast-gdb最终等价与发布验收报告.md`
@@ -138,4 +196,11 @@ FAST_GDB_REAL_DATASET="$PWD/test_data/gdb/test_spatial_gdb.gdb/test_spatial_gdb.
 - C++17、CMake 3.15+；
 - 纯 C++ 构建：Windows、Linux、macOS；
 - Hybrid 构建：需要可被 CMake 发现的 GDAL；
-- CI 覆盖三平台纯 C++、Linux Hybrid、GDAL 默认后端构建以及 ASan/UBSan。
+- CI 覆盖三平台纯 C++、Linux Hybrid、GDAL 默认后端构建以及 ASan/UBSan/LSan。
+
+## v0.1.0 能力边界
+
+- 曲线正式输出为线性化标准 WKB，不保留 ArcGIS 原生 curve object；
+- MultiPatch 仅提供 Hybrid degraded support；
+- 不承诺所有未知或未来 FileGDB 几何编码；
+- Writer 仍为实验性组件。
