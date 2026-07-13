@@ -689,7 +689,7 @@ GdbGeomDecoder GdbTableParser::make_geom_decoder(const FieldDescriptor& field) c
 }
 
 uint64_t GdbTableParser::sequential_scan(ScanCallback callback) {
-    if (!mapped_data_ || fields_.empty() || feature_offsets_.empty() || !callback)
+    if (fields_.empty() || feature_offsets_.empty() || !callback)
         return 0;
 
     const int field_count = static_cast<int>(fields_.size());
@@ -702,15 +702,33 @@ uint64_t GdbTableParser::sequential_scan(ScanCallback callback) {
         const uint64_t offset = feature_offsets_[fid];
         if (offset == 0 || offset >= file_size_) continue;
 
-        const uint8_t* cursor = mapped_data_ + offset;
-        const uint8_t* file_end = mapped_data_ + file_size_;
-        if (cursor + 4 > file_end) break;
+        // Read blob length (4 bytes at offset)
+        uint32_t blob_length = 0;
+        const uint8_t* cursor = nullptr;
+        const uint8_t* record_end = nullptr;
 
-        uint32_t blob_length;
-        std::memcpy(&blob_length, cursor, sizeof(blob_length));
-        cursor += 4;
-        if (cursor + blob_length > file_end) break;
-        const uint8_t* record_end = cursor + blob_length;
+        if (mapped_data_ != nullptr) {
+            // mmap path: direct pointer into mapped region
+            cursor = mapped_data_ + offset;
+            const uint8_t* file_end = mapped_data_ + file_size_;
+            if (cursor + 4 > file_end) break;
+            std::memcpy(&blob_length, cursor, sizeof(blob_length));
+            cursor += 4;
+            if (cursor + blob_length > file_end) break;
+            record_end = cursor + blob_length;
+        } else if (fd_ >= 0) {
+            // fd path: read blob into row_buffer_
+            uint8_t len_buf[4];
+            if (!read_at(offset, len_buf, sizeof(len_buf))) break;
+            std::memcpy(&blob_length, len_buf, sizeof(blob_length));
+            if (offset + 4 + blob_length > file_size_) break;
+            if (row_buffer_.size() < blob_length) row_buffer_.resize(blob_length);
+            if (!read_at(offset + 4, row_buffer_.data(), blob_length)) break;
+            cursor = row_buffer_.data();
+            record_end = cursor + blob_length;
+        } else {
+            break;
+        }
 
         if (blob_length == 0) {
             for (int i = 0; i < field_count; ++i)

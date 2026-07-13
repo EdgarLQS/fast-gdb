@@ -12,6 +12,10 @@
  * 数据存储在 test_data/large/large_test.gdb/，创建一次，后续 benchmark 复用。
  */
 
+#ifndef M_PI
+# define _USE_MATH_DEFINES
+#endif
+#include <cmath>
 #include "gdal_priv.h"
 #include "ogrsf_frmts.h"
 #include "cpl_string.h"
