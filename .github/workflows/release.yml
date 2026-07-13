@@ -35,8 +35,11 @@ jobs:
           -DFAST_GDB_BUILD_TOOLS=OFF
           -DFAST_GDB_BUILD_FULL_TESTS=OFF
           -DBUILD_TESTING=OFF
-      - name: Build
-        run: cmake --build build-release --parallel
+      - name: Build publishable targets
+        run: >-
+          cmake --build build-release
+          --target fast_gdb_geometry_core explorgdb_common_lib explorgdb_reader_lib explorgdb_writer_lib
+          --parallel
       - name: Stage package
         env:
           PACKAGE: fast-gdb-0.1.0-${{ runner.os }}-${{ runner.arch }}-linear
@@ -83,8 +86,11 @@ jobs:
           -DFAST_GDB_BUILD_TOOLS=OFF
           -DFAST_GDB_BUILD_FULL_TESTS=OFF
           -DBUILD_TESTING=OFF
-      - name: Build
-        run: cmake --build build-release --parallel
+      - name: Build publishable targets
+        run: >-
+          cmake --build build-release
+          --target fast_gdb_geometry_core explorgdb_common_lib explorgdb_reader_lib explorgdb_writer_lib fast_gdb_curve_gdal
+          --parallel
       - name: Stage package
         env:
           PACKAGE: fast-gdb-0.1.0-Linux-${{ runner.arch }}-hybrid
