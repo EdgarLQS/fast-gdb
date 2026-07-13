@@ -3,7 +3,7 @@ name: geometry-correctness
 on:
   push:
     branches:
-      - agent/geometry-wkb-curve-plan
+      - 'agent/**'
   pull_request:
   workflow_dispatch:
 
@@ -104,6 +104,9 @@ jobs:
           path: build.log
           if-no-files-found: warn
       - name: Test
+        env:
+          FAST_GDB_REAL_DATASET: ${{ github.workspace }}/test_data/gdb/test_spatial_gdb.gdb
+          FAST_GDB_CURVE_DATASET: ${{ github.workspace }}/test_data/gdb/testcurve.gdb
         shell: bash
         run: |
           set -o pipefail
