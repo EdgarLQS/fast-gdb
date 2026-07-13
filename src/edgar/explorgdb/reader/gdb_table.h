@@ -58,6 +58,17 @@ public:
                            int field_count)>;
     uint64_t sequential_scan(ScanCallback callback);
 
+    // Dedicated high-density spatial-query scanner. It validates the complete
+    // physical row layout but never materializes FieldRef arrays and never
+    // exposes unrelated attribute columns. In mmap mode the geometry pointer is
+    // a stable zero-copy view into the table mapping for the callback duration.
+    using GeometryScanCallback =
+        std::function<bool(uint32_t fid,
+                           const uint8_t* geometry_blob,
+                           size_t geometry_size,
+                           bool is_null)>;
+    uint64_t scan_geometry_blobs(GeometryScanCallback callback);
+
 private:
     void parse_field_descriptor(BinaryReader& reader,
                                 bool layer_has_z,
