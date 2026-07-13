@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - agent/fix-pure-cpp-m-curves-release-gate
+  pull_request:
   workflow_dispatch:
 
 permissions:
