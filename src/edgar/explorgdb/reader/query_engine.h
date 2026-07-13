@@ -40,6 +40,7 @@ struct SpatialQueryMetrics {
     size_t feature_count = 0;
     size_t candidate_count = 0;
     size_t bbox_rejected = 0;
+    size_t bbox_contained = 0;
     size_t exact_tested = 0;
     size_t invalid_geometries = 0;
     double candidate_ratio = 0.0;
@@ -72,11 +73,9 @@ public:
         double xmin, double ymin, double xmax, double ymax,
         bool* skipped_unsupported_curve = nullptr);
 
-    // Formal geometry-correct path: .spx candidate lookup followed by one
-    // GeometryModel interpretation shared with WKB output. The implementation
-    // selects candidate access or a sequential mmap scan from candidate density,
-    // while preserving holes, islands, multipart polygons, reversed rings,
-    // built-in curves, FIDs, and Hybrid fallback semantics.
+    // Geometry-correct bbox path. A geometry whose stored bbox is completely
+    // contained by the query bbox is accepted without constructing a full model;
+    // boundary candidates retain the existing exact GeometryModel predicate.
     QueryResult query_bbox_unified(double xmin, double ymin,
                                    double xmax, double ymax);
 
