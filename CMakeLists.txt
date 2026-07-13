@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(fast_gdb LANGUAGES CXX)
+project(fast_gdb VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -377,6 +377,8 @@ if(FAST_GDB_BUILD_TOOLS)
         fast_gdb_enable_warnings(benchmark_index_creation)
     endif()
 endif()
+
+include(cmake/FastGdbInstall.cmake)
 
 message(STATUS "")
 message(STATUS "=== fast-gdb geometry build ===")

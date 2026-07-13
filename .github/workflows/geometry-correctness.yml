@@ -3,6 +3,7 @@ name: geometry-correctness
 on:
   push:
     branches:
+      - main
       - 'agent/**'
   pull_request:
   workflow_dispatch:
