@@ -6,6 +6,7 @@
 
 | 文件 | 内容 |
 |---|---|
+| [01_fast-gdb项目介绍与当前状态.md](overview/01_fast-gdb项目介绍与当前状态.md) | 面向开发人员的项目定位、架构、性能、测试和验收总览 |
 | [00_项目全景与架构概览.md](overview/00_项目全景与架构概览.md) | 项目全景、构建目标、架构总览、学习路线 |
 
 ## 使用
@@ -36,7 +37,7 @@
 | [08_fast-gdb只读发布收口.md](planning/08_fast-gdb只读发布收口.md) | v2 验收 | v2 只读历史证据 |
 | [10_fast-gdb几何正确性与曲线支持执行计划.md](planning/10_fast-gdb几何正确性与曲线支持执行计划.md) | 当前计划 | Polygon、WKB-first、曲线和双后端设计 |
 | [11_fast-gdb几何正确性与曲线支持实施报告.md](planning/11_fast-gdb几何正确性与曲线支持实施报告.md) | 当前实施 | 代码、自动化、兼容决策和真实数据门禁 |
-| [11_fast-gdb替换GDAL矢量能力分析.md](planning/11_fast-gdb替换GDAL矢量能力分析.md) | 架构参考 | fast-gdb 与 GDAL 双路径取舍 |
+| [11_fast-gdb替换GDAL矢量能力分析.md](planning/archive/11_fast-gdb替换GDAL矢量能力分析.md) | 架构参考 | fast-gdb 与 GDAL 双路径取舍 |
 
 `03`–`07`、旧 v3 计划和早期曲线分析属于历史背景；从 [planning/archive/README.md](planning/archive/README.md) 或状态索引进入，不再作为当前完成度来源。
 
