@@ -147,9 +147,6 @@ QueryResult QueryEngine::query_bbox_unified(
     std::vector<uint32_t> candidates;
     const auto candidate_start = SpatialClock::now();
 
-    // High-coverage requests skip .spx before it can materialize millions of
-    // candidate FIDs. The layer extent estimate is intentionally conservative;
-    // the environment threshold remains tunable until real 10M calibration.
     if (!planner_direct_scan) {
         if (!spatial_index_initialized_) {
             spatial_index_initialized_ = true;
@@ -331,21 +328,19 @@ QueryResult QueryEngine::query_bbox_unified(
     if (use_sequential_scan) {
         if (!planner_direct_scan && !sequential_fallback)
             result.execution_path = "bbox:model:sequential-adaptive";
-        const uint64_t scanned = parser_->sequential_scan(
-            [&](uint32_t fid, const FieldRef* fields, int field_count) {
-                if (fields == nullptr ||
-                    geometry_field_index >= static_cast<size_t>(field_count)) {
+        const auto scan_start = SpatialClock::now();
+        const uint64_t scanned = parser_->scan_geometry_blobs(
+            [&](uint32_t fid, const uint8_t* geometry,
+                size_t geometry_size, bool is_null) {
+                if (is_null || geometry == nullptr || geometry_size == 0) {
                     ++result.spatial_metrics.invalid_geometries;
                     return true;
                 }
-                const FieldRef& geometry = fields[geometry_field_index];
-                if (geometry.is_null) {
-                    ++result.spatial_metrics.invalid_geometries;
-                    return true;
-                }
-                evaluate_blob(fid, geometry.data, geometry.byte_len);
+                evaluate_blob(fid, geometry, geometry_size);
                 return true;
             });
+        result.spatial_metrics.geometry_scan_ms = elapsed_ms(scan_start);
+        result.spatial_metrics.geometry_only_scan = scanned != 0;
 
         if (scanned == 0 && feature_count != 0) {
             result.execution_path = spx_parse_ok
@@ -358,6 +353,8 @@ QueryResult QueryEngine::query_bbox_unified(
             result.spatial_metrics.invalid_geometries = 0;
             result.spatial_metrics.bbox_filter_ms = 0.0;
             result.spatial_metrics.exact_filter_ms = 0.0;
+            result.spatial_metrics.geometry_scan_ms = 0.0;
+            result.spatial_metrics.geometry_only_scan = false;
             result.spatial_metrics.spx_bypassed = false;
             ensure_all_candidates();
             evaluate_candidates();
