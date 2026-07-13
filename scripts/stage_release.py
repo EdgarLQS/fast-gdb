@@ -53,12 +53,24 @@ def write_cmake_config(output: Path, libraries: dict[str, str], variant: str) ->
     if variant == "hybrid":
         lines += ["include(CMakeFindDependencyMacro)", "find_dependency(GDAL)"]
 
+    include_map = {
+        "fast_gdb_geometry_core": ["reader"],
+        "explorgdb_common_lib": ["common"],
+        "explorgdb_reader_lib": ["reader"],
+        "explorgdb_writer_lib": ["writer"],
+        "fast_gdb_curve_gdal": ["curve_gdal", "reader"],
+    }
     for target, filename in libraries.items():
+        include_dirs = ["${_FAST_GDB_PREFIX}/include"]
+        include_dirs.extend(
+            f"${{_FAST_GDB_PREFIX}}/include/explorgdb/{component}"
+            for component in include_map[target]
+        )
         lines += [
             f"add_library(fast_gdb::{target} STATIC IMPORTED)",
             f"set_target_properties(fast_gdb::{target} PROPERTIES",
             f"  IMPORTED_LOCATION \"${{_FAST_GDB_PREFIX}}/lib/{filename}\"",
-            "  INTERFACE_INCLUDE_DIRECTORIES \"${_FAST_GDB_PREFIX}/include\")",
+            f"  INTERFACE_INCLUDE_DIRECTORIES \"{';'.join(include_dirs)}\")",
         ]
 
     if "explorgdb_reader_lib" in libraries:
