@@ -42,6 +42,11 @@ struct SpatialQueryMetrics {
     size_t exact_tested = 0;
     size_t invalid_geometries = 0;
     double candidate_ratio = 0.0;
+    double candidate_lookup_ms = 0.0;
+    double blob_lookup_ms = 0.0;
+    double bbox_filter_ms = 0.0;
+    double exact_filter_ms = 0.0;
+    double total_ms = 0.0;
 };
 
 struct QueryResult {
