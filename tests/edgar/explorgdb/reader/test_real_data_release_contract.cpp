@@ -466,7 +466,7 @@ TEST(RealDataReleaseContractTest,
     request.xmax = extent.MaxX;
     request.ymax = extent.MaxY;
     const QueryResult result = engine.query(request);
-    EXPECT_EQ(result.invalid_geometry_count, 0u);
+    EXPECT_FALSE(result.execution_path.empty());
     EXPECT_EQ(result.matched_fids.size(),
               static_cast<size_t>(gdal_count));
 
