@@ -1,121 +1,204 @@
-# 14 — fast-gdb 空间查询优化计划
+# 14 — fast-gdb 大规模空间查询超越 GDAL 计划
 
 **更新日期**：2026-07-13  
-**状态**：提案，尚未实施  
+**状态**：实施中  
 **适用范围**：`explorgdb` Reader 的 bbox/空间查询路径
 
-## 1. 目标与边界
+## 1. 目标
 
-本计划针对当前真实 10M 数据中暴露的大范围空间查询性能问题，目标是降低高覆盖率窗口的候选处理成本，同时保持以下语义不变：
+本计划不再以“小数据或小窗口局部领先”为完成标准。最终目标是在真实大规模 FileGDB 上，对 10M 及以上要素的中高覆盖率 bbox 查询稳定快于原生 GDAL，同时保持结果集合和几何语义一致。
 
-- `.spx` 只负责生成候选，不能代替最终空间判断；
-- 精确 Polygon 拓扑判断继续使用统一 `GeometryModel`；
-- FID、曲线线性化、Z/M/ZM 和 Hybrid fallback 行为不因性能优化而改变；
-- 不修改 FileGDB 原生文件格式，不把历史估算值当作验收指标。
+硬性验收目标：
 
-本计划不承诺 35GB/5 亿级生产数据性能；该规模仍需单独建立真实基线。
+| 场景 | 目标 |
+|---|---:|
+| 1% / 10% 覆盖率 | 不慢于 GDAL，且不得相对现有 fast-gdb 回归超过 5% |
+| 30% 覆盖率 | `fast-gdb <= GDAL × 0.90` |
+| 80% 覆盖率 | `fast-gdb <= GDAL × 0.80` |
+| 接近全范围 | `fast-gdb <= GDAL × 0.80` |
+| 结果正确性 | 与 GDAL 的完整 0-based FID 集合完全一致 |
+| 稳定性 | 连续多轮中位数和 P95 均满足目标，不挑选最快单次 |
 
-## 2. 当前证据
+性能结论必须来自 Release 构建和真实数据，不以估算代替验收。
 
-2026-07-13 复用 `test_data/large_10m/large_10m_test.gdb`（约 1.9 GB）进行只读空间查询复测：
+## 2. 当前基线与根因
+
+2026-07-13 使用 `test_data/large_10m/large_10m_test.gdb`（约 1.9 GB）复测：
 
 | 项目 | 结果 |
 |---|---:|
 | Large 窗口候选数 | 8,172,990 |
 | fast-gdb 总耗时 | 40,881.4 ms |
 | GDAL component 总耗时 | 3,842.5 ms |
-| 当前结论 | 大范围窗口下 GDAL 更快 |
+| 原始差距 | fast-gdb 约慢 10.6 倍 |
 
-旧基准中的小覆盖率空间查询仍可能明显快于 GDAL，但其数据集、窗口覆盖率、实现路径和计时阶段不同，不能直接外推到本次 Large 查询。
+阶段耗时约为：`.spx` 候选查询 1.58 秒、FID 到 Geometry Blob 定位 6.99 秒、Geometry Blob bbox/相交解析 37.68 秒。核心问题不是文件打开，而是高覆盖率下对数百万要素逐条定位、完整解码并构造通用几何模型。
 
-现有阶段性耗时拆分显示，主要成本集中在：
+当前基础分支已经完成 mmap Blob 零拷贝、`.spx` 复用、候选密度切换、顺序扫描、分阶段指标和可重复基准。这些属于基础设施，不代表最终性能目标已经完成。
 
-1. `.spx` 候选查询：约 1.58 秒；
-2. FID 到 Geometry Blob 定位：约 6.99 秒；
-3. 候选 Geometry Blob 的 bbox/相交解析：约 37.68 秒。
+## 3. 正确的执行模型
 
-因此当前首要问题是候选集过大后逐个读取和解析几何，而不是 mmap 或文件打开成本。
+### 3.1 三态 bbox 判定
 
-## 3. 优先级路线
-
-### P0：先修复基准可重复性
-
-- 清理 `tests/edgar/explorgdb/reader/test_spatial_benchmark.cpp` 中残留的旧绝对路径；
-- 统一使用 `test_paths.h` 和真实图层名，消除 `Invalid layer name: features` 警告；
-- 将候选数量、候选比例、Blob 定位、bbox 粗过滤、精确判断分别输出；
-- 固定查询窗口覆盖率：1%、10%、30%、80% 和接近全范围。
-
-P0 完成前，不以新的单次耗时决定优化方向。
-
-### P1：增加候选密度自适应路径
-
-当前路径应根据 `.spx` 返回候选数占总要素数的比例选择策略：
+每条 Geometry Blob 首先只读取包围盒，并返回：
 
 ```text
-低候选比例       -> .spx + 候选几何过滤
-中等候选比例     -> .spx + 批量/分块几何访问
-高候选比例       -> 顺序扫描，减少随机 Blob 定位
+DISJOINT            -> 直接拒绝
+CONTAINED_BY_QUERY  -> 直接接受，不解码 GeometryModel
+BOUNDARY_CANDIDATE  -> 进入流式精确谓词
 ```
 
-具体阈值通过基准确定，不在首次实现中直接固定为某个百分比。该优化只改变执行路径，不改变结果集合。
+当要素 bbox 完全位于查询框内部时，该要素必然与查询框相交。高覆盖率窗口应让绝大多数命中要素在这一阶段直接返回，避免完整几何解码。
 
-### P1：建立分阶段空间过滤
+### 3.2 流式、无对象空间谓词
 
-对 bbox 查询优先采用廉价粗过滤：
+仅对跨越查询边界的少量要素解码坐标。不得默认构造完整 `GeometryModel`、ring/part/point vector 或临时拓扑对象。
+
+实现顺序：
+
+1. Point：解码单点后直接判断；
+2. MultiPoint：流式读取，命中即返回；
+3. Polyline：保留相邻两点，执行点在框内和线段-矩形相交；
+4. Polygon：顶点在框内、边界相交、查询框角点 point-in-polygon；
+5. Z/M/ZM：空间过滤只读取 XY，正确跳过其余维度；
+6. 曲线、MultiPatch、异常编码：回退统一 `GeometryModel`，保证语义。
+
+目标：普通 Point/Polyline/Polygon 至少 95% 不进入通用模型回退路径。
+
+### 3.3 查询前执行计划
+
+不能先生成 800 万候选 FID，再决定改用顺序扫描。执行计划必须在 `.spx` 大规模物化前确定：
 
 ```text
-FID
-  -> peek_geometry_blob
-  -> peek_bbox
-  -> 仅对可能相交的要素执行精确 GeometryModel 判断
+低覆盖率       -> .spx 候选 + 快速谓词
+中等覆盖率     -> 分块候选或顺序扫描，按真实基准选择
+高覆盖率       -> 直接 Geometry Column 顺序扫描
 ```
 
-需要确认当前 `query_bbox_unified()` 是否可以安全复用 `peek_bbox`，并保留曲线、MultiPatch 和严格 Polygon 拓扑的现有边界。不能为了减少解析而把 bbox 相交误当作精确空间相交。
+规划依据包括查询窗口与图层 extent 的面积比例、要素数、几何类型、缓存状态和历史采样统计。阈值由 1%、10%、30%、80%、全范围矩阵校准，不允许把 50% 固定启发值当最终结论。
 
-### P2：优化 FID 到 Blob 的访问
+### 3.4 专用 Geometry Column Scanner
 
-- 候选 FID 排序、去重后按 `.gdbtablx` block 分组；
-- 尽量合并相邻 Blob 访问；
-- 减少重复 block 定位、边界检查和临时对象创建；
-- 对高覆盖率查询优先利用顺序访问局部性。
+高密度路径不得使用通用 `sequential_scan()` 解析所有字段并组装 `FieldRef` 数组。新增只读取 geometry 列的编译行布局：
 
-### P2：增加可选 bbox 缓存
+```text
+record length
+  -> null bitmap
+  -> 按预编译 skip plan 跳过非几何字段
+  -> geometry blob view
+  -> fast bbox predicate
+```
 
-先实现进程内按 FID 缓存，验证重复查询收益；只有证明确有价值后，再评估独立 bbox sidecar。暂不改变 FileGDB 原生格式。
+目标是消除逐行 schema 解释、无关字段解析和回调层额外成本。
 
-### P3：最后评估 SIMD 与并行
+### 3.5 并行分块扫描
 
-只有在 P1/P2 完成并重新 profile 后，仍确认 CPU bbox 解码是主瓶颈，才考虑 SIMD 或多线程分区扫描。历史文档中的“2～5 倍 SIMD”和“N/x 并行收益”仅是估算，不是本计划的验收承诺。
+完成单线程快速路径后，按 FID/文件块范围并行：
 
-## 4. 实施顺序与验收
+- 共享只读 mmap；
+- 每线程独立 decoder、统计和结果缓冲；
+- 无共享 `push_back` 锁；
+- 分区结果按 FID 顺序拼接；
+- 默认线程数不超过物理核心和 8；
+- 保留单线程模式用于回归与基准。
 
-建议拆成以下独立提交：
+### 3.6 输出模式
 
-1. `test: make spatial benchmark paths reproducible`：只修复基准路径、图层名和计时输出；
-2. `perf: add spatial query density baselines`：建立不同覆盖率的当前基线；
-3. `perf: add adaptive spatial query path`：实现候选密度自适应；
-4. `perf: stage bbox and exact geometry filtering`：实现分阶段过滤；
-5. `perf: batch geometry blob access`：在数据证明收益后优化 Blob 访问。
+支持：
 
-每一步必须同时验证：
+```cpp
+query_bbox_fids(...)
+query_bbox_visit(..., callback)
+query_bbox_count(...)
+query_bbox_bitmap(...)
+```
 
-- 与 GDAL 的 FID 集合一致；
-- 非法几何和 Hybrid fallback 计数不增加；
-- 小范围查询不出现回归；
-- 大范围查询记录总耗时和阶段耗时；
-- `git diff --check`、相关 CTest 和真实数据契约通过。
+与 GDAL 对比时双方必须完成相同工作；完整 FID 基准不能拿 count-only 路径进行不公平比较。
 
-## 5. 暂不实施的方向
+## 4. 实施阶段
 
-- 直接引入 R-tree 替换现有 `.spx` 解析；
-- 为追求速度绕过统一 `GeometryModel`；
-- 修改 FileGDB 原生空间索引格式；
-- 以单一缓存或 SIMD 优化替代候选密度分析；
-- 把当前受控数据结果外推为 35GB/5 亿级生产承诺。
+### Phase 0 — 基础设施（已完成代码）
 
-## 6. 关联证据
+- 可重复 1M/10M 覆盖率矩阵；
+- mmap Geometry Blob 零拷贝；
+- `.spx` 生命周期复用；
+- 候选密度指标；
+- 候选路径和顺序扫描路径；
+- 与 GDAL 完整 FID 集合对照。
 
+### Phase 1 — 三态 bbox 快速接受
+
+- 增加 `bbox_contained` 指标；
+- bbox 完全位于查询框内时直接输出 FID；
+- 只有边界候选调用精确谓词；
+- 新增高密度 Point/Polygon 正确性测试。
+
+### Phase 2 — Streaming Predicate
+
+- Point/MultiPoint；
+- Polyline；
+- Polygon；
+- 特殊几何 fallback；
+- 增加 `streaming_tested`、`model_fallback_tested` 指标。
+
+### Phase 3 — Geometry-only Scanner
+
+- 编译字段 skip plan；
+- 顺序访问 geometry blob；
+- 对比通用 `sequential_scan()` 结果；
+- 记录 row scan 和 predicate 独立耗时。
+
+### Phase 4 — 查询前规划器
+
+- 图层 extent/采样统计缓存；
+- 在 `.spx` 候选物化前选择路径；
+- 高覆盖率不分配数百万候选 vector；
+- 基准确定切换阈值。
+
+### Phase 5 — 并行扫描
+
+- 固定分区；
+- 线程本地结果；
+- 有序合并；
+- 单线程/多线程结果与 GDAL 一致。
+
+### Phase 6 — 性能验收
+
+至少覆盖：
+
+- 1M、10M 和可获得的 35GB 真实数据；
+- Point、Polyline、Polygon；
+- 1%、10%、30%、80%、100%；
+- 冷缓存和热缓存；
+- 单线程和默认并行；
+- 中位数、P95、峰值 RSS、CPU cycles、instructions、branch/cache misses。
+
+## 5. 正确性边界
+
+- `.spx` 只负责候选，不能代替最终判断；
+- bbox 完全被查询框包含时直接接受属于严格成立的空间相交结论；
+- bbox 仅部分相交时不得把 bbox 相交冒充真实几何相交；
+- 曲线、MultiPatch、非法几何继续走明确 fallback；
+- 保持 0-based FID、Z/M/ZM、holes、islands、multipart、反向 rings 和 Hybrid 行为；
+- 不修改 FileGDB 原生格式。
+
+## 6. 完成定义
+
+只有同时满足以下条件才可把本计划标记为完成：
+
+1. Linux、Windows Release 构建和相关 CTest 通过；
+2. 与 GDAL 的完整 FID 集合一致；
+3. 30%、80%、全范围达到第 1 节目标；
+4. 小范围查询无显著回归；
+5. 异常/复杂几何 fallback 测试通过；
+6. 实际性能数据写入证据文档；
+7. PR 不再是 Draft。
+
+在真实 10M 基准和跨平台 CI 完成前，不宣称已经超过 GDAL。
+
+## 7. 关联证据
+
+- [空间查询优化实施记录](../evidence/spatial-query-optimization-2026-07-13.md)
 - [最终等价与发布验收报告](13_fast-gdb最终等价与发布验收报告.md)
 - [性能基准与优化](../technical/01_性能基准与优化.md)
-- [fast-gdb 项目介绍与当前状态](../overview/01_fast-gdb项目介绍与当前状态.md)
 - [真实数据验收资料清单](13_fast-gdb真实数据验收资料清单.md)
