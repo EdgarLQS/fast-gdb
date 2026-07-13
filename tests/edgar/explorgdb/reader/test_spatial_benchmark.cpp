@@ -155,9 +155,9 @@ void print_header(const std::string& label, size_t feature_count) {
     std::printf("\n\n=== Spatial density benchmark: %s ===\n", label.c_str());
     std::printf("features=%zu layer=%s\n", feature_count, kLayerName);
     std::printf(
-        "%-18s %9s %9s %-31s %10s %10s %10s %10s %10s %10s\n",
+        "%-18s %9s %9s %-31s %10s %10s %10s %10s %10s %10s %10s\n",
         "case", "candidates", "ratio", "path", "fast_ms", "gdal_ms",
-        "spx_ms", "blob_ms", "bbox_ms", "exact_ms");
+        "spx_ms", "scan_ms", "blob_ms", "bbox_ms", "exact_ms");
 }
 
 void print_row(const BenchmarkCase& benchmark,
@@ -165,7 +165,7 @@ void print_row(const BenchmarkCase& benchmark,
                const TimedGdalResult& gdal) {
     const auto& metrics = fast.query.spatial_metrics;
     std::printf(
-        "%-18s %9zu %8.2f%% %-31s %10.1f %10.1f %10.1f %10.1f %10.1f %10.1f\n",
+        "%-18s %9zu %8.2f%% %-31s %10.1f %10.1f %10.1f %10.1f %10.1f %10.1f %10.1f\n",
         benchmark.name,
         metrics.candidate_count,
         metrics.candidate_ratio * 100.0,
@@ -173,18 +173,25 @@ void print_row(const BenchmarkCase& benchmark,
         fast.wall_ms,
         gdal.wall_ms,
         metrics.candidate_lookup_ms,
+        metrics.geometry_scan_ms,
         metrics.blob_lookup_ms,
         metrics.bbox_filter_ms,
         metrics.exact_filter_ms);
     std::printf(
-        "  funnel: candidate=%zu bbox_rejected=%zu exact_tested=%zu "
-        "invalid=%zu result=%zu target_coverage=%.0f%%\n",
+        "  funnel: candidate=%zu rejected=%zu contained=%zu exact=%zu "
+        "invalid=%zu result=%zu coverage_est=%.2f%% target=%.0f%% "
+        "spx_bypassed=%s geometry_only=%s fast/gdal=%.3f\n",
         metrics.candidate_count,
         metrics.bbox_rejected,
+        metrics.bbox_contained,
         metrics.exact_tested,
         metrics.invalid_geometries,
         fast.query.matched_fids.size(),
-        benchmark.target_coverage * 100.0);
+        metrics.estimated_coverage * 100.0,
+        benchmark.target_coverage * 100.0,
+        metrics.spx_bypassed ? "true" : "false",
+        metrics.geometry_only_scan ? "true" : "false",
+        gdal.wall_ms > 0.0 ? fast.wall_ms / gdal.wall_ms : 0.0);
 }
 
 void run_density_matrix(const fs::path& gdb_path,
@@ -197,7 +204,6 @@ void run_density_matrix(const fs::path& gdb_path,
     ASSERT_NE(engine, nullptr);
     ASSERT_NE(engine->table(), nullptr);
 
-    // Warm the parsed .spx descriptor and page cache before the hot-query matrix.
     engine->query_bbox_unified(-10.0, -10.0, -1.0, -1.0);
 
     print_header(label, engine->table()->feature_count());
@@ -211,6 +217,8 @@ void run_density_matrix(const fs::path& gdb_path,
         EXPECT_EQ(fast.query.spatial_metrics.invalid_geometries, 0u)
             << fast.query.fallback_reason;
         EXPECT_LE(fast.query.spatial_metrics.bbox_rejected,
+                  fast.query.spatial_metrics.feature_count);
+        EXPECT_LE(fast.query.spatial_metrics.bbox_contained,
                   fast.query.spatial_metrics.feature_count);
         EXPECT_LE(fast.query.spatial_metrics.exact_tested,
                   fast.query.spatial_metrics.feature_count);
