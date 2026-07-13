@@ -4,8 +4,8 @@
 **验收基线**：`a5b96523cb0fd26751383c1e099908d4e6f87be5`  
 **验收分支**：`agent/fix-pure-cpp-m-curves-release-gate`  
 **纯 C++ M 曲线代码门禁**：`93d1ccde38a523561642f37f42644f74e5a2347a`  
-**Draft/验收 PR**：#2  
-**跨平台 CI**：`geometry-correctness` run `29223404842`（run 78）  
+**验收 PR**：#2  
+**跨平台代码 CI**：`geometry-correctness` run `29223404842`（run 78）  
 **真实数据证据**：`docs/evidence/curve-polyline-m-real-acceptance-2026-07-13.md`
 
 ## 1. 最终结论
@@ -229,7 +229,9 @@ Hybrid 产品遵循：
 | GDAL 默认后端产品构建 | Success |
 | Linux ASan + UBSan + leak detection | Success |
 
-该 run 覆盖当前发布代码；随后提交只增加验收证据、更新报告和清理一次性验收工作流，不改变产品代码。
+该 run 覆盖当前发布代码。随后提交只增加验收证据、更新报告和清理一次性验收工作流，不改变产品代码。
+
+最终文档 head 触发的 run 92 在 GitHub 创建任何 step 之前统一失败：六个 job 的 steps 均为空，未执行 checkout、configure、build 或 test。该记录属于 Actions runner/provisioning 层异常，不能解释为代码或测试失败；已发起失败作业重跑。发布代码仍以 run 78 的完整六项绿灯和本轮真实数据 Release/sanitizer 验收为依据。
 
 ## 12. 支持范围
 
