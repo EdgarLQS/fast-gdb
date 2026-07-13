@@ -1,6 +1,6 @@
 # fast_gdb 文档索引
 
-本文档是 `docs/` 的分类入口。新读者先读总览；判断当前完成度先读规划状态索引和实施报告；迁移几何 API 时读 WKB/曲线迁移指南。
+本文档是 `docs/` 的分类入口。新读者先读总览；判断当前完成度先读规划状态索引、项目状态和最终验收报告；迁移几何 API 时读 WKB/曲线迁移指南。
 
 ## 总览
 
@@ -34,12 +34,11 @@
 | [00_规划文档状态索引.md](planning/00_规划文档状态索引.md) | 当前入口 | 权威文档顺序和原则 |
 | [01_项目状态与规划.md](planning/01_项目状态与规划.md) | 当前 | 项目总体状态、产品和发布边界 |
 | [02_GDAL功能对比矩阵.md](planning/02_GDAL功能对比矩阵.md) | 当前 | linear / hybrid / GDAL 实际能力差异 |
-| [08_fast-gdb只读发布收口.md](planning/08_fast-gdb只读发布收口.md) | v2 验收 | v2 只读历史证据 |
-| [10_fast-gdb几何正确性与曲线支持执行计划.md](planning/10_fast-gdb几何正确性与曲线支持执行计划.md) | 当前计划 | Polygon、WKB-first、曲线和双后端设计 |
-| [11_fast-gdb几何正确性与曲线支持实施报告.md](planning/11_fast-gdb几何正确性与曲线支持实施报告.md) | 当前实施 | 代码、自动化、兼容决策和真实数据门禁 |
+| [13_fast-gdb最终等价与发布验收报告.md](planning/13_fast-gdb最终等价与发布验收报告.md) | 当前证据 | 支持范围内的最终发布结论 |
+| [13_fast-gdb真实数据验收资料清单.md](planning/13_fast-gdb真实数据验收资料清单.md) | 当前模板 | 后续新增能力的真实数据验收要求 |
 | [11_fast-gdb替换GDAL矢量能力分析.md](planning/archive/11_fast-gdb替换GDAL矢量能力分析.md) | 架构参考 | fast-gdb 与 GDAL 双路径取舍 |
 
-`03`–`07`、旧 v3 计划和早期曲线分析属于历史背景；从 [planning/archive/README.md](planning/archive/README.md) 或状态索引进入，不再作为当前完成度来源。
+`03`–`12`、旧 v3 计划和阶段性曲线分析属于历史背景；从 [planning/archive/README.md](planning/archive/README.md) 或状态索引进入，不再作为当前完成度来源。
 
 ## 当前几何结论
 

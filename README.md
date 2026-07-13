@@ -126,7 +126,8 @@ FAST_GDB_REAL_DATASET="$PWD/test_data/gdb/test_spatial_gdb.gdb/test_spatial_gdb.
 ## 文档
 
 - `docs/overview/01_fast-gdb项目介绍与当前状态.md`
-- `docs/planning/10_fast-gdb几何正确性与曲线支持执行计划.md`
+- `docs/planning/00_规划文档状态索引.md`
+- `docs/planning/13_fast-gdb最终等价与发布验收报告.md`
 - `docs/usage/02_几何WKB曲线支持与迁移.md`
 - `docs/planning/02_GDAL功能对比矩阵.md`
 - `docs/technical/01_性能基准与优化.md`

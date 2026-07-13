@@ -237,7 +237,7 @@ packet-beta
 
 **注意**：字段顺序完全按字段描述符的顺序，不是固定「几何在前」或「几何在后」。FileGDB SDK 创建表时 Geometry 总是第一个字段描述符，所以实际中几何在记录中排第一位。ObjectId 不存储（隐式 = FID+1）。
 
-**记录之间没有预留空间** — 格式为 `[blob_len][data][blob_len][next data]...`，连续存储（[`filegdbtable.cpp:540`](../../../../../code/gdal/ogr/ogrsf_frmts/openfilegdb/filegdbtable.cpp#L540) `GuessFeatureLocations()`）。
+**记录之间没有预留空间** — 格式为 `[blob_len][data][blob_len][next data]...`，连续存储（[`filegdbtable.cpp:540`](https://github.com/OSGeo/gdal/blob/master/ogr/ogrsf_frmts/openfilegdb/filegdbtable.cpp#L540) `GuessFeatureLocations()`）。
 
 **源代码**：记录解析 → [`src/edgar/explorgdb/reader/gdb_table.cpp`](../../src/edgar/explorgdb/reader/gdb_table.cpp#L507) `GdbTableParser::read_record_by_fid()`
 
@@ -260,8 +260,8 @@ flowchart TD
 
 | 条件 | 行为 | 位置 |
 |------|------|------|
-| 新大小 <= 旧大小 | **原地覆写**，剩余空间清零 | [`filegdbtable_write.cpp:1926`](../../../../../code/gdal/ogr/ogrsf_frmts/openfilegdb/filegdbtable_write.cpp#L1926) |
-| 新大小 > 旧大小 + 有空闲 | **写空闲位置**，旧空间废弃 | [`filegdbtable_write.cpp:1960`](../../../../../code/gdal/ogr/ogrsf_frmts/openfilegdb/filegdbtable_write.cpp#L1960) |
+| 新大小 <= 旧大小 | **原地覆写**，剩余空间清零 | [`filegdbtable_write.cpp:1926`](https://github.com/OSGeo/gdal/blob/master/ogr/ogrsf_frmts/openfilegdb/filegdbtable_write.cpp#L1926) |
+| 新大小 > 旧大小 + 有空闲 | **写空闲位置**，旧空间废弃 | [`filegdbtable_write.cpp:1960`](https://github.com/OSGeo/gdal/blob/master/ogr/ogrsf_frmts/openfilegdb/filegdbtable_write.cpp#L1960) |
 | 新大小 > 旧大小 + 无空闲 | **追加到末尾**，旧空间废弃 | 同上 |
 
 即使只是修改几何从 10 个点到 100 万个点，如果新 blob 装不进旧位置，就废弃旧位置写到别处。`gdbtablx` 中的偏移更新为新位置。旧空间以后可能被其他大小匹配的要素复用。
@@ -282,7 +282,7 @@ flowchart TD
 
 **不重写时**：仅更新字段描述符区。新记录使用完整字段列表编码，旧记录解析时 bitmap 多出的 bit 自动解释为新字段 = null。
 
-**重写时**（`RewriteTableToAddLastAddedField()` → [`filegdbtable_write_fields.cpp:166`](../../../../../code/gdal/ogr/ogrsf_frmts/openfilegdb/filegdbtable_write_fields.cpp#L166)）：
+**重写时**（`RewriteTableToAddLastAddedField()` → [`filegdbtable_write_fields.cpp:166`](https://github.com/OSGeo/gdal/blob/master/ogr/ogrsf_frmts/openfilegdb/filegdbtable_write_fields.cpp#L166)）：
 
 1. 读取每条旧记录
 2. 在 nullable_bitmap 后追加 1 字节 `0xFF`（表示新字段为 null，如果 nullable）
@@ -432,7 +432,7 @@ flowchart LR
     TLX --> READ["读取端<br/>offset=0 → 跳过"]
 ```
 
-**GDAL DeleteFeature 执行步骤**（[`filegdbtable_write.cpp:2046`](../../../../../code/gdal/ogr/ogrsf_frmts/openfilegdb/filegdbtable_write.cpp#L2046)）：
+**GDAL DeleteFeature 执行步骤**（[`filegdbtable_write.cpp:2046`](https://github.com/OSGeo/gdal/blob/master/ogr/ogrsf_frmts/openfilegdb/filegdbtable_write.cpp#L2046)）：
 
 | 步骤 | 操作 | 位置 |
 |------|------|------|
@@ -457,7 +457,7 @@ flowchart TD
     APPEND --> DONE
 ```
 
-**GDAL CreateFeature 关键逻辑**（[`filegdbtable_write.cpp:1790`](../../../../../code/gdal/ogr/ogrsf_frmts/openfilegdb/filegdbtable_write.cpp#L1790)）：
+**GDAL CreateFeature 关键逻辑**（[`filegdbtable_write.cpp:1790`](https://github.com/OSGeo/gdal/blob/master/ogr/ogrsf_frmts/openfilegdb/filegdbtable_write.cpp#L1790)）：
 
 - 自动分配：**新 FID = totalRecordCount + 1**（不是 validRecordCount + 1）
 - **已删除的 FID 不会被自动复用**
@@ -519,7 +519,7 @@ explorgdb 中所有读取路径统一处理 offset=0：
 
 Geometry 编码后直接嵌入到同一 `m_abyBuffer` 中，**没有独立的几何存储文件**。这意味着空间复用受记录大小匹配度的限制。
 
-**GDAL 的 Best-Fit 空间分配算法**（[`filegdbtable_freelist.cpp:329`](../../../../../code/gdal/ogr/ogrsf_frmts/openfilegdb/filegdbtable_freelist.cpp#L329)）：
+**GDAL 的 Best-Fit 空间分配算法**（[`filegdbtable_freelist.cpp:329`](https://github.com/OSGeo/gdal/blob/master/ogr/ogrsf_frmts/openfilegdb/filegdbtable_freelist.cpp#L329)）：
 
 ```mermaid
 flowchart TD

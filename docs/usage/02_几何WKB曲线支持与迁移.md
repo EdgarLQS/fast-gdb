@@ -266,15 +266,17 @@ Polygon 判断遵循：
 
 ## 11. 发布检查清单
 
-- [ ] 三平台纯 C++ 编译和测试通过；
-- [ ] Linux GDAL Hybrid 编译和测试通过；
-- [ ] GDAL 默认后端单独构建通过；
-- [ ] ASan/UBSan 通过；
+- [x] 三平台纯 C++ 编译和测试通过；
+- [x] Linux GDAL Hybrid 编译和测试通过；
+- [x] GDAL 默认后端单独构建通过；
+- [x] ASan/UBSan/LSan 通过；
 - [x] 普通真实 FileGDB 回归通过；
 - [x] 仓库真实 CircularArc 样本与 GDAL 类型、bbox、长度对比；
-- [ ] ArcGIS Pro 原生 Bezier/Ellipse/ZM/曲线 Polygon 样本与 GDAL 对比；
-- [ ] ObjectID/GDAL FID 映射抽样通过；
-- [ ] Polygon 数量、洞数量、面积、bbox 和点包含结果对比；
-- [ ] 性能基线记录普通几何和曲线数据；
+- [x] ArcGIS Pro 原生 Bezier/Ellipse/ZM/曲线 Polygon 样本与 GDAL 对比；
+- [x] ObjectID/GDAL FID 映射抽样通过；
+- [x] Polygon 数量、洞数量、面积、bbox 和点包含结果对比；
+- [x] 受控性能基线记录普通几何和曲线数据；
 - [ ] WKT 调用方已登记迁移计划；
-- [ ] MultiPatch 降级能力在发布说明中明确。
+- [x] MultiPatch 降级能力在发布说明中明确。
+
+本清单的通过项仅表示当前支持范围内的发布证据。35GB/5 亿级真实数据的读取、过滤重写、追加和索引构建耗时仍需单独实测；原生 curve WKB、MultiPatch 完整表面拓扑和未知/未来编码不因本清单通过而获得支持。

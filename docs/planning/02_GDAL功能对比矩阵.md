@@ -1,8 +1,8 @@
 # 02 — fast-gdb / GDAL 功能对比矩阵
 
-**更新日期**：2026-07-11  
+**更新日期**：2026-07-13
 **文档状态**：当前权威能力矩阵  
-**对比对象**：`fast_gdb_linear`、`fast_gdb_hybrid` 与 GDAL OpenFileGDB 只读能力
+**对比对象**：`fast_gdb_linear`、`fast_gdb_hybrid`、`explorgdb writer` 与 GDAL OpenFileGDB 能力
 
 ## 1. 状态约定
 
@@ -176,7 +176,7 @@ WKT 兼容接口保留至少一个稳定大版本；正式性能和互操作契�
 - 截断前缀和确定性随机垃圾输入；
 - Polygon、WKB、空间过滤和曲线合成契约。
 
-真实数据（2026-07-13 阶段性验收）：
+真实数据（2026-07-13 当前验收）：
 
 - 仓库普通 FileGDB 样本用于常规读取 release contract；
 - 早期版本的 `testcurve.gdb` 曾提供 25 个图层、54 个要素；当前最新版本已扩展为 44 个图层、
@@ -190,12 +190,26 @@ WKT 兼容接口保留至少一个稳定大版本；正式性能和互操作契�
   本机 fast-gdb/GDAL 计数一致；
 - 当前数据的 CircularArc 内置 WKB-first 和曲线显式失败契约已通过；
 - Bezier 样本在 GDAL 中展示为已线性化 `MULTILINESTRING`，原生来源已确认来自 ArcGIS Pro 3.5；
-  本地 Hybrid 逐要素类型、维度、bbox、长度/面积和空间对照已通过，纯 C++ M 曲线仍有编码边界；
+  支持范围内的 Hybrid 和纯 C++ M 曲线逐要素对照已通过；
 - 曲线 Polygon 的面积、点包含、空间查询和 FID 间断 Hybrid 映射本地专项已通过；
-- 非空 MultiPatch 样本已经存在且 degraded 行为已通过，但其 part type/完整表面拓扑、纯 C++ M 曲线编码边界、远端 CI 和 ArcGIS/GDAL 全量等价验证仍未完成；
-- 因此当前只能声明“第一轮真实数据验收完成”，不能声明 ArcGIS/GDAL 全量等价验收完成。
+- 非空 MultiPatch 样本已经存在且 degraded 行为已通过；其 part type/完整表面拓扑仍明确不在当前支持范围；
+- 当前可以声明支持范围内的发布验收完成，但不能扩展为所有 ArcGIS 几何类型的全量等价。
+
+## 9. Writer 能力边界
+
+| 能力 | 当前状态 | 说明 |
+|---|:---:|---|
+| 已有数据表二进制追加 | ✅ | `GdbTableWriter::open_existing()` 追加主数据表记录 |
+| 批量行缓冲写入 | ✅ | 适合顺序批量追加，绕过逐条 GDAL `CreateFeature()` |
+| 源 GDB 读取与过滤 | ✅/⚠️ | Reader 可提供扫描、FID、属性和空间查询；端到端工具流程仍需调用方编排 |
+| 原地删除要素 | ❌ | 当前 writer 没有生产级要素删除、freelist 和删除标记维护接口 |
+| 完整系统表同步 | ⚠️ | 主数据和 `.gdbtablx` 更新不等于完整 FileGDB 编辑兼容 |
+| 追加后的 `.spx/.atx` 同步 | ⚠️ | 需要单独构建/重建并验证，不能假设逐条追加自动完成 |
+| 全量过滤重写 | 🧪 | 可由 Reader 顺序读取 + 新 GDB 批量写入实现，35GB/5 亿级数据必须真实基准验证 |
+
+因此，`explorgdb writer` 当前应描述为高性能追加/直写组件，不应描述为 GDAL/ArcGIS 完整编辑替代品。对于“过滤删除后追加”场景，生产流程应优先考虑新 GDB 全量重写，完成后统一构建索引并做 GDAL/ArcGIS 交叉验证。
 
 详细迁移、FID 和发布检查见：
 
 - `docs/usage/02_几何WKB曲线支持与迁移.md`
-- `docs/planning/10_fast-gdb几何正确性与曲线支持执行计划.md`
+- `docs/planning/13_fast-gdb最终等价与发布验收报告.md`
