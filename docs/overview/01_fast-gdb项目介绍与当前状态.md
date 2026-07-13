@@ -29,7 +29,7 @@ fast-gdb 是一个围绕 ESRI File Geodatabase（`.gdb`）的 C++ 项目，目�
 | `fast_gdb_linear` | 无 GDAL 运行时依赖 | 轻量部署、批量读取、纯 C++ 几何处理 | 支持范围内已完成发布验收 |
 | `fast_gdb_hybrid` | GDAL | fast-gdb 主路径 + 曲线/复杂拓扑回退 | 支持范围内已完成发布验收 |
 | `usegdal` | GDAL | Datasource/Dataset/Recordset 高层 API 和教程组件 | 已完成既定 Phase 1A-3 |
-| `explorgdb reader` | C++17 | FileGDB 二进制解析、索引、查询和几何输出 | 核心能力已完成，复杂真实数据持续验收 |
+| `explorgdb reader` | C++17 | FileGDB 二进制解析、索引、查询和几何输出 | 支持范围内已完成验收；新增类型需单独补证据 |
 | `explorgdb writer` | C++17；索引助手可选依赖 GDAL | 主数据表二进制追加/直写 | 部分完成；完整编辑和系统表同步未完成 |
 
 ### 能力状态说明
@@ -168,7 +168,7 @@ FAST_GDB_RUN_10M_BENCHMARKS=1 ./build-linear/bin/gdb_tutorial_test_runner \
 
 | 验收项 | 状态 | 当前结论 |
 |---|:---:|---|
-| macOS 纯 C++ / Hybrid 本地 CTest | 已完成 | 实施报告记录过 `455/455` 通过的串行结果 |
+| macOS 纯 C++ / Hybrid 本地 CTest | 已完成 | 最终验收报告记录支持范围内的完整通过结果 |
 | ASan/UBSan/LSan 和跨平台产品门禁 | 已完成 | 最终验收报告记录支持范围内的通过结果 |
 | 普通真实 FileGDB | 已完成 | release contract 已通过 |
 | 两份真实曲线数据 | 已完成 | 支持范围内的结构、曲线状态、WKB-first 和 GDAL 对照已通过 |
@@ -181,7 +181,7 @@ FAST_GDB_RUN_10M_BENCHMARKS=1 ./build-linear/bin/gdb_tutorial_test_runner \
 
 ## 8. 后续路线
 
-1. **短期**：补齐 ArcGIS 原生曲线、复杂 Polygon、FID 映射、Z/M/ZM 和真实性能数据。
+1. **短期**：维护现有支持范围，新增 ArcGIS 原生曲线、复杂 Polygon、FID 映射、Z/M/ZM 能力时同步补充证据。
 2. **中期**：为 35GB/5 亿级数据建立真实读取、全量重写、索引构建和内存/磁盘基线。
 3. **专项能力**：单独推进非空 MultiPatch、Writer 系统表同步和更完整的写入兼容性。
 4. **长期**：根据实际使用需求评估 SQL、Raster 或其他 OGR 兼容能力，不在当前 Reader 范围内提前承诺。
