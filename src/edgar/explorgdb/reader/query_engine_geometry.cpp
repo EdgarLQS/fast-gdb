@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
+#include <string>
 
 namespace explorgdb {
 namespace {
@@ -16,6 +17,13 @@ using SpatialClock = std::chrono::steady_clock;
 double elapsed_ms(SpatialClock::time_point start) {
     return std::chrono::duration<double, std::milli>(
         SpatialClock::now() - start).count();
+}
+
+bool env_flag_enabled(const char* name) {
+    const char* value = std::getenv(name);
+    return value != nullptr &&
+           (std::string(value) == "1" || std::string(value) == "true" ||
+            std::string(value) == "TRUE");
 }
 
 double sequential_density_threshold() {
@@ -44,6 +52,8 @@ QueryResult QueryEngine::query_bbox_unified(
     double xmin, double ymin, double xmax, double ymax) {
     QueryResult result;
     const auto total_start = SpatialClock::now();
+    const bool profile_stages =
+        env_flag_enabled("FAST_GDB_SPATIAL_PROFILE");
     if (!parser_) {
         result.execution_path = "bbox:model:unavailable";
         result.fallback_reason = "table not open";
@@ -158,9 +168,14 @@ QueryResult QueryEngine::query_bbox_unified(
             return;
         }
 
-        const auto bbox_start = SpatialClock::now();
-        const auto bounds = decoder.peek_bbox(blob, blob_size);
-        result.spatial_metrics.bbox_filter_ms += elapsed_ms(bbox_start);
+        std::optional<GdbBbox> bounds;
+        if (profile_stages) {
+            const auto bbox_start = SpatialClock::now();
+            bounds = decoder.peek_bbox(blob, blob_size);
+            result.spatial_metrics.bbox_filter_ms += elapsed_ms(bbox_start);
+        } else {
+            bounds = decoder.peek_bbox(blob, blob_size);
+        }
         if (bounds.has_value() &&
             bbox_disjoint(*bounds, xmin, ymin, xmax, ymax)) {
             ++result.spatial_metrics.bbox_rejected;
@@ -168,17 +183,23 @@ QueryResult QueryEngine::query_bbox_unified(
         }
 
         ++result.spatial_metrics.exact_tested;
-        const auto exact_start = SpatialClock::now();
+        const auto exact_start = profile_stages
+            ? SpatialClock::now()
+            : SpatialClock::time_point{};
         GeometryModel model = decoder.decode_model(blob, blob_size);
         if (!model.valid()) {
-            result.spatial_metrics.exact_filter_ms += elapsed_ms(exact_start);
+            if (profile_stages)
+                result.spatial_metrics.exact_filter_ms +=
+                    elapsed_ms(exact_start);
             ++result.spatial_metrics.invalid_geometries;
             return;
         }
 
         const long double scale = model.transform.xy_scale;
         if (scale == 0.0L) {
-            result.spatial_metrics.exact_filter_ms += elapsed_ms(exact_start);
+            if (profile_stages)
+                result.spatial_metrics.exact_filter_ms +=
+                    elapsed_ms(exact_start);
             ++result.spatial_metrics.invalid_geometries;
             return;
         }
@@ -195,12 +216,15 @@ QueryResult QueryEngine::query_bbox_unified(
             !std::isfinite(static_cast<double>(query.ymin)) ||
             !std::isfinite(static_cast<double>(query.xmax)) ||
             !std::isfinite(static_cast<double>(query.ymax))) {
-            result.spatial_metrics.exact_filter_ms += elapsed_ms(exact_start);
+            if (profile_stages)
+                result.spatial_metrics.exact_filter_ms +=
+                    elapsed_ms(exact_start);
             ++result.spatial_metrics.invalid_geometries;
             return;
         }
         const bool intersects = SpatialPredicate::intersects_bbox(model, query);
-        result.spatial_metrics.exact_filter_ms += elapsed_ms(exact_start);
+        if (profile_stages)
+            result.spatial_metrics.exact_filter_ms += elapsed_ms(exact_start);
         if (intersects)
             result.matched_fids.push_back(fid);
     };
@@ -209,10 +233,15 @@ QueryResult QueryEngine::query_bbox_unified(
         for (uint32_t fid : candidates) {
             const uint8_t* blob = nullptr;
             size_t blob_size = 0;
-            const auto blob_start = SpatialClock::now();
-            const bool located =
-                parser_->peek_geometry_blob(fid, blob, blob_size);
-            result.spatial_metrics.blob_lookup_ms += elapsed_ms(blob_start);
+            bool located = false;
+            if (profile_stages) {
+                const auto blob_start = SpatialClock::now();
+                located = parser_->peek_geometry_blob(fid, blob, blob_size);
+                result.spatial_metrics.blob_lookup_ms +=
+                    elapsed_ms(blob_start);
+            } else {
+                located = parser_->peek_geometry_blob(fid, blob, blob_size);
+            }
             if (!located) {
                 ++result.spatial_metrics.invalid_geometries;
                 continue;
