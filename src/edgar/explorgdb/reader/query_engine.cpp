@@ -1,13 +1,13 @@
 #include "query_engine.h"
 #include "catalog_resolver.h"
 #include "gdb_geometry.h"
-#include "gdb_spatial_index.h"
 #include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <unordered_map>
+#include <utility>
 
 namespace explorgdb {
 namespace {
@@ -61,7 +61,9 @@ struct WhereExpr {
 
 std::string lower_copy(std::string value) {
     std::transform(value.begin(), value.end(), value.begin(),
-                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                   [](unsigned char c) {
+                       return static_cast<char>(std::tolower(c));
+                   });
     return value;
 }
 
@@ -71,10 +73,12 @@ bool parse_numeric_literal(const std::string& text, double& value) {
     return end_ptr != nullptr && *end_ptr == '\0';
 }
 
-std::vector<WhereToken> tokenize_where_clause(const std::string& where_clause) {
+std::vector<WhereToken> tokenize_where_clause(
+    const std::string& where_clause) {
     std::vector<WhereToken> tokens;
     for (size_t i = 0; i < where_clause.size();) {
-        const unsigned char ch = static_cast<unsigned char>(where_clause[i]);
+        const unsigned char ch =
+            static_cast<unsigned char>(where_clause[i]);
         if (std::isspace(ch)) {
             ++i;
             continue;
@@ -96,47 +100,89 @@ std::vector<WhereToken> tokenize_where_clause(const std::string& where_clause) {
         }
         if (where_clause[i] == '\'') {
             size_t end = i + 1;
-            while (end < where_clause.size() && where_clause[end] != '\'') ++end;
+            while (end < where_clause.size() &&
+                   where_clause[end] != '\'') {
+                ++end;
+            }
             if (end >= where_clause.size()) return {};
-            tokens.push_back({WhereTokenKind::String, where_clause.substr(i + 1, end - i - 1)});
+            tokens.push_back({
+                WhereTokenKind::String,
+                where_clause.substr(i + 1, end - i - 1)});
             i = end + 1;
             continue;
         }
         if (i + 1 < where_clause.size()) {
             const std::string two = where_clause.substr(i, 2);
-            if (two == "!=") { tokens.push_back({WhereTokenKind::OpNe, two}); i += 2; continue; }
-            if (two == ">=") { tokens.push_back({WhereTokenKind::OpGe, two}); i += 2; continue; }
-            if (two == "<=") { tokens.push_back({WhereTokenKind::OpLe, two}); i += 2; continue; }
+            if (two == "!=") {
+                tokens.push_back({WhereTokenKind::OpNe, two});
+                i += 2;
+                continue;
+            }
+            if (two == ">=") {
+                tokens.push_back({WhereTokenKind::OpGe, two});
+                i += 2;
+                continue;
+            }
+            if (two == "<=") {
+                tokens.push_back({WhereTokenKind::OpLe, two});
+                i += 2;
+                continue;
+            }
         }
-        if (where_clause[i] == '=') { tokens.push_back({WhereTokenKind::OpEq, "="}); ++i; continue; }
-        if (where_clause[i] == '>') { tokens.push_back({WhereTokenKind::OpGt, ">"}); ++i; continue; }
-        if (where_clause[i] == '<') { tokens.push_back({WhereTokenKind::OpLt, "<"}); ++i; continue; }
+        if (where_clause[i] == '=') {
+            tokens.push_back({WhereTokenKind::OpEq, "="});
+            ++i;
+            continue;
+        }
+        if (where_clause[i] == '>') {
+            tokens.push_back({WhereTokenKind::OpGt, ">"});
+            ++i;
+            continue;
+        }
+        if (where_clause[i] == '<') {
+            tokens.push_back({WhereTokenKind::OpLt, "<"});
+            ++i;
+            continue;
+        }
 
         if (std::isalpha(ch) || where_clause[i] == '_') {
             size_t end = i + 1;
             while (end < where_clause.size()) {
-                const unsigned char next = static_cast<unsigned char>(where_clause[end]);
+                const unsigned char next =
+                    static_cast<unsigned char>(where_clause[end]);
                 if (!std::isalnum(next) && where_clause[end] != '_') break;
                 ++end;
             }
             const std::string text = where_clause.substr(i, end - i);
             const std::string lowered = lower_copy(text);
-            if (lowered == "and") tokens.push_back({WhereTokenKind::KeywordAnd, text});
-            else if (lowered == "or") tokens.push_back({WhereTokenKind::KeywordOr, text});
-            else if (lowered == "in") tokens.push_back({WhereTokenKind::KeywordIn, text});
-            else tokens.push_back({WhereTokenKind::Identifier, text});
+            if (lowered == "and")
+                tokens.push_back({WhereTokenKind::KeywordAnd, text});
+            else if (lowered == "or")
+                tokens.push_back({WhereTokenKind::KeywordOr, text});
+            else if (lowered == "in")
+                tokens.push_back({WhereTokenKind::KeywordIn, text});
+            else
+                tokens.push_back({WhereTokenKind::Identifier, text});
             i = end;
             continue;
         }
 
-        if (std::isdigit(ch) || where_clause[i] == '-' || where_clause[i] == '+') {
+        if (std::isdigit(ch) || where_clause[i] == '-' ||
+            where_clause[i] == '+') {
             size_t end = i + 1;
             while (end < where_clause.size()) {
-                const unsigned char next = static_cast<unsigned char>(where_clause[end]);
-                if (!std::isdigit(next) && where_clause[end] != '.') break;
+                const unsigned char next =
+                    static_cast<unsigned char>(where_clause[end]);
+                if (!std::isdigit(next) && where_clause[end] != '.' &&
+                    where_clause[end] != 'e' && where_clause[end] != 'E' &&
+                    where_clause[end] != '+' && where_clause[end] != '-') {
+                    break;
+                }
                 ++end;
             }
-            tokens.push_back({WhereTokenKind::Number, where_clause.substr(i, end - i)});
+            tokens.push_back({
+                WhereTokenKind::Number,
+                where_clause.substr(i, end - i)});
             i = end;
             continue;
         }
@@ -149,16 +195,19 @@ std::vector<WhereToken> tokenize_where_clause(const std::string& where_clause) {
 
 class WhereParser {
 public:
-    explicit WhereParser(const std::vector<WhereToken>& tokens) : tokens_(tokens) {}
+    explicit WhereParser(const std::vector<WhereToken>& tokens)
+        : tokens_(tokens) {}
 
     std::unique_ptr<WhereExpr> parse() {
         auto expr = parse_or();
-        if (!expr || current().kind != WhereTokenKind::End) return nullptr;
+        if (!expr || current().kind != WhereTokenKind::End)
+            return nullptr;
         return expr;
     }
 
 private:
     const WhereToken& current() const { return tokens_[index_]; }
+
     bool match(WhereTokenKind kind) {
         if (current().kind != kind) return false;
         ++index_;
@@ -256,7 +305,10 @@ private:
         }
         if (current().kind == WhereTokenKind::Number) {
             literal.is_string = false;
-            if (!parse_numeric_literal(current().text, literal.numeric_value)) return false;
+            if (!parse_numeric_literal(
+                    current().text, literal.numeric_value)) {
+                return false;
+            }
             ++index_;
             return true;
         }
@@ -279,7 +331,9 @@ bool compare_numeric(double lhs, double rhs, AttrOp op) {
     return false;
 }
 
-bool compare_string(const std::string& lhs, const std::string& rhs, AttrOp op) {
+bool compare_string(const std::string& lhs,
+                    const std::string& rhs,
+                    AttrOp op) {
     switch (op) {
     case AttrOp::Eq: return lhs == rhs;
     case AttrOp::Ne: return lhs != rhs;
@@ -331,8 +385,9 @@ bool field_ref_as_string(const FieldRef& value, std::string& out) {
     }
 }
 
-bool validate_where_fields(const WhereExpr& expr,
-                           const std::unordered_map<std::string, size_t>& field_index_by_name) {
+bool validate_where_fields(
+    const WhereExpr& expr,
+    const std::unordered_map<std::string, size_t>& field_index_by_name) {
     switch (expr.kind) {
     case WhereExprKind::And:
     case WhereExprKind::Or:
@@ -341,12 +396,15 @@ bool validate_where_fields(const WhereExpr& expr,
                validate_where_fields(*expr.right, field_index_by_name);
     case WhereExprKind::Comparison:
     case WhereExprKind::InList:
-        return field_index_by_name.find(lower_copy(expr.field_name)) != field_index_by_name.end();
+        return field_index_by_name.find(lower_copy(expr.field_name)) !=
+               field_index_by_name.end();
     }
     return false;
 }
 
-bool evaluate_literal(const FieldRef& value, const WhereLiteral& literal, AttrOp op) {
+bool evaluate_literal(const FieldRef& value,
+                      const WhereLiteral& literal,
+                      AttrOp op) {
     if (literal.is_string) {
         std::string actual;
         return field_ref_as_string(value, actual) &&
@@ -357,29 +415,43 @@ bool evaluate_literal(const FieldRef& value, const WhereLiteral& literal, AttrOp
            compare_numeric(actual, literal.numeric_value, op);
 }
 
-bool evaluate_where_expr(const WhereExpr& expr,
-                         const FieldRef* fields,
-                         int field_count,
-                         const std::unordered_map<std::string, size_t>& field_index_by_name) {
+bool evaluate_where_expr(
+    const WhereExpr& expr,
+    const FieldRef* fields,
+    int field_count,
+    const std::unordered_map<std::string, size_t>& field_index_by_name) {
     switch (expr.kind) {
     case WhereExprKind::And:
         return expr.left && expr.right &&
-               evaluate_where_expr(*expr.left, fields, field_count, field_index_by_name) &&
-               evaluate_where_expr(*expr.right, fields, field_count, field_index_by_name);
+               evaluate_where_expr(
+                   *expr.left, fields, field_count, field_index_by_name) &&
+               evaluate_where_expr(
+                   *expr.right, fields, field_count, field_index_by_name);
     case WhereExprKind::Or:
         return expr.left && expr.right &&
-               (evaluate_where_expr(*expr.left, fields, field_count, field_index_by_name) ||
-                evaluate_where_expr(*expr.right, fields, field_count, field_index_by_name));
+               (evaluate_where_expr(
+                    *expr.left, fields, field_count, field_index_by_name) ||
+                evaluate_where_expr(
+                    *expr.right, fields, field_count, field_index_by_name));
     case WhereExprKind::Comparison: {
-        const auto it = field_index_by_name.find(lower_copy(expr.field_name));
-        if (it == field_index_by_name.end() || it->second >= static_cast<size_t>(field_count)) return false;
-        return evaluate_literal(fields[it->second], expr.literal, expr.op);
+        const auto it =
+            field_index_by_name.find(lower_copy(expr.field_name));
+        return it != field_index_by_name.end() &&
+               it->second < static_cast<size_t>(field_count) &&
+               evaluate_literal(fields[it->second], expr.literal, expr.op);
     }
     case WhereExprKind::InList: {
-        const auto it = field_index_by_name.find(lower_copy(expr.field_name));
-        if (it == field_index_by_name.end() || it->second >= static_cast<size_t>(field_count)) return false;
+        const auto it =
+            field_index_by_name.find(lower_copy(expr.field_name));
+        if (it == field_index_by_name.end() ||
+            it->second >= static_cast<size_t>(field_count)) {
+            return false;
+        }
         for (const auto& literal : expr.literals) {
-            if (evaluate_literal(fields[it->second], literal, AttrOp::Eq)) return true;
+            if (evaluate_literal(
+                    fields[it->second], literal, AttrOp::Eq)) {
+                return true;
+            }
         }
         return false;
     }
@@ -389,11 +461,13 @@ bool evaluate_where_expr(const WhereExpr& expr,
 
 } // namespace
 
-QueryEngine::QueryEngine(const GdbCatalog& catalog, const ResolvedTable& table)
+QueryEngine::QueryEngine(const GdbCatalog& catalog,
+                         const ResolvedTable& table)
     : catalog_(catalog), resolved_(table) {}
 
 bool QueryEngine::open() {
-    if (resolved_.table_path.empty() || resolved_.tablx_path.empty()) return false;
+    if (resolved_.table_path.empty() || resolved_.tablx_path.empty())
+        return false;
     parser_ = std::make_unique<GdbTableParser>(resolved_.table_path);
     if (!parser_->open() || !parser_->load_tablx(resolved_.tablx_path)) {
         parser_.reset();
@@ -402,7 +476,8 @@ bool QueryEngine::open() {
 
     CatalogResolver resolver(catalog_);
     resolver.load();
-    capabilities_ = CapabilityReport::inspect(catalog_, resolver, resolved_.id, *parser_);
+    capabilities_ = CapabilityReport::inspect(
+        catalog_, resolver, resolved_.id, *parser_);
     return capabilities_.can_read_layer();
 }
 
@@ -451,10 +526,11 @@ QueryResult QueryEngine::query_sequential_scan() const {
         result.fallback_reason = "table not open";
         return result;
     }
-    parser_->sequential_scan([&](uint32_t fid, const FieldRef*, int) {
-        result.matched_fids.push_back(fid);
-        return true;
-    });
+    parser_->sequential_scan(
+        [&](uint32_t fid, const FieldRef*, int) {
+            result.matched_fids.push_back(fid);
+            return true;
+        });
     return result;
 }
 
@@ -466,9 +542,11 @@ const FieldDescriptor* QueryEngine::geometry_field() const {
     return nullptr;
 }
 
-bool QueryEngine::feature_intersects(uint32_t fid, double xmin, double ymin,
-                                     double xmax, double ymax,
-                                     bool* skipped_unsupported_curve) {
+bool QueryEngine::feature_intersects(
+    uint32_t fid,
+    double xmin, double ymin,
+    double xmax, double ymax,
+    bool* skipped_unsupported_curve) {
     const auto* geom_field = geometry_field();
     if (!geom_field || !parser_) return false;
 
@@ -476,136 +554,88 @@ bool QueryEngine::feature_intersects(uint32_t fid, double xmin, double ymin,
     size_t size = 0;
     if (!parser_->peek_geometry_blob(fid, blob, size)) return false;
 
-    const bool has_z = ((parser_->header().geom_type_full >> 31U) & 1U) != 0;
-    const bool has_m = ((parser_->header().geom_type_full >> 30U) & 1U) != 0;
-    GdbGeomDecoder decoder(geom_field->xorig, geom_field->yorig, geom_field->xyscale,
-                           geom_field->zorig, geom_field->zscale,
-                           geom_field->morig, geom_field->mscale,
-                           has_z, has_m);
+    const bool has_z =
+        ((parser_->header().geom_type_full >> 24U) & (1U << 7U)) != 0;
+    const bool has_m =
+        ((parser_->header().geom_type_full >> 24U) & (1U << 6U)) != 0;
+    GdbGeomDecoder decoder(
+        geom_field->xorig, geom_field->yorig, geom_field->xyscale,
+        geom_field->zorig, geom_field->zscale,
+        geom_field->morig, geom_field->mscale,
+        has_z, has_m);
     if (decoder.has_unsupported_curve_geometry(blob, size)) {
-        if (skipped_unsupported_curve != nullptr) *skipped_unsupported_curve = true;
+        if (skipped_unsupported_curve != nullptr)
+            *skipped_unsupported_curve = true;
         return false;
     }
-    return decoder.intersects_with_peek(blob, size, xmin, ymin, xmax, ymax);
+    return decoder.intersects_with_peek(
+        blob, size, xmin, ymin, xmax, ymax);
 }
 
-std::vector<uint32_t> QueryEngine::query_bbox(double xmin, double ymin,
-                                              double xmax, double ymax,
-                                              bool* skipped_unsupported_curve) {
-    std::vector<uint32_t> candidates;
-    // isfinite via fpclassify — portable across libstdc++ versions
-    auto port_isfinite = [](double v) {
-        return std::fpclassify(v) != FP_INFINITE && std::fpclassify(v) != FP_NAN;
-    };
-    if (!port_isfinite(xmin) || !port_isfinite(ymin) ||
-        !port_isfinite(xmax) || !port_isfinite(ymax) ||
-        xmin > xmax || ymin > ymax)
-        return candidates;
-    const auto* geom_field = geometry_field();
-    if (!parser_ || !geom_field) return candidates;
-
-    const auto* spx = catalog_.find_spx(resolved_.id);
-    bool spx_parse_ok = false;
-    if (spx) {
-        GdbSpatialIndexParser index(catalog_.path() + "/" + spx->filename);
-        spx_parse_ok = index.parse();
-        if (spx_parse_ok) {
-            candidates = index.query_bbox(xmin, ymin, xmax, ymax,
-                                          geom_field->xorig, geom_field->yorig,
-                                          geom_field->xyscale, geom_field->grid_sizes,
-                                          static_cast<uint32_t>(parser_->feature_count()));
-        } else {
-            capabilities_.spatial_index = {
-                CapabilityState::Degraded,
-                ".spx exists but could not be parsed; falling back to sequential scan"
-            };
-        }
-    }
-
-    // A valid index is allowed to return an empty candidate set. Only a missing or
-    // unparseable index triggers a full scan; otherwise empty means "no matches".
-    if (!spx || !spx_parse_ok) {
-        candidates.reserve(parser_->feature_count());
-        for (uint32_t fid = 0; fid < parser_->feature_count(); ++fid)
-            candidates.push_back(fid);
-    }
-
-    std::vector<uint32_t> result;
-    result.reserve(candidates.size());
-    for (uint32_t fid : candidates) {
-        if (feature_intersects(fid, xmin, ymin, xmax, ymax, skipped_unsupported_curve)) {
-            result.push_back(fid);
-        }
-    }
-    std::sort(result.begin(), result.end());
-    result.erase(std::unique(result.begin(), result.end()), result.end());
-    return result;
+std::vector<uint32_t> QueryEngine::query_bbox(
+    double xmin, double ymin,
+    double xmax, double ymax,
+    bool* skipped_unsupported_curve) {
+    if (skipped_unsupported_curve != nullptr)
+        *skipped_unsupported_curve = false;
+    return query_bbox_unified(
+        xmin, ymin, xmax, ymax).matched_fids;
 }
 
 QueryResult QueryEngine::query_spatial(const QueryRequest& request) {
-    QueryResult result;
-    if (!parser_) {
-        result.execution_path = "bbox:unavailable";
-        result.fallback_reason = "table not open";
-        return result;
-    }
-    auto port_isfinite = [](double v) {
-        return std::fpclassify(v) != FP_INFINITE && std::fpclassify(v) != FP_NAN;
-    };
-    if (!port_isfinite(request.xmin) || !port_isfinite(request.ymin) ||
-        !port_isfinite(request.xmax) || !port_isfinite(request.ymax) ||
-        request.xmin > request.xmax || request.ymin > request.ymax) {
+    QueryResult result = query_bbox_unified(
+        request.xmin, request.ymin,
+        request.xmax, request.ymax);
+    if (result.execution_path == "bbox:model:invalid")
         result.execution_path = "bbox:invalid";
-        result.fallback_reason = "invalid query bbox";
-        return result;
-    }
-
-    const auto* spx = catalog_.find_spx(resolved_.id);
-    result.execution_path = (spx != nullptr) ? "bbox:spx" : "bbox:sequential";
-    bool skipped_unsupported_curve = false;
-    result.matched_fids = query_bbox(request.xmin, request.ymin, request.xmax, request.ymax,
-                                     &skipped_unsupported_curve);
-    if (!spx) {
-        result.fallback_reason = "spatial index missing; sequential scan used";
-    } else if (capabilities_.spatial_index.state == CapabilityState::Degraded) {
-        result.execution_path = "bbox:sequential";
-        result.fallback_reason = capabilities_.spatial_index.reason;
-    }
-    if (skipped_unsupported_curve) {
-        if (!result.fallback_reason.empty()) result.fallback_reason += "; ";
-        result.fallback_reason += "curve geometry unsupported; skipped exact spatial filtering for curve records";
-    }
+    else if (result.execution_path == "bbox:model:unavailable")
+        result.execution_path = "bbox:unavailable";
     return result;
 }
 
 std::vector<uint32_t> QueryEngine::query_attribute_double(
-        const std::string& index_name, double value, AttrOp op) {
+    const std::string& index_name,
+    double value,
+    AttrOp op) {
     const auto* atx = catalog_.find_atx(resolved_.id, index_name);
     if (!atx) return {};
-    GdbAttributeIndexParser index(catalog_.path() + "/" + atx->filename);
-    return index.parse() ? index.query_double(value, op) : std::vector<uint32_t>{};
+    GdbAttributeIndexParser index(
+        catalog_.path() + "/" + atx->filename);
+    return index.parse()
+        ? index.query_double(value, op)
+        : std::vector<uint32_t>{};
 }
 
 std::vector<uint32_t> QueryEngine::query_attribute_string(
-        const std::string& index_name, const std::string& value, AttrOp op) {
+    const std::string& index_name,
+    const std::string& value,
+    AttrOp op) {
     const auto* atx = catalog_.find_atx(resolved_.id, index_name);
     if (!atx) return {};
-    GdbAttributeIndexParser index(catalog_.path() + "/" + atx->filename);
-    return index.parse() ? index.query_string(value, op) : std::vector<uint32_t>{};
+    GdbAttributeIndexParser index(
+        catalog_.path() + "/" + atx->filename);
+    return index.parse()
+        ? index.query_string(value, op)
+        : std::vector<uint32_t>{};
 }
 
 QueryResult QueryEngine::query_attribute(const QueryRequest& request) {
     QueryResult result;
     result.execution_path = "attribute:atx";
     if (request.kind == QueryKind::AttributeDouble) {
-        result.matched_fids =
-            query_attribute_double(request.index_name, request.double_value, request.attr_op);
+        result.matched_fids = query_attribute_double(
+            request.index_name,
+            request.double_value,
+            request.attr_op);
     } else {
-        result.matched_fids =
-            query_attribute_string(request.index_name, request.string_value, request.attr_op);
+        result.matched_fids = query_attribute_string(
+            request.index_name,
+            request.string_value,
+            request.attr_op);
     }
 
-    const auto* atx = catalog_.find_atx(resolved_.id, request.index_name);
+    const auto* atx =
+        catalog_.find_atx(resolved_.id, request.index_name);
     if (!atx) {
         result.execution_path = "attribute:sequential";
         result.fallback_reason = "attribute index missing";
@@ -641,23 +671,29 @@ QueryResult QueryEngine::query_where(const QueryRequest& request) {
 
     std::unordered_map<std::string, size_t> field_index_by_name;
     for (size_t i = 0; i < parser_->fields().size(); ++i) {
-        field_index_by_name.emplace(lower_copy(parser_->fields()[i].name), i);
+        field_index_by_name.emplace(
+            lower_copy(parser_->fields()[i].name), i);
     }
     if (!validate_where_fields(*expr, field_index_by_name)) {
         result.fallback_reason = "unknown field in where clause";
         return result;
     }
 
-    parser_->sequential_scan([&](uint32_t fid, const FieldRef* fields, int field_count) {
-        if (evaluate_where_expr(*expr, fields, field_count, field_index_by_name)) {
-            result.matched_fids.push_back(fid);
-        }
-        return true;
-    });
+    parser_->sequential_scan(
+        [&](uint32_t fid, const FieldRef* fields, int field_count) {
+            if (evaluate_where_expr(
+                    *expr, fields, field_count, field_index_by_name)) {
+                result.matched_fids.push_back(fid);
+            }
+            return true;
+        });
     return result;
 }
 
-bool QueryEngine::peek_bbox_source(uint32_t fid, const uint8_t*& blob, size_t& size) {
+bool QueryEngine::peek_bbox_source(
+    uint32_t fid,
+    const uint8_t*& blob,
+    size_t& size) {
     return parser_ && parser_->peek_geometry_blob(fid, blob, size);
 }
 
