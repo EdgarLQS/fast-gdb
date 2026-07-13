@@ -351,3 +351,125 @@ TEST(RealDataReleaseContractTest, CurveFileGdbUsesBuiltinWkbFirstPath) {
     GDALClose(dataset);
     EXPECT_TRUE(verified_curve);
 }
+
+TEST(RealDataReleaseContractTest,
+     CurvePolylineMMatchesGdalWithoutHybridFallback) {
+    const char* dataset_path = required_dataset_from_env("FAST_GDB_CURVE_DATASET");
+    if (dataset_path == nullptr) {
+        GTEST_SKIP() << "Set FAST_GDB_CURVE_DATASET to testcurve.gdb";
+    }
+    ASSERT_TRUE(std::filesystem::is_directory(dataset_path)) << dataset_path;
+
+    GDALAllRegister();
+    GDALDataset* dataset = static_cast<GDALDataset*>(
+        GDALOpenEx(dataset_path, GDAL_OF_VECTOR | GDAL_OF_READONLY,
+                   nullptr, nullptr, nullptr));
+    ASSERT_NE(dataset, nullptr) << dataset_path;
+
+    OGRLayer* layer = dataset->GetLayerByName("Curve_Polyline_M_FC");
+    if (layer == nullptr) {
+        GDALClose(dataset);
+        GTEST_SKIP() << "FAST_GDB_CURVE_DATASET has no Curve_Polyline_M_FC layer";
+    }
+
+    GdbCatalog catalog;
+    ASSERT_TRUE(catalog.scan(dataset_path));
+    CatalogResolver resolver(catalog);
+    ASSERT_TRUE(resolver.load());
+    const auto resolved = resolver.resolve("Curve_Polyline_M_FC");
+    ASSERT_TRUE(resolved.has_value());
+
+    QueryEngine engine(catalog, *resolved);
+    ASSERT_TRUE(engine.open());
+    ASSERT_NE(engine.table(), nullptr);
+
+    const GIntBig gdal_count = layer->GetFeatureCount(TRUE);
+    ASSERT_GT(gdal_count, 0);
+    size_t verified_features = 0;
+
+    layer->ResetReading();
+    while (OGRFeature* feature = layer->GetNextFeature()) {
+        const OGRGeometry* geometry = feature->GetGeometryRef();
+        const GIntBig gdal_fid = feature->GetFID();
+        ASSERT_NE(geometry, nullptr);
+        ASSERT_GT(gdal_fid, 0);
+
+        GeometryModel model;
+        ASSERT_TRUE(engine.table()->read_geometry_model(
+            static_cast<uint32_t>(gdal_fid - 1), model))
+            << "gdal_fid=" << gdal_fid
+            << ", diagnostic=" << model.diagnostic;
+        EXPECT_TRUE(model.valid()) << model.diagnostic;
+        EXPECT_TRUE(model.has_m);
+        EXPECT_TRUE(model.source_was_curve);
+        EXPECT_TRUE(model.linearized);
+        EXPECT_EQ(model.backend, GeometryBackend::BuiltinCurve);
+        ASSERT_FALSE(model.lines.empty());
+        for (const auto& part : model.lines) {
+            for (const auto& point : part)
+                EXPECT_TRUE(std::isnan(point.m)) << "gdal_fid=" << gdal_fid;
+        }
+
+        GeometryValue value;
+        ASSERT_TRUE(engine.table()->read_geometry_value(
+            static_cast<uint32_t>(gdal_fid - 1), value))
+            << "gdal_fid=" << gdal_fid
+            << ", diagnostic=" << value.diagnostic;
+        EXPECT_TRUE(value.valid());
+        EXPECT_TRUE(value.has_m);
+        EXPECT_TRUE(value.source_was_curve);
+        EXPECT_TRUE(value.linearized);
+
+        OGRGeometry* gdal_linear = geometry->getLinearGeometry();
+        ASSERT_NE(gdal_linear, nullptr);
+        OGRGeometry* fast_linear = nullptr;
+        ASSERT_EQ(OGRGeometryFactory::createFromWkb(
+            value.wkb.data(), nullptr, &fast_linear,
+            static_cast<int>(value.wkb.size())), OGRERR_NONE);
+        ASSERT_NE(fast_linear, nullptr);
+        EXPECT_EQ(wkbFlatten(fast_linear->getGeometryType()),
+                  wkbFlatten(gdal_linear->getGeometryType()));
+
+        OGREnvelope gdal_envelope;
+        OGREnvelope fast_envelope;
+        geometry->getEnvelope(&gdal_envelope);
+        fast_linear->getEnvelope(&fast_envelope);
+        const double envelope_tolerance = 1e-3;
+        EXPECT_NEAR(fast_envelope.MinX, gdal_envelope.MinX,
+                    envelope_tolerance);
+        EXPECT_NEAR(fast_envelope.MinY, gdal_envelope.MinY,
+                    envelope_tolerance);
+        EXPECT_NEAR(fast_envelope.MaxX, gdal_envelope.MaxX,
+                    envelope_tolerance);
+        EXPECT_NEAR(fast_envelope.MaxY, gdal_envelope.MaxY,
+                    envelope_tolerance);
+
+        const double fast_length = OGR_G_Length(
+            reinterpret_cast<OGRGeometryH>(fast_linear));
+        const double gdal_length = OGR_G_Length(
+            reinterpret_cast<OGRGeometryH>(gdal_linear));
+        EXPECT_NEAR(fast_length, gdal_length,
+                    std::max(1.0, gdal_length * 1e-3));
+
+        OGRGeometryFactory::destroyGeometry(fast_linear);
+        OGRGeometryFactory::destroyGeometry(gdal_linear);
+        OGRFeature::DestroyFeature(feature);
+        ++verified_features;
+    }
+
+    OGREnvelope extent;
+    ASSERT_EQ(layer->GetExtent(&extent, TRUE), OGRERR_NONE);
+    QueryRequest request;
+    request.kind = QueryKind::SpatialBbox;
+    request.xmin = extent.MinX;
+    request.ymin = extent.MinY;
+    request.xmax = extent.MaxX;
+    request.ymax = extent.MaxY;
+    const QueryResult result = engine.query(request);
+    EXPECT_EQ(result.invalid_geometry_count, 0u);
+    EXPECT_EQ(result.matched_fids.size(),
+              static_cast<size_t>(gdal_count));
+
+    GDALClose(dataset);
+    EXPECT_EQ(verified_features, static_cast<size_t>(gdal_count));
+}
