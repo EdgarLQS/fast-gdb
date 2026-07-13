@@ -45,8 +45,10 @@ struct SpatialQueryMetrics {
     size_t invalid_geometries = 0;
     double estimated_coverage = 0.0;
     bool spx_bypassed = false;
+    bool geometry_only_scan = false;
     double candidate_ratio = 0.0;
     double candidate_lookup_ms = 0.0;
+    double geometry_scan_ms = 0.0;
     double blob_lookup_ms = 0.0;
     double bbox_filter_ms = 0.0;
     double exact_filter_ms = 0.0;
@@ -70,14 +72,10 @@ public:
     bool read_by_fid(uint32_t fid, FeatureRecord& record);
     uint64_t scan(GdbTableParser::ScanCallback callback);
 
-    // Legacy exact filter retained for source compatibility.
     std::vector<uint32_t> query_bbox(
         double xmin, double ymin, double xmax, double ymax,
         bool* skipped_unsupported_curve = nullptr);
 
-    // Geometry-correct bbox path. A geometry whose stored bbox is completely
-    // contained by the query bbox is accepted without constructing a full model;
-    // boundary candidates retain the existing exact GeometryModel predicate.
     QueryResult query_bbox_unified(double xmin, double ymin,
                                    double xmax, double ymax);
 
