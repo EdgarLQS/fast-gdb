@@ -36,6 +36,7 @@
 | [02_GDAL功能对比矩阵.md](planning/02_GDAL功能对比矩阵.md) | 当前 | linear / hybrid / GDAL 实际能力差异 |
 | [13_fast-gdb最终等价与发布验收报告.md](planning/13_fast-gdb最终等价与发布验收报告.md) | 当前证据 | 支持范围内的最终发布结论 |
 | [13_fast-gdb真实数据验收资料清单.md](planning/13_fast-gdb真实数据验收资料清单.md) | 当前模板 | 后续新增能力的真实数据验收要求 |
+| [14_fast-gdb空间查询优化计划.md](planning/14_fast-gdb空间查询优化计划.md) | 当前提案 | 大范围空间查询性能优化路线 |
 | [curve-polyline-m-real-acceptance-2026-07-13.md](evidence/curve-polyline-m-real-acceptance-2026-07-13.md) | 当前证据 | 真实 M 曲线逐要素、WKB、空间查询和 sanitizer 证据 |
 | [11_fast-gdb替换GDAL矢量能力分析.md](planning/archive/11_fast-gdb替换GDAL矢量能力分析.md) | 架构参考 | fast-gdb 与 GDAL 双路径取舍 |
 
