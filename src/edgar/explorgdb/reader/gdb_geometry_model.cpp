@@ -16,6 +16,7 @@ namespace {
 constexpr uint64_t kGeneralZFlag = 0x80000000ULL;
 constexpr uint64_t kGeneralMFlag = 0x40000000ULL;
 constexpr uint64_t kGeneralCurveFlag = 0x20000000ULL;
+constexpr uint8_t kMissingMArrayMarker = 0x42;
 
 class Cursor {
 public:
@@ -83,6 +84,12 @@ public:
         current_ += 8;
         std::memcpy(&value, &bits, sizeof(value));
         return std::isfinite(value);
+    }
+
+    bool consume_byte(uint8_t expected) {
+        if (remaining() == 0 || *current_ != expected) return false;
+        ++current_;
+        return true;
     }
 
     size_t consumed(const uint8_t* begin) const {
@@ -204,36 +211,51 @@ bool read_xy(Cursor& cursor, size_t count,
     return true;
 }
 
+bool read_z_ordinates(Cursor& cursor,
+                      std::vector<GridPoint>& points,
+                      bool has_z,
+                      double z_origin, double z_scale) {
+    if (!has_z) return true;
+    int64_t value = 0;
+    for (auto& point : points) {
+        int64_t delta = 0;
+        if (!cursor.read_varint(delta) ||
+            !add_checked(value, delta))
+            return false;
+        point.z = z_scale == 0.0
+            ? z_origin
+            : static_cast<double>(value) / z_scale + z_origin;
+    }
+    return true;
+}
+
+bool read_m_ordinates(Cursor& cursor,
+                      std::vector<GridPoint>& points,
+                      bool has_m,
+                      double m_origin, double m_scale) {
+    if (!has_m) return true;
+    int64_t value = 0;
+    for (size_t index = 0; index < points.size(); ++index) {
+        int64_t encoded = 0;
+        if (!cursor.read_varint(encoded)) return false;
+        if (index == 0) value = encoded;
+        else if (!add_checked(value, encoded)) return false;
+        points[index].m = m_scale == 0.0
+            ? m_origin
+            : static_cast<double>(value) / m_scale + m_origin;
+    }
+    return true;
+}
+
 bool read_ordinates(Cursor& cursor,
                     std::vector<GridPoint>& points,
                     bool has_z, bool has_m,
                     double z_origin, double z_scale,
                     double m_origin, double m_scale) {
-    if (has_z) {
-        int64_t value = 0;
-        for (auto& point : points) {
-            int64_t delta = 0;
-            if (!cursor.read_varint(delta) ||
-                !add_checked(value, delta))
-                return false;
-            point.z = z_scale == 0.0
-                ? z_origin
-                : static_cast<double>(value) / z_scale + z_origin;
-        }
-    }
-    if (has_m) {
-        int64_t value = 0;
-        for (size_t index = 0; index < points.size(); ++index) {
-            int64_t encoded = 0;
-            if (!cursor.read_varint(encoded)) return false;
-            if (index == 0) value = encoded;
-            else if (!add_checked(value, encoded)) return false;
-            points[index].m = m_scale == 0.0
-                ? m_origin
-                : static_cast<double>(value) / m_scale + m_origin;
-        }
-    }
-    return true;
+    return read_z_ordinates(cursor, points, has_z,
+                            z_origin, z_scale) &&
+           read_m_ordinates(cursor, points, has_m,
+                            m_origin, m_scale);
 }
 
 bool read_curve_descriptors(
@@ -287,6 +309,54 @@ bool read_curve_descriptors(
         }
         curves.push_back(descriptor);
     }
+    return true;
+}
+
+bool read_curve_tail(Cursor& cursor,
+                     uint64_t curve_count,
+                     uint64_t point_count,
+                     std::vector<GridPoint>& points,
+                     bool has_m,
+                     double m_origin, double m_scale,
+                     std::vector<CurveDescriptor>& curves) {
+    // Prefer the canonical encoding with one M varint per vertex. Parse on a
+    // copy so a failed attempt cannot consume native curve descriptors.
+    Cursor standard_cursor = cursor;
+    std::vector<GridPoint> standard_points = points;
+    std::vector<CurveDescriptor> standard_curves;
+    if (read_m_ordinates(standard_cursor, standard_points, has_m,
+                         m_origin, m_scale) &&
+        read_curve_descriptors(standard_cursor, curve_count,
+                               point_count, standard_curves)) {
+        cursor = standard_cursor;
+        points = std::move(standard_points);
+        curves = std::move(standard_curves);
+        return true;
+    }
+
+    if (!has_m) return false;
+
+    // ArcGIS may persist a 2D curve into an M-enabled feature class. In that
+    // case the complete M array is replaced by the single FileGDB no-M marker
+    // 0x42, immediately followed by the real curve descriptors. Accept only
+    // this exact byte and require the descriptor tail to be fully consumed so
+    // damaged ordinates cannot be reinterpreted as a valid curve.
+    Cursor missing_m_cursor = cursor;
+    if (!missing_m_cursor.consume_byte(kMissingMArrayMarker)) return false;
+
+    std::vector<GridPoint> missing_m_points = points;
+    const double missing = std::numeric_limits<double>::quiet_NaN();
+    for (auto& point : missing_m_points) point.m = missing;
+
+    std::vector<CurveDescriptor> missing_m_curves;
+    if (!read_curve_descriptors(missing_m_cursor, curve_count,
+                                point_count, missing_m_curves) ||
+        missing_m_cursor.remaining() != 0)
+        return false;
+
+    cursor = missing_m_cursor;
+    points = std::move(missing_m_points);
+    curves = std::move(missing_m_curves);
     return true;
 }
 
@@ -440,16 +510,16 @@ GeometryModel GdbGeomDecoder::decode_model(
 
         std::vector<GridPoint> points;
         if (!read_xy(cursor, static_cast<size_t>(point_count), points) ||
-            !read_ordinates(cursor, points,
-                            model.has_z, model.has_m,
-                            zorig_, zscale_, morig_, mscale_))
+            !read_z_ordinates(cursor, points, model.has_z,
+                              zorig_, zscale_))
             return fail(GeometryStatus::InvalidEncoding,
                         "truncated multipart coordinate arrays");
 
         if (curve_count > 0) {
             std::vector<CurveDescriptor> curves;
-            if (!read_curve_descriptors(cursor, curve_count,
-                                        point_count, curves))
+            if (!read_curve_tail(cursor, curve_count, point_count,
+                                 points, model.has_m,
+                                 morig_, mscale_, curves))
                 return fail(GeometryStatus::InvalidEncoding,
                     "invalid or truncated curve descriptors");
 
@@ -475,6 +545,11 @@ GeometryModel GdbGeomDecoder::decode_model(
                 "GDAL curve mode requires dataset/layer/FID context";
             return model;
         }
+
+        if (!read_m_ordinates(cursor, points, model.has_m,
+                              morig_, mscale_))
+            return fail(GeometryStatus::InvalidEncoding,
+                        "truncated multipart coordinate arrays");
 
         std::vector<PointSequence> parts;
         parts.reserve(part_sizes.size());
