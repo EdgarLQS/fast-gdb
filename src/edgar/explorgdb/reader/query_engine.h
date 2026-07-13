@@ -3,6 +3,7 @@
 
 #include "capability_report.h"
 #include "gdb_attribute_index.h"
+#include "gdb_spatial_index.h"
 #include "gdb_table.h"
 #include <cstdint>
 #include <memory>
@@ -111,6 +112,8 @@ private:
     const GdbCatalog& catalog_;
     ResolvedTable resolved_;
     std::unique_ptr<GdbTableParser> parser_;
+    std::unique_ptr<GdbSpatialIndexParser> spatial_index_;
+    bool spatial_index_present_ = false;
     CapabilityReport capabilities_;
 };
 
