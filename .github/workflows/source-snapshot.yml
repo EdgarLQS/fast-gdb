@@ -15,8 +15,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Fetch pinned GoogleTest source
-        run: git clone --depth 1 --branch v1.15.2 https://github.com/google/googletest.git third_party/googletest
+      - name: Checkout pinned GoogleTest source
+        uses: actions/checkout@v4
+        with:
+          repository: google/googletest
+          ref: v1.15.2
+          path: third_party/googletest
       - name: Upload source snapshot
         uses: actions/upload-artifact@v4
         with:
