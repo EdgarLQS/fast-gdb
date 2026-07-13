@@ -4,6 +4,7 @@
 #include <array>
 #include <cstring>
 #include <filesystem>
+#include <memory>
 #include <string>
 
 #include "catalog_resolver.h"
@@ -15,58 +16,59 @@ using namespace explorgdb;
 
 namespace {
 
-class SpatialQueryAdaptiveTest : public GdbTutorialFixture {};
+class SpatialQueryAdaptiveTest : public GdbTutorialFixture {
+protected:
+    std::string create_adaptive_point_gdb(size_t feature_count) {
+        const auto path = (std::filesystem::temp_directory_path() /
+                           "fast_gdb_spatial_adaptive.gdb").string();
+        std::error_code error;
+        std::filesystem::remove_all(path, error);
 
-std::string create_adaptive_point_gdb(size_t feature_count) {
-    const auto path = (std::filesystem::temp_directory_path() /
-                       "fast_gdb_spatial_adaptive.gdb").string();
-    std::error_code error;
-    std::filesystem::remove_all(path, error);
+        GDALDataset* dataset = createGdb(path.c_str());
+        if (dataset == nullptr) return {};
 
-    GDALDataset* dataset = createGdb(path.c_str());
-    if (dataset == nullptr) return {};
-
-    OGRSpatialReference srs;
-    if (srs.importFromEPSG(4326) != OGRERR_NONE) {
-        GDALClose(dataset);
-        return {};
-    }
-    OGRLayer* layer = dataset->CreateLayer(
-        "adaptive_points", &srs, wkbPoint, nullptr);
-    if (layer == nullptr) {
-        GDALClose(dataset);
-        return {};
-    }
-
-    OGRFieldDefn value_field("value", OFTInteger);
-    if (layer->CreateField(&value_field) != OGRERR_NONE) {
-        GDALClose(dataset);
-        return {};
-    }
-
-    for (size_t index = 0; index < feature_count; ++index) {
-        OGRFeature* feature =
-            OGRFeature::CreateFeature(layer->GetLayerDefn());
-        if (feature == nullptr) {
+        OGRSpatialReference srs;
+        if (srs.importFromEPSG(4326) != OGRERR_NONE) {
             GDALClose(dataset);
             return {};
         }
-        feature->SetField("value", static_cast<int>(index));
-        OGRPoint point(
-            static_cast<double>(index % 100),
-            static_cast<double>(index / 100));
-        feature->SetGeometry(&point);
-        const OGRErr create_error = layer->CreateFeature(feature);
-        OGRFeature::DestroyFeature(feature);
-        if (create_error != OGRERR_NONE) {
+        OGRLayer* layer = dataset->CreateLayer(
+            "adaptive_points", &srs, wkbPoint, nullptr);
+        if (layer == nullptr) {
             GDALClose(dataset);
             return {};
         }
-    }
 
-    GDALClose(dataset);
-    return path;
-}
+        OGRFieldDefn value_field("value", OFTInteger);
+        if (layer->CreateField(&value_field) != OGRERR_NONE) {
+            GDALClose(dataset);
+            return {};
+        }
+
+        for (size_t index = 0; index < feature_count; ++index) {
+            OGRFeature* feature =
+                OGRFeature::CreateFeature(layer->GetLayerDefn());
+            if (feature == nullptr) {
+                GDALClose(dataset);
+                return {};
+            }
+            feature->SetField("value", static_cast<int>(index));
+            OGRPoint point(
+                static_cast<double>(index % 100),
+                static_cast<double>(index / 100));
+            feature->SetGeometry(&point);
+            const OGRErr create_error = layer->CreateFeature(feature);
+            OGRFeature::DestroyFeature(feature);
+            if (create_error != OGRERR_NONE) {
+                GDALClose(dataset);
+                return {};
+            }
+        }
+
+        GDALClose(dataset);
+        return path;
+    }
+};
 
 std::unique_ptr<QueryEngine> open_engine(
     const std::string& path,
