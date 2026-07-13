@@ -34,23 +34,36 @@ jobs:
           -DFAST_GDB_GEOMETRY_OUTPUT=STANDARD_WKB
           -DFAST_GDB_BUILD_TOOLS=ON
           -DFAST_GDB_BUILD_FULL_TESTS=OFF
-          -DFAST_GDB_PACKAGE_VARIANT=linear
           -DBUILD_TESTING=OFF
       - name: Build
         run: cmake --build build-release --parallel
-      - name: Package
+      - name: Stage package
+        env:
+          PACKAGE: fast-gdb-0.1.0-${{ runner.os }}-${{ runner.arch }}-linear
+        run: >-
+          python scripts/stage_release.py
+          --repo .
+          --build build-release
+          --output dist/${{ env.PACKAGE }}
+          --variant linear
+      - name: Archive package (POSIX)
+        if: runner.os != 'Windows'
         shell: bash
-        run: |
-          cd build-release
-          if [[ "${RUNNER_OS}" == "Windows" ]]; then
-            cpack -G ZIP
-          else
-            cpack -G TGZ
-          fi
+        env:
+          PACKAGE: fast-gdb-0.1.0-${{ runner.os }}-${{ runner.arch }}-linear
+        run: tar -czf "dist/${PACKAGE}.tar.gz" -C dist "${PACKAGE}"
+      - name: Archive package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          PACKAGE: fast-gdb-0.1.0-${{ runner.os }}-${{ runner.arch }}-linear
+        run: Compress-Archive -Path "dist/$env:PACKAGE" -DestinationPath "dist/$env:PACKAGE.zip"
       - uses: actions/upload-artifact@v4
         with:
           name: linear-${{ matrix.os }}
-          path: build-release/fast-gdb-0.1.0-*
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
           if-no-files-found: error
 
   hybrid-linux-package:
@@ -69,16 +82,27 @@ jobs:
           -DFAST_GDB_GEOMETRY_OUTPUT=STANDARD_WKB
           -DFAST_GDB_BUILD_TOOLS=ON
           -DFAST_GDB_BUILD_FULL_TESTS=OFF
-          -DFAST_GDB_PACKAGE_VARIANT=hybrid
           -DBUILD_TESTING=OFF
       - name: Build
         run: cmake --build build-release --parallel
-      - name: Package
-        run: cd build-release && cpack -G TGZ
+      - name: Stage package
+        env:
+          PACKAGE: fast-gdb-0.1.0-Linux-${{ runner.arch }}-hybrid
+        run: >-
+          python3 scripts/stage_release.py
+          --repo .
+          --build build-release
+          --output dist/${{ env.PACKAGE }}
+          --variant hybrid
+      - name: Archive package
+        shell: bash
+        env:
+          PACKAGE: fast-gdb-0.1.0-Linux-${{ runner.arch }}-hybrid
+        run: tar -czf "dist/${PACKAGE}.tar.gz" -C dist "${PACKAGE}"
       - uses: actions/upload-artifact@v4
         with:
           name: hybrid-ubuntu-latest
-          path: build-release/fast-gdb-0.1.0-*
+          path: dist/*.tar.gz
           if-no-files-found: error
 
   publish:
