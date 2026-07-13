@@ -140,12 +140,33 @@ TEST_F(SpatialQueryAdaptiveTest,
     EXPECT_GE(result.spatial_metrics.candidate_count,
               result.matched_fids.size());
     EXPECT_GT(result.spatial_metrics.candidate_ratio, 0.5);
+    EXPECT_EQ(result.spatial_metrics.bbox_contained, kFeatureCount);
+    EXPECT_EQ(result.spatial_metrics.exact_tested, 0u);
     EXPECT_EQ(result.spatial_metrics.invalid_geometries, 0u);
     EXPECT_EQ(result.execution_path, "bbox:model:sequential-adaptive");
 
     const auto legacy = engine->query_bbox(
         request.xmin, request.ymin, request.xmax, request.ymax);
     EXPECT_EQ(legacy, result.matched_fids);
+}
+
+TEST_F(SpatialQueryAdaptiveTest,
+       BoundaryPointsStillUseExactPredicate) {
+    constexpr size_t kFeatureCount = 1200;
+    const std::string path = create_adaptive_point_gdb(kFeatureCount);
+    ASSERT_FALSE(path.empty());
+
+    GdbCatalog catalog;
+    auto engine = open_engine(path, catalog);
+    ASSERT_NE(engine, nullptr);
+
+    const QueryResult result = engine->query_bbox_unified(
+        0.0, 0.0, 0.0, 0.0);
+    ASSERT_EQ(result.matched_fids.size(), 1u);
+    EXPECT_EQ(result.matched_fids.front(), 0u);
+    EXPECT_LE(result.spatial_metrics.bbox_contained,
+              result.spatial_metrics.candidate_count);
+    EXPECT_EQ(result.spatial_metrics.invalid_geometries, 0u);
 }
 
 TEST_F(SpatialQueryAdaptiveTest,
@@ -163,6 +184,7 @@ TEST_F(SpatialQueryAdaptiveTest,
     ASSERT_FALSE(result.matched_fids.empty());
     EXPECT_LT(result.matched_fids.size(), kFeatureCount / 10);
     EXPECT_LT(result.spatial_metrics.candidate_ratio, 0.5);
+    EXPECT_GT(result.spatial_metrics.bbox_contained, 0u);
     EXPECT_EQ(result.execution_path, "bbox:model:spx-candidates");
     EXPECT_EQ(result.spatial_metrics.invalid_geometries, 0u);
 }
