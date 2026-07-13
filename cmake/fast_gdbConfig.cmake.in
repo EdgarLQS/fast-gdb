@@ -1,9 +1,0 @@
-@PACKAGE_INIT@
-
-include(CMakeFindDependencyMacro)
-if(@FAST_GDB_WITH_GDAL@)
-    find_dependency(GDAL)
-endif()
-
-include("${CMAKE_CURRENT_LIST_DIR}/fast_gdbTargets.cmake")
-check_required_components(fast_gdb)
