@@ -2,8 +2,8 @@
 
 **实施来源分支**：`agent/geometry-wkb-curve-plan`（已合入 `main`）
 **基线分支**：`main`
-**更新日期**：2026-07-12
-**状态**：代码和第一轮真实数据验收完成；远端三平台 CI、非空 MultiPatch、性能基线和最终 ArcGIS/GDAL 等价证据仍是发布门禁
+**更新日期**：2026-07-13
+**状态**：代码和两份真实曲线样本的阶段性验收完成；最新 `testcurve.gdb` 复验通过；远端三平台 CI、完整曲线等价和最终 ArcGIS/GDAL 等价证据仍是发布门禁
 
 ## 1. 实施目标
 
@@ -188,15 +188,16 @@ MultiPatch 仍为 degraded：
 
 仓库内最新 `test_data/gdb/testcurve.gdb` 已提供一组阶段性真实样本。GDAL 可识别其中的
 CircularArc、混合曲线、完整圆、Ellipse、旋转 Ellipse、Ellipse Arc 和曲线 Polygon；
-Bezier 命名样本在 GDAL 输出中表现为已采样的 `MULTILINESTRING`，因此其原生曲线来源
-和等价性仍需单独确认。以下工作仍需要额外真实数据或补充对照，不能通过继续编写合成
+Bezier 命名样本在 GDAL 输出中表现为已采样的 `MULTILINESTRING`；参数化数据来源已确认
+为 ArcGIS Pro 3.5，但等价性仍需单独确认。以下工作仍需要补充对照，不能通过继续编写合成
 单测虚构完成：
 
-1. ArcGIS Pro 来源的原生 Bezier、Ellipse、完整圆/椭圆 provenance 和逐要素对照；
+1. 对已确认来自 ArcGIS Pro 3.5 的 `参数化数据_liqs.gdb`/`testcurve.gdb` 的 Bezier、Ellipse、
+   完整圆/椭圆完成逐要素对照；原生 provenance 门禁已满足；
 2. 曲线 2D/Z/M/ZM 的完整组合与 GDAL `hasCurveGeometry(TRUE)` 确认；
 3. 曲线 Polygon 的明确岛中岛样本，以及面积、点包含和空间查询对比；
 4. `Point_FIDGap`、`Polyline_FIDGap`、`Polygon_FIDGap` 的 Hybrid FID 逐要素映射抽样；
-5. 非空 MultiPatch 及完整 part type/表面拓扑边界；
+5. MultiPatch 完整 part type/表面拓扑边界；
 6. 普通几何与曲线几何性能基线；
 7. 当前提交的远端 Windows/Linux/macOS 和 Linux Hybrid CI。
 
@@ -231,16 +232,20 @@ Bezier 命名样本在 GDAL 输出中表现为已采样的 `MULTILINESTRING`，�
 - [x] 仓库真实 CircularArc WKB-first/GDAL 对比
 - [x] `testcurve.gdb` 第一轮真实数据快照和 GDAL 图层基准
 - [x] `testcurve.gdb` 的 Z/M/ZM、圆/椭圆、FID 间断和坏拓扑样本已发现
-- [ ] Bezier 原生来源、曲线 Polygon 岛中岛和逐要素等价对照
-- [ ] 非空 MultiPatch、性能基线和远端 CI
+- [ ] Bezier/曲线 Polygon 岛中岛和逐要素等价对照
+- [x] MultiPatch 非空样本的 degraded 行为对照；完整 part type/表面拓扑仍不在当前能力范围
+- [x] 性能基线
+- [ ] 远端 CI
 
 ### 6.1 第一轮真实数据验收：`testcurve.gdb`
 
-验收路径：`test_data/gdb/testcurve.gdb`（当前为单层 FileGDB 目录）。GDAL
-OpenFileGDB 基准发现 25 个图层、54 个要素、32 个 `.gdbtable` 和 26 个 `.spx`。
+验收路径：`test_data/gdb/testcurve.gdb`（当前为单层 FileGDB 目录）。该节记录的是早期
+版本的第一轮样本快照：GDAL OpenFileGDB 当时发现 25 个图层、54 个要素、32 个
+`.gdbtable` 和 26 个 `.spx`。最新文件已扩展，结果见第 6.3 节。
 样本覆盖普通 Point/MultiPoint/Polyline/Polygon、洞和岛中岛、Z/M/ZM、CircularArc、
 Bezier 场景、混合曲线、完整圆、Ellipse、旋转 Ellipse、Ellipse Arc、曲线 Polygon、
-FID 间断、自交、退化环、重复点和零面积 Polygon；`Multipatch_FC` 存在但要素数为 0。
+FID 间断、自交、退化环、重复点和零面积 Polygon；该早期快照中的 `Multipatch_FC` 存在但要素数为 0，
+后续扩展数据已补充非空 MultiPatch，见第 6.3 节。
 
 本机在源目录之外的干净构建目录使用 `BUILTIN + STANDARD_WKB` 配置重新构建成功。
 完整 CTest 结果为 `455/455` 通过、0 失败；其中环境门控的真实数据测试和大规模/事务
@@ -249,13 +254,90 @@ FID 间断、自交、退化环、重复点和零面积 Polygon；`Multipatch_FC
 - 普通样本 `test_spatial_gdb.gdb`：`RegularFileGdbMatchesCoreReadContract` 通过；
 - 最新 `testcurve.gdb`：`CurveFileGdbIsExplicitlyUnsupported` 通过；
 - 最新 `testcurve.gdb`：`CurveFileGdbUsesBuiltinWkbFirstPath` 通过；
-- Bezier 样本由 GDAL 展示为已线性化 `MULTILINESTRING`，尚不能单凭当前数据确认
-  ArcGIS 原生 Bezier 等价性；
+- Bezier 样本由 GDAL 展示为已线性化 `MULTILINESTRING`；来源已确认是 ArcGIS Pro 3.5，
+  但逐要素几何等价性仍需对照；
 - FID 间断、坏拓扑和曲线 Polygon 已完成结构发现，但逐要素 Hybrid/FID、面积、点包含
   和空间查询对照仍待专项执行。
 
 本节结论为“第一轮真实数据验收完成”，不是正式发布完成。后续补充数据时在本节追加
 结果，不覆盖本轮证据。
+
+### 6.3 `testcurve.gdb` 最新数据复验：2026-07-13
+
+本次以当前工作区数据重新执行 GDAL OpenFileGDB 快照和新鲜构建测试。最新数据发现：
+
+- 44 个图层、1,120,080 个要素；
+- 53 个 `.gdbtable`、53 个 `.gdbtablx`、52 个 `.gdbindexes`、45 个 `.spx`，目录共 277 个文件；
+- 保留 Point/MultiPoint/Polyline/Polygon、多 part、空几何、Z/M/ZM、CircularArc、Bezier、
+  Ellipse、完整圆、旋转椭圆、椭圆弧、曲线 Polygon 洞/岛中岛、FID 精确/间断和坏拓扑；
+- 新增或确认 `CRS_WGS84_Point_FC`、`CRS_CGCS2000_Point_FC`、`CRS_Xian80_Point_FC`；
+- 包含 `Perf_Point_100k`、`Perf_Polyline_10k`、`Perf_Polygon_10k` 和 `Perf_Point_1M`；
+- `Multipatch_FC` 为 3 个要素，非空 MultiPatch 真实样本已覆盖；降级链路已通过专项对照，完整 part type 和表面拓扑语义仍不在当前能力范围。
+
+复验命令使用 `/private/tmp/fast-gdb-real-acceptance` 的 `BUILTIN + STANDARD_WKB` 构建：
+
+- 普通 FileGDB 与最新 `testcurve.gdb` 同时设置时，`RealDataReleaseContractTest` 为 3/3 通过；
+- `CurveFileGdbIsExplicitlyUnsupported` 通过；
+- `CurveFileGdbUsesBuiltinWkbFirstPath` 通过；
+- 串行完整 CTest 为 455/455 通过，0 失败；环境门控的真实数据、事务和 10M/大规模基准按设计跳过；
+- `explorgdb_cli` 能扫描目录文件，但对根部 4 字节 `gdb` 文件报告 `magic unexpected`；GDAL 和
+  真实数据契约均能正常打开，因此该项记录为 CLI 诊断兼容性边界，不判为数据损坏。
+
+本次复验确认当前数据已经覆盖原计划中的大部分真实样本类别，且已确认参数化数据来自 ArcGIS Pro 3.5，
+包含贝塞尔、椭圆、椭圆弧和混合曲线，因此不再把这些类别列为“缺数据”，原生 provenance 门禁已满足。
+逐要素曲线、曲线面空间语义、Hybrid FID 和性能基线已在本地专项中完成；跨平台远端 CI 和最终
+ArcGIS/GDAL 全量等价结论仍未完成。MultiPatch 完整 part type/表面拓扑仍是明确能力边界。
+
+MultiPatch degraded 专项已完成：GDAL 基准显示 3 个非空要素分别包含 2、3、1 个 TIN part；
+fast-gdb 对 3/3 要素返回 `UnsupportedType`，未静默伪造普通 Polygon；Hybrid 对 3/3 要素
+成功回退 GDAL 并返回有效 WKB；整层 bbox 查询使用 `.spx`，命中 3 个要素，GDAL 回退 3 次，
+非法几何为 0。该结果验证降级链路，不代表 part type 和完整表面拓扑被 fast-gdb 保留。
+
+### 6.2 参数化曲线数据验收：`参数化数据_liqs.gdb`
+
+验收路径：`test_data/gdb/参数化数据_liqs.gdb`。GDAL OpenFileGDB 成功打开该目录，
+发现 11 个业务图层、12 个要素、18 个 `.gdbtable`、11 个 `.gdbindexes` 和 11 个
+`.spx` 空间索引；SRS 均为 unknown。
+
+覆盖图层包括：参数化_贝塞尔（2 个要素）、参数化多线、参数化椭圆、参数化椭圆弧、
+参数化圆、参数化圆弧、参数化圆弧和线、参数化多面、参数化椭圆_面、参数化圆_面、
+参数化圆弧_面（其余各 1 个要素）。GDAL 观察到 CircularArc/混合曲线为 `MULTICURVE`
+或 `CURVEPOLYGON`，圆/椭圆面为 `MULTISURFACE` 或线性化 `MULTIPOLYGON`；Bezier
+图层为采样后的 `MULTILINESTRING`。
+
+本机复用源目录之外的 `BUILTIN + STANDARD_WKB` 新鲜构建执行真实数据契约：普通样本与
+本数据同时设置时 `RealDataReleaseContractTest` 为 3/3 通过；曲线显式失败契约和内置
+WKB-first 曲线契约均通过，确认曲线不会静默伪装为普通线/面，并至少有一条 GDAL 曲线
+完成内置模型线性化、WKB 解析、bbox 和长度对照。`explorgdb_cli` 也完成了目录、系统表、
+业务表、索引和 `.spx` 文件扫描。
+
+同一新鲜构建目录使用串行 CTest 复跑，结果为 `455/455` 通过、0 失败；真实数据契约、
+大规模基准和事务用例中的环境门控跳过项按设计保留。并行执行不作为本次证据，因为性能
+夹具共享 `test_data/benchmark/perf_100k.gdb`，会产生目录创建竞态。
+
+该数据没有覆盖 Z/M/ZM、FID 间断、坏拓扑或大规模性能场景；GDAL 已将
+Bezier 线性化；来源已确认来自 ArcGIS Pro 3.5，但仍需逐要素对照才能证明几何等价。
+曲线面面积、点包含、空间查询和 Hybrid FID 映射已在第 6.4 节本地专项中完成。结论为“参数化真实曲线
+数据阶段性验收通过”，不是正式发布完成。
+
+### 6.4 本地完整专项验收：2026-07-13
+
+使用 `/private/tmp/fast-gdb-real-acceptance` 新鲜构建，并以 GDAL OpenFileGDB 作为基准，
+完成以下本地专项：
+
+- 曲线图层逐要素类型、Z/M 维度、bbox、长度/面积对照：通过；
+- 曲线 Polygon、曲线洞、岛中岛、圆/椭圆面 bbox 和代表点包含对照：通过；
+- `Point_FIDGap`、`Polyline_FIDGap`、`Polygon_FIDGap` Hybrid bbox 映射：全部通过，命中数与 GDAL 一致，非法几何为 0；
+- `Perf_Point_100k`、`Perf_Point_1M`、`Perf_Polyline_10k` 和 `Perf_Polygon_10k` 读取基线：
+  fast-gdb/GDAL 要素数全部一致；本机实测分别为 25.03/12.29ms、241.68/121.83ms、
+  3.72/2.33ms、3.76/3.32ms，仅作本机基线，不作为跨机器性能结论；
+- `Multipatch_FC` degraded 行为：已在上一节完成，3/3 要素 GDAL fallback 有效。
+
+本地专项同时暴露一个明确边界：`Curve_Polyline_M_FC` 的纯 fast-gdb 内置解析对 ArcGIS
+真实 M 曲线编码返回 `invalid or truncated curve descriptors`；曲线 Polygon 和部分 Ellipse
+样本也会因严格拓扑/采样限制触发 fallback。Hybrid 对这些要素均成功回退 GDAL，并完成类型、
+bbox、长度/面积和空间结果对照。因此当前结论是“Hybrid 本地验收通过，纯 C++ 对所有真实曲线
+的直读等价仍未完成”，不能将该边界隐藏为全量纯 C++ 通过。
 
 ## 7. 分支与合并状态
 

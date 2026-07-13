@@ -176,15 +176,23 @@ WKT 兼容接口保留至少一个稳定大版本；正式性能和互操作契�
 - 截断前缀和确定性随机垃圾输入；
 - Polygon、WKB、空间过滤和曲线合成契约。
 
-真实数据（2026-07-12 第一轮）：
+真实数据（2026-07-13 阶段性验收）：
 
 - 仓库普通 FileGDB 样本用于常规读取 release contract；
-- `testcurve.gdb` 已提供 25 个图层、54 个要素，覆盖 Z/M/ZM、CircularArc、Bezier 场景、
-  完整圆、Ellipse、旋转 Ellipse、Ellipse Arc、曲线 Polygon、FID 间断和坏拓扑；
+- 早期版本的 `testcurve.gdb` 曾提供 25 个图层、54 个要素；当前最新版本已扩展为 44 个图层、
+  1,120,080 个要素，覆盖 Z/M/ZM、CircularArc、Bezier 场景、完整圆、Ellipse、旋转 Ellipse、
+  Ellipse Arc、曲线 Polygon、FID 精确/间断、坏拓扑、CRS 和性能图层；
+- `参数化数据_liqs.gdb` 已提供 11 个业务图层、12 个要素和 11 个 `.spx`，覆盖参数化
+  CircularArc、完整圆、混合曲线、Bezier 命名场景、Ellipse、Ellipse Arc 和曲线 Polygon；
+- 两份真实曲线样本均已通过当前内置 WKB-first/显式曲线失败契约；参数化样本与普通样本同时
+  设置时真实数据契约为 3/3 通过；
+- 最新 `testcurve.gdb` 的串行完整 CTest 为 455/455 通过；其 100K/1M 图层已完成读取基线，
+  本机 fast-gdb/GDAL 计数一致；
 - 当前数据的 CircularArc 内置 WKB-first 和曲线显式失败契约已通过；
-- Bezier 样本在 GDAL 中展示为已线性化 `MULTILINESTRING`，原生来源和逐要素等价性仍需确认；
-- 曲线 Polygon 的面积、点包含、空间查询和 FID 间断 Hybrid 映射仍需专项对照；
-- 非空 MultiPatch、性能基线、远端 CI 和 ArcGIS/GDAL 全量等价验证仍未完成；
+- Bezier 样本在 GDAL 中展示为已线性化 `MULTILINESTRING`，原生来源已确认来自 ArcGIS Pro 3.5；
+  本地 Hybrid 逐要素类型、维度、bbox、长度/面积和空间对照已通过，纯 C++ M 曲线仍有编码边界；
+- 曲线 Polygon 的面积、点包含、空间查询和 FID 间断 Hybrid 映射本地专项已通过；
+- 非空 MultiPatch 样本已经存在且 degraded 行为已通过，但其 part type/完整表面拓扑、纯 C++ M 曲线编码边界、远端 CI 和 ArcGIS/GDAL 全量等价验证仍未完成；
 - 因此当前只能声明“第一轮真实数据验收完成”，不能声明 ArcGIS/GDAL 全量等价验收完成。
 
 详细迁移、FID 和发布检查见：
