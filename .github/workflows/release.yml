@@ -2,6 +2,12 @@ name: release
 
 on:
   push:
+    branches:
+      - main
+    paths:
+      - VERSION
+      - .github/workflows/release.yml
+      - scripts/stage_release.py
     tags:
       - 'v*'
   workflow_dispatch:
@@ -113,7 +119,6 @@ jobs:
 
   publish:
     name: publish-github-release
-    if: startsWith(github.ref, 'refs/tags/')
     needs: [linear-packages, hybrid-linux-package]
     runs-on: ubuntu-latest
     steps:
@@ -126,12 +131,17 @@ jobs:
         run: |
           cd release-assets
           sha256sum fast-gdb-* > SHA256SUMS.txt
-      - name: Create GitHub Release
+      - name: Create or update GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: >-
-          gh release create "${GITHUB_REF_NAME}"
-          release-assets/*
-          --title "fast-gdb ${GITHUB_REF_NAME}"
-          --notes-file docs/releases/v0.1.0.md
-          --verify-tag
+        shell: bash
+        run: |
+          TAG="v$(tr -d '[:space:]' < VERSION)"
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            gh release upload "${TAG}" release-assets/* --clobber
+          else
+            gh release create "${TAG}" release-assets/* \
+              --target "${GITHUB_SHA}" \
+              --title "fast-gdb ${TAG}" \
+              --notes-file docs/releases/v0.1.0.md
+          fi
