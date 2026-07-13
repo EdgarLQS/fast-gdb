@@ -1,6 +1,7 @@
 #include "gdb_table.h"
 #include "field_layout.h"
 #include <algorithm>
+#include <cstring>
 
 namespace explorgdb {
 namespace {
@@ -32,7 +33,17 @@ bool GdbTableParser::peek_geometry_blob(uint32_t fid,
     const uint8_t* row_data = nullptr;
     size_t row_size = 0;
 
-    if (fd_ >= 0) {
+    // The table is normally mmap-backed. Return a stable view into that mapping
+    // instead of copying every candidate row into row_buffer_. Large spatial
+    // queries can otherwise perform millions of avoidable memcpy operations.
+    if (mapped_data_ != nullptr) {
+        if (offset + 4 > file_size_) return false;
+        uint32_t blob_len = 0;
+        std::memcpy(&blob_len, mapped_data_ + offset, sizeof(blob_len));
+        if (blob_len == 0 || offset + 4 + blob_len > file_size_) return false;
+        row_data = mapped_data_ + offset + 4;
+        row_size = blob_len;
+    } else if (fd_ >= 0) {
         if (offset + 4 > file_size_) return false;
 
         uint8_t len_buffer[4];
