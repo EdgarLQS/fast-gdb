@@ -739,8 +739,8 @@ TEST_F(LargeDataBenchmarkFixture, LARGE_DATA_Query) {
 //  数据路径: test_data/large_10m/large_10m_test.gdb
 // ═══════════════════════════════════════════════════════════
 
-static const char* const kLarge10mGdbPath =
-    "/Users/edgarlqs/Downloads/daydaydaywork/dailyWork/convert/gdal/fast_gdb/test_data/large_10m/large_10m_test.gdb";
+static const std::string kLarge10mGdbPath =
+    explorgdb_test_paths::test_data_path("test_data/large_10m/large_10m_test.gdb").string();
 
 static const uint32_t kLarge10mTableId = 0x9;  // a00000009
 
@@ -880,10 +880,10 @@ protected:
             GTEST_SKIP() << "Set FAST_GDB_RUN_10M_BENCHMARKS=1 to run 10M performance benchmarks";
         }
 
-        FILE* f = fopen(
-            "/Users/edgarlqs/Downloads/daydaydaywork/dailyWork/convert/gdal/fast_gdb/"
-            "test_data/large_10m/large_10m_test.gdb/a00000009.gdbtable", "rb");
-        if (f) { fclose(f); } else { GTEST_SKIP() << "10M test data not found — run generate_large_gdb --count 10000000 first"; }
+        const fs::path table_file = fs::path(kLarge10mGdbPath) / "a00000009.gdbtable";
+        if (!fs::is_regular_file(table_file)) {
+            GTEST_SKIP() << "10M test data not found — run generate_large_gdb --count 10000000 first";
+        }
 
         if (!catalog_.scan(kLarge10mGdbPath)) return;
 

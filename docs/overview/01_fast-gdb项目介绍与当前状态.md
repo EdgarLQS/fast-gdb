@@ -99,7 +99,7 @@ FileGDB Geometry Blob
        SpatialPredicate（精确空间过滤）
 ```
 
-普通 Point、MultiPoint、Polyline、Polygon 和 Z/M/ZM 共享该路径。CircularArc、Bezier、Ellipse 可由内置算法折线化；曲线或拓扑无法可靠处理时，Hybrid 可按策略回退 GDAL。MultiPatch 目前保留有限坐标/WKT 兼容，但不提供完整表面拓扑。
+普通 Point、MultiPoint、Polyline、Polygon 和 Z/M/ZM 共享该路径。支持范围内的 CircularArc、Cubic Bezier、EllipticArc（含已验收 M 曲线）可由纯 C++ 读取并线性化为标准 ISO WKB；2026-07-13 的两个真实曲线契约均通过，M 曲线为 2/2 命中、0 次 Hybrid fallback。原生 curve WKB、未知/未来描述符仍不提供；曲线或拓扑无法可靠处理时，Hybrid 可按策略回退 GDAL。MultiPatch 目前保留有限坐标/WKT 兼容，但不提供完整表面拓扑。
 
 ## 4. 当前实现成果
 
@@ -120,7 +120,7 @@ FileGDB Geometry Blob
 
 ### 5.1 2026-06-16 受控合成基线
 
-性能数据来自 **2026-06-16、macOS Apple Silicon、GDAL 3.9.3 OpenFileGDB 驱动**，数据模型为 Polygon + 4 个属性字段，规模覆盖 1K、10K、100K、1M 和 10M。以下数字是历史受控基线，不代表所有机器或生产数据集的保证值。
+性能数据来自 **2026-06-16、macOS Apple Silicon、GDAL 3.9.3 OpenFileGDB 驱动**，数据模型为 Polygon + 4 个属性字段，规模覆盖 1K、10K、100K、1M 和 10M。以下数字是历史受控基线，不代表所有机器或生产数据集的保证值；其中 10M 写入未在本轮复测，因为复测仅复用已有读取数据，不能反推出写入耗时。
 
 | 场景 | 当前结果 | 说明 |
 |---|---:|---|
@@ -133,7 +133,7 @@ FileGDB Geometry Blob
 
 性能优势主要来自 mmap、顺序访问、零拷贝 `FieldRef`/`string_view`、预分配、B+ 树按需导航、缓存和 FID 去重策略。上述数字是合成/受控基准，不是 35GB 或 5 亿级生产数据的承诺；完整表格、优化历程、失败实验和运行方法见 [性能基准与优化](../technical/01_性能基准与优化.md)。
 
-### 5.2 2026-07-13 真实数据受控读取基线
+### 5.2 2026-07-13 真实曲线受控读取基线
 
 最终验收报告在同一真实数据快照上记录了以下顺序读取结果：
 
@@ -145,6 +145,12 @@ FileGDB Geometry Blob
 | `Perf_Polygon_10k` | 3.76 ms | 3.32 ms | 面几何读取回归 |
 
 这组数据用于真实 FileGDB 回归和趋势观察，不是跨机器性能承诺。35GB/5 亿级数据的读取、过滤重写、追加、索引构建和资源使用仍需单独建立生产基线。完整来源见 [最终等价与发布验收报告](../planning/13_fast-gdb最终等价与发布验收报告.md)。
+
+### 5.3 2026-07-13 本轮复测
+
+本轮使用干净构建（macOS 26.4、Apple Clang 21.0.0、GDAL 3.13.0），1K–1M 合成夹具从 `/tmp` 运行，避免改写仓库数据；26 项通过，5 项会新建 10M 数据的夹具按预期 `SKIPPED`。100K 零拷贝顺序扫描为 35.40 ms，而 GDAL `GdbRecordset` 为 47.39 ms（约 1.34 倍）；属性索引的四个已对齐条件为 0.86–2.36 ms，对应 GDAL 5.62–21.37 ms。
+
+复用了仓库 `test_data/large_10m/large_10m_test.gdb`（约 1.9 GB）仅作读取/空间查询。该夹具在 Large 窗口返回 8,172,990 个候选，fast-gdb 总耗时 40,881.4 ms，GDAL component 为 3,842.5 ms；在此数据集、实现路径和热缓存条件下 GDAL component 更快。该结果不能与 2026-06-16 的 0.1% 合成查询数字直接比较，也不能用来推断 10M 写入。完整命令、分阶段耗时和限制见 [性能基准与优化](../technical/01_性能基准与优化.md)。
 
 ## 6. 测试与验收体系
 
@@ -172,9 +178,9 @@ ctest --test-dir build-linear --output-on-failure
 ./build-linear/bin/gdb_tutorial_test_runner \
   --gtest_filter='PerformanceBenchmarkFixture.*'
 
-# 10M 性能测试
+# 复用既有 10M 数据的只读/空间查询复测（不重建 perf_10m.gdb）
 FAST_GDB_RUN_10M_BENCHMARKS=1 ./build-linear/bin/gdb_tutorial_test_runner \
-  --gtest_filter='PerformanceBenchmarkFixture.*10M*:Large10mDataBenchmarkFixture.*'
+  --gtest_filter='Large10mDataBenchmarkFixture.LARGE_DATA_10M_Query'
 ```
 
 真实数据测试需要显式设置 `FAST_GDB_REAL_DATASET`、`FAST_GDB_CURVE_DATASET` 等环境变量。没有数据时出现 `SKIPPED` 表示验证条件缺失，不表示通过。

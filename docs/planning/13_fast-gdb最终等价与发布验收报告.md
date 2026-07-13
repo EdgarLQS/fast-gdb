@@ -218,6 +218,21 @@ Hybrid 产品遵循：
 
 四层要素数一致。该数据用于回归观察，不作为跨机器性能承诺。
 
+### 10.1 发布后复测（2026-07-13）
+
+使用干净构建（macOS 26.4、Apple Clang 21.0.0、GDAL 3.13.0、`FAST_GDB_CURVE_BACKEND=BUILTIN`、`FAST_GDB_GEOMETRY_OUTPUT=STANDARD_WKB`）复测了两个真实曲线契约：
+
+```bash
+FAST_GDB_REAL_DATASET="$PWD/test_data/gdb/test_spatial_gdb.gdb/test_spatial_gdb.gdb" \
+FAST_GDB_CURVE_DATASET="$PWD/test_data/gdb/testcurve.gdb" \
+gdb_tutorial_test_runner \
+  --gtest_filter='RealDataReleaseContractTest.CurveFileGdbUsesBuiltinWkbFirstPath:RealDataReleaseContractTest.CurvePolylineMMatchesGdalWithoutHybridFallback'
+```
+
+两项均通过：`CurveFileGdbUsesBuiltinWkbFirstPath`（68 ms）和 `CurvePolylineMMatchesGdalWithoutHybridFallback`（8 ms）。这再次确认支持范围内的 CircularArc、Bezier、Ellipse 和 M 曲线可由纯 C++ 读取并线性化为 ISO WKB；M 曲线为 2/2、0 次 Hybrid fallback。原生 curve WKB、未知/未来描述符和 MultiPatch 完整表面语义的边界不变。
+
+同轮还以 `FAST_GDB_RUN_10M_BENCHMARKS=1` 运行 `Large10mDataBenchmarkFixture.LARGE_DATA_10M_Query`，仅复用 `test_data/large_10m/large_10m_test.gdb`（约 1.9 GB）做读取/空间查询。Large 窗口返回 8,172,990 个候选，fast-gdb 为 40,881.4 ms、GDAL component 为 3,842.5 ms；本数据集上 GDAL component 更快。该夹具与历史合成 0.1% 查询的实现、数据集和计时阶段不同，不能比较加速比，也不构成 10M 写入复测。本轮未改写该数据集，不扩大当前发布范围。
+
 ## 11. 远端跨平台 CI
 
 `geometry-correctness` run `29223404842` 的六项作业全部成功：
