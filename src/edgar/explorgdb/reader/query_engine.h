@@ -113,6 +113,7 @@ private:
     ResolvedTable resolved_;
     std::unique_ptr<GdbTableParser> parser_;
     std::unique_ptr<GdbSpatialIndexParser> spatial_index_;
+    bool spatial_index_initialized_ = false;
     bool spatial_index_present_ = false;
     CapabilityReport capabilities_;
 };
