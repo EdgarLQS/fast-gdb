@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "catalog_resolver.h"
 #include "gdb_catalog.h"
@@ -114,6 +115,41 @@ TEST_F(SpatialQueryAdaptiveTest,
 }
 
 TEST_F(SpatialQueryAdaptiveTest,
+       GeometryOnlyScannerMatchesCanonicalBlobLocator) {
+    constexpr size_t kFeatureCount = 64;
+    const std::string path = create_adaptive_point_gdb(kFeatureCount);
+    ASSERT_FALSE(path.empty());
+
+    GdbCatalog catalog;
+    auto engine = open_engine(path, catalog);
+    ASSERT_NE(engine, nullptr);
+    ASSERT_NE(engine->table(), nullptr);
+
+    std::vector<uint32_t> scanned_fids;
+    const uint64_t scanned = engine->table()->scan_geometry_blobs(
+        [&](uint32_t fid, const uint8_t* blob, size_t size, bool is_null) {
+            EXPECT_FALSE(is_null);
+            ASSERT_NE(blob, nullptr);
+            ASSERT_GT(size, 0u);
+
+            const uint8_t* canonical = nullptr;
+            size_t canonical_size = 0;
+            ASSERT_TRUE(engine->table()->peek_geometry_blob(
+                fid, canonical, canonical_size));
+            ASSERT_EQ(size, canonical_size);
+            EXPECT_EQ(std::memcmp(blob, canonical, size), 0);
+            scanned_fids.push_back(fid);
+            return true;
+        });
+
+    EXPECT_EQ(scanned, kFeatureCount);
+    ASSERT_EQ(scanned_fids.size(), kFeatureCount);
+    EXPECT_TRUE(std::is_sorted(scanned_fids.begin(), scanned_fids.end()));
+    EXPECT_EQ(scanned_fids.front(), 0u);
+    EXPECT_EQ(scanned_fids.back(), kFeatureCount - 1);
+}
+
+TEST_F(SpatialQueryAdaptiveTest,
        HighDensityQueryBypassesSpatialIndexAndPreservesFids) {
     constexpr size_t kFeatureCount = 1200;
     const std::string path = create_adaptive_point_gdb(kFeatureCount);
@@ -138,6 +174,7 @@ TEST_F(SpatialQueryAdaptiveTest,
     EXPECT_EQ(result.matched_fids.back(), kFeatureCount - 1);
     EXPECT_EQ(result.spatial_metrics.feature_count, kFeatureCount);
     EXPECT_TRUE(result.spatial_metrics.spx_bypassed);
+    EXPECT_TRUE(result.spatial_metrics.geometry_only_scan);
     EXPECT_GT(result.spatial_metrics.estimated_coverage, 0.90);
     EXPECT_EQ(result.spatial_metrics.candidate_count, kFeatureCount);
     EXPECT_EQ(result.spatial_metrics.bbox_contained, kFeatureCount);
@@ -165,6 +202,7 @@ TEST_F(SpatialQueryAdaptiveTest,
     ASSERT_EQ(result.matched_fids.size(), 1u);
     EXPECT_EQ(result.matched_fids.front(), 0u);
     EXPECT_FALSE(result.spatial_metrics.spx_bypassed);
+    EXPECT_FALSE(result.spatial_metrics.geometry_only_scan);
     EXPECT_LE(result.spatial_metrics.bbox_contained,
               result.spatial_metrics.candidate_count);
     EXPECT_EQ(result.spatial_metrics.invalid_geometries, 0u);
@@ -184,6 +222,7 @@ TEST_F(SpatialQueryAdaptiveTest,
         -0.1, -0.1, 1.1, 1.1);
     ASSERT_FALSE(result.matched_fids.empty());
     EXPECT_FALSE(result.spatial_metrics.spx_bypassed);
+    EXPECT_FALSE(result.spatial_metrics.geometry_only_scan);
     EXPECT_LT(result.spatial_metrics.estimated_coverage, 0.10);
     EXPECT_LT(result.matched_fids.size(), kFeatureCount / 10);
     EXPECT_LT(result.spatial_metrics.candidate_ratio, 0.5);
