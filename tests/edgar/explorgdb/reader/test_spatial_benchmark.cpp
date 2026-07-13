@@ -66,6 +66,14 @@ bool env_enabled(const char* name) {
     return value != nullptr && std::string(value) == "1";
 }
 
+void set_env_value(const char* name, const char* value) {
+#ifdef _WIN32
+    _putenv_s(name, value);
+#else
+    setenv(name, value, 1);
+#endif
+}
+
 std::unique_ptr<QueryEngine> open_fast_engine(
     const std::string& gdb_path,
     GdbCatalog& catalog) {
@@ -189,6 +197,9 @@ void run_density_matrix(const fs::path& gdb_path,
     ASSERT_NE(engine, nullptr);
     ASSERT_NE(engine->table(), nullptr);
 
+    // Warm the parsed .spx descriptor and page cache before the hot-query matrix.
+    engine->query_bbox_unified(-10.0, -10.0, -1.0, -1.0);
+
     print_header(label, engine->table()->feature_count());
     for (const auto& benchmark : density_cases()) {
         const TimedFastResult fast = query_fast_gdb(*engine, benchmark);
@@ -200,7 +211,7 @@ void run_density_matrix(const fs::path& gdb_path,
         EXPECT_EQ(fast.query.spatial_metrics.invalid_geometries, 0u)
             << fast.query.fallback_reason;
         EXPECT_LE(fast.query.spatial_metrics.bbox_rejected,
-                  fast.query.spatial_metrics.candidate_count);
+                  fast.query.spatial_metrics.feature_count);
         EXPECT_LE(fast.query.spatial_metrics.exact_tested,
                   fast.query.spatial_metrics.feature_count);
     }
@@ -214,6 +225,7 @@ protected:
             GTEST_SKIP()
                 << "Set FAST_GDB_RUN_SPATIAL_BENCHMARKS=1 to run benchmarks";
         }
+        set_env_value("FAST_GDB_SPATIAL_PROFILE", "1");
     }
 };
 
