@@ -48,6 +48,13 @@ bool bbox_disjoint(const GdbBbox& bounds,
            bounds.ymax < ymin || bounds.ymin > ymax;
 }
 
+bool bbox_contained_by_query(const GdbBbox& bounds,
+                             double xmin, double ymin,
+                             double xmax, double ymax) {
+    return bounds.xmin >= xmin && bounds.ymin >= ymin &&
+           bounds.xmax <= xmax && bounds.ymax <= ymax;
+}
+
 } // namespace
 
 QueryResult QueryEngine::query_bbox_unified(
@@ -183,10 +190,20 @@ QueryResult QueryEngine::query_bbox_unified(
         } else {
             bounds = decoder.peek_bbox(blob, blob_size);
         }
-        if (bounds.has_value() &&
-            bbox_disjoint(*bounds, xmin, ymin, xmax, ymax)) {
-            ++result.spatial_metrics.bbox_rejected;
-            return;
+        if (bounds.has_value()) {
+            if (bbox_disjoint(*bounds, xmin, ymin, xmax, ymax)) {
+                ++result.spatial_metrics.bbox_rejected;
+                return;
+            }
+            // Strictly safe fast path: when the entire geometry envelope lies
+            // inside the query rectangle, at least one point of the geometry is
+            // necessarily inside that rectangle. No topology/model construction
+            // is required to establish intersection.
+            if (bbox_contained_by_query(*bounds, xmin, ymin, xmax, ymax)) {
+                ++result.spatial_metrics.bbox_contained;
+                result.matched_fids.push_back(fid);
+                return;
+            }
         }
 
         ++result.spatial_metrics.exact_tested;
@@ -291,6 +308,7 @@ QueryResult QueryEngine::query_bbox_unified(
                 : "bbox:model:candidate-fallback";
             result.matched_fids.clear();
             result.spatial_metrics.bbox_rejected = 0;
+            result.spatial_metrics.bbox_contained = 0;
             result.spatial_metrics.exact_tested = 0;
             result.spatial_metrics.invalid_geometries = 0;
             result.spatial_metrics.bbox_filter_ms = 0.0;
