@@ -13,7 +13,7 @@ All notable changes to fast-gdb are documented in this file.
 - Exact spatial predicates after `.spx` candidate filtering.
 - Explicit Hybrid FID offset mapping and diagnostic GDAL fallback.
 - Cross-platform geometry CI for Windows, Linux and macOS, plus Linux Hybrid and ASan/UBSan/LSan gates.
-- CMake install targets, package configuration files and CPack archives.
+- Relocatable binary SDK archives with public headers, production libraries and generated CMake imported targets.
 
 ### Fixed
 
@@ -25,6 +25,7 @@ All notable changes to fast-gdb are documented in this file.
 - Real `testcurve.gdb` acceptance: `Curve_Polyline_M_FC` passed 2/2 features using `BuiltinCurve`, with zero GDAL fallback.
 - FID mapping, WKB type, bounding boxes, lengths and full-layer spatial query matched the GDAL reference within documented tolerances.
 - The same real-data assertions passed Release and ASan/UBSan/LSan builds with zero failures.
+- Independent consumer projects successfully used `find_package(fast_gdb 0.1.0 CONFIG REQUIRED)` with both `fast_gdb::fast_gdb_linear` and `fast_gdb::fast_gdb_hybrid`.
 
 ### Known limitations
 
