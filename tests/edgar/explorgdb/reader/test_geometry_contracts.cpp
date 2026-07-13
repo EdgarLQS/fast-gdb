@@ -6,6 +6,7 @@
 
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <limits>
@@ -21,6 +22,84 @@ uint32_t read_u32(const std::vector<uint8_t>& bytes, size_t offset) {
            (static_cast<uint32_t>(bytes.at(offset + 1)) << 8) |
            (static_cast<uint32_t>(bytes.at(offset + 2)) << 16) |
            (static_cast<uint32_t>(bytes.at(offset + 3)) << 24);
+}
+
+void append_varuint(std::vector<uint8_t>& bytes, uint64_t value) {
+    do {
+        uint8_t byte = static_cast<uint8_t>(value & 0x7f);
+        value >>= 7;
+        if (value != 0) byte |= 0x80;
+        bytes.push_back(byte);
+    } while (value != 0);
+}
+
+void append_varint(std::vector<uint8_t>& bytes, int64_t value) {
+    const bool negative = value < 0;
+    uint64_t magnitude = negative
+        ? static_cast<uint64_t>(-(value + 1)) + 1
+        : static_cast<uint64_t>(value);
+
+    uint8_t first = static_cast<uint8_t>(magnitude & 0x3f);
+    magnitude >>= 6;
+    if (negative) first |= 0x40;
+    if (magnitude != 0) first |= 0x80;
+    bytes.push_back(first);
+
+    while (magnitude != 0) {
+        uint8_t byte = static_cast<uint8_t>(magnitude & 0x7f);
+        magnitude >>= 7;
+        if (magnitude != 0) byte |= 0x80;
+        bytes.push_back(byte);
+    }
+}
+
+void append_le_u32(std::vector<uint8_t>& bytes, uint32_t value) {
+    for (unsigned shift = 0; shift < 32; shift += 8)
+        bytes.push_back(static_cast<uint8_t>((value >> shift) & 0xff));
+}
+
+void append_le_double(std::vector<uint8_t>& bytes, double value) {
+    uint64_t bits = 0;
+    std::memcpy(&bits, &value, sizeof(bits));
+    for (unsigned shift = 0; shift < 64; shift += 8)
+        bytes.push_back(static_cast<uint8_t>((bits >> shift) & 0xff));
+}
+
+std::vector<uint8_t> m_curve_blob(bool missing_m_array) {
+    constexpr uint64_t kGeneralPolylineMWithCurve = 0x60000032ULL;
+    constexpr uint32_t kArcIntermediatePoint = 0x80;
+
+    std::vector<uint8_t> blob;
+    append_varuint(blob, kGeneralPolylineMWithCurve);
+    append_varuint(blob, 2);  // point count
+    append_varuint(blob, 1);  // part count
+    append_varuint(blob, 1);  // curve count
+    append_varuint(blob, 0);  // bbox xmin
+    append_varuint(blob, 0);  // bbox ymin
+    append_varuint(blob, 10000);  // bbox dx
+    append_varuint(blob, 5000);   // bbox dy
+
+    // Single part: no explicit part-size entries. XY values are cumulative
+    // signed deltas: (0, 0) -> (10, 0) at scale 1000.
+    append_varint(blob, 0);
+    append_varint(blob, 0);
+    append_varint(blob, 10000);
+    append_varint(blob, 0);
+
+    if (missing_m_array) {
+        // FileGDB marker used when an M-enabled class stores a 2D geometry.
+        blob.push_back(0x42);
+    } else {
+        append_varint(blob, 0);      // first M = 0
+        append_varint(blob, 10000);  // second M = 10
+    }
+
+    append_varuint(blob, 0);  // descriptor start vertex
+    append_varuint(blob, 1);  // CircularArc
+    append_le_double(blob, 5.0);
+    append_le_double(blob, 5.0);
+    append_le_u32(blob, kArcIntermediatePoint);
+    return blob;
 }
 
 GdbGeomDecoder decoder() {
@@ -103,6 +182,56 @@ TEST(GeometrySpatialSafety, ContinuousGridBboxCrossesSegment) {
 
     const QueryGridBbox disjoint{4.25L, 5.25L, 4.75L, 5.75L};
     EXPECT_FALSE(SpatialPredicate::intersects_bbox(line, disjoint));
+}
+
+TEST(GeometryCurveDecoder,
+     ParsesArcgisMissingMMarkerBeforeNativeCurveDescriptors) {
+    const auto blob = m_curve_blob(true);
+    auto geometry_decoder = decoder();
+
+    const auto model = geometry_decoder.decode_model(blob.data(), blob.size());
+    ASSERT_TRUE(model.valid()) << model.diagnostic;
+    EXPECT_TRUE(model.has_m);
+    EXPECT_TRUE(model.source_was_curve);
+    EXPECT_TRUE(model.linearized);
+    EXPECT_EQ(model.backend, GeometryBackend::BuiltinCurve);
+    ASSERT_EQ(model.lines.size(), 1u);
+    ASSERT_GT(model.lines.front().size(), 2u);
+    for (const auto& point : model.lines.front())
+        EXPECT_TRUE(std::isnan(point.m));
+
+    const auto value = geometry_decoder.decode_value(blob.data(), blob.size());
+    ASSERT_TRUE(value.valid()) << value.diagnostic;
+    EXPECT_TRUE(value.has_m);
+    EXPECT_TRUE(value.source_was_curve);
+    EXPECT_TRUE(value.linearized);
+    EXPECT_FALSE(value.wkb.empty());
+}
+
+TEST(GeometryCurveDecoder, PreservesCanonicalMArrayBeforeDescriptors) {
+    const auto blob = m_curve_blob(false);
+    auto geometry_decoder = decoder();
+
+    const auto model = geometry_decoder.decode_model(blob.data(), blob.size());
+    ASSERT_TRUE(model.valid()) << model.diagnostic;
+    ASSERT_EQ(model.lines.size(), 1u);
+    ASSERT_GT(model.lines.front().size(), 2u);
+    EXPECT_DOUBLE_EQ(model.lines.front().front().m, 0.0);
+    EXPECT_DOUBLE_EQ(model.lines.front().back().m, 10.0);
+    for (const auto& point : model.lines.front())
+        EXPECT_TRUE(std::isfinite(point.m));
+}
+
+TEST(GeometryCurveDecoder, MissingMMarkerStillFailsClosedOnTruncation) {
+    auto blob = m_curve_blob(true);
+    ASSERT_FALSE(blob.empty());
+    blob.pop_back();
+
+    auto geometry_decoder = decoder();
+    const auto model = geometry_decoder.decode_model(blob.data(), blob.size());
+    EXPECT_FALSE(model.valid());
+    EXPECT_EQ(model.status, GeometryStatus::InvalidEncoding);
+    EXPECT_NE(model.diagnostic.find("curve descriptors"), std::string::npos);
 }
 
 TEST(GeometryDecoderSafety,
