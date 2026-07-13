@@ -3,6 +3,7 @@
 #include "spatial_predicate.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 
@@ -11,6 +12,12 @@ namespace {
 
 constexpr double kDefaultSequentialDensity = 0.50;
 constexpr size_t kMinimumAdaptiveFeatureCount = 1024;
+using SpatialClock = std::chrono::steady_clock;
+
+double elapsed_ms(SpatialClock::time_point start) {
+    return std::chrono::duration<double, std::milli>(
+        SpatialClock::now() - start).count();
+}
 
 double sequential_density_threshold() {
     const char* value = std::getenv("FAST_GDB_SPATIAL_SCAN_DENSITY");
@@ -37,6 +44,7 @@ bool bbox_disjoint(const GdbBbox& bounds,
 QueryResult QueryEngine::query_bbox_unified(
     double xmin, double ymin, double xmax, double ymax) {
     QueryResult result;
+    const auto total_start = SpatialClock::now();
     if (!parser_) {
         result.execution_path = "bbox:model:unavailable";
         result.fallback_reason = "table not open";
@@ -61,6 +69,7 @@ QueryResult QueryEngine::query_bbox_unified(
     result.spatial_metrics.feature_count = feature_count;
     if (feature_count == 0) {
         result.execution_path = "bbox:model:empty";
+        result.spatial_metrics.total_ms = elapsed_ms(total_start);
         return result;
     }
 
@@ -73,6 +82,7 @@ QueryResult QueryEngine::query_bbox_unified(
     }
 
     std::vector<uint32_t> candidates;
+    const auto candidate_start = SpatialClock::now();
     const auto* spx = catalog_.find_spx(resolved_.id);
     bool spx_parse_ok = false;
     if (spx != nullptr) {
@@ -106,6 +116,8 @@ QueryResult QueryEngine::query_bbox_unified(
             ? "spatial index missing; sequential model filtering used"
             : capabilities_.spatial_index.reason;
     }
+    result.spatial_metrics.candidate_lookup_ms =
+        elapsed_ms(candidate_start);
 
     result.spatial_metrics.candidate_count = candidates.size();
     result.spatial_metrics.candidate_ratio =
@@ -136,7 +148,9 @@ QueryResult QueryEngine::query_bbox_unified(
             return;
         }
 
+        const auto bbox_start = SpatialClock::now();
         const auto bounds = decoder.peek_bbox(blob, blob_size);
+        result.spatial_metrics.bbox_filter_ms += elapsed_ms(bbox_start);
         if (bounds.has_value() &&
             bbox_disjoint(*bounds, xmin, ymin, xmax, ymax)) {
             ++result.spatial_metrics.bbox_rejected;
@@ -144,14 +158,17 @@ QueryResult QueryEngine::query_bbox_unified(
         }
 
         ++result.spatial_metrics.exact_tested;
+        const auto exact_start = SpatialClock::now();
         GeometryModel model = decoder.decode_model(blob, blob_size);
         if (!model.valid()) {
+            result.spatial_metrics.exact_filter_ms += elapsed_ms(exact_start);
             ++result.spatial_metrics.invalid_geometries;
             return;
         }
 
         const long double scale = model.transform.xy_scale;
         if (scale == 0.0L) {
+            result.spatial_metrics.exact_filter_ms += elapsed_ms(exact_start);
             ++result.spatial_metrics.invalid_geometries;
             return;
         }
@@ -168,11 +185,30 @@ QueryResult QueryEngine::query_bbox_unified(
             !std::isfinite(static_cast<double>(query.ymin)) ||
             !std::isfinite(static_cast<double>(query.xmax)) ||
             !std::isfinite(static_cast<double>(query.ymax))) {
+            result.spatial_metrics.exact_filter_ms += elapsed_ms(exact_start);
             ++result.spatial_metrics.invalid_geometries;
             return;
         }
-        if (SpatialPredicate::intersects_bbox(model, query))
+        const bool intersects = SpatialPredicate::intersects_bbox(model, query);
+        result.spatial_metrics.exact_filter_ms += elapsed_ms(exact_start);
+        if (intersects)
             result.matched_fids.push_back(fid);
+    };
+
+    auto evaluate_candidates = [&]() {
+        for (uint32_t fid : candidates) {
+            const uint8_t* blob = nullptr;
+            size_t blob_size = 0;
+            const auto blob_start = SpatialClock::now();
+            const bool located =
+                parser_->peek_geometry_blob(fid, blob, blob_size);
+            result.spatial_metrics.blob_lookup_ms += elapsed_ms(blob_start);
+            if (!located) {
+                ++result.spatial_metrics.invalid_geometries;
+                continue;
+            }
+            evaluate_blob(fid, blob, blob_size);
+        }
     };
 
     if (use_adaptive_sequential_scan &&
@@ -202,28 +238,14 @@ QueryResult QueryEngine::query_bbox_unified(
             result.spatial_metrics.bbox_rejected = 0;
             result.spatial_metrics.exact_tested = 0;
             result.spatial_metrics.invalid_geometries = 0;
-            for (uint32_t fid : candidates) {
-                const uint8_t* blob = nullptr;
-                size_t blob_size = 0;
-                if (!parser_->peek_geometry_blob(fid, blob, blob_size)) {
-                    ++result.spatial_metrics.invalid_geometries;
-                    continue;
-                }
-                evaluate_blob(fid, blob, blob_size);
-            }
+            result.spatial_metrics.bbox_filter_ms = 0.0;
+            result.spatial_metrics.exact_filter_ms = 0.0;
+            evaluate_candidates();
         }
     } else {
         if (spx_parse_ok)
             result.execution_path = "bbox:model:spx-candidates";
-        for (uint32_t fid : candidates) {
-            const uint8_t* blob = nullptr;
-            size_t blob_size = 0;
-            if (!parser_->peek_geometry_blob(fid, blob, blob_size)) {
-                ++result.spatial_metrics.invalid_geometries;
-                continue;
-            }
-            evaluate_blob(fid, blob, blob_size);
-        }
+        evaluate_candidates();
     }
 
     std::sort(result.matched_fids.begin(),
@@ -240,6 +262,7 @@ QueryResult QueryEngine::query_bbox_unified(
             std::to_string(result.spatial_metrics.invalid_geometries) +
             " candidate geometries had explicit decode/topology errors";
     }
+    result.spatial_metrics.total_ms = elapsed_ms(total_start);
     return result;
 }
 
