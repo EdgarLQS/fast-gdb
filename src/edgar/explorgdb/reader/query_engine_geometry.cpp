@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <string>
+#include <utility>
 
 namespace explorgdb {
 namespace {
@@ -21,9 +22,10 @@ double elapsed_ms(SpatialClock::time_point start) {
 
 bool env_flag_enabled(const char* name) {
     const char* value = std::getenv(name);
-    return value != nullptr &&
-           (std::string(value) == "1" || std::string(value) == "true" ||
-            std::string(value) == "TRUE");
+    if (value == nullptr) return false;
+    const std::string normalized(value);
+    return normalized == "1" || normalized == "true" ||
+           normalized == "TRUE";
 }
 
 double sequential_density_threshold() {
@@ -115,40 +117,45 @@ QueryResult QueryEngine::query_bbox_unified(
     }
 
     const bool spx_parse_ok = spatial_index_ != nullptr;
+    const bool sequential_fallback =
+        !spatial_index_present_ || !spx_parse_ok;
     if (spx_parse_ok) {
         candidates = spatial_index_->query_bbox(
             xmin, ymin, xmax, ymax,
             geom_field->xorig, geom_field->yorig,
             geom_field->xyscale, geom_field->grid_sizes,
-            static_cast<uint32_t>(feature_count));
-        std::sort(candidates.begin(), candidates.end());
-        candidates.erase(
-            std::unique(candidates.begin(), candidates.end()),
-            candidates.end());
+            static_cast<uint32_t>(feature_count - 1));
+        // query_bbox already returns sorted, unique FIDs. Do not sort millions
+        // of high-density candidates a second time.
     }
 
-    if (!spatial_index_present_ || !spx_parse_ok) {
-        candidates.reserve(feature_count);
-        for (uint32_t fid = 0; fid < feature_count; ++fid)
-            candidates.push_back(fid);
+    if (sequential_fallback) {
         result.execution_path = "bbox:model:sequential-fallback";
         result.fallback_reason = !spatial_index_present_
             ? "spatial index missing; sequential model filtering used"
             : capabilities_.spatial_index.reason;
+        result.spatial_metrics.candidate_count = feature_count;
+        result.spatial_metrics.candidate_ratio = 1.0;
+    } else {
+        result.spatial_metrics.candidate_count = candidates.size();
+        result.spatial_metrics.candidate_ratio =
+            static_cast<double>(candidates.size()) /
+            static_cast<double>(feature_count);
     }
     result.spatial_metrics.candidate_lookup_ms =
         elapsed_ms(candidate_start);
-
-    result.spatial_metrics.candidate_count = candidates.size();
-    result.spatial_metrics.candidate_ratio =
-        static_cast<double>(candidates.size()) /
-        static_cast<double>(feature_count);
 
     const bool use_adaptive_sequential_scan =
         spx_parse_ok &&
         feature_count >= kMinimumAdaptiveFeatureCount &&
         result.spatial_metrics.candidate_ratio >=
             sequential_density_threshold();
+    const bool use_sequential_scan =
+        geometry_field_index < parser_->fields().size() &&
+        (sequential_fallback || use_adaptive_sequential_scan);
+
+    result.matched_fids.reserve(
+        std::min(result.spatial_metrics.candidate_count, feature_count));
 
     const bool has_z =
         ((parser_->header().geom_type_full >> 24U) & (1U << 7U)) != 0;
@@ -229,6 +236,13 @@ QueryResult QueryEngine::query_bbox_unified(
             result.matched_fids.push_back(fid);
     };
 
+    auto ensure_all_candidates = [&]() {
+        if (!candidates.empty()) return;
+        candidates.reserve(feature_count);
+        for (uint32_t fid = 0; fid < feature_count; ++fid)
+            candidates.push_back(fid);
+    };
+
     auto evaluate_candidates = [&]() {
         for (uint32_t fid : candidates) {
             const uint8_t* blob = nullptr;
@@ -250,9 +264,9 @@ QueryResult QueryEngine::query_bbox_unified(
         }
     };
 
-    if (use_adaptive_sequential_scan &&
-        geometry_field_index < parser_->fields().size()) {
-        result.execution_path = "bbox:model:sequential-adaptive";
+    if (use_sequential_scan) {
+        if (!sequential_fallback)
+            result.execution_path = "bbox:model:sequential-adaptive";
         const uint64_t scanned = parser_->sequential_scan(
             [&](uint32_t fid, const FieldRef* fields, int field_count) {
                 if (fields == nullptr ||
@@ -270,15 +284,18 @@ QueryResult QueryEngine::query_bbox_unified(
             });
 
         // mmap can be unavailable on constrained platforms. Preserve correctness
-        // by falling back to candidate FID lookup instead of returning no rows.
+        // by falling back to zero-copy candidate lookup instead of returning no rows.
         if (scanned == 0 && feature_count != 0) {
-            result.execution_path = "bbox:model:spx-candidates";
+            result.execution_path = spx_parse_ok
+                ? "bbox:model:spx-candidates"
+                : "bbox:model:candidate-fallback";
             result.matched_fids.clear();
             result.spatial_metrics.bbox_rejected = 0;
             result.spatial_metrics.exact_tested = 0;
             result.spatial_metrics.invalid_geometries = 0;
             result.spatial_metrics.bbox_filter_ms = 0.0;
             result.spatial_metrics.exact_filter_ms = 0.0;
+            ensure_all_candidates();
             evaluate_candidates();
         }
     } else {
