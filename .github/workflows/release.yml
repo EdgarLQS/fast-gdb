@@ -1,0 +1,199 @@
+name: release
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-v0.1.0-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  RELEASE_VERSION: 0.1.0
+  RELEASE_TAG: v0.1.0
+
+jobs:
+  verify:
+    name: release-gate-linux
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libgdal-dev
+      - name: Verify project version
+        shell: bash
+        run: grep -Eq 'project\(fast_gdb VERSION 0\.1\.0 LANGUAGES CXX\)' CMakeLists.txt
+      - name: Configure
+        run: >-
+          cmake -S . -B build-verify -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DFAST_GDB_WITH_GDAL=ON
+          -DFAST_GDB_CURVE_BACKEND=BUILTIN
+          -DFAST_GDB_GEOMETRY_OUTPUT=STANDARD_WKB
+          -DFAST_GDB_BUILD_TOOLS=OFF
+          -DFAST_GDB_BUILD_FULL_TESTS=OFF
+          -DBUILD_TESTING=ON
+      - name: Build release gates
+        run: cmake --build build-verify --target fast_gdb_geometry_test_runner fast_gdb_hybrid_test_runner --parallel
+      - name: Test release gates
+        run: ctest --test-dir build-verify --output-on-failure -R '^(geometry|hybrid)\.'
+
+  package:
+    name: package-${{ matrix.asset }}
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            asset: linux-x64-linear
+            with_gdal: OFF
+            variant: linear
+            generator: TGZ
+            build_target: explorgdb_reader_lib
+          - os: ubuntu-latest
+            asset: linux-x64-hybrid
+            with_gdal: ON
+            variant: hybrid
+            generator: TGZ
+            build_target: fast_gdb_curve_gdal
+          - os: windows-latest
+            asset: windows-x64-linear
+            with_gdal: OFF
+            variant: linear
+            generator: ZIP
+            build_target: explorgdb_reader_lib
+          - os: macos-latest
+            asset: macos-linear
+            with_gdal: OFF
+            variant: linear
+            generator: TGZ
+            build_target: explorgdb_reader_lib
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build
+          if [[ '${{ matrix.with_gdal }}' == 'ON' ]]; then
+            sudo apt-get install -y libgdal-dev
+          fi
+      - name: Install macOS dependencies
+        if: runner.os == 'macOS'
+        run: brew install ninja
+      - name: Configure POSIX
+        if: runner.os != 'Windows'
+        run: >-
+          cmake -S . -B build-package -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DFAST_GDB_WITH_GDAL=${{ matrix.with_gdal }}
+          -DFAST_GDB_CURVE_BACKEND=BUILTIN
+          -DFAST_GDB_GEOMETRY_OUTPUT=STANDARD_WKB
+          -DFAST_GDB_BUILD_TOOLS=OFF
+          -DFAST_GDB_BUILD_FULL_TESTS=OFF
+          -DFAST_GDB_PACKAGE_VARIANT=${{ matrix.variant }}
+          -DBUILD_TESTING=OFF
+      - name: Configure Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: >-
+          cmake -S . -B build-package -A x64
+          -DFAST_GDB_WITH_GDAL=${{ matrix.with_gdal }}
+          -DFAST_GDB_CURVE_BACKEND=BUILTIN
+          -DFAST_GDB_GEOMETRY_OUTPUT=STANDARD_WKB
+          -DFAST_GDB_BUILD_TOOLS=OFF
+          -DFAST_GDB_BUILD_FULL_TESTS=OFF
+          -DFAST_GDB_PACKAGE_VARIANT=${{ matrix.variant }}
+          -DBUILD_TESTING=OFF
+      - name: Build package targets
+        run: cmake --build build-package --target ${{ matrix.build_target }} --config Release --parallel
+      - name: Install and consume package (POSIX)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          cmake --install build-package --prefix "$GITHUB_WORKSPACE/install-package" --config Release
+          cmake -S tests/package_consumer -B build-consumer -G Ninja \
+            -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/install-package" \
+            -DFAST_GDB_CONSUMER_TARGET=${{ matrix.variant }}
+          cmake --build build-consumer --parallel
+          ./build-consumer/fast_gdb_package_consumer
+      - name: Install and consume package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cmake --install build-package --prefix "$env:GITHUB_WORKSPACE/install-package" --config Release
+          cmake -S tests/package_consumer -B build-consumer -A x64 `
+            -DCMAKE_PREFIX_PATH="$env:GITHUB_WORKSPACE/install-package" `
+            -DFAST_GDB_CONSUMER_TARGET=${{ matrix.variant }}
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build build-consumer --config Release --parallel
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & .\build-consumer\Release\fast_gdb_package_consumer.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Package
+        run: cpack --config build-package/CPackConfig.cmake -C Release -G ${{ matrix.generator }} -B dist
+      - name: Normalize package name (POSIX)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          package=$(find dist -maxdepth 1 -type f -name '*.tar.gz' -print -quit)
+          test -n "$package"
+          mv "$package" "dist/fast-gdb-${RELEASE_VERSION}-${{ matrix.asset }}.tar.gz"
+      - name: Normalize package name (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $package = Get-ChildItem dist -Filter *.zip | Select-Object -First 1
+          if (-not $package) { throw 'CPack did not produce a ZIP archive.' }
+          Move-Item $package.FullName "dist/fast-gdb-$env:RELEASE_VERSION-${{ matrix.asset }}.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.asset }}
+          path: dist/fast-gdb-*
+          if-no-files-found: error
+
+  publish:
+    name: publish-v0.1.0
+    needs:
+      - verify
+      - package
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release-assets
+          merge-multiple: true
+      - name: Generate checksums
+        working-directory: release-assets
+        run: sha256sum fast-gdb-* > SHA256SUMS.txt
+      - name: Create tag and GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists; nothing to publish."
+            exit 0
+          fi
+          git tag -a "$RELEASE_TAG" "$GITHUB_SHA" -m "fast-gdb $RELEASE_TAG"
+          git push origin "$RELEASE_TAG"
+          gh release create "$RELEASE_TAG" release-assets/* \
+            --title "fast-gdb $RELEASE_TAG" \
+            --notes-file docs/releases/v0.1.0.md \
+            --verify-tag
