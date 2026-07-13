@@ -33,7 +33,7 @@ def copy_headers(repo: Path, output: Path, variant: str) -> None:
         components.append("curve_gdal")
     for component in components:
         source = repo / "src" / "edgar" / "explorgdb" / component
-        destination = output / "include" / "fast_gdb" / component
+        destination = output / "include" / "explorgdb" / component
         destination.mkdir(parents=True, exist_ok=True)
         for header in source.rglob("*"):
             if header.is_file() and header.suffix.lower() in {".h", ".hpp"}:
@@ -53,23 +53,12 @@ def write_cmake_config(output: Path, libraries: dict[str, str], variant: str) ->
     if variant == "hybrid":
         lines += ["include(CMakeFindDependencyMacro)", "find_dependency(GDAL)"]
 
-    include_map = {
-        "fast_gdb_geometry_core": "reader",
-        "explorgdb_common_lib": "common",
-        "explorgdb_reader_lib": "reader",
-        "explorgdb_writer_lib": "writer",
-        "fast_gdb_curve_gdal": "curve_gdal;reader",
-    }
     for target, filename in libraries.items():
-        include_dirs = ";".join(
-            f"${{_FAST_GDB_PREFIX}}/include/fast_gdb/{item}"
-            for item in include_map[target].split(";")
-        )
         lines += [
             f"add_library(fast_gdb::{target} STATIC IMPORTED)",
             f"set_target_properties(fast_gdb::{target} PROPERTIES",
             f"  IMPORTED_LOCATION \"${{_FAST_GDB_PREFIX}}/lib/{filename}\"",
-            f"  INTERFACE_INCLUDE_DIRECTORIES \"{include_dirs}\")",
+            "  INTERFACE_INCLUDE_DIRECTORIES \"${_FAST_GDB_PREFIX}/include\")",
         ]
 
     if "explorgdb_reader_lib" in libraries:
