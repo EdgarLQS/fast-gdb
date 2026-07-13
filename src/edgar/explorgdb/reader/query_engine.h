@@ -43,6 +43,8 @@ struct SpatialQueryMetrics {
     size_t bbox_contained = 0;
     size_t exact_tested = 0;
     size_t invalid_geometries = 0;
+    double estimated_coverage = 0.0;
+    bool spx_bypassed = false;
     double candidate_ratio = 0.0;
     double candidate_lookup_ms = 0.0;
     double blob_lookup_ms = 0.0;
