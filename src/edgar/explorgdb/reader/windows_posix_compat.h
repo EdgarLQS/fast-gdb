@@ -23,13 +23,7 @@ using ssize_t = SSIZE_T;
 
 int fast_gdb_open_utf8(const char* path, int flags, int mode = 0);
 
-#if defined(__MINGW32__)
-// MinGW already declares ::open, so an inline replacement would conflict with
-// the CRT declaration. Redirect call sites after the system headers have been
-// included; this keeps the UCRT64 acceptance build on the UTF-16 CreateFileW
-// path as well.
-#define open fast_gdb_open_utf8
-#else
+#if !defined(__MINGW32__)
 inline int open(const char* path, int flags) {
     return fast_gdb_open_utf8(path, flags);
 }
