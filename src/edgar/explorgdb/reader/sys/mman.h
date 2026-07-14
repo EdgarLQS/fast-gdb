@@ -42,6 +42,11 @@ inline std::unordered_map<void*, MappingRecord>& mappings() {
     return records;
 }
 
+inline bool trace_enabled() {
+    const char* trace = std::getenv("FAST_GDB_WINDOWS_IO_TRACE");
+    return trace != nullptr && trace[0] == '1';
+}
+
 inline bool env_disables_mapping() {
     const char* force_failure = std::getenv("FAST_GDB_FORCE_MMAP_FAILURE");
     if (force_failure != nullptr && force_failure[0] == '1') return true;
@@ -49,23 +54,43 @@ inline bool env_disables_mapping() {
     return enabled != nullptr && enabled[0] == '0';
 }
 
-inline void report_mapping_failure(const char* stage, DWORD error) {
-    const char* trace = std::getenv("FAST_GDB_WINDOWS_IO_TRACE");
-    if (trace == nullptr || trace[0] != '1') return;
+inline bool env_forces_windowed_mapping() {
+    const char* value = std::getenv("FAST_GDB_FORCE_WINDOWED_MMAP");
+    return value != nullptr && value[0] == '1';
+}
+
+inline size_t full_mapping_limit_bytes() {
+    constexpr size_t kMiB = 1024U * 1024U;
+    constexpr size_t kDefaultMiB = 1024U;
+    const char* value = std::getenv("FAST_GDB_WINDOWS_FULL_MMAP_MAX_MB");
+    if (value == nullptr || value[0] == '\0') return kDefaultMiB * kMiB;
+    char* end = nullptr;
+    const unsigned long long parsed = std::strtoull(value, &end, 10);
+    if (end == value || *end != '\0' || parsed == 0 ||
+        parsed > std::numeric_limits<size_t>::max() / kMiB) {
+        return kDefaultMiB * kMiB;
+    }
+    return static_cast<size_t>(parsed) * kMiB;
+}
+
+inline void report_failure(const char* stage, DWORD error,
+                           const char* fallback) {
+    if (!trace_enabled()) return;
     std::fprintf(stderr,
-                 "fast-gdb windows mmap: %s failed (win32=%lu); "
-                 "using positional-I/O fallback\n",
-                 stage, static_cast<unsigned long>(error));
+                 "fast-gdb windows mmap: %s failed (win32=%lu); using %s\n",
+                 stage, static_cast<unsigned long>(error), fallback);
+}
+
+inline void report_success(const char* mode, uint64_t offset,
+                           size_t length) {
+    if (!trace_enabled()) return;
+    std::fprintf(stderr,
+                 "fast-gdb windows mmap: success mode=%s offset=%llu bytes=%zu\n",
+                 mode, static_cast<unsigned long long>(offset), length);
 }
 
 } // namespace fast_gdb_windows_mman
 
-// Read-only mmap compatibility implemented with CreateFileMappingW and
-// MapViewOfFile. Windows requires offsets to be aligned to allocation
-// granularity, so the returned logical pointer is view_base + delta and the
-// registry retains the real view base for UnmapViewOfFile. SIZE_T and the
-// high/low offset pair keep 64-bit mappings correct on x64; 32-bit builds
-// reject ranges that cannot be represented and retain the fd fallback.
 inline void* mmap(void*, size_t length, int prot, int, int fd, __int64 offset) {
     using namespace fast_gdb_windows_mman;
     if (length == 0 || fd < 0 || offset < 0 || (prot & PROT_READ) == 0) {
@@ -74,14 +99,23 @@ inline void* mmap(void*, size_t length, int prot, int, int fd, __int64 offset) {
     }
     if (env_disables_mapping()) {
         SetLastError(ERROR_NOT_SUPPORTED);
-        report_mapping_failure("disabled by environment", ERROR_NOT_SUPPORTED);
+        report_failure("disabled by environment", ERROR_NOT_SUPPORTED,
+                       "synchronous positional I/O");
         errno = ENOTSUP;
+        return MAP_FAILED;
+    }
+    if (env_forces_windowed_mapping() || length > full_mapping_limit_bytes()) {
+        SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+        report_failure("full view deferred", ERROR_NOT_ENOUGH_MEMORY,
+                       "windowed MapViewOfFile");
+        errno = ENOMEM;
         return MAP_FAILED;
     }
 
     const intptr_t raw_handle = _get_osfhandle(fd);
     if (raw_handle == -1) {
-        report_mapping_failure("_get_osfhandle", ERROR_INVALID_HANDLE);
+        report_failure("_get_osfhandle", ERROR_INVALID_HANDLE,
+                       "synchronous positional I/O");
         errno = EBADF;
         return MAP_FAILED;
     }
@@ -90,14 +124,17 @@ inline void* mmap(void*, size_t length, int prot, int, int fd, __int64 offset) {
     LARGE_INTEGER file_size{};
     if (!GetFileSizeEx(file_handle, &file_size)) {
         const DWORD error = GetLastError();
-        report_mapping_failure("GetFileSizeEx", error);
+        report_failure("GetFileSizeEx", error,
+                       "synchronous positional I/O");
         errno = EIO;
         return MAP_FAILED;
     }
     const uint64_t logical_offset = static_cast<uint64_t>(offset);
     const uint64_t logical_length = static_cast<uint64_t>(length);
-    if (logical_offset > static_cast<uint64_t>(file_size.QuadPart) ||
-        logical_length > static_cast<uint64_t>(file_size.QuadPart) - logical_offset) {
+    if (file_size.QuadPart < 0 ||
+        logical_offset > static_cast<uint64_t>(file_size.QuadPart) ||
+        logical_length > static_cast<uint64_t>(file_size.QuadPart) -
+                             logical_offset) {
         errno = EINVAL;
         return MAP_FAILED;
     }
@@ -105,8 +142,18 @@ inline void* mmap(void*, size_t length, int prot, int, int fd, __int64 offset) {
     SYSTEM_INFO system_info{};
     GetSystemInfo(&system_info);
     const uint64_t granularity = system_info.dwAllocationGranularity;
-    const uint64_t aligned_offset = logical_offset - (logical_offset % granularity);
-    const size_t delta = static_cast<size_t>(logical_offset - aligned_offset);
+    if (granularity == 0) {
+        errno = EIO;
+        return MAP_FAILED;
+    }
+    const uint64_t aligned_offset = logical_offset -
+                                    (logical_offset % granularity);
+    const uint64_t delta64 = logical_offset - aligned_offset;
+    if (delta64 > std::numeric_limits<size_t>::max()) {
+        errno = EOVERFLOW;
+        return MAP_FAILED;
+    }
+    const size_t delta = static_cast<size_t>(delta64);
     if (length > std::numeric_limits<size_t>::max() - delta) {
         errno = EOVERFLOW;
         return MAP_FAILED;
@@ -117,19 +164,21 @@ inline void* mmap(void*, size_t length, int prot, int, int fd, __int64 offset) {
         file_handle, nullptr, PAGE_READONLY, 0, 0, nullptr);
     if (mapping_handle == nullptr) {
         const DWORD error = GetLastError();
-        report_mapping_failure("CreateFileMappingW", error);
+        report_failure("CreateFileMappingW", error,
+                       "synchronous positional I/O");
         errno = EIO;
         return MAP_FAILED;
     }
 
     void* view_base = MapViewOfFile(
         mapping_handle, FILE_MAP_READ,
-        static_cast<DWORD>(aligned_offset >> 32),
+        static_cast<DWORD>(aligned_offset >> 32U),
         static_cast<DWORD>(aligned_offset & 0xffffffffULL),
         mapped_length);
     if (view_base == nullptr) {
         const DWORD error = GetLastError();
-        report_mapping_failure("MapViewOfFile", error);
+        report_failure("MapViewOfFile", error,
+                       "windowed MapViewOfFile or positional I/O");
         CloseHandle(mapping_handle);
         errno = ENOMEM;
         return MAP_FAILED;
@@ -138,9 +187,17 @@ inline void* mmap(void*, size_t length, int prot, int, int fd, __int64 offset) {
     void* logical_pointer = static_cast<unsigned char*>(view_base) + delta;
     {
         std::lock_guard<std::mutex> lock(mapping_mutex());
-        mappings().emplace(logical_pointer,
-                           MappingRecord{mapping_handle, view_base, mapped_length});
+        const auto inserted = mappings().emplace(
+            logical_pointer,
+            MappingRecord{mapping_handle, view_base, mapped_length});
+        if (!inserted.second) {
+            UnmapViewOfFile(view_base);
+            CloseHandle(mapping_handle);
+            errno = EEXIST;
+            return MAP_FAILED;
+        }
     }
+    report_success("full", logical_offset, length);
     return logical_pointer;
 }
 
@@ -173,9 +230,6 @@ inline int munmap(void* address, size_t) {
 }
 
 inline int madvise(void*, size_t, int) {
-    // MapViewOfFile is demand paged. FILE_FLAG_SEQUENTIAL_SCAN on CreateFileW
-    // supplies the equivalent access hint for fallback reads; no extra action
-    // is required here.
     return 0;
 }
 
