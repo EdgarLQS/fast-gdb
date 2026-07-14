@@ -74,6 +74,21 @@ bool env_enabled(const char* name) {
     return value != nullptr && std::string(value) == "1";
 }
 
+constexpr int kDefaultNumTrials = 5;
+constexpr int kMaximumNumTrials = 100;
+
+int benchmark_trials() {
+    const char* value = std::getenv("FAST_GDB_BENCHMARK_TRIALS");
+    if (value == nullptr || *value == '\0') return kDefaultNumTrials;
+    char* end = nullptr;
+    const long parsed = std::strtol(value, &end, 10);
+    if (end == value || *end != '\0' || parsed < 1 ||
+        parsed > kMaximumNumTrials) {
+        return kDefaultNumTrials;
+    }
+    return static_cast<int>(parsed);
+}
+
 // ============================================================================
 // Benchmark mode selection
 // ============================================================================
@@ -260,7 +275,6 @@ struct CaseRunResults {
     std::vector<GdalTimedResult> gdal_results;
 };
 
-constexpr int kNumTrials = 5;
 constexpr double kPerformanceRatioLimit = 0.90;
 constexpr double kSmallQueryToleranceMs = 200.0;
 
@@ -327,7 +341,8 @@ void print_summary_row(const char* name,
 }
 
 void print_summary_header(const char* mode_str) {
-    std::printf("\n--- %s Summary (median of %d) ---\n", mode_str, kNumTrials);
+    std::printf("\n--- %s Summary (median of %d) ---\n",
+                mode_str, benchmark_trials());
     std::printf("%-18s %10s %10s %10s %10s %10s\n",
                 "case", "fast_med", "gdal_med",
                 "fast_p95", "gdal_p95", "ratio");
@@ -364,7 +379,8 @@ void collect_steady_state(QueryEngine& engine, GDALDataset* dataset,
                                   benchmark.xmax, benchmark.ymax);
         warm_gdal_query(dataset, benchmark);
     }
-    for (int trial = 0; trial < kNumTrials; ++trial) {
+    const int num_trials = benchmark_trials();
+    for (int trial = 0; trial < num_trials; ++trial) {
         for (size_t ci = 0; ci < cases.size(); ++ci) {
             const size_t idx = (ci + static_cast<size_t>(trial)) % cases.size();
             store_result(results[idx], query_fast_gdb(engine, cases[idx]),
@@ -397,7 +413,8 @@ void collect_fresh_open(const std::string& gdb_path,
             query_fast_gdb_fresh_open(gdb_path, cases[ci]);
         }
     }
-    for (int trial = 0; trial < kNumTrials; ++trial) {
+    const int num_trials = benchmark_trials();
+    for (int trial = 0; trial < num_trials; ++trial) {
         for (size_t ci = 0; ci < cases.size(); ++ci) {
             const size_t idx = (ci + static_cast<size_t>(trial)) % cases.size();
             TimedQueryResult fast;
