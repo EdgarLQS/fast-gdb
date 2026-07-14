@@ -108,10 +108,6 @@ python3 scripts/run_spatial_regression.py \
 
 **BLOCKED — no acceptance result or PASS is claimed.**
 
-On commit `7a0343dcaf9aa0662c96c75219878dff4497156c`:
-
-- Windows acceptance run `29322601432` created its expected job, but the job completed with `steps=None` and no log URL.
-- POSIX regression run `29322601366` created both Linux and macOS jobs, but both completed with `steps=None` and no log URLs.
-- The existing `release`, `spatial-query`, and `geometry-correctness` workflows showed the same pre-step failure pattern.
+The latest inspected workflow set produced the expected Windows, Linux, and macOS jobs, but every job completed before executing a step (`steps=None`) and exposed no job log URL. The repository's existing release, spatial-query, and geometry-correctness workflows show the same pre-step failure pattern.
 
 This demonstrates that both new workflows are syntactically registered, but no hosted runner has executed checkout, configuration, compilation, tests, or benchmarks. The implementation, deterministic tests, strict cache protocol, path assertions, and A/B workflows are committed, but none has produced runtime evidence. This document must be updated with successful run URLs, uploaded CSV files, machine details, and the final PASS/FAIL decision before the draft pull request is marked ready.
