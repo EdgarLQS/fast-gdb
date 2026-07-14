@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <limits>
+#include <stdexcept>
 #include <vector>
 
 #ifdef _WIN32
@@ -38,7 +39,6 @@ bool skip_value(const FieldDescriptor& field,
                 size_t* value_size) {
     if (value_data) *value_data = nullptr;
     if (value_size) *value_size = 0;
-
     if (field.type == FieldType::ObjectId) return true;
 
     const size_t fixed_width = fixed_physical_width(field.type);
@@ -218,6 +218,11 @@ size_t async_depth() {
     if (end == value || *end != '\0' || parsed == 0) return kDefaultDepth;
     return std::min<size_t>(static_cast<size_t>(parsed), kMaximumDepth);
 }
+
+bool force_async_launch_failure() {
+    const char* value = std::getenv("FAST_GDB_FORCE_ASYNC_LAUNCH_FAILURE");
+    return value != nullptr && value[0] == '1';
+}
 #endif
 
 struct RowRef {
@@ -240,8 +245,10 @@ struct BatchResult {
 
 bool row_prefix_fits(const ReadBatch& batch, uint64_t offset) {
     if (batch.rows.empty() || offset < batch.offset) return false;
-    const uint64_t local = offset - batch.offset;
-    return local <= batch.size && batch.size - static_cast<size_t>(local) >= 4;
+    const uint64_t local64 = offset - batch.offset;
+    if (local64 > std::numeric_limits<size_t>::max()) return false;
+    const size_t local = static_cast<size_t>(local64);
+    return local <= batch.size && batch.size - local >= 4;
 }
 
 ReadBatch start_batch(uint64_t offset, uint64_t file_size,
@@ -273,10 +280,9 @@ uint64_t GdbTableParser::scan_geometry_blobs(GeometryScanCallback callback) {
             ++scanned;
             return true;
         }
-        const uint8_t* row_end = row_begin + row_size;
         const GeometryLocation located = locate_geometry(
             fields_, geometry_field_index_, nullable_count,
-            row_begin, row_end);
+            row_begin, row_begin + row_size);
         if (!located.accepted) {
             if (!callback(fid, nullptr, 0, true)) return false;
         } else if (!callback(fid, located.geometry, located.geometry_size,
@@ -307,12 +313,55 @@ uint64_t GdbTableParser::scan_geometry_blobs(GeometryScanCallback callback) {
         if (io_trace_enabled()) {
             std::fprintf(stderr,
                          "fast-gdb windows dense-scan: mode=mmap records=%llu "
-                         "batch_reads=0 bytes=0 exact_reads=0 "
+                         "batch_reads=0 bytes=0 exact_reads=0 exact_bytes=0 "
                          "overlapped_batches=0 async_depth=0 failed=false\n",
                          static_cast<unsigned long long>(scanned));
         }
         return scanned;
     }
+
+#ifdef _WIN32
+    // A full view is deliberately avoided for large/address-space-constrained
+    // tables. This parser-owned scan object keeps one mapping handle and one
+    // allocation-granularity-aligned view, remapping as physical offsets move.
+    if (fd_ >= 0) {
+        FastGdbSlidingMap sliding;
+        if (sliding.open(fd_)) {
+            const size_t preferred = dense_batch_bytes();
+            for (uint32_t fid = 0; fid < feature_offsets_.size(); ++fid) {
+                const uint64_t offset = feature_offsets_[fid];
+                if (offset == 0 || offset >= file_size_) continue;
+                if (offset > file_size_ - std::min<size_t>(file_size_, 4U))
+                    return 0;
+
+                const uint8_t* prefix = sliding.map(offset, 4, preferred);
+                if (prefix == nullptr) return 0;
+                uint32_t row_size = 0;
+                std::memcpy(&row_size, prefix, sizeof(row_size));
+                if (row_size > file_size_ - static_cast<size_t>(offset + 4))
+                    return 0;
+                if (row_size == 0) {
+                    if (!emit_row(fid, nullptr, 0)) break;
+                    continue;
+                }
+                const uint8_t* row = sliding.map(
+                    offset + 4, row_size,
+                    std::max(preferred, static_cast<size_t>(row_size)));
+                if (row == nullptr) return 0;
+                if (!emit_row(fid, row, row_size)) break;
+            }
+            if (io_trace_enabled()) {
+                std::fprintf(stderr,
+                             "fast-gdb windows dense-scan: mode=mmap-windowed "
+                             "records=%llu batch_reads=0 bytes=0 exact_reads=0 "
+                             "exact_bytes=0 overlapped_batches=0 async_depth=0 "
+                             "failed=false\n",
+                             static_cast<unsigned long long>(scanned));
+            }
+            return scanned;
+        }
+    }
+#endif
 
     if (fd_ < 0) return 0;
 
@@ -361,9 +410,7 @@ uint64_t GdbTableParser::scan_geometry_blobs(GeometryScanCallback callback) {
 
     auto process_batch = [&](BatchResult& result) -> bool {
         if (result.overlapped_attempted) ++overlapped_batches;
-        if (!result.ok) {
-            result = read_batch_sync(std::move(result.batch));
-        }
+        if (!result.ok) result = read_batch_sync(std::move(result.batch));
         if (!result.ok) {
             io_failed = true;
             return false;
@@ -405,9 +452,6 @@ uint64_t GdbTableParser::scan_geometry_blobs(GeometryScanCallback callback) {
                 continue;
             }
 
-            // Only a record that actually crosses the bounded window receives an
-            // exact follow-up read. A large header_.largest_size_record no longer
-            // inflates every ordinary record in the table.
             std::vector<uint8_t> exact;
             try {
                 exact.resize(row_size);
@@ -463,6 +507,8 @@ uint64_t GdbTableParser::scan_geometry_blobs(GeometryScanCallback callback) {
         PendingRead item;
         item.batch = batch;
         try {
+            if (force_async_launch_failure())
+                throw std::runtime_error("forced async launch failure");
             item.future = std::async(
                 std::launch::async,
                 [&, batch = std::move(batch)]() mutable {
@@ -479,7 +525,7 @@ uint64_t GdbTableParser::scan_geometry_blobs(GeometryScanCallback callback) {
     };
 #else
     const size_t requested_depth = 1;
-    const size_t actual_depth = 1;
+    const size_t actual_depth = 0;
     auto submit_batch = [&](ReadBatch batch) -> bool {
         if (batch.rows.empty()) return true;
         BatchResult result = read_batch_sync(std::move(batch));
@@ -724,6 +770,8 @@ uint64_t GdbTableParser::scan_geometry_candidates(
         PendingRead item;
         item.batch = batch;
         try {
+            if (force_async_launch_failure())
+                throw std::runtime_error("forced async launch failure");
             item.future = std::async(
                 std::launch::async,
                 [&, batch = std::move(batch)]() mutable {
@@ -755,7 +803,7 @@ uint64_t GdbTableParser::scan_geometry_candidates(
         }
     }
 #else
-    const size_t actual_depth = 1;
+    const size_t actual_depth = 0;
     for (ReadBatch& batch : batches) {
         BatchResult result = read_sync(std::move(batch));
         if (!process(result)) {
