@@ -307,6 +307,35 @@ QueryResult QueryEngine::query_bbox_unified(
     };
 
     auto evaluate_candidates = [&]() {
+        // P2 first attempts a transactional physical-range batch. If any batch
+        // cannot be read or parsed, restore metrics/results and use the canonical
+        // per-FID locator so an optimization failure cannot change semantics.
+        if (!candidates.empty()) {
+            const SpatialQueryMetrics metrics_before = result.spatial_metrics;
+            const size_t matched_before = result.matched_fids.size();
+            const uint64_t scanned = parser_->scan_geometry_candidates(
+                candidates,
+                [&](uint32_t fid, const uint8_t* geometry,
+                    size_t geometry_size, bool is_null) {
+                    if (is_null || geometry == nullptr || geometry_size == 0) {
+                        ++result.spatial_metrics.invalid_geometries;
+                        return true;
+                    }
+                    evaluate_blob(fid, geometry, geometry_size);
+                    return true;
+                });
+            if (scanned == candidates.size()) {
+                std::sort(result.matched_fids.begin(),
+                          result.matched_fids.end());
+                result.execution_path = spx_parse_ok
+                    ? "bbox:model:spx-candidates-batched"
+                    : "bbox:model:candidate-fallback-batched";
+                return;
+            }
+            result.matched_fids.resize(matched_before);
+            result.spatial_metrics = metrics_before;
+        }
+
         for (uint32_t fid : candidates) {
             const uint8_t* blob = nullptr;
             size_t blob_size = 0;
@@ -325,6 +354,7 @@ QueryResult QueryEngine::query_bbox_unified(
             }
             evaluate_blob(fid, blob, blob_size);
         }
+        std::sort(result.matched_fids.begin(), result.matched_fids.end());
     };
 
     if (use_sequential_scan) {
