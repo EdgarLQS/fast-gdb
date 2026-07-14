@@ -6,6 +6,7 @@ on:
     paths:
       - 'src/edgar/explorgdb/reader/**'
       - 'tests/edgar/explorgdb/reader/test_spatial_benchmark.cpp'
+      - 'tests/edgar/explorgdb/reader/test_windows_mmap_io.cpp'
       - 'tests/edgar/explorgdb/generate_large_gdb.cpp'
       - 'scripts/windows/run_spatial_acceptance.ps1'
       - '.github/workflows/windows-spatial-acceptance.yml'
@@ -55,6 +56,12 @@ jobs:
           --target gdb_tutorial_test_runner generate_large_gdb
           --parallel 2
 
+      - name: Run Windows mmap and positional-I/O unit tests
+        shell: msys2 {0}
+        run: >-
+          ctest --test-dir build-windows --output-on-failure
+          -R 'full\.WindowsMmapIoTest\.'
+
       - name: Restore reusable 1M and 10M point fixtures
         uses: actions/cache@v4
         with:
@@ -72,9 +79,8 @@ jobs:
 
       - name: Run Windows Release acceptance matrix
         shell: pwsh
-        env:
-          PATH: C:\msys64\ucrt64\bin;${{ env.PATH }}
         run: |
+          $env:PATH = "C:\msys64\ucrt64\bin;$env:PATH"
           ./scripts/windows/run_spatial_acceptance.ps1 `
             -BuildDir build-windows `
             -DataRoot test_data/spatial_matrix/windows `
