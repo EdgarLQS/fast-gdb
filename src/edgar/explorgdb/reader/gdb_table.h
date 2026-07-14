@@ -84,6 +84,15 @@ public:
                            bool is_null)>;
     uint64_t scan_geometry_blobs(GeometryScanCallback callback);
 
+    // P2 sparse-candidate scanner. It resolves candidate FIDs through .gdbtablx,
+    // sorts by physical offset, merges nearby records into bounded read ranges,
+    // and invokes the callback in physical order. QueryEngine restores ascending
+    // FID order before exposing the final result set. A zero return means the
+    // caller should retain the canonical per-FID locator fallback.
+    uint64_t scan_geometry_candidates(
+        const std::vector<uint32_t>& candidates,
+        GeometryScanCallback callback);
+
 private:
     void parse_field_descriptor(BinaryReader& reader,
                                 bool layer_has_z,
@@ -105,13 +114,13 @@ private:
     uint8_t* mapped_data_ = nullptr;
     std::vector<uint8_t> row_buffer_;
 
-    // Sparse candidate fallback window (P2). A candidate whose physical record
-    // falls inside this interval reuses the existing 1-8 MiB read instead of
-    // issuing another length read plus row read. The geometry pointer remains
-    // valid until the next peek_geometry_blob() call.
+    // Canonical per-FID fallback window. P2 uses scan_geometry_candidates() for
+    // bulk queries; this smaller cache still avoids duplicate I/O for isolated
+    // callers and invalidates automatically when the parser descriptor changes.
     std::vector<uint8_t> sparse_window_buffer_;
     uint64_t sparse_window_offset_ = 0;
     size_t sparse_window_size_ = 0;
+    int sparse_window_fd_ = -1;
 
     TableHeader header_;
     std::vector<FieldDescriptor> fields_;
