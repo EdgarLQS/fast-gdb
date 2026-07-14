@@ -23,7 +23,7 @@
 | P0 | UTF-8 `CreateFileW`; allocation-granularity aligned `CreateFileMappingW`/`MapViewOfFile`; logical-pointer registry; `UnmapViewOfFile` then mapping-handle close; existing `mapped_data_` zero-copy path | `FAST_GDB_WINDOWS_MMAP=0` or a mapping API failure leaves the file descriptor open and selects positional I/O |
 | P1 | Dense geometry scans merge physical records into configurable 1-8 MiB windows and parse multiple rows from each read | A batch read is retried once; a persistent failure returns zero so `QueryEngine` uses the canonical candidate fallback |
 | P2 | Sparse `.spx` candidates are resolved through `.gdbtablx`, sorted by physical offset, merged into bounded ranges, evaluated, then the final matched FIDs are restored to ascending order | Metrics and matched FIDs are snapshotted; a partial batch failure rolls back and re-runs the canonical per-FID locator |
-| P3 | Bounded asynchronous prefetch uses `ReadFile` with `OVERLAPPED`; MinGW synchronous CRT handles are reopened with `ReOpenFile(...FILE_FLAG_OVERLAPPED)` and cached by file identity | P3 is opt-in (`FAST_GDB_WINDOWS_ASYNC_IO=1`); default fallback remains synchronous until the acceptance result justifies enabling it |
+| P3 | Bounded asynchronous prefetch uses `ReadFile` with `OVERLAPPED`; synchronous CRT handles are reopened with `ReOpenFile(...FILE_FLAG_OVERLAPPED)` and cached by file identity | P3 is opt-in (`FAST_GDB_WINDOWS_ASYNC_IO=1`); default fallback remains synchronous until the acceptance result justifies enabling it |
 
 ## Correctness gates
 
@@ -72,7 +72,7 @@ cmake --build build-windows `
 
 **BLOCKED — no acceptance result is claimed.**
 
-GitHub Actions workflow `windows-spatial-acceptance`, run `29318498570`, terminated before the runner executed any step. GitHub returned a failed job with `steps=[]` and no log URL. The repository's existing `release`, `spatial-query`, and `geometry-correctness` workflows show the same pre-step failure pattern on the same commits, so there is no compiler, test, or benchmark output to evaluate.
+GitHub Actions workflow `windows-spatial-acceptance`, run `29318680722`, terminated before the runner executed any step. GitHub returned a failed job with `steps=[]` and no log URL. The repository's existing `release`, `spatial-query`, and `geometry-correctness` workflows show the same pre-step failure pattern on the same commit, so there is no compiler, test, or benchmark output to evaluate.
 
 The workflow and evidence collector are committed and reproducible, but the Windows Release matrix remains unexecuted until GitHub-hosted Actions execution is restored or the script is run on an available Windows x64 Release machine. This document must be updated with the uploaded `matrix.csv`, run URL, machine details, and a PASS/FAIL decision before the pull request is marked ready.
 
