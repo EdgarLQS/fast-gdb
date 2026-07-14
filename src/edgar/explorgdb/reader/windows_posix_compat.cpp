@@ -12,7 +12,6 @@
 #include <limits>
 #include <mutex>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 namespace {
@@ -40,7 +39,7 @@ std::wstring utf8_to_wide(const char* path) {
 }
 
 DWORD desired_access_for(int flags) {
-    const int access = flags & (_O_RDONLY | _O_WRONLY | _O_RDWR);
+    const int access = flags & (_O_WRONLY | _O_RDWR);
     if (access == _O_WRONLY) return GENERIC_WRITE;
     if (access == _O_RDWR) return GENERIC_READ | GENERIC_WRITE;
     return GENERIC_READ;
@@ -70,6 +69,8 @@ int errno_from_win32(DWORD error) {
         case ERROR_ALREADY_EXISTS:
         case ERROR_FILE_EXISTS:
             return EEXIST;
+        case ERROR_INVALID_HANDLE:
+            return EBADF;
         case ERROR_INVALID_PARAMETER:
             return EINVAL;
         case ERROR_NOT_ENOUGH_MEMORY:
@@ -80,67 +81,18 @@ int errno_from_win32(DWORD error) {
     }
 }
 
-struct FileIdentity {
-    DWORD volume_serial = 0;
-    DWORD file_index_high = 0;
-    DWORD file_index_low = 0;
-
-    bool operator==(const FileIdentity& other) const {
-        return volume_serial == other.volume_serial &&
-               file_index_high == other.file_index_high &&
-               file_index_low == other.file_index_low;
+bool validate_read_arguments(int fd, void* buffer, size_t size,
+                             __int64 offset) {
+    if (fd < 0 || (buffer == nullptr && size != 0) || offset < 0) {
+        errno = EINVAL;
+        return false;
     }
-};
-
-struct FileIdentityHash {
-    size_t operator()(const FileIdentity& identity) const noexcept {
-        const uint64_t index =
-            (static_cast<uint64_t>(identity.file_index_high) << 32U) |
-            identity.file_index_low;
-        const uint64_t mixed = index ^
-            (static_cast<uint64_t>(identity.volume_serial) *
-             0x9e3779b97f4a7c15ULL);
-        return static_cast<size_t>(mixed ^ (mixed >> 32U));
+    if (size > static_cast<size_t>(
+            std::numeric_limits<__int64>::max() - offset)) {
+        errno = EOVERFLOW;
+        return false;
     }
-};
-
-class OverlappedHandleCache {
-public:
-    ~OverlappedHandleCache() {
-        for (const auto& entry : handles_) {
-            CloseHandle(entry.second);
-        }
-    }
-
-    HANDLE get(HANDLE source) {
-        BY_HANDLE_FILE_INFORMATION info{};
-        if (!GetFileInformationByHandle(source, &info)) return nullptr;
-        const FileIdentity identity{
-            info.dwVolumeSerialNumber,
-            info.nFileIndexHigh,
-            info.nFileIndexLow};
-
-        std::lock_guard<std::mutex> lock(mutex_);
-        const auto found = handles_.find(identity);
-        if (found != handles_.end()) return found->second;
-
-        HANDLE reopened = ReOpenFile(
-            source, GENERIC_READ,
-            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-            FILE_FLAG_OVERLAPPED | FILE_FLAG_SEQUENTIAL_SCAN);
-        if (reopened == INVALID_HANDLE_VALUE) return nullptr;
-        handles_.emplace(identity, reopened);
-        return reopened;
-    }
-
-private:
-    std::mutex mutex_;
-    std::unordered_map<FileIdentity, HANDLE, FileIdentityHash> handles_;
-};
-
-OverlappedHandleCache& overlapped_handle_cache() {
-    static OverlappedHandleCache cache;
-    return cache;
+    return true;
 }
 
 std::mutex& synchronous_read_mutex() {
@@ -148,31 +100,8 @@ std::mutex& synchronous_read_mutex() {
     return mutex;
 }
 
-bool synchronous_positional_read(HANDLE handle,
-                                 unsigned char* output,
-                                 DWORD chunk,
-                                 uint64_t absolute,
-                                 DWORD& bytes_read) {
-    // ReOpenFile can be unavailable for unusual filesystem handles. Preserve the
-    // old synchronous fallback under a process-wide lock and restore the shared
-    // cursor before returning, so callers still receive positional semantics.
-    std::lock_guard<std::mutex> lock(synchronous_read_mutex());
-    LARGE_INTEGER original{};
-    LARGE_INTEGER zero{};
-    if (!SetFilePointerEx(handle, zero, &original, FILE_CURRENT)) return false;
-
-    LARGE_INTEGER requested{};
-    requested.QuadPart = static_cast<LONGLONG>(absolute);
-    if (!SetFilePointerEx(handle, requested, nullptr, FILE_BEGIN)) return false;
-
-    const BOOL ok = ReadFile(handle, output, chunk, &bytes_read, nullptr);
-    const DWORD read_error = ok ? ERROR_SUCCESS : GetLastError();
-    SetFilePointerEx(handle, original, nullptr, FILE_BEGIN);
-    if (!ok && read_error != ERROR_HANDLE_EOF) {
-        SetLastError(read_error);
-        return false;
-    }
-    return true;
+bool restore_file_pointer(HANDLE handle, const LARGE_INTEGER& original) {
+    return SetFilePointerEx(handle, original, nullptr, FILE_BEGIN) != FALSE;
 }
 
 } // namespace
@@ -187,9 +116,6 @@ int fast_gdb_open_utf8(const char* path, int flags, int) {
     const DWORD desired_access = desired_access_for(flags);
     const DWORD share_mode = FILE_SHARE_READ | FILE_SHARE_WRITE |
                              FILE_SHARE_DELETE;
-    // Keep the descriptor passed to the MSVC CRT synchronous. Positional and P3
-    // asynchronous reads use a separate ReOpenFile handle, avoiding undefined
-    // interactions between FILE_FLAG_OVERLAPPED and _fstat64/_close.
     const DWORD attributes = FILE_ATTRIBUTE_NORMAL |
                              FILE_FLAG_SEQUENTIAL_SCAN;
     HANDLE handle = CreateFileW(
@@ -209,61 +135,131 @@ int fast_gdb_open_utf8(const char* path, int flags, int) {
     return fd;
 }
 
-ssize_t fast_gdb_pread(int fd, void* buffer, size_t size,
-                       __int64 offset) {
-    if (fd < 0 || (buffer == nullptr && size != 0) || offset < 0) return -1;
+ssize_t fast_gdb_pread_sync(int fd, void* buffer, size_t size,
+                            __int64 offset) {
+    if (!validate_read_arguments(fd, buffer, size, offset)) return -1;
     if (size == 0) return 0;
 
     const intptr_t raw_handle = _get_osfhandle(fd);
-    if (raw_handle == -1) return -1;
+    if (raw_handle == -1) {
+        errno = EBADF;
+        return -1;
+    }
+    HANDLE handle = reinterpret_cast<HANDLE>(raw_handle);
 
-    HANDLE source_handle = reinterpret_cast<HANDLE>(raw_handle);
-    // Both MSVC and MinGW retain a normal CRT descriptor. Use a cached reopened
-    // handle that is explicitly FILE_FLAG_OVERLAPPED for positional and P3 I/O.
-    HANDLE io_handle = overlapped_handle_cache().get(source_handle);
-    const bool use_overlapped = io_handle != nullptr;
-    if (!use_overlapped) io_handle = source_handle;
+    std::lock_guard<std::mutex> lock(synchronous_read_mutex());
+    LARGE_INTEGER original{};
+    LARGE_INTEGER zero{};
+    if (!SetFilePointerEx(handle, zero, &original, FILE_CURRENT)) {
+        errno = errno_from_win32(GetLastError());
+        return -1;
+    }
+
+    LARGE_INTEGER requested{};
+    requested.QuadPart = offset;
+    if (!SetFilePointerEx(handle, requested, nullptr, FILE_BEGIN)) {
+        const DWORD error = GetLastError();
+        (void)restore_file_pointer(handle, original);
+        errno = errno_from_win32(error);
+        return -1;
+    }
 
     auto* output = static_cast<unsigned char*>(buffer);
     size_t total = 0;
     while (total < size) {
-        const size_t remaining = size - total;
         const DWORD chunk = static_cast<DWORD>(std::min<size_t>(
-            remaining, static_cast<size_t>(std::numeric_limits<DWORD>::max())));
+            size - total,
+            static_cast<size_t>(std::numeric_limits<DWORD>::max())));
+        DWORD bytes_read = 0;
+        const BOOL ok = ReadFile(handle, output + total, chunk,
+                                 &bytes_read, nullptr);
+        if (!ok) {
+            const DWORD error = GetLastError();
+            (void)restore_file_pointer(handle, original);
+            if (error == ERROR_HANDLE_EOF) break;
+            errno = errno_from_win32(error);
+            return -1;
+        }
+        total += bytes_read;
+        if (bytes_read != chunk) break;
+    }
+
+    if (!restore_file_pointer(handle, original)) {
+        errno = errno_from_win32(GetLastError());
+        return -1;
+    }
+    return static_cast<ssize_t>(total);
+}
+
+ssize_t fast_gdb_pread_overlapped(int fd, void* buffer, size_t size,
+                                  __int64 offset) {
+    if (!validate_read_arguments(fd, buffer, size, offset)) return -1;
+    if (size == 0) return 0;
+
+    const intptr_t raw_handle = _get_osfhandle(fd);
+    if (raw_handle == -1) {
+        errno = EBADF;
+        return -1;
+    }
+    HANDLE source = reinterpret_cast<HANDLE>(raw_handle);
+    HANDLE handle = ReOpenFile(
+        source, GENERIC_READ,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        FILE_FLAG_OVERLAPPED | FILE_FLAG_SEQUENTIAL_SCAN);
+    if (handle == INVALID_HANDLE_VALUE) {
+        errno = errno_from_win32(GetLastError());
+        return -1;
+    }
+
+    HANDLE event = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    if (event == nullptr) {
+        const DWORD error = GetLastError();
+        CloseHandle(handle);
+        errno = errno_from_win32(error);
+        return -1;
+    }
+
+    auto* output = static_cast<unsigned char*>(buffer);
+    size_t total = 0;
+    while (total < size) {
+        const DWORD chunk = static_cast<DWORD>(std::min<size_t>(
+            size - total,
+            static_cast<size_t>(std::numeric_limits<DWORD>::max())));
         const uint64_t absolute = static_cast<uint64_t>(offset) + total;
 
-        DWORD bytes_read = 0;
-        bool ok = false;
-        if (use_overlapped) {
-            OVERLAPPED overlapped{};
-            overlapped.Offset = static_cast<DWORD>(absolute & 0xffffffffULL);
-            overlapped.OffsetHigh = static_cast<DWORD>(absolute >> 32U);
-            overlapped.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-            if (overlapped.hEvent == nullptr) return -1;
+        OVERLAPPED overlapped{};
+        overlapped.Offset = static_cast<DWORD>(absolute & 0xffffffffULL);
+        overlapped.OffsetHigh = static_cast<DWORD>(absolute >> 32U);
+        overlapped.hEvent = event;
+        ResetEvent(event);
 
-            BOOL read_ok = ReadFile(io_handle, output + total, chunk,
-                                    &bytes_read, &overlapped);
-            if (!read_ok) {
-                const DWORD error = GetLastError();
-                if (error == ERROR_IO_PENDING) {
-                    read_ok = GetOverlappedResult(io_handle, &overlapped,
-                                                  &bytes_read, TRUE);
-                } else if (error == ERROR_HANDLE_EOF) {
-                    read_ok = TRUE;
-                    bytes_read = 0;
-                }
+        DWORD bytes_read = 0;
+        BOOL ok = ReadFile(handle, output + total, chunk,
+                           &bytes_read, &overlapped);
+        if (!ok) {
+            const DWORD error = GetLastError();
+            if (error == ERROR_IO_PENDING) {
+                ok = GetOverlappedResult(handle, &overlapped,
+                                         &bytes_read, TRUE);
+            } else if (error == ERROR_HANDLE_EOF) {
+                ok = TRUE;
+                bytes_read = 0;
             }
-            CloseHandle(overlapped.hEvent);
-            ok = read_ok != FALSE;
-        } else {
-            ok = synchronous_positional_read(
-                io_handle, output + total, chunk, absolute, bytes_read);
         }
-        if (!ok) return -1;
+        if (!ok) {
+            const DWORD error = GetLastError();
+            CloseHandle(event);
+            CloseHandle(handle);
+            errno = errno_from_win32(error);
+            return -1;
+        }
 
         total += bytes_read;
         if (bytes_read != chunk) break;
     }
+
+    CloseHandle(event);
+    CloseHandle(handle);
     return static_cast<ssize_t>(total);
 }
 
