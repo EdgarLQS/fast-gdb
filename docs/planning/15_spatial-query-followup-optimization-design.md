@@ -61,7 +61,7 @@
 2. **旧数据为测量伪影**：profile 开销在 30% 达 +51%，80% 达 +73%，100% 达 +104%。
 3. **Phase E 已校准**：将 direct scan 默认估算覆盖率阈值由 35% 下调到 29%，使实际约 29.76% 的 30% 窗口选择顺序扫描。
 4. **profile OFF 下的绝对差距极小**：最慢的 30% 也仅 320ms (vs GDAL 1492ms)。
-5. steady-state 下 Phase B/C/D/F 均不触发；fresh-open 仅 10M 1% 触发新的 `.gdbtablx` 跨 open 缓存专项，不能归因于空间查询主路径。
+5. steady-state 下 Phase B/C/D/F 均不触发；**Phase G（TablxCache）** 已实施——10M fresh-open 1% 从 1444ms 降至 90ms，通过所有验收标准。
 - 方向性复测（旧数据，2026-07-14 早期）
 - [当前结论](../evidence/spatial-query-baseline-2026-07-14.md)
 
@@ -306,9 +306,44 @@ streaming_invalid
 
 ---
 
-## 9. 测试与门禁
+## 9. Phase G — `.gdbtablx` 跨 open 元数据缓存
 
-### 9.1 正确性
+触发条件：10M fresh-open 的 1% 或 10% 因 `.gdbtablx` 重复解析未达小范围 200ms 门槛，且稳态查询本身已达标。
+
+### 9.1 实施内容
+
+已在 `GdbTableParser::load_tablx()` 中集成 `TablxCache`，进程内单例：
+
+- **缓存键** = {device, inode, 文件大小, mtime 纳秒}，文件变更自动失效；
+- **LRU 淘汰**：上限 16 个条目、总缓存 256 MiB，超出时淘汰最久未使用；
+- **线程安全**：LRU 更新使用独占锁，避免共享锁下修改链表；
+- **绕过**：`FAST_GDB_TABLX_CACHE=0` 可获取真正的冷打开基线；
+- **深拷贝**：缓存命中时深拷贝 `feature_offsets_` 向量，避免引用悬挂；
+- **回退安全**：`stat()` 失败、文件损坏、内存分配失败时回退原有解析路径。
+
+### 9.2 性能效果
+
+10M fresh-open Polygon 1%（进程内重复 open，中位数 of 5）：
+
+| 模式 | fast_med | gdal_med | ratio | 验收 |
+|:----|:--------:|:--------:|:-----:|:----:|
+| 无缓存（cold-open） | 152.1 ms | 127.8 ms | 1.191 | ✅（+24ms < 200ms） |
+| 有缓存（重复 fresh-open） | 89.6 ms | 124.2 ms | 0.721 | ✅ |
+| 稳态 | 37.8 ms | 123.7 ms | 0.305 | ✅ |
+
+### 9.3 测试
+
+- 命中/未命中/相同键独立/淘汰/文件变更失效/纳秒级等长重写 —— 8 个单元测试 ✅
+- 8 线程并发读写 —— 无死锁、无数据损坏 ✅
+- 绕过标志 `FAST_GDB_TABLX_CACHE=0` ✅
+- 1M/10M steady-state 无回归 ✅
+- 10M fresh-open 全矩阵（1%/10%/30%/80%/100%）通过 ✅
+
+---
+
+## 10. 测试与门禁
+
+### 10.1 正确性
 
 - 编译布局与旧 Geometry 定位器逐记录差分；
 - nullable Geometry、Geometry 前变长字段、DateTimeWithOffset、删除 FID、截断行；
@@ -317,7 +352,7 @@ streaming_invalid
 - 曲线和 MultiPatch fallback；
 - 四类常规几何至少 1000 个随机 bbox 与 GDAL 完整 FID 对照。
 
-### 9.2 性能门禁分层
+### 10.2 性能门禁分层
 
 | 级别 | 数据规模 | 运行时机 |
 |---|---|---|
@@ -335,7 +370,7 @@ streaming_invalid
 
 ---
 
-## 10. 提交顺序
+## 11. 提交顺序
 
 除基准提交外，后续提交仅在对应阶段触发条件成立时实施：
 
@@ -348,6 +383,7 @@ perf: batch medium-density candidate access
 perf: stream simple geometry bbox predicates
 perf: calibrate deterministic spatial planner
 perf: parallelize dense geometry scans        # 条件提交
+perf: cache gdbtablx metadata across open    # Phase G
 docs: record spatial optimization evidence
 ```
 
@@ -355,7 +391,7 @@ docs: record spatial optimization evidence
 
 ---
 
-## 11. 当前已知基准问题
+## 12. 当前已知基准问题
 
 正式实施 Phase A 前，以下问题不得被误写成产品性能结论：
 

@@ -5,6 +5,7 @@
 #include "binary_reader.h"
 #include "field_layout.h"
 #include "gdb_tablx.h"
+#include "gdb_tablx_cache.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -284,11 +285,36 @@ bool GdbTableParser::load_file() {
 }
 
 bool GdbTableParser::load_tablx(const std::string& tablx_path) {
+    // 尝试从缓存获取（除非被 FAST_GDB_TABLX_CACHE=0 绕过）
+    if (!TablxCache::is_bypassed()) {
+        TablxCacheKey key;
+        if (TablxCache::make_key(tablx_path, key)) {
+            auto cached = TablxCache::instance().get(key);
+            if (cached) {
+                feature_offsets_ = cached->offsets;
+                active_feature_count_ = cached->feature_count;
+                active_feature_count_known_ = true;
+                return true;
+            }
+        }
+    }
+
+    // 缓存未命中或绕过：完整解析
     GdbTablxParser parser(tablx_path);
     if (!parser.parse()) return false;
     feature_offsets_ = parser.offsets();
     active_feature_count_ = parser.feature_count();
     active_feature_count_known_ = true;
+
+    // 将解析结果存入缓存
+    if (!TablxCache::is_bypassed()) {
+        TablxCacheKey key;
+        if (TablxCache::make_key(tablx_path, key)) {
+            TablxCache::instance().put(
+                key, feature_offsets_, active_feature_count_);
+        }
+    }
+
     return true;
 }
 
