@@ -35,6 +35,13 @@ function Ensure-DataSet {
     if ($LASTEXITCODE -ne 0) { throw "Data generation failed for $Path" }
 }
 
+function Clear-OptimizationFaultInjection {
+    Remove-Item Env:FAST_GDB_FORCE_MMAP_FAILURE -ErrorAction SilentlyContinue
+    Remove-Item Env:FAST_GDB_FORCE_WINDOWED_MMAP -ErrorAction SilentlyContinue
+    Remove-Item Env:FAST_GDB_FORCE_ASYNC_LAUNCH_FAILURE -ErrorAction SilentlyContinue
+    Remove-Item Env:FAST_GDB_WINDOWS_FULL_MMAP_MAX_MB -ErrorAction SilentlyContinue
+}
+
 function Assert-ObservedIoPath {
     param([string]$IoMode, [string]$Stderr, [string]$Reference)
     if ($Reference -ne "current") { return }
@@ -47,7 +54,9 @@ function Assert-ObservedIoPath {
 
     switch ($IoMode) {
         "mmap" {
-            if (!$mmapSuccess) { throw "mmap case did not observe a successful MapViewOfFile path" }
+            if (!$mmapSuccess) {
+                throw "mmap case did not observe a successful full or windowed MapViewOfFile path"
+            }
             if ($fallbackSync -or $fallbackOverlapped) {
                 throw "mmap case unexpectedly entered a fallback geometry path"
             }
@@ -134,6 +143,9 @@ function Parse-BenchmarkOutput {
     if ($null -eq $detail -or $null -eq $summary) {
         throw "Missing detailed or summary benchmark row in $LogPath"
     }
+    if ($trials -ne 20) {
+        throw "Expected 20 trials, parsed $trials in $LogPath"
+    }
     if ($detail.coverage -ne $Coverage -or $summary.coverage -ne $Coverage) {
         throw "Expected $Coverage but parsed $($detail.coverage)/$($summary.coverage)"
     }
@@ -149,7 +161,9 @@ function Parse-BenchmarkOutput {
     $maxAsyncDepth = 0
     foreach ($line in ($Stderr -split "`r?`n")) {
         if ($line -match 'batch_reads=([0-9]+) bytes=([0-9]+) exact_reads=([0-9]+) exact_bytes=([0-9]+) overlapped_batches=([0-9]+) async_depth=([0-9]+) failed=(true|false)') {
-            if ($Matches[7] -eq "true") { throw "I/O trace reported a failed optimized path" }
+            if ($Matches[7] -eq "true") {
+                throw "I/O trace reported a failed optimized path"
+            }
             $batchReads += [long]$Matches[1]
             $readBytes += [long]$Matches[2]
             $exactReads += [long]$Matches[3]
@@ -166,7 +180,11 @@ function Parse-BenchmarkOutput {
         scale = $Scale
         io_mode = $IoMode
         cache_state = $CacheState
-        cache_clear_scope = if ($CacheState -eq "cold") { "before every fast-gdb and GDAL sample" } else { "warm-up then steady-state" }
+        cache_clear_scope = if ($CacheState -eq "cold") {
+            "before every fast-gdb and GDAL sample; in-process tablx cache bypassed"
+        } else {
+            "warm-up then steady-state"
+        }
         coverage = $Coverage
         trials = $trials
         execution_path = $detail.execution_path
@@ -203,6 +221,7 @@ function Invoke-Benchmark {
         [string]$Reference
     )
 
+    Clear-OptimizationFaultInjection
     $env:FAST_GDB_RUN_SPATIAL_BENCHMARKS = "1"
     $env:FAST_GDB_BENCHMARK_PATH = (Resolve-Path $GdbPath).Path
     $env:FAST_GDB_BENCHMARK_LABEL = "$Reference / $Scale / $IoMode / $CacheState / $Coverage"
@@ -236,11 +255,13 @@ function Invoke-Benchmark {
         $resolvedRamMap = (Resolve-Path $RamMapPath).Path
         $env:FAST_GDB_BENCHMARK_MODE = "fresh-open"
         $env:FAST_GDB_BENCHMARK_STRICT_COLD = "1"
-        $env:FAST_GDB_BENCHMARK_CACHE_CLEAR_COMMAND = "`"$resolvedRamMap`" -Ew"
+        $env:FAST_GDB_BENCHMARK_CACHE_CLEAR_COMMAND = "`"$resolvedRamMap`" -accepteula -Ew"
+        $env:FAST_GDB_TABLX_CACHE = "0"
     } else {
         Remove-Item Env:FAST_GDB_BENCHMARK_MODE -ErrorAction SilentlyContinue
         Remove-Item Env:FAST_GDB_BENCHMARK_STRICT_COLD -ErrorAction SilentlyContinue
         Remove-Item Env:FAST_GDB_BENCHMARK_CACHE_CLEAR_COMMAND -ErrorAction SilentlyContinue
+        Remove-Item Env:FAST_GDB_TABLX_CACHE -ErrorAction SilentlyContinue
     }
 
     $baseName = "$Reference-$Scale-$IoMode-$CacheState-$Coverage"
@@ -264,6 +285,7 @@ function Invoke-Benchmark {
         throw "Acceptance case failed: $baseName (exit $($process.ExitCode))"
     }
 
+    $process.Refresh()
     $peakMb = [math]::Round($process.PeakWorkingSet64 / 1MB, 2)
     return Parse-BenchmarkOutput -Stdout $stdout -Stderr $stderr `
         -Scale $Scale -IoMode $IoMode -CacheState $CacheState `
@@ -273,7 +295,9 @@ function Invoke-Benchmark {
 
 function Assert-BaselineRegression {
     param([System.Collections.Generic.List[object]]$Rows)
-    $currentRows = @($Rows | Where-Object { $_.reference -eq "current" -and $_.io_mode -eq "fallback-sync" })
+    $currentRows = @($Rows | Where-Object {
+        $_.reference -eq "current" -and $_.io_mode -eq "fallback-sync"
+    })
     $baselineRows = @($Rows | Where-Object { $_.reference -eq "main" })
     foreach ($current in $currentRows) {
         $baseline = $baselineRows | Where-Object {
@@ -281,10 +305,11 @@ function Assert-BaselineRegression {
             $_.cache_state -eq $current.cache_state -and
             $_.coverage -eq $current.coverage
         } | Select-Object -First 1
-        if ($null -eq $baseline) { throw "Missing main baseline for $($current.scale)/$($current.cache_state)/$($current.coverage)" }
-        $limit = $baseline.fast_median_ms * 1.05
-        if ($current.fast_median_ms -gt $limit) {
-            throw "fallback-sync regressed >5% for $($current.scale)/$($current.cache_state)/$($current.coverage): current=$($current.fast_median_ms) baseline=$($baseline.fast_median_ms)"
+        if ($null -eq $baseline) {
+            throw "Missing main baseline for $($current.scale)/$($current.cache_state)/$($current.coverage)"
+        }
+        if ($current.fast_median_ms -gt $baseline.fast_median_ms) {
+            throw "fallback-sync is slower than main for $($current.scale)/$($current.cache_state)/$($current.coverage): current=$($current.fast_median_ms) baseline=$($baseline.fast_median_ms)"
         }
     }
 }
@@ -292,7 +317,9 @@ function Assert-BaselineRegression {
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 $runner = Resolve-Executable -Root $BuildDir -Name "gdb_tutorial_test_runner"
 $generator = Resolve-Executable -Root $BuildDir -Name "generate_large_gdb"
-$baselineRunner = if ([string]::IsNullOrWhiteSpace($BaselineBuildDir)) { $null } else {
+$baselineRunner = if ([string]::IsNullOrWhiteSpace($BaselineBuildDir)) {
+    $null
+} else {
     Resolve-Executable -Root $BaselineBuildDir -Name "gdb_tutorial_test_runner"
 }
 
@@ -304,7 +331,13 @@ foreach ($dataSet in $dataSets) {
     Ensure-DataSet -Generator $generator -Path $dataSet.Path -Count $dataSet.Count
 }
 
-$coverages = @("coverage_01pct", "coverage_10pct", "coverage_30pct", "coverage_80pct", "coverage_full")
+$coverages = @(
+    "coverage_01pct",
+    "coverage_10pct",
+    "coverage_30pct",
+    "coverage_80pct",
+    "coverage_full"
+)
 $ioModes = @("mmap", "fallback-sync", "fallback-overlapped")
 $cacheStates = @("cold", "warm")
 $results = New-Object System.Collections.Generic.List[object]
@@ -336,5 +369,9 @@ if ($null -ne $baselineRunner) {
 
 $csvPath = Join-Path $OutputDir "matrix.csv"
 $results | Export-Csv -NoTypeInformation -Path $csvPath
-$results | Format-Table reference, scale, io_mode, cache_state, coverage, fast_median_ms, fast_p95_ms, gdal_median_ms, fast_gdal_ratio, invalid_geometries_last, peak_rss_mb -AutoSize
+$results | Format-Table `
+    reference, scale, io_mode, cache_state, coverage, `
+    fast_median_ms, fast_p95_ms, gdal_median_ms, `
+    fast_gdal_ratio, invalid_geometries_last, peak_rss_mb `
+    -AutoSize
 Write-Host "Windows Release acceptance matrix complete: $csvPath"
