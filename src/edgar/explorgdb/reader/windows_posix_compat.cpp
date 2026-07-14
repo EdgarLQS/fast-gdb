@@ -187,9 +187,11 @@ int fast_gdb_open_utf8(const char* path, int flags, int) {
     const DWORD desired_access = desired_access_for(flags);
     const DWORD share_mode = FILE_SHARE_READ | FILE_SHARE_WRITE |
                              FILE_SHARE_DELETE;
+    // Keep the descriptor passed to the MSVC CRT synchronous. Positional and P3
+    // asynchronous reads use a separate ReOpenFile handle, avoiding undefined
+    // interactions between FILE_FLAG_OVERLAPPED and _fstat64/_close.
     const DWORD attributes = FILE_ATTRIBUTE_NORMAL |
-                             FILE_FLAG_SEQUENTIAL_SCAN |
-                             FILE_FLAG_OVERLAPPED;
+                             FILE_FLAG_SEQUENTIAL_SCAN;
     HANDLE handle = CreateFileW(
         wide_path.c_str(), desired_access, share_mode, nullptr,
         creation_disposition_for(flags), attributes, nullptr);
@@ -216,10 +218,8 @@ ssize_t fast_gdb_pread(int fd, void* buffer, size_t size,
     if (raw_handle == -1) return -1;
 
     HANDLE source_handle = reinterpret_cast<HANDLE>(raw_handle);
-    // MSVC uses fast_gdb_open_utf8() and already produces an overlapped handle.
-    // MinGW's native open() may produce a synchronous handle, so use a cached
-    // ReOpenFile handle that is explicitly FILE_FLAG_OVERLAPPED. Reopening an
-    // already-overlapped source is harmless and keeps both toolchains uniform.
+    // Both MSVC and MinGW retain a normal CRT descriptor. Use a cached reopened
+    // handle that is explicitly FILE_FLAG_OVERLAPPED for positional and P3 I/O.
     HANDLE io_handle = overlapped_handle_cache().get(source_handle);
     const bool use_overlapped = io_handle != nullptr;
     if (!use_overlapped) io_handle = source_handle;
