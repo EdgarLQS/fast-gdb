@@ -82,7 +82,8 @@ function Invoke-AbCase {
         [string]$Scale,
         [string]$GdbPath,
         [string]$CacheState,
-        [string]$Coverage
+        [string]$Coverage,
+        [string]$ResolvedCacheCommand
     )
 
     $env:FAST_GDB_RUN_SPATIAL_BENCHMARKS = "1"
@@ -98,7 +99,7 @@ function Invoke-AbCase {
     if ($CacheState -eq "cold") {
         $env:FAST_GDB_BENCHMARK_MODE = "fresh-open"
         $env:FAST_GDB_BENCHMARK_STRICT_COLD = "1"
-        $env:FAST_GDB_BENCHMARK_CACHE_CLEAR_COMMAND = "`"$CacheClearCommand`""
+        $env:FAST_GDB_BENCHMARK_CACHE_CLEAR_COMMAND = "`"$ResolvedCacheCommand`""
         $env:FAST_GDB_TABLX_CACHE = "0"
     } else {
         Remove-Item Env:FAST_GDB_BENCHMARK_MODE -ErrorAction SilentlyContinue
@@ -145,12 +146,13 @@ $dataSets = @(
 $coverages = @("coverage_01pct", "coverage_10pct", "coverage_30pct", "coverage_80pct", "coverage_full")
 $cacheStates = @("cold", "warm")
 $rows = New-Object System.Collections.Generic.List[object]
+$caseIndex = 0
 
 foreach ($dataSet in $dataSets) {
     if (!(Test-Path $dataSet.Path)) { throw "Benchmark data not found: $($dataSet.Path)" }
     foreach ($cacheState in $cacheStates) {
         foreach ($coverage in $coverages) {
-            $order = if (($rows.Count % 2) -eq 0) {
+            $order = if (($caseIndex % 2) -eq 0) {
                 @(
                     @{ Name = "current"; Runner = $currentRunner },
                     @{ Name = "main"; Runner = $baselineRunner }
@@ -165,8 +167,9 @@ foreach ($dataSet in $dataSets) {
                 $rows.Add((Invoke-AbCase -Runner $entry.Runner `
                     -Reference $entry.Name -Scale $dataSet.Scale `
                     -GdbPath $dataSet.Path -CacheState $cacheState `
-                    -Coverage $coverage))
+                    -Coverage $coverage -ResolvedCacheCommand $cacheCommand))
             }
+            ++$caseIndex
         }
     }
 }
