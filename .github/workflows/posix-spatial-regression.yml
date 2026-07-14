@@ -109,6 +109,11 @@ jobs:
 
       - name: Run 10M current-versus-main regression gate
         shell: bash
+        env:
+          # The A/B runner owns the current-vs-main threshold. Profiling mode
+          # disables the benchmark's independent fast-vs-GDAL performance gate
+          # for both binaries while retaining FID and invalid-geometry checks.
+          FAST_GDB_SPATIAL_PROFILE: '1'
         run: |
           python3 scripts/run_spatial_regression.py \
             --current-build build-posix \
