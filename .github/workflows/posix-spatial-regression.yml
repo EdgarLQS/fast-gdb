@@ -1,6 +1,16 @@
 name: posix-spatial-regression
 
 on:
+  push:
+    branches:
+      - 'agent/**'
+    paths:
+      - 'src/edgar/explorgdb/reader/**'
+      - 'tests/edgar/explorgdb/reader/test_spatial_benchmark.cpp'
+      - 'tests/edgar/explorgdb/generate_large_gdb.cpp'
+      - 'scripts/run_spatial_regression.py'
+      - '.github/workflows/posix-spatial-regression.yml'
+      - 'CMakeLists.txt'
   workflow_dispatch:
   pull_request:
     paths:
@@ -15,7 +25,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: posix-spatial-regression-${{ matrix.os }}-${{ github.ref }}
+  group: posix-spatial-regression-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
