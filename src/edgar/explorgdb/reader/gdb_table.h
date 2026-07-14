@@ -8,6 +8,10 @@
 #include "binary_reader.h"
 #include "gdb_geometry.h"
 
+#ifdef _WIN32
+#include "windows_posix_compat.h"
+#endif
+
 #include <functional>
 #include <shared_mutex>
 #include <string>
@@ -112,6 +116,13 @@ private:
     size_t file_size_ = 0;
     uint8_t* mapped_data_ = nullptr;
     std::vector<uint8_t> row_buffer_;
+
+#ifdef _WIN32
+    // P0 parser-owned mapping state. The object owns the mapping handle, current
+    // aligned view base/length, and logical pointer. Scanner scope guards reset
+    // it before the CRT file descriptor is closed.
+    FastGdbSlidingMap sliding_map_;
+#endif
 
     TableHeader header_;
     std::vector<FieldDescriptor> fields_;
