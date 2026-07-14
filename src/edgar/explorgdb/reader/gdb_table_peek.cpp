@@ -1,10 +1,7 @@
 #include "gdb_table.h"
 #include "field_layout.h"
 #include <algorithm>
-#include <cstdio>
-#include <cstdlib>
 #include <cstring>
-#include <limits>
 
 namespace explorgdb {
 namespace {
@@ -14,23 +11,6 @@ bool is_zero_padding(const uint8_t* cursor, const uint8_t* end) {
         if (*cursor++ != 0) return false;
     }
     return true;
-}
-
-size_t sparse_window_bytes() {
-    constexpr size_t kMiB = 1024U * 1024U;
-    constexpr size_t kDefaultMiB = 1;
-    constexpr size_t kMaximumMiB = 8;
-    const char* value = std::getenv("FAST_GDB_WINDOWS_SPARSE_WINDOW_MB");
-    if (value == nullptr || *value == '\0') return kDefaultMiB * kMiB;
-    char* end = nullptr;
-    const unsigned long parsed = std::strtoul(value, &end, 10);
-    if (end == value || *end != '\0' || parsed == 0) return kDefaultMiB * kMiB;
-    return std::min<size_t>(static_cast<size_t>(parsed), kMaximumMiB) * kMiB;
-}
-
-bool io_trace_enabled() {
-    const char* value = std::getenv("FAST_GDB_WINDOWS_IO_TRACE");
-    return value != nullptr && value[0] == '1';
 }
 
 } // namespace
@@ -54,84 +34,57 @@ bool GdbTableParser::peek_geometry_blob(uint32_t fid,
     size_t row_size = 0;
 
     // The table is normally mmap-backed. Return a stable view into that mapping
-    // instead of copying every candidate row into row_buffer_. Large spatial
-    // queries can otherwise perform millions of avoidable memcpy operations.
+    // instead of copying every candidate row into row_buffer_.
     if (mapped_data_ != nullptr) {
-        if (offset + 4 > file_size_) return false;
+        if (offset > file_size_ - std::min<size_t>(file_size_, 4U)) return false;
         uint32_t blob_len = 0;
         std::memcpy(&blob_len, mapped_data_ + offset, sizeof(blob_len));
-        if (blob_len == 0 || offset + 4 + blob_len > file_size_) return false;
+        if (blob_len == 0 ||
+            blob_len > file_size_ - static_cast<size_t>(offset + 4)) {
+            return false;
+        }
         row_data = mapped_data_ + offset + 4;
         row_size = blob_len;
     } else if (fd_ >= 0) {
-        if (offset + 4 > file_size_) return false;
+        if (offset > file_size_ - std::min<size_t>(file_size_, 4U)) return false;
 
-        if (sparse_window_fd_ != fd_) {
-            sparse_window_buffer_.clear();
-            sparse_window_offset_ = 0;
-            sparse_window_size_ = 0;
-            sparse_window_fd_ = fd_;
-        }
-
-        // The bulk P2 path sorts and merges all candidate ranges. This canonical
-        // per-FID path keeps a smaller aligned cache for isolated callers and for
-        // the transactional fallback when bulk range processing is unavailable.
-        constexpr uint64_t kAlignment = 64U * 1024U;
-        const uint64_t window_end = sparse_window_offset_ + sparse_window_size_;
-        bool in_window = !sparse_window_buffer_.empty() &&
-                         offset >= sparse_window_offset_ &&
-                         offset + 4 <= window_end;
-        if (!in_window) {
-            sparse_window_offset_ = offset - (offset % kAlignment);
-            sparse_window_size_ = static_cast<size_t>(std::min<uint64_t>(
-                sparse_window_bytes(), file_size_ - sparse_window_offset_));
-            sparse_window_buffer_.resize(sparse_window_size_);
-            if (sparse_window_size_ == 0 ||
-                !read_at(sparse_window_offset_, sparse_window_buffer_.data(),
-                         sparse_window_size_)) {
-                sparse_window_buffer_.clear();
-                sparse_window_size_ = 0;
-                return false;
-            }
-            if (io_trace_enabled()) {
-                std::fprintf(stderr,
-                             "fast-gdb windows sparse-read: offset=%llu bytes=%zu\n",
-                             static_cast<unsigned long long>(sparse_window_offset_),
-                             sparse_window_size_);
-            }
-        }
-
-        const size_t local_offset = static_cast<size_t>(
-            offset - sparse_window_offset_);
-        if (local_offset + 4 > sparse_window_buffer_.size()) return false;
+        // Bulk spatial queries use scan_geometry_candidates(), which performs
+        // bounded physical range merging. This canonical per-FID fallback uses
+        // exact positional reads so no cached data can survive descriptor reuse.
         uint32_t blob_len = 0;
-        std::memcpy(&blob_len, sparse_window_buffer_.data() + local_offset,
-                    sizeof(blob_len));
-        if (blob_len == 0 || offset + 4 + blob_len > file_size_) return false;
-
-        if (local_offset + 4 + blob_len <= sparse_window_buffer_.size()) {
-            row_data = sparse_window_buffer_.data() + local_offset + 4;
-            row_size = blob_len;
-        } else {
-            // A wide record straddles the bounded window. Preserve correctness
-            // with one exact positional read rather than growing the cache.
-            if (row_buffer_.size() < blob_len) row_buffer_.resize(blob_len);
-            if (!read_at(offset + 4, row_buffer_.data(), blob_len)) return false;
-            row_data = row_buffer_.data();
-            row_size = blob_len;
+        if (!read_at(offset, &blob_len, sizeof(blob_len))) return false;
+        if (blob_len == 0 ||
+            blob_len > file_size_ - static_cast<size_t>(offset + 4)) {
+            return false;
         }
+        try {
+            row_buffer_.resize(blob_len);
+        } catch (...) {
+            return false;
+        }
+        if (!read_at(offset + 4, row_buffer_.data(), blob_len)) return false;
+        row_data = row_buffer_.data();
+        row_size = blob_len;
     } else {
-        if (offset + 4 > file_data_.size()) return false;
-        BinaryReader len_reader(file_data_.data() + offset, file_data_.size() - offset);
+        if (offset > file_data_.size() -
+                         std::min<size_t>(file_data_.size(), 4U)) {
+            return false;
+        }
+        BinaryReader len_reader(file_data_.data() + offset,
+                                file_data_.size() - offset);
         const uint32_t blob_len = len_reader.read_u32();
-        if (blob_len == 0 || offset + 4 + blob_len > file_data_.size()) return false;
+        if (blob_len == 0 ||
+            blob_len > file_data_.size() - static_cast<size_t>(offset + 4)) {
+            return false;
+        }
         row_data = file_data_.data() + offset + 4;
         row_size = blob_len;
     }
 
     try {
         const int nullable_count = nullable_field_count();
-        const size_t max_bitmap_size = static_cast<size_t>((nullable_count + 7) / 8);
+        const size_t max_bitmap_size =
+            static_cast<size_t>((nullable_count + 7) / 8);
         const uint8_t* best_blob = nullptr;
         size_t best_size = 0;
         size_t best_padding = row_size + 1;
@@ -144,7 +97,9 @@ bool GdbTableParser::peek_geometry_blob(uint32_t fid,
 
             const int max_present_bits =
                 std::min(nullable_count, static_cast<int>(bitmap_size * 8));
-            for (int present_bits = max_present_bits; present_bits >= 0; --present_bits) {
+            for (int present_bits = max_present_bits;
+                 present_bits >= 0;
+                 --present_bits) {
                 BinaryReader reader(row_data, row_size);
                 const uint8_t* nullable_bitmap = nullptr;
                 if (bitmap_size > 0) {
@@ -187,9 +142,9 @@ bool GdbTableParser::peek_geometry_blob(uint32_t fid,
                     }
                 }
 
-                if (valid &&
-                    reader.tell() <= row_size &&
-                    is_zero_padding(row_data + reader.tell(), row_data + row_size) &&
+                if (valid && reader.tell() <= row_size &&
+                    is_zero_padding(row_data + reader.tell(),
+                                    row_data + row_size) &&
                     candidate_blob != nullptr) {
                     const size_t padding = row_size - reader.tell();
                     if (padding < best_padding ||
