@@ -7,9 +7,20 @@
 #define NOMINMAX
 #endif
 #include <Windows.h>
+#include <BaseTsd.h>
 
 #include <cstddef>
 #include <cstdint>
+
+#ifndef _SSIZE_T_DEFINED
+using ssize_t = SSIZE_T;
+#define _SSIZE_T_DEFINED
+#endif
+
+// Explicit P3 positional read declaration without any POSIX compatibility
+// macros. The implementation lives in windows_posix_compat.cpp.
+ssize_t fast_gdb_pread_overlapped(int fd, void* buffer, size_t size,
+                                  __int64 offset);
 
 // Read-only sliding MapViewOfFile owner. It keeps one mapping handle and at most
 // one active view, remapping on allocation-granularity boundaries. Returned
