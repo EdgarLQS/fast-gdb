@@ -10,6 +10,7 @@ on:
       - 'scripts/run_spatial_regression.py'
       - '.github/workflows/posix-spatial-regression.yml'
       - 'CMakeLists.txt'
+      - 'cmake/**'
 
 permissions:
   contents: read
