@@ -79,7 +79,6 @@ def run_case(
         "FAST_GDB_BENCHMARK_MODE",
         "FAST_GDB_BENCHMARK_STRICT_COLD",
         "FAST_GDB_BENCHMARK_CACHE_CLEAR_COMMAND",
-        "FAST_GDB_SPATIAL_PROFILE",
     ):
         env.pop(name, None)
 
