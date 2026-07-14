@@ -9,7 +9,7 @@
 #include "gdb_geometry.h"
 
 #ifdef _WIN32
-#include "windows_posix_compat.h"
+#include "windows_sliding_map.h"
 #endif
 
 #include <functional>
