@@ -75,6 +75,8 @@ public:
     // physical row layout but never materializes FieldRef arrays and never
     // exposes unrelated attribute columns. In mmap mode the geometry pointer is
     // a stable zero-copy view into the table mapping for the callback duration.
+    // In fd fallback mode records are grouped into bounded physical read windows
+    // and Windows may prefetch several windows with ReadFile + OVERLAPPED.
     using GeometryScanCallback =
         std::function<bool(uint32_t fid,
                            const uint8_t* geometry_blob,
@@ -102,6 +104,14 @@ private:
     size_t file_size_ = 0;
     uint8_t* mapped_data_ = nullptr;
     std::vector<uint8_t> row_buffer_;
+
+    // Sparse candidate fallback window (P2). A candidate whose physical record
+    // falls inside this interval reuses the existing 1-8 MiB read instead of
+    // issuing another length read plus row read. The geometry pointer remains
+    // valid until the next peek_geometry_blob() call.
+    std::vector<uint8_t> sparse_window_buffer_;
+    uint64_t sparse_window_offset_ = 0;
+    size_t sparse_window_size_ = 0;
 
     TableHeader header_;
     std::vector<FieldDescriptor> fields_;
