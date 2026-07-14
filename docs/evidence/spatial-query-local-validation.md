@@ -1,7 +1,7 @@
 # fast-gdb 空间查询本地验证指南
 
-适用分支：`agent/spatial-query-optimization`  
-适用 PR：#9
+适用分支：`main`
+适用提交：`2be0938`（PR #9 已合入）
 
 ## 1. 本轮重点验证
 
@@ -10,7 +10,7 @@
 默认阈值：
 
 ```text
-FAST_GDB_SPATIAL_DIRECT_SCAN_COVERAGE=0.35
+FAST_GDB_SPATIAL_DIRECT_SCAN_COVERAGE=0.29
 ```
 
 新增指标：
@@ -130,8 +130,8 @@ fast_ms / gdal_ms
 1. 高覆盖率查询是否彻底消除了 `.spx` 候选物化成本；
 2. `bbox_contained` 是否显著降低了 `exact_tested`。
 
-当前阶段尚未实现 Geometry-only Scanner 和并行扫描，因此即使本轮仍未超过 GDAL，也需要根据阶段耗时判断下一瓶颈：
+Geometry-only Scanner 已随 `2be0938` 合入；条件并行扫描仍未实施。因此后续如果新增规模仍未超过 GDAL，需要根据阶段耗时判断下一瓶颈：
 
-- 若 `candidate_lookup_ms` 已接近 0，而总耗时仍高，下一步优先实现 Geometry-only Scanner；
+- 若 `candidate_lookup_ms` 已接近 0，而总耗时仍高，下一步优先检查 Geometry-only Scanner 的记录布局和 I/O 批量读取；
 - 若 `exact_tested` 仍高，下一步优先实现流式边界谓词；
 - 若单线程扫描已接近 GDAL但仍稍慢，下一步实施固定分区并行扫描。

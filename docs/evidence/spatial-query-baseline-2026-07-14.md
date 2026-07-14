@@ -10,6 +10,8 @@
 **构建类型**: Release (`-O3 -DNDEBUG`)
 **GDAL**: 3.13.0 (Homebrew)
 
+> 本记录是 Phase G 收口时基于提交 `e6230ad` 产生的历史性能证据；后续实现已合入 `main` 的 `2be0938`。以下性能数字、测试口径和历史结论保持不变。
+
 ## 构建
 
 - [x] macOS Release 构建通过

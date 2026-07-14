@@ -1,17 +1,17 @@
 # 16 — fast-gdb 超大规模空间查询优化计划
 
 **更新日期**：2026-07-14
-**目标分支**：`agent/spatial-query-scale-optimization`
-**状态**：当前计划，尚未实施
+**实现基线**：`main` / `2be0938`
+**状态**：Phase A–H 实现已合入；规模化验收和条件优化待按门槛推进
 **适用范围**：原生 `explorgdb` Reader 的 bbox 空间查询
 
 ## 1. 当前基线与目标
 
-Phase A–G 已完成 1K–10M 的 Point、MultiPoint、Polyline、Polygon steady-state 验收，以及 10M Polygon fresh-open 验收。最新证据见 [空间查询公平基准验收记录](../evidence/spatial-query-baseline-2026-07-14.md)。这些结果作为冻结回归基线，不代表 35GB/5 亿级真实生产数据已经验收。
+Phase A–H 的空间查询实现已合入 `main`。当前正式性能证据覆盖 1K–10M 的 Point、MultiPoint、Polyline、Polygon steady-state，以及 10M Polygon fresh-open；最新证据见 [空间查询公平基准验收记录](../evidence/spatial-query-baseline-2026-07-14.md)。这些结果作为冻结回归基线，不代表 50M、35GB/5 亿级真实生产数据已经验收。
 
-Phase H 不再围绕已达标的 10M 合成路径盲目优化，目标是：
+合入后的后续工作不再围绕已达标的 10M 合成路径盲目优化，目标是：
 
-1. 补齐 10M fresh-open 的几何类型覆盖；
+1. 补齐 Point、MultiPoint、Polyline 的 10M fresh-open 几何类型覆盖；
 2. 验证超过当前 `.gdbtablx` 缓存容量后的扩展行为；
 3. 识别非均匀数据分布下的执行计划误判；
 4. 仅在真实触发条件成立时实施按需偏移表、成本规划或并行扫描。

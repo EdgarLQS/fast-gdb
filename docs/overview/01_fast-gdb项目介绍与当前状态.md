@@ -207,7 +207,7 @@ FAST_GDB_RUN_10M_BENCHMARKS=1 ./build-linear/bin/gdb_tutorial_test_runner \
 ## 8. 后续路线
 
 1. **短期**：维护现有支持范围，新增 ArcGIS 原生曲线、复杂 Polygon、FID 映射、Z/M/ZM 能力时同步补充证据。
-2. **中期**：按 [Phase H 计划](../planning/16_spatial-query-scale-optimization-plan.md) 补齐 10M fresh-open、建立可复用 50M 阶梯，并为 35GB/5 亿级真实数据准备读取、索引和资源基线。
+2. **中期**：在独立开发分支上按 [Phase H 计划](../planning/16_spatial-query-scale-optimization-plan.md) 补齐 10M fresh-open、建立可复用 50M 阶梯，并为 35GB/5 亿级真实数据准备读取、索引和资源基线。
 3. **专项能力**：单独推进非空 MultiPatch、Writer 系统表同步和更完整的写入兼容性。
 4. **长期**：根据实际使用需求评估 SQL、Raster 或其他 OGR 兼容能力，不在当前 Reader 范围内提前承诺。
 

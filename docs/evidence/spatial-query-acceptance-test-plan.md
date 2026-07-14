@@ -1,7 +1,7 @@
 # fast-gdb 空间查询验收测试方案
 
-适用分支：`agent/spatial-query-optimization`  
-适用 PR：#9  
+适用分支：`main`（原始开发分支为 `agent/spatial-query-optimization`）
+适用提交：`2be0938`（PR #9 已合入）
 验收目标：在保证结果正确、回退语义完整和小范围查询不回归的前提下，使真实大规模 FileGDB 的中高覆盖率 bbox 查询达到或超过 GDAL。
 
 ---
@@ -27,7 +27,7 @@
 
 ```text
 测试日期：
-分支：agent/spatial-query-optimization
+分支：main（后续开发须另行创建分支）
 提交 SHA：
 操作系统：
 CPU 型号：
@@ -385,7 +385,7 @@ exact_tested / feature_count
 - `bbox_contained` 占绝大多数命中；
 - `exact_tested` 明显低于 feature_count；
 - 若 `exact_tested` 仍很高，说明需要继续实现流式边界谓词；
-- 若 `exact_tested` 已很低但总耗时仍高，说明主要瓶颈已转移到通用行扫描，需要 Geometry-only Scanner。
+- 若 `exact_tested` 已很低但新增规模总耗时仍高，检查已合入的 Geometry-only Scanner 的记录布局和 I/O 批量读取。
 
 ---
 
@@ -565,7 +565,7 @@ profiling instrumentation
 
 ### 情况 B：`candidate_lookup_ms` 接近 0，但总耗时仍高
 
-说明瓶颈已转移到通用 `sequential_scan()`，下一步实现 Geometry-only Scanner。
+说明瓶颈已转移到已合入的 Geometry-only Scanner，需要继续分析记录布局、I/O 批量读取或缓存行为。
 
 ### 情况 C：`exact_tested` 占比仍高
 
