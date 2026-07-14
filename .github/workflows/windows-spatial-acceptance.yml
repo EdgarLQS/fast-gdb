@@ -1,0 +1,91 @@
+name: windows-spatial-acceptance
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'src/edgar/explorgdb/reader/**'
+      - 'tests/edgar/explorgdb/reader/test_spatial_benchmark.cpp'
+      - 'tests/edgar/explorgdb/generate_large_gdb.cpp'
+      - 'scripts/windows/run_spatial_acceptance.ps1'
+      - '.github/workflows/windows-spatial-acceptance.yml'
+      - 'CMakeLists.txt'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-spatial-acceptance-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows-release-matrix:
+    name: windows-release-1m-10m-matrix
+    runs-on: windows-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-gdal
+
+      - name: Configure Windows Release benchmark build
+        shell: msys2 {0}
+        run: >-
+          cmake -S . -B build-windows -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DFAST_GDB_WITH_GDAL=ON
+          -DFAST_GDB_CURVE_BACKEND=BUILTIN
+          -DFAST_GDB_GEOMETRY_OUTPUT=STANDARD_WKB
+          -DFAST_GDB_BUILD_TOOLS=ON
+          -DFAST_GDB_BUILD_FULL_TESTS=ON
+          -DBUILD_TESTING=ON
+
+      - name: Build benchmark and data generator
+        shell: msys2 {0}
+        run: >-
+          cmake --build build-windows
+          --target gdb_tutorial_test_runner generate_large_gdb
+          --parallel 2
+
+      - name: Restore reusable 1M and 10M point fixtures
+        uses: actions/cache@v4
+        with:
+          path: test_data/spatial_matrix/windows
+          key: windows-spatial-point-fixtures-v1
+
+      - name: Download RAMMap for cold-cache runs
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path tools/rammap | Out-Null
+          Invoke-WebRequest `
+            -Uri 'https://download.sysinternals.com/files/RAMMap.zip' `
+            -OutFile tools/rammap/RAMMap.zip
+          Expand-Archive tools/rammap/RAMMap.zip tools/rammap -Force
+
+      - name: Run Windows Release acceptance matrix
+        shell: pwsh
+        env:
+          PATH: C:\msys64\ucrt64\bin;${{ env.PATH }}
+        run: |
+          ./scripts/windows/run_spatial_acceptance.ps1 `
+            -BuildDir build-windows `
+            -DataRoot test_data/spatial_matrix/windows `
+            -OutputDir artifacts/windows-spatial-acceptance `
+            -RamMapPath tools/rammap/RAMMap64.exe `
+            -Generate
+
+      - name: Upload acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-spatial-acceptance-${{ github.run_id }}
+          path: artifacts/windows-spatial-acceptance
+          if-no-files-found: warn
