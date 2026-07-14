@@ -1,7 +1,7 @@
 # fast-gdb 空间查询优化实施记录
 
 日期：2026-07-13  
-计划来源：`docs/planning/14_fast-gdb空间查询优化计划.md`  
+计划来源：`docs/planning/archive/14_fast-gdb空间查询优化计划.md`（历史计划）
 开发分支：`agent/spatial-query-optimization`  
 Pull Request：#9
 

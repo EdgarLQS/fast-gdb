@@ -5,7 +5,9 @@
 **依据文档**：`docs/evidence/spatial-query-acceptance-test-plan.md`
 **目标**：在保持完整 FID 集合与 GDAL 一致的前提下，优先解决大数据空间查询的绝对耗时差距，并让 30%、80% 和全范围查询稳定超过 GDAL。
 
-本文档取代 `14_fast-gdb空间查询优化计划.md` 中的性能优先级与验收门槛；14 号文档仅保留为初始提案和历史背景。
+**状态**：已归档；Phase A、E、G 已完成，B/C/D/F 未触发。
+
+本文档曾取代 `14_fast-gdb空间查询优化计划.md` 中的性能优先级与验收门槛，现作为 Phase A–G 历史实施记录归档。当前计划见 [16_spatial-query-scale-optimization-plan.md](../16_spatial-query-scale-optimization-plan.md)。
 
 ---
 
@@ -64,7 +66,7 @@
 5. steady-state 下 Phase B/C/D/F 均不触发；**Phase G（TablxCache）** 已完成——Polygon 的 10M fresh-open 1% 从 1444.4ms 降至 92.8ms，通过所有当前验收标准。
 6. 当前 fresh-open 完整矩阵仅覆盖 Polygon；Point、MultiPoint、Polyline 的 fresh-open 性能仍不作完成声明。
 - 方向性复测（旧数据，2026-07-14 早期）
-- [当前结论](../evidence/spatial-query-baseline-2026-07-14.md)
+- [当前结论](../../evidence/spatial-query-baseline-2026-07-14.md)
 
 ---
 
@@ -406,7 +408,7 @@ docs: record spatial optimization evidence
 - fast-gdb 与 GDAL 的打开和结果物化口径不对称；
 - 固定查询顺序让首项承担主要冷页成本；
 - steady-state 矩阵已覆盖 Point、MultiPoint、Polyline、Polygon；fresh-open 完整矩阵当前仅覆盖 Polygon；
-- `docs/evidence/spatial-query-optimization-2026-07-13.md` 保留为历史实施记录，当前 Phase G 结论以本计划和最新验收记录为准。
+- `docs/evidence/spatial-query-optimization-2026-07-13.md` 和本文保留为历史实施记录，Phase G 当前结论以最新验收记录为准。
 
 ## 12. Phase G 历史触发依据
 

@@ -154,7 +154,7 @@ FileGDB Geometry Blob
 
 ### 5.4 2026-07-14 空间查询当前状态
 
-Release/profile-off 的 Point、MultiPoint、Polyline、Polygon 在 1K–10M 的 steady-state 覆盖率矩阵均通过完整 FID 对照和分档性能门槛。Polygon 的 10M fresh-open 缓存全矩阵也已通过，1% 冷打开为 154.9ms，比 GDAL 多 30.4ms，仍在 +200ms 容忍内。大数据集存放于 `test_data/spatial_matrix/` 并按已验证的图层、几何类型、要素数和 `.spx` 复用，不应在日常复测中重复生成。当前 fresh-open 完整矩阵仅覆盖 Polygon，Point、MultiPoint、Polyline 尚不作 fresh-open 完成声明；完整数据、边界和证据见 [空间查询公平基准验收记录](../evidence/spatial-query-baseline-2026-07-14.md) 与 [全规模空间查询性能优化计划](../planning/15_spatial-query-followup-optimization-design.md)。
+Release/profile-off 的 Point、MultiPoint、Polyline、Polygon 在 1K–10M 的 steady-state 覆盖率矩阵均通过完整 FID 对照和分档性能门槛。Polygon 的 10M fresh-open 缓存全矩阵也已通过，1% 冷打开为 154.9ms，比 GDAL 多 30.4ms，仍在 +200ms 容忍内。大数据集存放于 `test_data/spatial_matrix/` 并按已验证的图层、几何类型、要素数和 `.spx` 复用，不应在日常复测中重复生成。当前 fresh-open 完整矩阵仅覆盖 Polygon，Point、MultiPoint、Polyline 尚不作 fresh-open 完成声明；完整数据和边界见 [空间查询公平基准验收记录](../evidence/spatial-query-baseline-2026-07-14.md)，下一阶段见 [Phase H 超大规模空间查询优化计划](../planning/16_spatial-query-scale-optimization-plan.md)。
 
 ## 6. 测试与验收体系
 
@@ -207,7 +207,7 @@ FAST_GDB_RUN_10M_BENCHMARKS=1 ./build-linear/bin/gdb_tutorial_test_runner \
 ## 8. 后续路线
 
 1. **短期**：维护现有支持范围，新增 ArcGIS 原生曲线、复杂 Polygon、FID 映射、Z/M/ZM 能力时同步补充证据。
-2. **中期**：为 35GB/5 亿级数据建立真实读取、全量重写、索引构建和内存/磁盘基线。
+2. **中期**：按 [Phase H 计划](../planning/16_spatial-query-scale-optimization-plan.md) 补齐 10M fresh-open、建立可复用 50M 阶梯，并为 35GB/5 亿级真实数据准备读取、索引和资源基线。
 3. **专项能力**：单独推进非空 MultiPatch、Writer 系统表同步和更完整的写入兼容性。
 4. **长期**：根据实际使用需求评估 SQL、Raster 或其他 OGR 兼容能力，不在当前 Reader 范围内提前承诺。
 
