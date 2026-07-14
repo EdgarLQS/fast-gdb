@@ -10,7 +10,9 @@
 #include <algorithm>
 #include <cerrno>
 #include <limits>
+#include <mutex>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace {
@@ -78,6 +80,101 @@ int errno_from_win32(DWORD error) {
     }
 }
 
+struct FileIdentity {
+    DWORD volume_serial = 0;
+    DWORD file_index_high = 0;
+    DWORD file_index_low = 0;
+
+    bool operator==(const FileIdentity& other) const {
+        return volume_serial == other.volume_serial &&
+               file_index_high == other.file_index_high &&
+               file_index_low == other.file_index_low;
+    }
+};
+
+struct FileIdentityHash {
+    size_t operator()(const FileIdentity& identity) const noexcept {
+        const uint64_t index =
+            (static_cast<uint64_t>(identity.file_index_high) << 32U) |
+            identity.file_index_low;
+        const uint64_t mixed = index ^
+            (static_cast<uint64_t>(identity.volume_serial) *
+             0x9e3779b97f4a7c15ULL);
+        return static_cast<size_t>(mixed ^ (mixed >> 32U));
+    }
+};
+
+class OverlappedHandleCache {
+public:
+    ~OverlappedHandleCache() {
+        for (const auto& entry : handles_) {
+            CloseHandle(entry.second);
+        }
+    }
+
+    HANDLE get(HANDLE source) {
+        BY_HANDLE_FILE_INFORMATION info{};
+        if (!GetFileInformationByHandle(source, &info)) return nullptr;
+        const FileIdentity identity{
+            info.dwVolumeSerialNumber,
+            info.nFileIndexHigh,
+            info.nFileIndexLow};
+
+        std::lock_guard<std::mutex> lock(mutex_);
+        const auto found = handles_.find(identity);
+        if (found != handles_.end()) return found->second;
+
+        HANDLE reopened = ReOpenFile(
+            source, GENERIC_READ,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            FILE_FLAG_OVERLAPPED | FILE_FLAG_SEQUENTIAL_SCAN);
+        if (reopened == INVALID_HANDLE_VALUE) return nullptr;
+        handles_.emplace(identity, reopened);
+        return reopened;
+    }
+
+private:
+    std::mutex mutex_;
+    std::unordered_map<FileIdentity, HANDLE, FileIdentityHash> handles_;
+};
+
+OverlappedHandleCache& overlapped_handle_cache() {
+    static OverlappedHandleCache cache;
+    return cache;
+}
+
+std::mutex& synchronous_read_mutex() {
+    static std::mutex mutex;
+    return mutex;
+}
+
+bool synchronous_positional_read(HANDLE handle,
+                                 unsigned char* output,
+                                 DWORD chunk,
+                                 uint64_t absolute,
+                                 DWORD& bytes_read) {
+    // ReOpenFile can be unavailable for unusual filesystem handles. Preserve the
+    // old synchronous fallback under a process-wide lock and restore the shared
+    // cursor before returning, so callers still receive positional semantics.
+    std::lock_guard<std::mutex> lock(synchronous_read_mutex());
+    LARGE_INTEGER original{};
+    LARGE_INTEGER zero{};
+    if (!SetFilePointerEx(handle, zero, &original, FILE_CURRENT)) return false;
+
+    LARGE_INTEGER requested{};
+    requested.QuadPart = static_cast<LONGLONG>(absolute);
+    if (!SetFilePointerEx(handle, requested, nullptr, FILE_BEGIN)) return false;
+
+    const BOOL ok = ReadFile(handle, output, chunk, &bytes_read, nullptr);
+    const DWORD read_error = ok ? ERROR_SUCCESS : GetLastError();
+    SetFilePointerEx(handle, original, nullptr, FILE_BEGIN);
+    if (!ok && read_error != ERROR_HANDLE_EOF) {
+        SetLastError(read_error);
+        return false;
+    }
+    return true;
+}
+
 } // namespace
 
 int fast_gdb_open_utf8(const char* path, int flags, int) {
@@ -101,7 +198,7 @@ int fast_gdb_open_utf8(const char* path, int flags, int) {
         return -1;
     }
 
-    int crt_flags = flags | _O_BINARY;
+    const int crt_flags = flags | _O_BINARY;
     const int fd = _open_osfhandle(reinterpret_cast<intptr_t>(handle), crt_flags);
     if (fd < 0) {
         CloseHandle(handle);
@@ -118,7 +215,15 @@ ssize_t fast_gdb_pread(int fd, void* buffer, size_t size,
     const intptr_t raw_handle = _get_osfhandle(fd);
     if (raw_handle == -1) return -1;
 
-    HANDLE handle = reinterpret_cast<HANDLE>(raw_handle);
+    HANDLE source_handle = reinterpret_cast<HANDLE>(raw_handle);
+    // MSVC uses fast_gdb_open_utf8() and already produces an overlapped handle.
+    // MinGW's native open() may produce a synchronous handle, so use a cached
+    // ReOpenFile handle that is explicitly FILE_FLAG_OVERLAPPED. Reopening an
+    // already-overlapped source is harmless and keeps both toolchains uniform.
+    HANDLE io_handle = overlapped_handle_cache().get(source_handle);
+    const bool use_overlapped = io_handle != nullptr;
+    if (!use_overlapped) io_handle = source_handle;
+
     auto* output = static_cast<unsigned char*>(buffer);
     size_t total = 0;
     while (total < size) {
@@ -127,26 +232,33 @@ ssize_t fast_gdb_pread(int fd, void* buffer, size_t size,
             remaining, static_cast<size_t>(std::numeric_limits<DWORD>::max())));
         const uint64_t absolute = static_cast<uint64_t>(offset) + total;
 
-        OVERLAPPED overlapped{};
-        overlapped.Offset = static_cast<DWORD>(absolute & 0xffffffffULL);
-        overlapped.OffsetHigh = static_cast<DWORD>(absolute >> 32);
-        overlapped.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-        if (overlapped.hEvent == nullptr) return -1;
-
         DWORD bytes_read = 0;
-        BOOL ok = ReadFile(handle, output + total, chunk,
-                           &bytes_read, &overlapped);
-        if (!ok) {
-            const DWORD error = GetLastError();
-            if (error == ERROR_IO_PENDING) {
-                ok = GetOverlappedResult(handle, &overlapped,
-                                         &bytes_read, TRUE);
-            } else if (error == ERROR_HANDLE_EOF) {
-                ok = TRUE;
-                bytes_read = 0;
+        bool ok = false;
+        if (use_overlapped) {
+            OVERLAPPED overlapped{};
+            overlapped.Offset = static_cast<DWORD>(absolute & 0xffffffffULL);
+            overlapped.OffsetHigh = static_cast<DWORD>(absolute >> 32U);
+            overlapped.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+            if (overlapped.hEvent == nullptr) return -1;
+
+            BOOL read_ok = ReadFile(io_handle, output + total, chunk,
+                                    &bytes_read, &overlapped);
+            if (!read_ok) {
+                const DWORD error = GetLastError();
+                if (error == ERROR_IO_PENDING) {
+                    read_ok = GetOverlappedResult(io_handle, &overlapped,
+                                                  &bytes_read, TRUE);
+                } else if (error == ERROR_HANDLE_EOF) {
+                    read_ok = TRUE;
+                    bytes_read = 0;
+                }
             }
+            CloseHandle(overlapped.hEvent);
+            ok = read_ok != FALSE;
+        } else {
+            ok = synchronous_positional_read(
+                io_handle, output + total, chunk, absolute, bytes_read);
         }
-        CloseHandle(overlapped.hEvent);
         if (!ok) return -1;
 
         total += bytes_read;
