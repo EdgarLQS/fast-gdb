@@ -1,5 +1,6 @@
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
+include(${CMAKE_CURRENT_LIST_DIR}/FastGdbPlatform.cmake)
 
 set(FAST_GDB_PACKAGE_VARIANT "" CACHE STRING
     "Release package variant name; defaults to linear or hybrid")
