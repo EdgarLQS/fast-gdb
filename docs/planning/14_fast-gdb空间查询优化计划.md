@@ -1,5 +1,7 @@
 # 14 — fast-gdb 大规模空间查询超越 GDAL 计划
 
+> 状态说明（2026-07-14）：本文档保留初始提案和历史验收背景；当前性能优先级、200 ms 小范围容忍线及实施门禁以 [15_spatial-query-followup-optimization-design.md](15_spatial-query-followup-optimization-design.md) 为准。
+
 **更新日期**：2026-07-13  
 **状态**：实施中  
 **适用范围**：`explorgdb` Reader 的 bbox/空间查询路径

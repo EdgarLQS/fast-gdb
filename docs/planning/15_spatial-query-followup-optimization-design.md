@@ -1,334 +1,176 @@
-# 15 — 基于验收方案的后续空间查询优化设计
+# 15 — fast-gdb 全规模空间查询性能优化计划
 
-**更新日期**：2026-07-13  
-**适用分支**：`agent/spatial-query-optimization`  
-**依据文档**：`docs/evidence/spatial-query-acceptance-test-plan.md`  
-**目标**：以验收方案中的正确性、执行路径、阶段耗时、内存和稳定性指标为唯一优化依据，逐步把 10M 中高覆盖率 bbox 查询推进到超越 GDAL。
+**更新日期**：2026-07-14
+**适用分支**：`agent/spatial-query-optimization`
+**依据文档**：`docs/evidence/spatial-query-acceptance-test-plan.md`
+**目标**：在保持完整 FID 集合与 GDAL 一致的前提下，优先解决大数据空间查询的绝对耗时差距，并让 30%、80% 和全范围查询稳定超过 GDAL。
+
+本文档取代 `14_fast-gdb空间查询优化计划.md` 中的性能优先级与验收门槛；14 号文档仅保留为初始提案和历史背景。
 
 ---
 
-## 1. 设计原则
+## 1. 当前结论
 
-后续优化不再采用“先实现大量功能，再整体测试”的方式，而采用闭环：
+当前实现已经具备：
+
+- mmap Geometry Blob 零拷贝视图；
+- `.spx` 候选查询与缺失、损坏回退；
+- 高覆盖率 Geometry-only 顺序扫描；
+- bbox 粗过滤和 contained 直接接受；
+- active feature count 与物理 FID slot 分离；
+- 1M、10M 覆盖率矩阵及 GDAL 完整 FID 对照。
+
+2026-07-14 的方向性复测结果如下。该数据来自未设置 `CMAKE_BUILD_TYPE` 且开启细粒度 profile 的构建，只用于定位热点，不能作为最终 Release 性能结论。
+
+| 规模 | 1% | 10% | 30% | 80% | 全范围 |
+|---|---:|---:|---:|---:|---:|
+| 1M fast/GDAL | 3.85 | 2.65 | 1.56 | 0.74 | 0.62 |
+| 10M fast/GDAL | 8.42 | 2.29 | 1.41 | 0.72 | 0.67 |
+
+现阶段判断：
+
+1. 80% 和全范围路径已经方向正确，后续重点是防止回归；
+2. 10M 的 1%、10%、30% 仍存在秒级或接近秒级绝对差距，是首要优化对象；
+3. 1M 小范围查询虽然相对比值不理想，但绝对差距在 200 ms 内时不作为重点；
+4. 30% 强制切换顺序扫描比 `.spx` 候选路径更慢，不能通过简单下调阈值解决；
+5. 当前主要热点是候选 Blob 定位、`.spx` 中密度遍历和边界候选精确判断。
+
+---
+
+## 2. 目标范围与验收原则
+
+### 2.1 首轮覆盖范围
+
+- 几何：Point、MultiPoint、Polyline、Polygon；
+- 规模：1K、10K、100K、1M、10M；
+- 窗口：1%、10%、30%、80%、全范围；
+- 输出：完整、唯一、递增的 0-based FID 集合；
+- 曲线和 MultiPatch：保持正确 fallback，首轮不设置性能门槛。
+
+### 2.2 性能门槛
+
+小范围查询采用绝对耗时优先原则：
 
 ```text
-验收指标
-  -> 判断主瓶颈
-  -> 只实施一个主要优化
-  -> 运行正确性与性能矩阵
-  -> 记录结果
-  -> 决定下一阶段
+1% / 10%：
+  fast_ms <= gdal_ms + 200ms
+  或 fast_ms <= gdal_ms * 0.90
+
+30% / 80% / 全范围：
+  fast_ms <= gdal_ms * 0.90
 ```
 
-每一阶段必须满足：
+补充要求：
 
-1. 与 GDAL 完整 0-based FID 集合一致；
-2. 1% 和 10% 查询不明显回归；
-3. 异常、曲线、MultiPatch、Z/M/ZM fallback 不退化；
-4. 阶段指标能够证明该优化实际命中了预期瓶颈；
-5. 未产生真实基准前，不宣称性能目标达成。
+- 只有小范围绝对差距超过 200 ms，且主要发生在大数据上，才进入专项优化；
+- 所有性能单元必须保持完整 FID 集合一致；
+- 10M 已领先场景不得回归；
+- steady-state 与 fresh-open 均使用上述分档门槛，小范围查询都允许 200 ms 绝对差距；
+- P95 作为长尾观察指标记录，首轮不作为硬门禁。
+
+### 2.3 优化优先级
+
+按“可减少的绝对耗时”排序，不按单一倍率排序：
+
+1. 10M 低密度候选 Blob 访问；
+2. 10M 中密度 `.spx` 遍历与候选读取；
+3. 30% 边界候选精确判断；
+4. 80% 和全范围扫描吞吐；
+5. 小数据固定开销。
 
 ---
 
-## 2. 验收指标到优化动作的映射
+## 3. Phase A — 建立公平性能基线
 
-| 验收现象 | 根因判断 | 后续动作 |
-|---|---|---|
-| `candidate_lookup_ms` 高 | 仍在大规模物化 `.spx` 候选 | 修正查询前规划器 |
-| `candidate_lookup_ms` 接近 0，但总耗时高 | 通用行扫描成本高 | 实现 Geometry-only Scanner |
-| `exact_tested / feature_count` 高 | 边界候选仍大量构造 `GeometryModel` | 实现 Streaming Predicate |
-| `bbox_contained` 高但总耗时仍高 | 行解析和调度占主导 | 优化 scanner、批量迭代、并行扫描 |
-| 30% 慢、80%/100% 快 | 中密度切换点不合理 | 校准 planner 或增加中密度分块策略 |
-| 1%/10% 回归 | planner 固定开销或 `.spx` 路径受影响 | 缩短 fast path、延迟初始化、恢复低密度专用路径 |
-| 峰值 RSS 高 | 候选或结果大向量占用过高 | visitor/count/bitmap API、分块输出 |
-| 单线程接近 GDAL但略慢 | CPU 扫描吞吐成为瓶颈 | 固定分区并行扫描 |
-| FID 不一致 | 快速判定语义错误 | 立即回滚该 fast path，优先修正正确性 |
+先修正测量体系，再根据 Release 数据决定具体优化。
 
----
+### 3.1 构建与计时
 
-## 3. 总体架构
+- 新建独立 Release 构建，明确使用 `-O3 -DNDEBUG`；
+- 墙钟性能门禁关闭 `FAST_GDB_SPATIAL_PROFILE`；
+- profile 仅在独立诊断轮次开启，不与 GDAL 墙钟比值混用；
+- 记录编译器、GDAL 版本、CPU、内存、操作系统和数据集信息。
 
-后续空间查询路径拆为四层：
+### 3.2 比较口径
 
-```text
-SpatialQueryPlanner
-  -> CandidateSource
-      -> SPX candidate stream
-      -> Geometry sequential scan
-      -> Block-parallel geometry scan
-  -> GeometryFastPredicate
-      -> bbox reject
-      -> bbox contained accept
-      -> streaming exact predicate
-      -> GeometryModel fallback
-  -> ResultSink
-      -> vector FIDs
-      -> visitor
-      -> count
-      -> bitmap
-```
+分别记录两种口径：
 
-关键要求：
+1. `steady-state`：fast-gdb 与 GDAL 均在计时前完成打开和预热；
+2. `fresh-open`：双方均把打开、查询、结果读取和关闭纳入计时。
 
-- Planner 在 `.spx` 候选物化前作出决定；
-- 高密度路径不得解析无关属性列；
-- 普通 Point/Polyline/Polygon 不应默认构造 `GeometryModel`；
-- 并行只用于只读扫描，不能改变 FID 顺序和结果语义；
-- 输出模式与执行引擎解耦，避免 count-only 场景仍创建巨大 FID vector。
+双方必须输出并比较完整 FID 集合，不能使用 count 对 FID 或已打开对重复打开等不对称口径。
+
+### 3.3 重复策略
+
+- 每个单元预热一次、测量五次；
+- 轮换查询顺序，避免 1% 固定承担首次缺页成本；
+- 使用五次中位数判定，记录 P95；
+- profile 轮次输出 SPX、Blob、bbox、exact、scan 和结果写入耗时。
 
 ---
 
-## 4. Phase A — 验收基线与诊断输出
+## 4. Phase B — 候选 Geometry 定位
 
-### 4.1 目标
+触发条件：Release/profile-off 基线中，10M 的 1% 或 10% 查询慢于 GDAL 超过 200 ms，且 Blob 定位或 mmap 缺页是主要耗时。
 
-确保验收文档要求的所有指标都能够稳定输出，以便后续优化有数据依据。
+### 4.1 访问模式提示
 
-### 4.2 需要补齐的指标
+当前 `.gdbtable` mmap 在打开时使用 `MADV_SEQUENTIAL`，会影响低密度候选的随机页访问。调整为：
 
-```text
-planner_ms
-row_scan_ms
-geometry_locate_ms
-bbox_peek_ms
-streaming_predicate_ms
-model_fallback_ms
-merge_ms
-thread_count
-result_output_ms
-peak_candidate_count
-```
+- 打开时使用普通访问模式；
+- `.spx` 候选路径使用随机访问提示；
+- 顺序扫描路径使用顺序访问提示；
+- 平台不支持提示时保持现有正确性，不改变执行语义。
 
-保留现有：
+### 4.2 编译行布局
 
-```text
-estimated_coverage
-spx_bypassed
-candidate_lookup_ms
-bbox_rejected
-bbox_contained
-exact_tested
-invalid_geometries
-```
-
-### 4.3 实施要求
-
-- 仅在 `FAST_GDB_SPATIAL_PROFILE=1` 下启用细粒度计时；
-- 生产路径不做逐要素高精度时钟调用；
-- 使用阶段起止时间，而不是每条记录计时；
-- benchmark 输出必须包含 fast/GDAL 比率和完整 FID 一致性结果。
-
-### 4.4 完成标准
-
-验收文档第 6、7、8、11、12 节需要的指标均可直接从测试输出获得。
-
----
-
-## 5. Phase B — Geometry-only Scanner
-
-### 5.1 触发条件
-
-满足以下任一条件即优先实施：
-
-- 80%/100% 已成功 `spx_bypassed=true`；
-- `candidate_lookup_ms` 接近 0；
-- 总耗时仍明显高于 GDAL；
-- profile 显示 `sequential_scan()` 或字段解析占主导。
-
-### 5.2 当前问题
-
-通用 `sequential_scan()` 会：
-
-- 解释整行 schema；
-- 构造或填充全部 `FieldRef`；
-- 跳过或解析无关属性字段；
-- 通过通用回调层传递 geometry；
-- 在高覆盖率下重复数百万次。
-
-### 5.3 设计
-
-新增编译后的行访问计划：
+在 `GdbTableParser` 内编译一次 Geometry 前缀布局：
 
 ```cpp
-struct GeometryScanPlan {
-    size_t geometry_field_index;
+struct GeometryRowLayout {
     size_t nullable_bitmap_size;
+    int geometry_nullable_bit;
     std::vector<FieldSkipOp> prefix_ops;
-    bool geometry_nullable;
 };
 ```
 
-`FieldSkipOp` 只描述如何跳过 geometry 之前的字段：
+要求：
 
-```cpp
-enum class FieldSkipKind {
-    FixedWidth,
-    VaruintLengthPrefixed,
-    ObjectIdNoStorage,
-    NullableFixedWidth,
-    NullableVaruintLengthPrefixed
-};
-```
+- 标准行直接读取 nullable bitmap 并跳到 Geometry；
+- 不读取 Geometry 后面的字段；
+- 不为每条记录反复尝试 bitmap/present-bit 组合；
+- `peek_geometry_blob()` 与 `scan_geometry_blobs()` 共享同一布局规则；
+- 非标准、截断或无法确认的记录回退现有容错解析器；
+- mmap 路径继续返回稳定的零拷贝 Blob 视图。
 
-新增接口：
+### 4.3 批量候选接口
 
-```cpp
-uint64_t scan_geometry_blobs(
-    const GeometryScanPlan& plan,
-    GeometryBlobCallback callback) const;
-```
+为递增候选 FID 增加内部批量遍历能力，集中完成：
 
-回调参数：
+- offset 与行长度边界检查；
+- Geometry 定位；
+- bbox 和精确谓词调用；
+- 指标累计与提前终止。
 
-```cpp
-bool(uint32_t fid, const uint8_t* blob, size_t blob_size)
-```
-
-### 5.4 快速路径要求
-
-- 直接读取 record length；
-- 读取 nullable bitmap；
-- 按预编译 skip plan 前进指针；
-- 读取 geometry 长度和 blob view；
-- 不创建 `FieldRef[]`；
-- 不读取 geometry 后面的字段；
-- mmap 模式零拷贝；
-- 非 mmap 模式保持正确性 fallback。
-
-### 5.5 测试
-
-新增：
-
-```text
-GeometryOnlyScannerMatchesSequentialScan
-GeometryOnlyScannerHandlesNullableGeometry
-GeometryOnlyScannerHandlesVariablePrefixFields
-GeometryOnlyScannerPreservesDeletedOrMissingRows
-GeometryOnlyScannerFallsBackWithoutMmap
-```
-
-### 5.6 验收指标
-
-- `row_scan_ms` 显著下降；
-- FID 集合与通用扫描一致；
-- 80%/100% 总耗时下降；
-- 1%/10% 不受影响。
+不新增调用方必须理解的公共查询接口，`query_bbox_unified()` 保持兼容。
 
 ---
 
-## 6. Phase C — Streaming Predicate
+## 5. Phase C — `.spx` 与中密度候选
 
-### 6.1 触发条件
+触发条件：Phase B 后 10M 的 10% 或 30% 仍未达标，且 `.spx` 页面遍历或中密度候选读取是主要耗时。
 
-- `exact_tested` 占 feature_count 比例高；
-- `model_fallback_ms` 或 `exact_filter_ms` 成为主要耗时；
-- Geometry-only Scanner 后仍未达到目标。
+### 5.1 页面访问
 
-### 6.2 API 设计
+- 不在每次查询开始时无条件清空根页和分支页缓存；
+- 增加访问页数、缓存命中、原始候选数和去重候选数指标；
+- 合并同一 grid level 的有序查询区间；
+- 避免每个 X cell 都从根页重复递归；
+- 一次查询中每个相关 B+Tree 页面最多解析一次。
 
-```cpp
-enum class FastPredicateResult {
-    Disjoint,
-    Intersects,
-    Fallback,
-    Invalid
-};
+### 5.2 BlockCandidates
 
-FastPredicateResult intersects_bbox_streaming(
-    const uint8_t* blob,
-    size_t size,
-    const QueryBbox& query,
-    StreamingPredicateStats* stats = nullptr) const;
-```
-
-### 6.3 Point
-
-- 读取 geom type；
-- 解码 X/Y；
-- 直接判断是否位于 query bbox；
-- 不读取 Z/M；
-- 不构造模型。
-
-### 6.4 MultiPoint
-
-- 读取 point count 和 bbox；
-- bbox 三态判断；
-- 边界候选流式读取 XY；
-- 任一点命中立即返回；
-- 正确跳过 Z/M 数据段。
-
-### 6.5 Polyline
-
-边界候选采用：
-
-1. 任一顶点在 query bbox 内；
-2. 任一线段与矩形四边相交；
-3. 命中即提前返回。
-
-只保留前一点和当前点，不创建 point vector。
-
-### 6.6 Polygon
-
-边界候选采用：
-
-1. 任一顶点在 query bbox 内；
-2. 任一 ring 边与矩形相交；
-3. query bbox 代表点或角点位于 polygon 内。
-
-Point-in-polygon 必须：
-
-- 支持多 ring；
-- 使用 parity 或现有模型一致的 ring 语义；
-- 正确处理 holes 和 islands；
-- 对曲线 ring 返回 `Fallback`；
-- 不因 ring 方向不同改变结果。
-
-### 6.7 fallback
-
-以下情况保留统一 `GeometryModel`：
-
-```text
-General curve geometry
-MultiPatch
-未知类型
-异常 varint
-超限 point/part count
-数值溢出
-streaming 语义无法确认
-```
-
-### 6.8 指标
-
-新增：
-
-```text
-streaming_tested
-streaming_accepted
-streaming_rejected
-model_fallback_tested
-streaming_invalid
-```
-
-### 6.9 完成标准
-
-- 普通 Point/Polyline/Polygon 大多数边界候选不进入模型；
-- 与 GDAL 完整 FID 一致；
-- holes、multipart、反向 ring、Z/M/ZM 测试通过；
-- `model_fallback_tested / exact_tested` 显著下降。
-
----
-
-## 7. Phase D — 中密度执行策略
-
-### 7.1 触发条件
-
-- 80%/100% 达标；
-- 30% 未达到 `fast-gdb <= GDAL × 0.90`；
-- 阈值测试显示 `.spx` 与全扫描交叉点不稳定。
-
-### 7.2 设计选项
-
-新增三种计划：
+30% 等中密度场景增加分块候选路径：
 
 ```cpp
 enum class SpatialPlan {
@@ -339,44 +181,15 @@ enum class SpatialPlan {
 };
 ```
 
-中密度 `BlockCandidates`：
+`BlockCandidates` 必须：
 
-- `.spx` 返回候选；
-- 候选按 tablx block 或 FID 连续区间分组；
-- 连续区间内按顺序读取；
-- 避免逐 FID 随机定位；
-- 不构建全表扫描成本。
+- 保留 `.spx` 产生的候选集合；
+- 按相邻 FID、文件偏移和 mmap 页范围组织访问；
+- 只判断候选，不退化为全表扫描；
+- 保持最终 FID 唯一、递增；
+- 单独记录 block 数量和预取字节数。
 
-### 7.3 规划成本模型
-
-```text
-spx_cost = index_fixed + candidate_count * random_blob_cost
-scan_cost = feature_count * sequential_blob_cost
-block_cost = index_fixed + block_count * block_open_cost + candidate_count * sequential_in_block_cost
-```
-
-初期使用实测常数，后续可按 QueryEngine 热查询历史更新指数移动平均值。
-
-### 7.4 决策输入
-
-```text
-feature_count
-estimated_coverage
-geometry_type
-last_spx_candidate_ratio
-average_blob_size
-mmap_available
-hot/cold state
-thread_count
-```
-
-### 7.5 安全要求
-
-- 估算失败时选择保守路径；
-- 规划错误只能影响性能，不能影响结果；
-- 可通过环境变量强制指定路径用于对照测试。
-
-建议变量：
+提供以下测试开关用于对照，不作为业务接口：
 
 ```text
 FAST_GDB_SPATIAL_FORCE_PLAN=spx|block|scan|parallel
@@ -384,251 +197,141 @@ FAST_GDB_SPATIAL_FORCE_PLAN=spx|block|scan|parallel
 
 ---
 
-## 8. Phase E — 并行扫描
+## 6. Phase D — Streaming Predicate
 
-### 8.1 触发条件
+触发条件：Phase B/C 后 30% 查询仍未达标，且 `exact_filter_ms` 或 `model_fallback_tested` 证明完整模型构建是主要剩余耗时。
 
-- 单线程顺序扫描已接近 GDAL；
-- `row_scan_ms + predicate_ms` 为主要耗时；
-- I/O 位于 SSD/NVMe 或数据已热缓存；
-- 正确性与单线程性能均稳定。
+对 bbox 边界候选实现无分配流式相交判断：
 
-### 8.2 分区方式
+- Point：直接解码 XY；
+- MultiPoint：bbox 三态后逐点判断；
+- Polyline：逐顶点、逐线段检查矩形相交；
+- Polygon：检查 ring 边相交并使用 parity 判断包含关系；
+- Z/M 数据按格式跳过，不创建坐标数组；
+- 命中或拒绝后立即停止读取剩余坐标。
 
-按 FID 连续区间分区：
-
-```text
-[0, N/T)
-[N/T, 2N/T)
-...
-```
-
-每个线程：
-
-- 使用共享只读 mmap；
-- 拥有独立 decoder；
-- 拥有独立 result buffer；
-- 拥有独立 metrics；
-- 不写共享 vector；
-- 不使用逐要素锁。
-
-### 8.3 合并
-
-由于各分区 FID 不重叠且递增：
-
-- 按分区编号直接拼接；
-- 无需最终 sort；
-- 只校验边界单调性；
-- `merge_ms` 单独记录。
-
-### 8.4 线程数
-
-默认：
+以下情况统一返回 `Fallback`，继续使用现有 `GeometryModel`：
 
 ```text
-min(物理核心数, 8)
-```
-
-支持：
-
-```text
-FAST_GDB_SPATIAL_THREADS=1..N
-```
-
-### 8.5 终止与异常
-
-- 任一线程检测到致命扫描错误时设置原子终止标志；
-- 非法单条 geometry 计入 invalid，不终止全查询；
-- fallback 仅在线程本地执行；
-- 线程创建失败回退单线程。
-
-### 8.6 验收
-
-测试 1、2、4、8 线程：
-
-- FID 完全一致；
-- 输出顺序一致；
-- 峰值 RSS 可接受；
-- 4～8 线程在 10M 80%/100% 上产生稳定收益；
-- 不在 HDD 冷缓存场景强制并行。
-
----
-
-## 9. Phase F — ResultSink 与内存优化
-
-### 9.1 触发条件
-
-- 峰值 RSS 过高；
-- 全范围结果 vector 占用明显；
-- count-only 或 visitor 场景仍分配完整结果。
-
-### 9.2 接口
-
-```cpp
-std::vector<uint32_t> query_bbox_fids(...);
-uint64_t query_bbox_count(...);
-bool query_bbox_visit(..., FIDVisitor visitor);
-SpatialBitmap query_bbox_bitmap(...);
-```
-
-内部统一：
-
-```cpp
-class SpatialResultSink {
-public:
-    virtual bool emit(uint32_t fid) = 0;
-};
-```
-
-### 9.3 要求
-
-- benchmark 与 GDAL 比较完整 FID 时必须使用 FID sink；
-- count-only 只能用于 count 对 count 的公平比较；
-- visitor 可提前终止；
-- bitmap 仅在调用方明确需要集合运算时使用；
-- vector sink 预估 reserve，但不能因错误估算分配 feature_count 级候选。
-
----
-
-## 10. Phase G — 稳定性、异常与跨平台
-
-必须覆盖验收方案中的异常路径：
-
-```text
-.spx 缺失
-.spx 损坏
-mmap 不可用
-extent 无效
-空表
-无 geometry 字段
-非法 bbox
-非法 Geometry Blob
-曲线
+General curve geometry
 MultiPatch
-Z/M/ZM
-删除记录
-Windows 多配置 Release
-Linux/macOS Release
+未知类型
+异常 varint
+超限 point/part count
+数值溢出
+无法确认的 polygon 拓扑
 ```
 
-新增规则：
-
-- fast path 发生任何不确定状态时返回 `Fallback`，不能猜测结果；
-- fallback reason 必须可观察；
-- 所有长度、指针推进和 varint 读取必须使用 checked cursor；
-- point/part count 必须有上限和剩余字节验证；
-- 并行路径必须通过 TSAN 或等效的数据竞争审查（条件允许时）。
-
----
-
-## 11. 代码组织建议
-
-建议拆分：
+新增指标：
 
 ```text
-reader/
-  spatial_query_planner.h/.cpp
-  geometry_scan_plan.h/.cpp
-  geometry_column_scanner.h/.cpp
-  geometry_stream_predicate.h/.cpp
-  spatial_result_sink.h/.cpp
-  query_engine_geometry.cpp
+streaming_tested
+streaming_accepted
+streaming_rejected
+model_fallback_tested
+streaming_invalid
 ```
 
-`query_engine_geometry.cpp` 只负责 orchestration，不继续承载全部二进制解析与规划逻辑。
+---
 
-依赖方向：
+## 7. Phase E — 确定性规划器
+
+触发条件：至少两种执行路径已经通过正确性验证，且 Release 矩阵证明不同规模或覆盖率存在稳定交叉点。
+
+只使用当前查询和表级静态信息，不在首轮引入在线学习或历史 EMA：
 
 ```text
-QueryEngine
-  -> SpatialQueryPlanner
-  -> GeometryColumnScanner
-  -> GeometryStreamPredicate
-  -> SpatialResultSink
+小表       -> 固定开销高于扫描成本时直接扫描
+低密度     -> SPX + 批量候选定位
+中密度     -> SPX + BlockCandidates
+高覆盖率   -> Geometry-only 顺序扫描
+索引异常   -> 安全顺序扫描或候选 FID fallback
 ```
 
-避免反向依赖 `QueryEngine`。
+决策输入限定为：
+
+- active feature count；
+- estimated coverage；
+- `.spx` 候选比例；
+- Geometry 类型；
+- mmap 可用性；
+- 平均记录大小。
+
+规划错误只能影响性能，不能影响结果或 fallback 语义。
 
 ---
 
-## 12. 提交拆分
+## 8. Phase F — 条件并行扫描
 
-建议每一步独立提交：
+并行扫描不是默认必做项。仅当 Release 单线程优化完成后，10M 的 80% 或全范围仍不能达到 `fast <= GDAL * 0.90` 时实施。
 
-1. `perf: add spatial phase metrics`
-2. `perf: add geometry-only row scanner`
-3. `test: validate geometry-only scanner equivalence`
-4. `perf: stream point and multipoint bbox predicates`
-5. `perf: stream polyline bbox predicates`
-6. `perf: stream polygon bbox predicates`
-7. `test: cover topology and dimensional fallbacks`
-8. `perf: add block candidate execution plan`
-9. `perf: add parallel geometry scan`
-10. `perf: add spatial result sinks`
-11. `docs: record spatial acceptance results`
+实施要求：
 
-每个提交必须能够独立编译、测试和回退。
+- 按连续 FID 范围分区；
+- 共享只读 mmap，每线程独立 decoder、metrics 和结果 vector；
+- 不使用逐要素锁；
+- 按分区顺序拼接结果，无需最终排序；
+- 线程创建失败时回退单线程；
+- 小数据和低密度查询不启用并行。
 
 ---
 
-## 13. 阶段门禁
+## 9. 测试与门禁
 
-### 门禁 1 — Geometry-only Scanner
+### 9.1 正确性
 
-- scanner 与通用扫描 FID 一致；
-- 80%/100% `row_scan_ms` 下降；
-- 无小范围回归。
+- 编译布局与旧 Geometry 定位器逐记录差分；
+- nullable Geometry、Geometry 前变长字段、DateTimeWithOffset、删除 FID、截断行；
+- mmap 不可用、`.spx` 缺失或损坏；
+- holes、multipart、反向 ring、Z/M/ZM；
+- 曲线和 MultiPatch fallback；
+- 四类常规几何至少 1000 个随机 bbox 与 GDAL 完整 FID 对照。
 
-### 门禁 2 — Streaming Predicate
+### 9.2 性能门禁分层
 
-- 普通几何 FID 与 GDAL 一致；
-- topology/fallback 测试通过；
-- `model_fallback_tested` 显著下降。
+| 级别 | 数据规模 | 运行时机 |
+|---|---|---|
+| 快速门禁 | 1K、10K、100K | 每个相关 PR |
+| 标准门禁 | 1M | 本地验收和夜间任务 |
+| 最终门禁 | 10M | 阶段收口和最终验收 |
 
-### 门禁 3 — Planner
+每个性能提交都必须：
 
-- 1%/10% 保持 `.spx`；
-- 80%/100% 规划扫描；
-- 30% 选择实测更快路径。
+1. 先运行对应微基准证明目标阶段下降；
+2. 再运行 1M/10M 覆盖率矩阵检查整体影响；
+3. 比较完整 FID 集合；
+4. 单独报告已领先场景是否回归；
+5. 未达到门槛时保留真实数据，不宣称“全面超过 GDAL”。
 
-### 门禁 4 — Parallel Scan
+---
 
-- 1/2/4/8 线程结果完全一致；
-- 4～8 线程产生稳定加速；
-- RSS 和稳定性通过。
+## 10. 提交顺序
 
-### 门禁 5 — 最终验收
-
-按 `spatial-query-acceptance-test-plan.md` 全部执行：
+除基准提交外，后续提交仅在对应阶段触发条件成立时实施：
 
 ```text
-30%  <= GDAL × 0.90
-80%  <= GDAL × 0.80
-100% <= GDAL × 0.80
+bench: establish fair spatial performance gates
+perf: compile geometry row access layout
+perf: adapt mmap advice to spatial access pattern
+perf: reduce repeated spx page traversal
+perf: batch medium-density candidate access
+perf: stream simple geometry bbox predicates
+perf: calibrate deterministic spatial planner
+perf: parallelize dense geometry scans        # 条件提交
+docs: record spatial optimization evidence
 ```
 
-未达到门槛时，根据阶段指标继续优化，不通过修改验收标准规避问题。
+每个提交必须独立通过相关正确性测试和性能对照。出现 FID 不一致、10M 已领先路径回归或 fallback 退化时，立即停止叠加并定位根因。
 
 ---
 
-## 14. 下一步实施顺序
+## 11. 当前已知基准问题
 
-当前已有：
+正式实施 Phase A 前，以下问题不得被误写成产品性能结论：
 
-- 查询前覆盖率规划；
-- 高覆盖率 `.spx` bypass；
-- bbox reject；
-- bbox contained accept；
-- 基础性能矩阵。
-
-因此推荐下一步顺序：
-
-1. **补齐阶段指标**；
-2. **实现 Geometry-only Scanner**；
-3. 本地执行 1M/10M 验收矩阵；
-4. 根据 `exact_tested` 决定是否立即实现 Streaming Predicate；
-5. 根据 30% 结果决定是否实现 BlockCandidates；
-6. 单线程接近 GDAL后实施并行扫描；
-7. 最后处理 ResultSink 和峰值内存。
-
-这一路线优先解决当前最可能的主瓶颈：高覆盖率下通用 `sequential_scan()` 对无关字段的逐行解析成本。
+- 当前 `build` 未设置 Release 优化；
+- benchmark 强制开启逐候选细粒度计时；
+- fast-gdb 与 GDAL 的打开和结果物化口径不对称；
+- 固定查询顺序让首项承担主要冷页成本；
+- 当前生成矩阵以 Polygon 为主，尚不能代表所有常规 Geometry；
+- `docs/evidence/spatial-query-optimization-2026-07-13.md` 的实施状态已经落后于当前代码，最终验收时必须同步更新。
