@@ -5,6 +5,7 @@
 #include <cstring>
 #include <filesystem>
 #include <memory>
+#include <regex>
 #include <string>
 #include <vector>
 
@@ -20,8 +21,19 @@ namespace {
 class SpatialQueryAdaptiveTest : public GdbTutorialFixture {
 protected:
     std::string create_adaptive_point_gdb(size_t feature_count) {
+        return create_point_gdb(feature_count, false);
+    }
+
+    std::string create_wide_point_gdb(size_t feature_count) {
+        return create_point_gdb(feature_count, true);
+    }
+
+private:
+    std::string create_point_gdb(size_t feature_count, bool include_wide_blob) {
+        const auto suffix = include_wide_blob ? "wide" : "normal";
         const auto path = (std::filesystem::temp_directory_path() /
-                           "fast_gdb_spatial_adaptive.gdb").string();
+                           (std::string("fast_gdb_spatial_adaptive_") +
+                            suffix + ".gdb")).string();
         std::error_code error;
         std::filesystem::remove_all(path, error);
 
@@ -45,7 +57,16 @@ protected:
             GDALClose(dataset);
             return {};
         }
+        if (include_wide_blob) {
+            OGRFieldDefn payload_field("payload", OFTBinary);
+            if (layer->CreateField(&payload_field) != OGRERR_NONE) {
+                GDALClose(dataset);
+                return {};
+            }
+        }
 
+        const std::vector<GByte> small_payload(32U, 0x2aU);
+        const std::vector<GByte> wide_payload(2U * 1024U * 1024U, 0x5aU);
         for (size_t index = 0; index < feature_count; ++index) {
             OGRFeature* feature =
                 OGRFeature::CreateFeature(layer->GetLayerDefn());
@@ -54,9 +75,17 @@ protected:
                 return {};
             }
             feature->SetField("value", static_cast<int>(index));
+            if (include_wide_blob) {
+                const auto& payload = index == feature_count / 2U
+                    ? wide_payload : small_payload;
+                feature->SetField(
+                    "payload",
+                    static_cast<int>(payload.size()),
+                    payload.data());
+            }
             OGRPoint point(
-                static_cast<double>(index % 100),
-                static_cast<double>(index / 100));
+                static_cast<double>(index % 100U),
+                static_cast<double>(index / 100U));
             feature->SetGeometry(&point);
             const OGRErr create_error = layer->CreateFeature(feature);
             OGRFeature::DestroyFeature(feature);
@@ -84,6 +113,30 @@ std::unique_ptr<QueryEngine> open_engine(
     if (!engine->open()) return nullptr;
     return engine;
 }
+
+#ifdef _WIN32
+class ScopedEnvironment {
+public:
+    ScopedEnvironment(const char* name, const char* value)
+        : name_(name) {
+        const char* previous = std::getenv(name);
+        if (previous != nullptr) {
+            had_previous_ = true;
+            previous_ = previous;
+        }
+        _putenv_s(name, value);
+    }
+
+    ~ScopedEnvironment() {
+        _putenv_s(name_.c_str(), had_previous_ ? previous_.c_str() : "");
+    }
+
+private:
+    std::string name_;
+    std::string previous_;
+    bool had_previous_ = false;
+};
+#endif
 
 } // namespace
 
@@ -232,6 +285,106 @@ TEST_F(SpatialQueryAdaptiveTest,
     EXPECT_LT(result.matched_fids.size(), kFeatureCount / 10);
     EXPECT_LT(result.spatial_metrics.candidate_ratio, 0.5);
     EXPECT_GT(result.spatial_metrics.bbox_contained, 0u);
-    EXPECT_EQ(result.execution_path, "bbox:model:spx-candidates");
+    EXPECT_TRUE(result.execution_path == "bbox:model:spx-candidates" ||
+                result.execution_path == "bbox:model:spx-candidates-batched");
     EXPECT_EQ(result.spatial_metrics.invalid_geometries, 0u);
 }
+
+#ifdef _WIN32
+TEST_F(SpatialQueryAdaptiveTest,
+       WindowedMmapPreservesDenseAndSparseQueryResults) {
+    ScopedEnvironment mmap_enabled("FAST_GDB_WINDOWS_MMAP", "1");
+    ScopedEnvironment force_windowed("FAST_GDB_FORCE_WINDOWED_MMAP", "1");
+    ScopedEnvironment trace("FAST_GDB_WINDOWS_IO_TRACE", "1");
+
+    constexpr size_t kFeatureCount = 1200;
+    const std::string path = create_adaptive_point_gdb(kFeatureCount);
+    ASSERT_FALSE(path.empty());
+    GdbCatalog catalog;
+    auto engine = open_engine(path, catalog);
+    ASSERT_NE(engine, nullptr);
+
+    const QueryResult dense = engine->query_bbox_unified(
+        -1.0, -1.0, 100.0, 20.0);
+    ASSERT_EQ(dense.matched_fids.size(), kFeatureCount);
+    EXPECT_EQ(dense.spatial_metrics.invalid_geometries, 0u);
+    EXPECT_EQ(dense.execution_path, "bbox:model:sequential-planned");
+
+    const QueryResult sparse = engine->query_bbox_unified(
+        -0.1, -0.1, 1.1, 1.1);
+    ASSERT_FALSE(sparse.matched_fids.empty());
+    EXPECT_LT(sparse.matched_fids.size(), kFeatureCount / 10U);
+    EXPECT_EQ(sparse.spatial_metrics.invalid_geometries, 0u);
+    EXPECT_EQ(sparse.execution_path, "bbox:model:spx-candidates-batched");
+}
+
+TEST_F(SpatialQueryAdaptiveTest,
+       ForcedAsyncLaunchFailureFallsBackToSynchronousBatches) {
+    ScopedEnvironment mmap_disabled("FAST_GDB_WINDOWS_MMAP", "0");
+    ScopedEnvironment async_enabled("FAST_GDB_WINDOWS_ASYNC_IO", "1");
+    ScopedEnvironment async_depth("FAST_GDB_WINDOWS_ASYNC_DEPTH", "4");
+    ScopedEnvironment force_failure(
+        "FAST_GDB_FORCE_ASYNC_LAUNCH_FAILURE", "1");
+    ScopedEnvironment trace("FAST_GDB_WINDOWS_IO_TRACE", "1");
+
+    constexpr size_t kFeatureCount = 5000;
+    const std::string path = create_adaptive_point_gdb(kFeatureCount);
+    ASSERT_FALSE(path.empty());
+    GdbCatalog catalog;
+    auto engine = open_engine(path, catalog);
+    ASSERT_NE(engine, nullptr);
+
+    testing::internal::CaptureStderr();
+    const QueryResult result = engine->query_bbox_unified(
+        -1.0, -1.0, 100.0, 60.0);
+    const std::string trace_output = testing::internal::GetCapturedStderr();
+
+    ASSERT_EQ(result.matched_fids.size(), kFeatureCount);
+    EXPECT_EQ(result.spatial_metrics.invalid_geometries, 0u);
+    EXPECT_NE(trace_output.find("mode=fallback-overlapped"),
+              std::string::npos);
+    EXPECT_NE(trace_output.find("overlapped_batches=0"),
+              std::string::npos);
+    EXPECT_NE(trace_output.find("failed=false"), std::string::npos);
+}
+
+TEST_F(SpatialQueryAdaptiveTest,
+       OneWideRecordDoesNotInflateEveryFallbackBatch) {
+    ScopedEnvironment mmap_disabled("FAST_GDB_WINDOWS_MMAP", "0");
+    ScopedEnvironment async_disabled("FAST_GDB_WINDOWS_ASYNC_IO", "0");
+    ScopedEnvironment one_mib_batches("FAST_GDB_WINDOWS_BATCH_MB", "1");
+    ScopedEnvironment trace("FAST_GDB_WINDOWS_IO_TRACE", "1");
+
+    constexpr size_t kFeatureCount = 64;
+    const std::string path = create_wide_point_gdb(kFeatureCount);
+    ASSERT_FALSE(path.empty());
+    GdbCatalog catalog;
+    auto engine = open_engine(path, catalog);
+    ASSERT_NE(engine, nullptr);
+    ASSERT_NE(engine->table(), nullptr);
+
+    testing::internal::CaptureStderr();
+    uint64_t callback_count = 0;
+    const uint64_t scanned = engine->table()->scan_geometry_blobs(
+        [&](uint32_t, const uint8_t* blob, size_t size, bool is_null) {
+            EXPECT_FALSE(is_null);
+            EXPECT_NE(blob, nullptr);
+            EXPECT_GT(size, 0u);
+            ++callback_count;
+            return true;
+        });
+    const std::string trace_output = testing::internal::GetCapturedStderr();
+
+    EXPECT_EQ(scanned, kFeatureCount);
+    EXPECT_EQ(callback_count, kFeatureCount);
+    std::smatch match;
+    const std::regex stats(
+        "batch_reads=([0-9]+) bytes=([0-9]+) exact_reads=([0-9]+) "
+        "exact_bytes=([0-9]+)");
+    ASSERT_TRUE(std::regex_search(trace_output, match, stats));
+    const unsigned long long batch_bytes = std::stoull(match[2].str());
+    const unsigned long long exact_reads = std::stoull(match[3].str());
+    EXPECT_LT(batch_bytes, 8ULL * 1024ULL * 1024ULL);
+    EXPECT_GE(exact_reads, 1ULL);
+}
+#endif
