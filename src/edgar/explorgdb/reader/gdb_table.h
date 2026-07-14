@@ -73,10 +73,9 @@ public:
 
     // Dedicated high-density spatial-query scanner. It validates the complete
     // physical row layout but never materializes FieldRef arrays and never
-    // exposes unrelated attribute columns. In mmap mode the geometry pointer is
-    // a stable zero-copy view into the table mapping for the callback duration.
-    // In fd fallback mode records are grouped into bounded physical read windows
-    // and Windows may prefetch several windows with ReadFile + OVERLAPPED.
+    // exposes unrelated attribute columns. mmap uses a stable zero-copy view;
+    // fd fallback uses bounded physical windows and P3 may prefetch a bounded
+    // number of those windows with ReadFile + OVERLAPPED.
     using GeometryScanCallback =
         std::function<bool(uint32_t fid,
                            const uint8_t* geometry_blob,
@@ -88,7 +87,7 @@ public:
     // sorts by physical offset, merges nearby records into bounded read ranges,
     // and invokes the callback in physical order. QueryEngine restores ascending
     // FID order before exposing the final result set. A zero return means the
-    // caller should retain the canonical per-FID locator fallback.
+    // caller should retain the canonical exact-read fallback.
     uint64_t scan_geometry_candidates(
         const std::vector<uint32_t>& candidates,
         GeometryScanCallback callback);
@@ -113,14 +112,6 @@ private:
     size_t file_size_ = 0;
     uint8_t* mapped_data_ = nullptr;
     std::vector<uint8_t> row_buffer_;
-
-    // Canonical per-FID fallback window. P2 uses scan_geometry_candidates() for
-    // bulk queries; this smaller cache still avoids duplicate I/O for isolated
-    // callers and invalidates automatically when the parser descriptor changes.
-    std::vector<uint8_t> sparse_window_buffer_;
-    uint64_t sparse_window_offset_ = 0;
-    size_t sparse_window_size_ = 0;
-    int sparse_window_fd_ = -1;
 
     TableHeader header_;
     std::vector<FieldDescriptor> fields_;
