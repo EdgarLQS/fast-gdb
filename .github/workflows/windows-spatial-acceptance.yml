@@ -101,9 +101,17 @@ jobs:
             -Uri 'https://download.sysinternals.com/files/RAMMap.zip' `
             -OutFile tools/rammap/RAMMap.zip
           Expand-Archive tools/rammap/RAMMap.zip tools/rammap -Force
-          & tools/rammap/RAMMap64.exe -accepteula -Ew | Out-Null
+          $ramMap = (Resolve-Path tools/rammap/RAMMap64.exe).Path
+          @(
+            '@echo off',
+            ('"' + $ramMap + '" -accepteula -Ew >nul'),
+            'if errorlevel 1 exit /b %errorlevel%',
+            ('"' + $ramMap + '" -accepteula -Es >nul'),
+            'exit /b %errorlevel%'
+          ) | Set-Content tools/rammap/clear-file-cache.cmd -Encoding Ascii
+          & cmd.exe /d /c tools/rammap/clear-file-cache.cmd
           if ($LASTEXITCODE -ne 0) {
-            throw "RAMMap initialization returned exit code $LASTEXITCODE"
+            throw "RAMMap cache-clear initialization returned exit code $LASTEXITCODE"
           }
 
       - name: Run Windows Release acceptance and main A/B matrix
@@ -115,7 +123,7 @@ jobs:
             -BaselineBuildDir baseline/build-windows `
             -DataRoot test_data/spatial_matrix/windows `
             -OutputDir artifacts/windows-spatial-acceptance `
-            -RamMapPath tools/rammap/RAMMap64.exe `
+            -RamMapPath tools/rammap/clear-file-cache.cmd `
             -Generate
 
       - name: Upload acceptance evidence
