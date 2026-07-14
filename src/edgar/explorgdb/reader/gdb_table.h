@@ -32,7 +32,20 @@ public:
     const TableHeader& header() const { return header_; }
     const std::vector<FieldDescriptor>& fields() const { return fields_; }
     const std::vector<FeatureRecord>& records() const { return records_; }
+    // Physical .gdbtablx slot count. It is the exclusive upper bound for FIDs,
+    // and can exceed the number of live records because the index is block-sized.
     size_t feature_count() const { return feature_offsets_.size(); }
+    size_t active_feature_count() const {
+        if (active_feature_count_known_) return active_feature_count_;
+        size_t count = 0;
+        for (uint64_t offset : feature_offsets_) {
+            if (offset != 0) ++count;
+        }
+        return count;
+    }
+    bool has_feature(uint32_t fid) const {
+        return fid < feature_offsets_.size() && feature_offsets_[fid] != 0;
+    }
 
     bool load_file();
     bool load_tablx(const std::string& tablx_path);
@@ -94,6 +107,8 @@ private:
     std::vector<FieldDescriptor> fields_;
     std::vector<FeatureRecord> records_;
     std::vector<uint64_t> feature_offsets_;
+    size_t active_feature_count_ = 0;
+    bool active_feature_count_known_ = false;
 
     int geometry_field_index_ = -1;
     int geometry_nullable_bit_index_ = -1;

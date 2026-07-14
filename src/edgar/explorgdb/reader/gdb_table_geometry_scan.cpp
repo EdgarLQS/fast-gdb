@@ -110,31 +110,32 @@ uint64_t GdbTableParser::scan_geometry_blobs(GeometryScanCallback callback) {
         const uint8_t* row_end = nullptr;
 
         if (mapped_data_ != nullptr) {
-            if (offset > file_size_ - std::min<size_t>(file_size_, 4U)) break;
+            if (offset > file_size_ - std::min<size_t>(file_size_, 4U))
+                return 0;
             const uint8_t* length_ptr = mapped_data_ + offset;
-            if (length_ptr + 4 > mapped_data_ + file_size_) break;
+            if (length_ptr + 4 > mapped_data_ + file_size_) return 0;
             std::memcpy(&row_size, length_ptr, sizeof(row_size));
             row_begin = length_ptr + 4;
             if (row_size > static_cast<size_t>(mapped_data_ + file_size_ - row_begin))
-                break;
+                return 0;
             row_end = row_begin + row_size;
         } else if (fd_ >= 0) {
             uint8_t length_buffer[4];
-            if (!read_at(offset, length_buffer, sizeof(length_buffer))) break;
+            if (!read_at(offset, length_buffer, sizeof(length_buffer))) return 0;
             std::memcpy(&row_size, length_buffer, sizeof(row_size));
             if (offset + 4 > file_size_ ||
                 row_size > file_size_ - static_cast<size_t>(offset + 4)) {
-                break;
+                return 0;
             }
             if (row_buffer_.size() < row_size) row_buffer_.resize(row_size);
             if (row_size != 0 &&
                 !read_at(offset + 4, row_buffer_.data(), row_size)) {
-                break;
+                return 0;
             }
             row_begin = row_buffer_.data();
             row_end = row_begin + row_size;
         } else {
-            break;
+            return 0;
         }
 
         if (row_size == 0) {

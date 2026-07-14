@@ -287,6 +287,8 @@ bool GdbTableParser::load_tablx(const std::string& tablx_path) {
     GdbTablxParser parser(tablx_path);
     if (!parser.parse()) return false;
     feature_offsets_ = parser.offsets();
+    active_feature_count_ = parser.feature_count();
+    active_feature_count_known_ = true;
     return true;
 }
 

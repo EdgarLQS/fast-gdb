@@ -129,14 +129,19 @@ TEST_F(SpatialQueryAdaptiveTest,
     const uint64_t scanned = engine->table()->scan_geometry_blobs(
         [&](uint32_t fid, const uint8_t* blob, size_t size, bool is_null) {
             EXPECT_FALSE(is_null);
-            ASSERT_NE(blob, nullptr);
-            ASSERT_GT(size, 0u);
+            if (is_null || blob == nullptr || size == 0) {
+                ADD_FAILURE() << "expected a non-null geometry blob";
+                return false;
+            }
 
             const uint8_t* canonical = nullptr;
             size_t canonical_size = 0;
-            ASSERT_TRUE(engine->table()->peek_geometry_blob(
-                fid, canonical, canonical_size));
-            ASSERT_EQ(size, canonical_size);
+            if (!engine->table()->peek_geometry_blob(
+                    fid, canonical, canonical_size)) {
+                ADD_FAILURE() << "canonical geometry lookup failed";
+                return false;
+            }
+            EXPECT_EQ(size, canonical_size);
             EXPECT_EQ(std::memcmp(blob, canonical, size), 0);
             scanned_fids.push_back(fid);
             return true;

@@ -120,7 +120,8 @@ QueryResult QueryEngine::query_bbox_unified(
         return result;
     }
 
-    const size_t feature_count = parser_->feature_count();
+    const size_t fid_slot_count = parser_->feature_count();
+    const size_t feature_count = parser_->active_feature_count();
     result.spatial_metrics.feature_count = feature_count;
     if (feature_count == 0) {
         result.execution_path = "bbox:model:empty";
@@ -176,7 +177,7 @@ QueryResult QueryEngine::query_bbox_unified(
             xmin, ymin, xmax, ymax,
             geom_field->xorig, geom_field->yorig,
             geom_field->xyscale, geom_field->grid_sizes,
-            static_cast<uint32_t>(feature_count - 1));
+            static_cast<uint32_t>(fid_slot_count - 1));
     }
 
     if (planner_direct_scan) {
@@ -300,8 +301,9 @@ QueryResult QueryEngine::query_bbox_unified(
     auto ensure_all_candidates = [&]() {
         if (!candidates.empty()) return;
         candidates.reserve(feature_count);
-        for (uint32_t fid = 0; fid < feature_count; ++fid)
-            candidates.push_back(fid);
+        for (uint32_t fid = 0; fid < fid_slot_count; ++fid) {
+            if (parser_->has_feature(fid)) candidates.push_back(fid);
+        }
     };
 
     auto evaluate_candidates = [&]() {

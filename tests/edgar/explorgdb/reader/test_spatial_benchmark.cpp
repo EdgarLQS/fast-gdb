@@ -206,7 +206,7 @@ void run_density_matrix(const fs::path& gdb_path,
 
     engine->query_bbox_unified(-10.0, -10.0, -1.0, -1.0);
 
-    print_header(label, engine->table()->feature_count());
+    print_header(label, engine->table()->active_feature_count());
     for (const auto& benchmark : density_cases()) {
         const TimedFastResult fast = query_fast_gdb(*engine, benchmark);
         const TimedGdalResult gdal = query_gdal(gdb_path.string(), benchmark);
