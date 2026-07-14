@@ -7,6 +7,7 @@ on:
       - 'src/edgar/explorgdb/reader/**'
       - 'tests/edgar/explorgdb/reader/test_spatial_benchmark.cpp'
       - 'tests/edgar/explorgdb/reader/test_windows_mmap_io.cpp'
+      - 'tests/edgar/explorgdb/reader/test_spatial_query_adaptive.cpp'
       - 'tests/edgar/explorgdb/generate_large_gdb.cpp'
       - 'scripts/windows/run_spatial_acceptance.ps1'
       - '.github/workflows/windows-spatial-acceptance.yml'
@@ -84,7 +85,7 @@ jobs:
         shell: msys2 {0}
         run: >-
           ctest --test-dir build-windows --output-on-failure
-          -R 'full\.WindowsMmapIoTest\.'
+          -R 'full\.(WindowsMmapIoTest|SpatialQueryAdaptiveTest)\.'
 
       - name: Restore reusable 1M and 10M point fixtures
         uses: actions/cache@v4
@@ -92,7 +93,7 @@ jobs:
           path: test_data/spatial_matrix/windows
           key: windows-spatial-point-fixtures-v2
 
-      - name: Download RAMMap for strict cold-cache samples
+      - name: Download and initialize RAMMap
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path tools/rammap | Out-Null
@@ -100,6 +101,10 @@ jobs:
             -Uri 'https://download.sysinternals.com/files/RAMMap.zip' `
             -OutFile tools/rammap/RAMMap.zip
           Expand-Archive tools/rammap/RAMMap.zip tools/rammap -Force
+          & tools/rammap/RAMMap64.exe -accepteula -Ew | Out-Null
+          if ($LASTEXITCODE -ne 0) {
+            throw "RAMMap initialization returned exit code $LASTEXITCODE"
+          }
 
       - name: Run Windows Release acceptance and main A/B matrix
         shell: pwsh
