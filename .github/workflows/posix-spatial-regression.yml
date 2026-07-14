@@ -1,0 +1,127 @@
+name: posix-spatial-regression
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'src/edgar/explorgdb/reader/**'
+      - 'tests/edgar/explorgdb/reader/test_spatial_benchmark.cpp'
+      - 'tests/edgar/explorgdb/generate_large_gdb.cpp'
+      - 'scripts/run_spatial_regression.py'
+      - '.github/workflows/posix-spatial-regression.yml'
+      - 'CMakeLists.txt'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: posix-spatial-regression-${{ matrix.os }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  regression-10m:
+    name: 10m-main-regression-${{ matrix.label }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: linux
+          - os: macos-latest
+            label: macos
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 360
+    steps:
+      - name: Checkout current branch
+        uses: actions/checkout@v4
+
+      - name: Checkout main baseline
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: baseline
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libgdal-dev
+
+      - name: Install macOS dependencies
+        if: runner.os == 'macOS'
+        shell: bash
+        run: brew install ninja gdal
+
+      - name: Install identical benchmark harness in baseline
+        shell: bash
+        run: cp tests/edgar/explorgdb/reader/test_spatial_benchmark.cpp baseline/tests/edgar/explorgdb/reader/test_spatial_benchmark.cpp
+
+      - name: Configure current Release build
+        shell: bash
+        run: >-
+          cmake -S . -B build-posix -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DFAST_GDB_WITH_GDAL=ON
+          -DFAST_GDB_CURVE_BACKEND=BUILTIN
+          -DFAST_GDB_GEOMETRY_OUTPUT=STANDARD_WKB
+          -DFAST_GDB_BUILD_TOOLS=ON
+          -DFAST_GDB_BUILD_FULL_TESTS=ON
+          -DBUILD_TESTING=ON
+
+      - name: Configure main baseline Release build
+        shell: bash
+        run: >-
+          cmake -S baseline -B baseline/build-posix -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DFAST_GDB_WITH_GDAL=ON
+          -DFAST_GDB_CURVE_BACKEND=BUILTIN
+          -DFAST_GDB_GEOMETRY_OUTPUT=STANDARD_WKB
+          -DFAST_GDB_BUILD_TOOLS=OFF
+          -DFAST_GDB_BUILD_FULL_TESTS=ON
+          -DBUILD_TESTING=ON
+
+      - name: Build current and main benchmark binaries
+        shell: bash
+        run: |
+          cmake --build build-posix --target gdb_tutorial_test_runner generate_large_gdb --parallel 2
+          cmake --build baseline/build-posix --target gdb_tutorial_test_runner --parallel 2
+
+      - name: Restore reusable 10M point fixture
+        uses: actions/cache@v4
+        with:
+          path: test_data/spatial_matrix/posix/point_10m
+          key: posix-${{ matrix.label }}-spatial-point-10m-v1
+
+      - name: Generate 10M point fixture
+        shell: bash
+        run: |
+          if [[ ! -d test_data/spatial_matrix/posix/point_10m/point_10m.gdb ]]; then
+            generator=$(find build-posix -type f -name generate_large_gdb -perm -111 -print -quit)
+            test -n "$generator"
+            mkdir -p test_data/spatial_matrix/posix/point_10m
+            "$generator" \
+              --count 10000000 \
+              --geometry point \
+              --distribution uniform \
+              --output test_data/spatial_matrix/posix/point_10m/point_10m.gdb
+          fi
+
+      - name: Run 10M current-versus-main regression gate
+        shell: bash
+        run: |
+          python3 scripts/run_spatial_regression.py \
+            --current-build build-posix \
+            --baseline-build baseline/build-posix \
+            --gdb test_data/spatial_matrix/posix/point_10m/point_10m.gdb \
+            --output artifacts/posix-spatial-regression/${{ matrix.label }} \
+            --trials 20 \
+            --max-regression 0.05
+
+      - name: Upload regression evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: posix-spatial-regression-${{ matrix.label }}-${{ github.run_id }}
+          path: artifacts/posix-spatial-regression/${{ matrix.label }}
+          if-no-files-found: warn
