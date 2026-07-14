@@ -106,3 +106,17 @@ TEST(DateTimeWithOffsetBeforeGeometry_SequentialScan, KeepsGeometryFieldAligned)
     EXPECT_TRUE(callback_called);
     EXPECT_EQ(scanned, 1u);
 }
+
+TEST(DateTimeWithOffsetBeforeGeometry_GeometryOnlyScan,
+     ReturnsZeroWhenAnyRowIsTruncated) {
+    GdbTableParser parser("unused");
+    prepare_datetime_before_geometry(parser);
+
+    parser.feature_offsets_.push_back(parser.file_size_ - 1);
+    parser.mapped_data_ = parser.file_data_.data();
+    const uint64_t scanned = parser.scan_geometry_blobs(
+        [](uint32_t, const uint8_t*, size_t, bool) { return true; });
+
+    parser.mapped_data_ = nullptr;
+    EXPECT_EQ(scanned, 0u);
+}

@@ -1,0 +1,38 @@
+name: spatial-query
+
+on:
+  push:
+    branches:
+      - main
+      - 'agent/**'
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: spatial-query-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  adaptive-spatial-query:
+    name: adaptive-spatial-query-linux
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libgdal-dev
+      - name: Configure full reader tests
+        run: >-
+          cmake -S . -B build-spatial -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DFAST_GDB_WITH_GDAL=ON
+          -DFAST_GDB_CURVE_BACKEND=BUILTIN
+          -DFAST_GDB_GEOMETRY_OUTPUT=STANDARD_WKB
+          -DFAST_GDB_BUILD_TOOLS=OFF
+          -DFAST_GDB_BUILD_FULL_TESTS=ON
+          -DBUILD_TESTING=ON
+      - name: Build spatial query tests
+        run: cmake --build build-spatial --target gdb_tutorial_test_runner --parallel
+      - name: Run adaptive spatial query tests
+        run: >-
+          ctest --test-dir build-spatial --output-on-failure
+          -R '^full\.SpatialQueryAdaptiveTest\.'

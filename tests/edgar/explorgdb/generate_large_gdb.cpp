@@ -6,15 +6,19 @@
  *
  * 用法:
  *   ./build/bin/generate_large_gdb --count 1000000 --geometry polygon --distribution uniform
- *   ./build/bin/generate_large_gdb --count 10000000 --geometry point --bbox 0,0,100000,100000
+ *   ./build/bin/generate_large_gdb --count 10000000 --geometry multipoint --bbox 0,0,100000,100000
  *   ./build/bin/generate_large_gdb --count 100000000 --geometry line --distribution clustered
  *
  * 数据存储在 test_data/large/large_test.gdb/，创建一次，后续 benchmark 复用。
  */
 
+#ifndef M_PI
+# define _USE_MATH_DEFINES
+#endif
 #include "gdal_priv.h"
 #include "ogrsf_frmts.h"
 #include "cpl_string.h"
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -30,7 +34,7 @@ namespace fs = std::filesystem;
 // ── 配置参数 ──
 struct GenConfig {
     uint64_t count = 1'000'000;
-    std::string geometry_type = "polygon";  // point, line, polygon
+    std::string geometry_type = "polygon";  // point, multipoint, line, polygon
     std::string distribution = "uniform";   // uniform, clustered, grid
     double xmin = 0.0;
     double ymin = 0.0;
@@ -49,6 +53,13 @@ static double rand_uniform(double lo, double hi) {
 }
 
 static std::vector<std::pair<double, double>> cluster_centers;
+
+static OGRwkbGeometryType ogr_geometry_type_for(const std::string& type) {
+    if (type == "point") return wkbPoint;
+    if (type == "multipoint") return wkbMultiPoint;
+    if (type == "line") return wkbLineString;
+    return wkbPolygon;
+}
 
 static void init_clusters(int n_clusters, double xmin, double ymin, double xmax, double ymax) {
     cluster_centers.clear();
@@ -91,18 +102,38 @@ static OGRGeometry* create_point(const GenConfig& cfg, uint64_t idx) {
     return new OGRPoint(x, y);
 }
 
+static OGRGeometry* create_multipoint(const GenConfig& cfg, uint64_t idx) {
+    double x, y;
+    if (cfg.distribution == "grid") {
+        grid_coords(idx, cfg.count, cfg.xmin, cfg.ymin, cfg.xmax, cfg.ymax, x, y);
+    } else {
+        rand_coords(cfg.xmin, cfg.ymin, cfg.xmax, cfg.ymax, x, y);
+    }
+    auto multipoint = std::make_unique<OGRMultiPoint>();
+    constexpr double kOffset = 25.0;
+    multipoint->addGeometryDirectly(new OGRPoint(x - kOffset, y - kOffset));
+    multipoint->addGeometryDirectly(new OGRPoint(x + kOffset, y - kOffset));
+    multipoint->addGeometryDirectly(new OGRPoint(x + kOffset, y + kOffset));
+    multipoint->addGeometryDirectly(new OGRPoint(x - kOffset, y + kOffset));
+    return multipoint.release();
+}
+
 static OGRGeometry* create_line(const GenConfig& cfg, uint64_t idx) {
+    double cx, cy;
+    if (cfg.distribution == "grid") {
+        grid_coords(idx, cfg.count, cfg.xmin, cfg.ymin, cfg.xmax, cfg.ymax,
+                    cx, cy);
+    } else {
+        rand_coords(cfg.xmin, cfg.ymin, cfg.xmax, cfg.ymax, cx, cy);
+    }
+
     int n_points = 5 + g_rng() % 16;  // 5-20 个点
     auto ring = std::make_unique<OGRLineString>();
     ring->setNumPoints(n_points);
     for (int i = 0; i < n_points; ++i) {
-        double x, y;
-        if (cfg.distribution == "grid") {
-            grid_coords(idx, cfg.count, cfg.xmin, cfg.ymin, cfg.xmax, cfg.ymax, x, y);
-        } else {
-            rand_coords(cfg.xmin, cfg.ymin, cfg.xmax, cfg.ymax, x, y);
-        }
-        ring->setPoint(i, x, y);
+        constexpr double kRadius = 200.0;
+        ring->setPoint(i, cx + rand_uniform(-kRadius, kRadius),
+                       cy + rand_uniform(-kRadius, kRadius));
     }
     return ring.release();
 }
@@ -157,7 +188,7 @@ int main(int argc, char** argv) {
         } else if (strcmp(argv[i], "--help") == 0) {
             printf("用法: generate_large_gdb [选项]\n");
             printf("  --count N           要素数量 (默认 1000000)\n");
-            printf("  --geometry TYPE     几何类型: point, line, polygon (默认 polygon)\n");
+            printf("  --geometry TYPE     几何类型: point, multipoint, line, polygon (默认 polygon)\n");
             printf("  --distribution DIST 空间分布: uniform, clustered, grid (默认 uniform)\n");
             printf("  --bbox x1,y1,x2,y2  空间范围 (默认 Albers 投影范围)\n");
             printf("  --output PATH       输出路径 (默认 test_data/large/large_test.gdb)\n");
@@ -166,8 +197,9 @@ int main(int argc, char** argv) {
     }
 
     // 验证参数
-    if (cfg.geometry_type != "point" && cfg.geometry_type != "line" && cfg.geometry_type != "polygon") {
-        fprintf(stderr, "错误: --geometry 必须是 point, line 或 polygon\n");
+    if (cfg.geometry_type != "point" && cfg.geometry_type != "multipoint" &&
+        cfg.geometry_type != "line" && cfg.geometry_type != "polygon") {
+        fprintf(stderr, "错误: --geometry 必须是 point, multipoint, line 或 polygon\n");
         return 1;
     }
     if (cfg.distribution != "uniform" && cfg.distribution != "clustered" && cfg.distribution != "grid") {
@@ -176,16 +208,26 @@ int main(int argc, char** argv) {
     }
 
     GDALAllRegister();
+    const OGRwkbGeometryType expected_geometry =
+        ogr_geometry_type_for(cfg.geometry_type);
 
-    // 检查数据集是否已存在且包含有效数据
+    // 仅复用图层、几何类型、要素数和空间索引都完整的数据集。
     bool has_valid_data = false;
     if (fs::exists(cfg.output_path) && fs::is_directory(cfg.output_path)) {
+        int spx_count = 0;
         for (const auto& entry : fs::recursive_directory_iterator(cfg.output_path)) {
-            if (entry.path().extension() == ".gdbtable") {
-                has_valid_data = true;
-                break;
-            }
+            if (entry.path().extension() == ".spx") ++spx_count;
         }
+        auto* dataset = static_cast<GDALDataset*>(GDALOpenEx(
+            cfg.output_path.c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY,
+            nullptr, nullptr, nullptr));
+        OGRLayer* layer = dataset == nullptr ? nullptr :
+            dataset->GetLayerByName(cfg.layer_name.c_str());
+        has_valid_data = layer != nullptr &&
+            static_cast<uint64_t>(layer->GetFeatureCount()) == cfg.count &&
+            wkbFlatten(layer->GetGeomType()) == expected_geometry &&
+            spx_count > 0;
+        if (dataset != nullptr) GDALClose(dataset);
     }
 
     if (has_valid_data) {
@@ -217,7 +259,7 @@ int main(int argc, char** argv) {
         return 0;
     }
 
-    // 清理残留的空目录
+    // 清理残留的空目录或被中断的生成结果
     if (fs::exists(cfg.output_path) && fs::is_directory(cfg.output_path)) {
         fs::remove_all(cfg.output_path);
     }
@@ -261,10 +303,7 @@ int main(int argc, char** argv) {
     // 使用 EPSG:4326 作为简化方案，也可以配置为 Albers 投影
 
     // 确定 OGR 几何类型
-    OGRwkbGeometryType ogr_type;
-    if (cfg.geometry_type == "point") ogr_type = wkbPoint;
-    else if (cfg.geometry_type == "line") ogr_type = wkbLineString;
-    else ogr_type = wkbPolygon;
+    const OGRwkbGeometryType ogr_type = expected_geometry;
 
     // 创建 Layer（OpenFileGDB 会自动生成 .spx 空间索引）
     auto* poLayer = poDS->CreateLayer(cfg.layer_name.c_str(), &oSRS, ogr_type, nullptr);
@@ -289,6 +328,7 @@ int main(int argc, char** argv) {
     for (uint64_t i = 0; i < cfg.count; ++i) {
         OGRGeometry* poGeom = nullptr;
         if (cfg.geometry_type == "point") poGeom = create_point(cfg, i);
+        else if (cfg.geometry_type == "multipoint") poGeom = create_multipoint(cfg, i);
         else if (cfg.geometry_type == "line") poGeom = create_line(cfg, i);
         else poGeom = create_polygon(cfg, i);
 

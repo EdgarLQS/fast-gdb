@@ -3,6 +3,7 @@
 
 #include "capability_report.h"
 #include "gdb_attribute_index.h"
+#include "gdb_spatial_index.h"
 #include "gdb_table.h"
 #include <cstdint>
 #include <memory>
@@ -35,11 +36,31 @@ struct QueryRequest {
     AttrOp attr_op = AttrOp::Eq;
 };
 
+struct SpatialQueryMetrics {
+    size_t feature_count = 0;
+    size_t candidate_count = 0;
+    size_t bbox_rejected = 0;
+    size_t bbox_contained = 0;
+    size_t exact_tested = 0;
+    size_t invalid_geometries = 0;
+    double estimated_coverage = 0.0;
+    bool spx_bypassed = false;
+    bool geometry_only_scan = false;
+    double candidate_ratio = 0.0;
+    double candidate_lookup_ms = 0.0;
+    double geometry_scan_ms = 0.0;
+    double blob_lookup_ms = 0.0;
+    double bbox_filter_ms = 0.0;
+    double exact_filter_ms = 0.0;
+    double total_ms = 0.0;
+};
+
 struct QueryResult {
     std::vector<uint32_t> matched_fids;
     std::optional<FeatureRecord> record;
     std::string execution_path;
     std::string fallback_reason;
+    SpatialQueryMetrics spatial_metrics;
 };
 
 class QueryEngine {
@@ -51,15 +72,10 @@ public:
     bool read_by_fid(uint32_t fid, FeatureRecord& record);
     uint64_t scan(GdbTableParser::ScanCallback callback);
 
-    // Legacy exact filter retained for source compatibility.
     std::vector<uint32_t> query_bbox(
         double xmin, double ymin, double xmax, double ymax,
         bool* skipped_unsupported_curve = nullptr);
 
-    // Formal geometry-correct path: .spx candidate lookup followed by one
-    // GeometryModel interpretation shared with WKB output. Holes, islands,
-    // multipart polygons, reversed rings, and built-in curves therefore use
-    // identical semantics in reads and spatial predicates.
     QueryResult query_bbox_unified(double xmin, double ymin,
                                    double xmax, double ymax);
 
@@ -95,6 +111,9 @@ private:
     const GdbCatalog& catalog_;
     ResolvedTable resolved_;
     std::unique_ptr<GdbTableParser> parser_;
+    std::unique_ptr<GdbSpatialIndexParser> spatial_index_;
+    bool spatial_index_initialized_ = false;
+    bool spatial_index_present_ = false;
     CapabilityReport capabilities_;
 };
 

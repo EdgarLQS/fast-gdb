@@ -1,1052 +1,577 @@
-/**
- * test_spatial_benchmark.cpp — 空间查询性能基准测试
- *
- * 对比 explorgdb（线性扫描 .spx 索引）与 gdb_component（GDAL B+ 树裁剪）
- * 在不同结果集规模下的性能差异。
- *
- * 测试数据：test_spatial_gdb.gdb 中的 a0000000c 表
- *   - 2390 个要素，155,196 条 .spx 索引条目
- *   - 坐标系：Albers 投影（米制）
- *   - 范围：[-2637913, 1877265, 2202769, 5918893]
- */
-
 #include <gtest/gtest.h>
+
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <vector>
-#include <algorithm>
-#include <cmath>
 
-// GDAL
 #include "gdal_priv.h"
-#include "cpl_conv.h"
+#include "ogrsf_frmts.h"
 
-// 组件路径
-#include "datasource.h"
-#include "datasets.h"
-#include "recordset.h"
-#include "query_parameter.h"
-
-// explorgdb 路径
+#include "catalog_resolver.h"
 #include "gdb_catalog.h"
-#include "gdb_table.h"
-#include "gdb_spatial_index.h"
+#include "query_engine.h"
 #include "../test_paths.h"
 
 namespace fs = std::filesystem;
+using Clock = std::chrono::steady_clock;
+using explorgdb::CatalogResolver;
+using explorgdb::GdbCatalog;
+using explorgdb::QueryEngine;
+using explorgdb::QueryResult;
 
-static const std::string kGdbPath =
-    explorgdb_test_paths::test_data_path("test_data/gdb/test_spatial_gdb.gdb/test_spatial_gdb.gdb").string();
+namespace {
 
-static const uint32_t kTableId = 0xC;  // a0000000c
+constexpr const char* kLayerName = "features";
 
-// ── 4 种查询规模的 bbox（Albers 投影，米制） ──
+// ============================================================================
+// Benchmark case definitions
+// ============================================================================
+
 struct BenchmarkCase {
     const char* name;
-    double xmin, ymin, xmax, ymax;
+    double target_coverage;
+    double xmin;
+    double ymin;
+    double xmax;
+    double ymax;
 };
 
-static const BenchmarkCase kCases[] = {
-    {"Point (~13)",     1200000, 3100000, 1300000, 3200000},
-    {"Local (~45)",     1150000, 3050000, 1350000, 3300000},
-    {"Regional (~580)",  800000, 2500000, 1600000, 3800000},
-    {"Large (~1800)",      0, 2000000, 2000000, 5000000},
-};
-
-// ── 计时辅助 ──
-struct Timing {
-    double load_ms = 0;     // 加载索引/数据集
-    double query_ms = 0;    // 查询执行
-    double fetch_ms = 0;    // 获取记录
-    double total_ms = 0;    // 总计
-    int result_count = 0;
-};
-
-using Clock = std::chrono::high_resolution_clock;
-
-// ── explorgdb 查询管道（使用正确的坐标转换 + 二分查找优化） ──
-static Timing query_explorgdb(double xmin, double ymin, double xmax, double ymax) {
-    Timing t;
-    auto t0 = Clock::now();
-
-    // 1. 加载 catalog
-    explorgdb::GdbCatalog catalog;
-    if (!catalog.scan(kGdbPath)) return t;
-
-    // 2. 加载 .gdbtable (header + fields) — 按需读取模式
-    const auto* table_entry = catalog.find_table(kTableId);
-    if (!table_entry) return t;
-    std::string table_path = (fs::path(kGdbPath) / table_entry->filename).string();
-    explorgdb::GdbTableParser table_parser(table_path);
-    if (!table_parser.open())
-        return t;
-
-    // 3. 加载 .gdbtablx
-    const auto* tablx_entry = catalog.find_tablx(kTableId);
-    if (!tablx_entry) return t;
-    std::string tablx_path = (fs::path(kGdbPath) / tablx_entry->filename).string();
-    if (!table_parser.load_tablx(tablx_path)) return t;
-
-    // 4. 提取几何字段的坐标系参数
-    double xorig_raw = 0, yorig_raw = 0;  // 用于 peek_bbox（需要 field descriptor 的真实值）
-    double xorig_clamp = 0, yorig_clamp = 0;  // 用于 query_bbox（spatial index 需要 clamp）
-    double xyscale = 0;
-    std::vector<double> grid_resolutions;
-    for (const auto& fd : table_parser.fields()) {
-        if (fd.type == explorgdb::FieldType::Geometry) {
-            xorig_raw = fd.xorig;
-            yorig_raw = fd.yorig;
-            xyscale = fd.xyscale;
-            // query_bbox 需要 clamp 异常值（spatial index 坐标系）
-            xorig_clamp = (std::fabs(fd.xorig) > 1e8) ? 0.0 : fd.xorig;
-            yorig_clamp = (std::fabs(fd.yorig) > 1e8) ? 0.0 : fd.yorig;
-            grid_resolutions = fd.grid_sizes;
-            break;
-        }
-    }
-
-    auto t1 = Clock::now();
-    t.load_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
-
-    // 5. 加载 .spx
-    const auto* spx_entry = catalog.find_spx(kTableId);
-    if (!spx_entry) return t;
-    std::string spx_file = (fs::path(kGdbPath) / spx_entry->filename).string();
-    explorgdb::GdbSpatialIndexParser spx_parser(spx_file);
-    if (!spx_parser.parse()) return t;
-
-    // 6. 统一调用 query_bbox()（与 Large benchmark 一致）
-    uint32_t max_fid = static_cast<uint32_t>(table_parser.feature_count()) - 1;
-    std::vector<uint32_t> result_fids = spx_parser.query_bbox(
-        xmin, ymin, xmax, ymax, xorig_clamp, yorig_clamp, xyscale, grid_resolutions, max_fid);
-
-    int spx_count = static_cast<int>(result_fids.size());
-    std::vector<uint32_t> spx_fids_before_filter = result_fids;  // DIAGNOSTIC: save pre-filter FIDs
-
-    auto t2 = Clock::now();
-    t.query_ms = std::chrono::duration<double, std::milli>(t2 - t1).count();
-
-    // 7. peek_bbox 粗过滤 + geometry_intersects_bbox 精确过滤（合并为 intersects_with_peek）
-    // peek_bbox 需要 field descriptor 的真实 xorig/yorig（用于几何坐标解码）
-    // 空间索引 cell 计算需要 clamp 后的值（用于 cell 坐标转换）
-    explorgdb::GdbGeomDecoder decoder(xorig_raw, yorig_raw, xyscale, 0, 0, 0, 0, false, false);
-
-    std::vector<uint32_t> filtered_fids;
-    for (uint32_t fid : result_fids) {
-        const uint8_t* blob_data = nullptr;
-        size_t blob_size = 0;
-        if (!table_parser.peek_geometry_blob(fid, blob_data, blob_size)) continue;
-
-        // 合并：bbox 过滤 + 精确几何相交
-        if (!decoder.intersects_with_peek(blob_data, blob_size, xmin, ymin, xmax, ymax)) continue;
-
-        // 相交 → 完整读取记录
-        explorgdb::FeatureRecord rec;
-        table_parser.read_record_by_fid(fid, rec);
-        filtered_fids.push_back(fid);
-    }
-    result_fids = std::move(filtered_fids);
-
-    // DIAGNOSTIC: Large query — print missing FIDs for analysis
-    static bool s_large_diagnostic_done = false;
-    if (!s_large_diagnostic_done && spx_count > 100) {
-        s_large_diagnostic_done = true;
-        // Collect component FIDs
-        std::vector<uint32_t> component_fids;
-        {
-            GdbDatasource gdb;
-            gdb.openExisting(kGdbPath);
-            GdbDataset ds = gdb.getDatasets().get("China面地图");
-            if (ds.isValid()) {
-                GdbQueryParameter param;
-                param.setSpatialFilterRect(xmin, ymin, xmax, ymax);
-                GdbRecordset rs = ds.query(param);
-                while (rs.isValid() && rs.moveNext()) {
-                    component_fids.push_back(static_cast<uint32_t>(rs.getFid() - 1));  // 0-based
-                }
-            }
-        }
-        // Find FIDs in component but not in explorgdb
-        std::vector<uint32_t> missing_from_spx;
-        for (uint32_t cfid : component_fids) {
-            bool found = false;
-            for (uint32_t efid : spx_fids_before_filter) {
-                if (efid == cfid) { found = true; break; }
-            }
-            if (!found) missing_from_spx.push_back(cfid);
-        }
-        std::vector<uint32_t> dropped_by_geom;
-        for (uint32_t efid : spx_fids_before_filter) {
-            bool in_final = false;
-            for (uint32_t ffid : result_fids) {
-                if (ffid == efid) { in_final = true; break; }
-            }
-            if (!in_final) dropped_by_geom.push_back(efid);
-        }
-        printf("\n  [DIAG] Large: spx_index=%d, component=%d, missing_from_spx=%d, dropped_by_geom=%d\n",
-               spx_count, (int)component_fids.size(), (int)missing_from_spx.size(), (int)dropped_by_geom.size());
-        if (!missing_from_spx.empty()) {
-            printf("  [DIAG] Missing FIDs (not in spx_index): ");
-            for (size_t i = 0; i < std::min(missing_from_spx.size(), (size_t)20); i++) {
-                printf("%d ", missing_from_spx[i]);
-            }
-            if (missing_from_spx.size() > 20) printf("...");
-            printf("\n");
-        }
-        if (!dropped_by_geom.empty()) {
-            printf("  [DIAG] Dropped by geometry filter: ");
-            for (size_t i = 0; i < std::min(dropped_by_geom.size(), (size_t)20); i++) {
-                printf("%d ", dropped_by_geom[i]);
-            }
-            printf("\n");
-        }
-    }
-
-    auto t3 = Clock::now();
-    t.fetch_ms = std::chrono::duration<double, std::milli>(t3 - t2).count();
-    t.total_ms = std::chrono::duration<double, std::milli>(t3 - t0).count();
-    t.result_count = static_cast<int>(result_fids.size());
-    return t;
+BenchmarkCase centered_case(const char* name, double coverage) {
+    constexpr double kExtentMin = 0.0;
+    constexpr double kExtentMax = 100000.0;
+    constexpr double kCenter = (kExtentMin + kExtentMax) / 2.0;
+    const double side =
+        std::sqrt(coverage) * (kExtentMax - kExtentMin);
+    const double half = side / 2.0;
+    return BenchmarkCase{
+        name, coverage,
+        kCenter - half, kCenter - half,
+        kCenter + half, kCenter + half};
 }
 
-// ── 组件查询管道 ──
-static Timing query_component(double xmin, double ymin, double xmax, double ymax) {
-    Timing t;
-    auto t0 = Clock::now();
-
-    // 1. 打开数据源
-    GdbDatasource gdb;
-    if (!gdb.openExisting(kGdbPath)) return t;
-
-    auto t1 = Clock::now();
-    t.load_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
-
-    // 2. 获取数据集
-    GdbDataset ds = gdb.getDatasets().get("China面地图");
-    if (!ds.isValid()) return t;
-
-    // 3. 设置空间过滤并查询
-    GdbQueryParameter param;
-    param.setSpatialFilterRect(xmin, ymin, xmax, ymax);
-
-    auto t2 = Clock::now();
-
-    GdbRecordset rs = ds.query(param);
-
-    auto t3 = Clock::now();
-    t.query_ms = std::chrono::duration<double, std::milli>(t3 - t2).count();
-
-    // 4. 遍历结果
-    int count = 0;
-    while (rs.isValid() && rs.moveNext()) {
-        count++;
-    }
-
-    auto t4 = Clock::now();
-    t.fetch_ms = std::chrono::duration<double, std::milli>(t4 - t3).count();
-    t.total_ms = std::chrono::duration<double, std::milli>(t4 - t0).count();
-    t.result_count = count;
-    return t;
+std::vector<BenchmarkCase> density_cases() {
+    return {
+        centered_case("coverage_01pct", 0.01),
+        centered_case("coverage_10pct", 0.10),
+        centered_case("coverage_30pct", 0.30),
+        centered_case("coverage_80pct", 0.80),
+        {"coverage_full", 1.0, -1000.0, -1000.0, 101000.0, 101000.0},
+    };
 }
 
-// ── 基准测试 fixture ──
-class SpatialBenchmarkFixture : public ::testing::Test {
-protected:
-    void SetUp() override {
-        GDALAllRegister();
-        CPLSetConfigOption("CPL_DEBUG", "NO");
-
-        // 验证测试数据存在
-        FILE* f = fopen(
-            "/Users/edgarlqs/Downloads/daydaydaywork/dailyWork/convert/gdal/gdb/"
-            "test_spatial_gdb.gdb/test_spatial_gdb.gdb/a0000000c.gdbtable", "rb");
-        if (f) { fclose(f); } else { GTEST_SKIP() << "Test data not found"; }
-    }
-};
-
-// ── 基准测试用例 ──
-
-/**
- * SPATIAL_BENCHMARK_PointQuery: 极小范围查询（~5 结果）
- * 对比线性扫描 vs B+ 树裁剪在点查场景的性能。
- */
-TEST_F(SpatialBenchmarkFixture, SPATIAL_BENCHMARK_PointQuery) {
-    const auto& c = kCases[0];
-
-    Timing t_explorgdb = query_explorgdb(c.xmin, c.ymin, c.xmax, c.ymax);
-    Timing t_component = query_component(c.xmin, c.ymin, c.xmax, c.ymax);
-
-    printf("\n  [%s] explorgdb: %6.1f ms (load=%4.1f query=%4.1f fetch=%4.1f) results=%d\n",
-           c.name, t_explorgdb.total_ms, t_explorgdb.load_ms,
-           t_explorgdb.query_ms, t_explorgdb.fetch_ms, t_explorgdb.result_count);
-    printf("  [%s] component:  %6.1f ms (load=%4.1f query=%4.1f fetch=%4.1f) results=%d\n",
-           c.name, t_component.total_ms, t_component.load_ms,
-           t_component.query_ms, t_component.fetch_ms, t_component.result_count);
-
-    EXPECT_GT(t_explorgdb.result_count, 0);
-    EXPECT_GT(t_component.result_count, 0);
-}
-
-/**
- * SPATIAL_BENCHMARK_LocalQuery: 局部范围查询（~45 结果）
- */
-TEST_F(SpatialBenchmarkFixture, SPATIAL_BENCHMARK_LocalQuery) {
-    const auto& c = kCases[1];
-
-    Timing t_explorgdb = query_explorgdb(c.xmin, c.ymin, c.xmax, c.ymax);
-    Timing t_component = query_component(c.xmin, c.ymin, c.xmax, c.ymax);
-
-    printf("\n  [%s] explorgdb: %6.1f ms (load=%4.1f query=%4.1f fetch=%4.1f) results=%d\n",
-           c.name, t_explorgdb.total_ms, t_explorgdb.load_ms,
-           t_explorgdb.query_ms, t_explorgdb.fetch_ms, t_explorgdb.result_count);
-    printf("  [%s] component:  %6.1f ms (load=%4.1f query=%4.1f fetch=%4.1f) results=%d\n",
-           c.name, t_component.total_ms, t_component.load_ms,
-           t_component.query_ms, t_component.fetch_ms, t_component.result_count);
-
-    EXPECT_GT(t_explorgdb.result_count, 0);
-    EXPECT_GT(t_component.result_count, 0);
-}
-
-/**
- * SPATIAL_BENCHMARK_RegionalQuery: 区域范围查询（~580 结果）
- */
-TEST_F(SpatialBenchmarkFixture, SPATIAL_BENCHMARK_RegionalQuery) {
-    const auto& c = kCases[2];
-
-    Timing t_explorgdb = query_explorgdb(c.xmin, c.ymin, c.xmax, c.ymax);
-    Timing t_component = query_component(c.xmin, c.ymin, c.xmax, c.ymax);
-
-    printf("\n  [%s] explorgdb: %6.1f ms (load=%4.1f query=%4.1f fetch=%4.1f) results=%d\n",
-           c.name, t_explorgdb.total_ms, t_explorgdb.load_ms,
-           t_explorgdb.query_ms, t_explorgdb.fetch_ms, t_explorgdb.result_count);
-    printf("  [%s] component:  %6.1f ms (load=%4.1f query=%4.1f fetch=%4.1f) results=%d\n",
-           c.name, t_component.total_ms, t_component.load_ms,
-           t_component.query_ms, t_component.fetch_ms, t_component.result_count);
-
-    EXPECT_GT(t_explorgdb.result_count, 0);
-    EXPECT_GT(t_component.result_count, 0);
-}
-
-/**
- * SPATIAL_BENCHMARK_LargeQuery: 大范围查询（~1800 结果）
- */
-TEST_F(SpatialBenchmarkFixture, SPATIAL_BENCHMARK_LargeQuery) {
-    const auto& c = kCases[3];
-
-    Timing t_explorgdb = query_explorgdb(c.xmin, c.ymin, c.xmax, c.ymax);
-    Timing t_component = query_component(c.xmin, c.ymin, c.xmax, c.ymax);
-
-    printf("\n  [%s] explorgdb: %6.1f ms (load=%4.1f query=%4.1f fetch=%4.1f) results=%d\n",
-           c.name, t_explorgdb.total_ms, t_explorgdb.load_ms,
-           t_explorgdb.query_ms, t_explorgdb.fetch_ms, t_explorgdb.result_count);
-    printf("  [%s] component:  %6.1f ms (load=%4.1f query=%4.1f fetch=%4.1f) results=%d\n",
-           c.name, t_component.total_ms, t_component.load_ms,
-           t_component.query_ms, t_component.fetch_ms, t_component.result_count);
-
-    EXPECT_GT(t_explorgdb.result_count, 0);
-    EXPECT_GT(t_component.result_count, 0);
-}
-
-/**
- * SPATIAL_BENCHMARK_SummaryTable: 汇总对比表（单次运行，打印完整结果）
- */
-TEST_F(SpatialBenchmarkFixture, SPATIAL_BENCHMARK_SummaryTable) {
-    printf("\n\n=== Spatial Query Benchmark ===\n");
-    printf("Table: a0000000c (2390 features, 155196 spx entries)\n\n");
-
-    printf("%-20s %8s %12s %12s %12s %8s\n",
-           "Scenario", "Results", "explorgdb(ms)", "component(ms)", "query(ms)", "Ratio");
-    printf("%-20s %8s %12s %12s %12s %8s\n",
-           "--------------------", "--------", "------------", "------------", "------------", "--------");
-
-    for (const auto& c : kCases) {
-        Timing t_explorgdb = query_explorgdb(c.xmin, c.ymin, c.xmax, c.ymax);
-        Timing t_component = query_component(c.xmin, c.ymin, c.xmax, c.ymax);
-
-        double ratio = (t_component.total_ms > 0.01)
-                           ? t_explorgdb.total_ms / t_component.total_ms
-                           : 0;
-
-        printf("%-20s %8d %12.1f %12.1f %12.1f %7.1fx\n",
-               c.name, t_explorgdb.result_count,
-               t_explorgdb.total_ms, t_component.total_ms,
-               t_explorgdb.query_ms, ratio);
-    }
-
-    printf("\n注: explorgdb 使用二分查找 + raw_value 排序，跳过不匹配条目\n");
-    printf("    组件使用 GDAL B+ 树裁剪 + 精确几何相交\n");
-    printf("    query(ms) 为纯索引查询时间（不含加载和记录获取）\n");
-}
-
-// ═══════════════════════════════════════════════════════════
-//  大规模数据集基准测试（100万要素）
-//  数据路径: test_data/large/large_test.gdb
-//  由 generate_large_gdb 生成，创建一次，反复使用
-// ═══════════════════════════════════════════════════════════
-
-static const char* const kLargeGdbPath =
-    "/Users/edgarlqs/Downloads/daydaydaywork/dailyWork/convert/gdal/fast_gdb/test_data/large/large_test.gdb";
-
-static const uint32_t kLargeTableId = 0x9;  // a00000009
-
-// 大规模数据集的查询 bbox（数据范围 [0,0,100000,100000]）
-static const BenchmarkCase kLargeCases[] = {
-    {"Point_1M (~局部)",    40000, 40000, 41000, 41000},
-    {"Local_1M (~周边)",    30000, 30000, 50000, 50000},
-    {"Regional_1M (~1/4)",  25000, 25000, 75000, 75000},
-    {"Large_1M (~全部)",     5000,  5000, 95000, 95000},
-};
-
-struct DetailedTiming {
-    double load_ms = 0;
-    double spx_load_ms = 0;
-    double query_bbox_ms = 0;
-    double peek_blob_ms = 0;
-    double peek_bbox_ms = 0;
-    double geom_intersect_ms = 0;
-    double read_record_ms = 0;
-    double total_ms = 0;
-    int result_count = 0;
-    // 计数器
-    int candidate_count = 0;
-    int peek_success_count = 0;
-    int bbox_pass_count = 0;
-    int intersect_pass_count = 0;
-    int full_read_count = 0;
-};
-
-// explorgdb 查询管道（大规模数据，含分阶段计时 + 计数器）
-// 统一调用 spx_parser.query_bbox() 而非手写 lower_bound 逻辑
-static DetailedTiming query_explorgdb_large(double xmin, double ymin, double xmax, double ymax) {
-    DetailedTiming t;
-    auto t0 = Clock::now();
-
-    explorgdb::GdbCatalog catalog;
-    if (!catalog.scan(kLargeGdbPath)) return t;
-
-    const auto* table_entry = catalog.find_table(kLargeTableId);
-    if (!table_entry) return t;
-    std::string table_path = (fs::path(kLargeGdbPath) / table_entry->filename).string();
-    explorgdb::GdbTableParser table_parser(table_path);
-    if (!table_parser.open())
-        return t;
-
-    const auto* tablx_entry = catalog.find_tablx(kLargeTableId);
-    if (!tablx_entry) return t;
-    std::string tablx_path = (fs::path(kLargeGdbPath) / tablx_entry->filename).string();
-    if (!table_parser.load_tablx(tablx_path)) return t;
-
-    double xorig = 0, yorig = 0, xyscale = 0;
-    std::vector<double> grid_resolutions;
-    for (const auto& fd : table_parser.fields()) {
-        if (fd.type == explorgdb::FieldType::Geometry) {
-            xorig = (std::fabs(fd.xorig) > 1e8) ? 0.0 : fd.xorig;
-            yorig = (std::fabs(fd.yorig) > 1e8) ? 0.0 : fd.yorig;
-            xyscale = fd.xyscale;
-            grid_resolutions = fd.grid_sizes;
-            break;
-        }
-    }
-
-    auto t1 = Clock::now();
-    t.load_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
-
-    const auto* spx_entry = catalog.find_spx(kLargeTableId);
-    if (!spx_entry) return t;
-    std::string spx_file = (fs::path(kLargeGdbPath) / spx_entry->filename).string();
-    explorgdb::GdbSpatialIndexParser spx_parser(spx_file);
-    if (!spx_parser.parse()) return t;
-
-    auto t2 = Clock::now();
-    t.spx_load_ms = std::chrono::duration<double, std::milli>(t2 - t1).count();
-
-    // 统一调用 query_bbox()
-    uint32_t max_fid = static_cast<uint32_t>(table_parser.feature_count()) - 1;
-    std::vector<uint32_t> result_fids = spx_parser.query_bbox(
-        xmin, ymin, xmax, ymax, xorig, yorig, xyscale, grid_resolutions, max_fid);
-
-    auto t3 = Clock::now();
-    t.query_bbox_ms = std::chrono::duration<double, std::milli>(t3 - t2).count();
-    t.candidate_count = static_cast<int>(result_fids.size());
-
-    explorgdb::GdbGeomDecoder decoder(xorig, yorig, xyscale, 0, 0, 0, 0, false, false);
-
-    std::vector<uint32_t> filtered_fids;
-    for (uint32_t fid : result_fids) {
-        auto t_blob = Clock::now();
-        const uint8_t* blob_data = nullptr;
-        size_t blob_size = 0;
-        if (!table_parser.peek_geometry_blob(fid, blob_data, blob_size)) continue;
-        t.peek_blob_ms += std::chrono::duration<double, std::milli>(Clock::now() - t_blob).count();
-        t.peek_success_count++;
-
-        // 合并 peek_bbox + geometry_intersects_bbox：一次解码完成
-        auto t_peek = Clock::now();
-        if (!decoder.intersects_with_peek(blob_data, blob_size, xmin, ymin, xmax, ymax)) continue;
-        t.peek_bbox_ms += std::chrono::duration<double, std::milli>(Clock::now() - t_peek).count();
-        t.bbox_pass_count++;
-        t.intersect_pass_count++;
-
-        // 不再调用 read_record_by_fid — component 的 moveNext() 也不解码属性
-        // 几何相交已确认，FID 就是有效结果
-        filtered_fids.push_back(fid);
-    }
-    result_fids = std::move(filtered_fids);
-
-    auto t4 = Clock::now();
-    t.total_ms = std::chrono::duration<double, std::milli>(t4 - t0).count();
-    t.result_count = static_cast<int>(result_fids.size());
-    return t;
-}
-
-static const char* const kLargeLayerName = "features";
-
-// component 查询管道（大规模数据）
-static Timing query_component_large(double xmin, double ymin, double xmax, double ymax) {
-    Timing t;
-    auto t0 = Clock::now();
-
-    GdbDatasource gdb;
-    if (!gdb.openExisting(kLargeGdbPath)) return t;
-
-    auto t1 = Clock::now();
-    t.load_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
-
-    GdbDataset ds = gdb.getDatasets().get(kLargeLayerName);
-    if (!ds.isValid()) return t;
-
-    GdbQueryParameter param;
-    param.setSpatialFilterRect(xmin, ymin, xmax, ymax);
-
-    auto t2 = Clock::now();
-
-    GdbRecordset rs = ds.query(param);
-
-    auto t3 = Clock::now();
-    t.query_ms = std::chrono::duration<double, std::milli>(t3 - t2).count();
-
-    // 遍历结果
-    int count = 0;
-    while (rs.isValid() && rs.moveNext()) {
-        count++;
-    }
-
-    auto t4 = Clock::now();
-    t.fetch_ms = std::chrono::duration<double, std::milli>(t4 - t3).count();
-    t.total_ms = std::chrono::duration<double, std::milli>(t4 - t0).count();
-    t.result_count = count;
-    return t;
-}
-
-// ── 大规模数据 benchmark fixture — 对象复用 ──
-class LargeDataBenchmarkFixture : public ::testing::Test {
-protected:
-    explorgdb::GdbCatalog catalog_;
-    explorgdb::GdbTableParser* table_parser_ = nullptr;
-    explorgdb::GdbSpatialIndexParser* spx_parser_ = nullptr;
-    explorgdb::GdbGeomDecoder* geom_decoder_ = nullptr;
-    std::vector<double> grid_resolutions_;
-    double xorig_ = 0, yorig_ = 0, xyscale_ = 0;
-
-    void SetUp() override {
-        GDALAllRegister();
-        CPLSetConfigOption("CPL_DEBUG", "NO");
-
-        FILE* f = fopen(
-            "/Users/edgarlqs/Downloads/daydaydaywork/dailyWork/convert/gdal/fast_gdb/"
-            "test_data/large/large_test.gdb/a00000009.gdbtable", "rb");
-        if (f) { fclose(f); } else { GTEST_SKIP() << "1M test data not found — run generate_large_gdb first"; }
-
-        // 初始化一次，所有测试用例复用
-        if (!catalog_.scan(kLargeGdbPath)) return;
-
-        const auto* table_entry = catalog_.find_table(kLargeTableId);
-        if (!table_entry) return;
-        std::string table_path = (fs::path(kLargeGdbPath) / table_entry->filename).string();
-        table_parser_ = new explorgdb::GdbTableParser(table_path);
-        if (!table_parser_->open()) return;
-
-        const auto* tablx_entry = catalog_.find_tablx(kLargeTableId);
-        if (tablx_entry) {
-            std::string tablx_path = (fs::path(kLargeGdbPath) / tablx_entry->filename).string();
-            table_parser_->load_tablx(tablx_path);
-        }
-
-        for (const auto& fd : table_parser_->fields()) {
-            if (fd.type == explorgdb::FieldType::Geometry) {
-                xorig_ = (std::fabs(fd.xorig) > 1e8) ? 0.0 : fd.xorig;
-                yorig_ = (std::fabs(fd.yorig) > 1e8) ? 0.0 : fd.yorig;
-                xyscale_ = fd.xyscale;
-                grid_resolutions_ = fd.grid_sizes;
-                break;
-            }
-        }
-
-        const auto* spx_entry = catalog_.find_spx(kLargeTableId);
-        if (spx_entry) {
-            std::string spx_file = (fs::path(kLargeGdbPath) / spx_entry->filename).string();
-            spx_parser_ = new explorgdb::GdbSpatialIndexParser(spx_file);
-            spx_parser_->parse();  // 加载 + 填充 all_entries_
-        }
-
-        geom_decoder_ = new explorgdb::GdbGeomDecoder(xorig_, yorig_, xyscale_, 0, 0, 0, 0, false, false);
-    }
-
-    void TearDown() override {
-        delete table_parser_;
-        delete spx_parser_;
-        delete geom_decoder_;
-    }
-
-    // 使用已复用对象的查询函数（仅查询阶段计时）
-    DetailedTiming query_reused(double xmin, double ymin, double xmax, double ymax) {
-        DetailedTiming t;
-        auto t0 = Clock::now();
-
-        if (!table_parser_ || !spx_parser_ || !geom_decoder_) return t;
-
-        auto t1 = Clock::now();
-        t.load_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();  // ≈ 0
-
-        // query_bbox 使用 sorted_entries_ 缓存
-        uint32_t max_fid = static_cast<uint32_t>(table_parser_->feature_count()) - 1;
-        std::vector<uint32_t> result_fids = spx_parser_->query_bbox(
-            xmin, ymin, xmax, ymax, xorig_, yorig_, xyscale_, grid_resolutions_, max_fid);
-
-        auto t2 = Clock::now();
-        t.query_bbox_ms = std::chrono::duration<double, std::milli>(t2 - t1).count();
-        t.candidate_count = static_cast<int>(result_fids.size());
-
-        for (uint32_t fid : result_fids) {
-            auto t_blob = Clock::now();
-            const uint8_t* blob_data = nullptr;
-            size_t blob_size = 0;
-            if (!table_parser_->peek_geometry_blob(fid, blob_data, blob_size)) continue;
-            t.peek_blob_ms += std::chrono::duration<double, std::milli>(Clock::now() - t_blob).count();
-            t.peek_success_count++;
-
-            // 合并 peek_bbox + geometry_intersects_bbox：一次解码完成
-            auto t_peek = Clock::now();
-            if (!geom_decoder_->intersects_with_peek(blob_data, blob_size, xmin, ymin, xmax, ymax)) continue;
-            t.peek_bbox_ms += std::chrono::duration<double, std::milli>(Clock::now() - t_peek).count();
-            t.bbox_pass_count++;
-            t.intersect_pass_count++;
-
-            // 不再调用 read_record_by_fid — component 的 moveNext() 也不解码属性
-            t.result_count++;
-        }
-
-        t.total_ms = std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
-        return t;
-    }
-};
-
-/**
- * LARGE_DATA_Query: 大规模数据集（100万要素）对比
- * explorgdb 分阶段计时 + component 对比
- */
-TEST_F(LargeDataBenchmarkFixture, LARGE_DATA_Query) {
-    printf("\n\n=== Large Data Benchmark (1M polygons, 3.7M spx entries) ===\n\n");
-
-    printf("--- explorgdb (分阶段计时 + 计数器) ---\n");
-    printf("%-20s %8s %10s %10s %10s %10s %10s %10s %10s %10s\n",
-           "Scenario", "Results", "total(ms)", "load(ms)", "spx(ms)",
-           "q_bbox(ms)", "peek_blob", "peek_bbox", "intersect", "read");
-    printf("%-20s %8s %10s %10s %10s %10s %10s %10s %10s %10s\n",
-           "--------------------", "--------", "----------", "----------", "----------",
-           "----------", "----------", "----------", "----------", "----------");
-
-    for (const auto& c : kLargeCases) {
-        auto t = query_explorgdb_large(c.xmin, c.ymin, c.xmax, c.ymax);
-
-        printf("%-20s %8d %10.1f %10.1f %10.1f %10.1f %10.1f %10.1f %10.1f %10.1f\n",
-               c.name, t.result_count, t.total_ms, t.load_ms, t.spx_load_ms,
-               t.query_bbox_ms, t.peek_blob_ms, t.peek_bbox_ms,
-               t.geom_intersect_ms, t.read_record_ms);
-
-        EXPECT_GE(t.result_count, 0);
-    }
-
-    // 计数器汇总
-    printf("\n--- 过滤漏斗 (Large_1M) ---\n");
-    auto t_count = query_explorgdb_large(kLargeCases[3].xmin, kLargeCases[3].ymin,
-                                         kLargeCases[3].xmax, kLargeCases[3].ymax);
-    printf("  candidate: %d -> peek_success: %d -> bbox_pass: %d -> intersect_pass: %d -> full_read: %d -> result: %d\n",
-           t_count.candidate_count, t_count.peek_success_count, t_count.bbox_pass_count,
-           t_count.intersect_pass_count, t_count.full_read_count, t_count.result_count);
-
-    printf("\n--- explorgdb (对象复用 — 消除重复加载) ---\n");
-    printf("%-20s %8s %10s %10s %10s %10s %10s %10s %10s\n",
-           "Scenario", "Results", "total(ms)", "q_bbox(ms)", "peek_blob",
-           "peek_bbox", "intersect", "read", "saved");
-    printf("%-20s %8s %10s %10s %10s %10s %10s %10s %10s\n",
-           "--------------------", "--------", "----------", "----------", "----------",
-           "----------", "----------", "----------", "----------");
-
-    for (const auto& c : kLargeCases) {
-        auto t = query_reused(c.xmin, c.ymin, c.xmax, c.ymax);
-        // 对比 fresh 版本获取 saved
-        auto t_fresh = query_explorgdb_large(c.xmin, c.ymin, c.xmax, c.ymax);
-        double saved = t_fresh.total_ms - t.total_ms;
-
-        printf("%-20s %8d %10.1f %10.1f %10.1f %10.1f %10.1f %10.1f %+10.1f\n",
-               c.name, t.result_count, t.total_ms, t.query_bbox_ms, t.peek_blob_ms,
-               t.peek_bbox_ms, t.geom_intersect_ms, t.read_record_ms, saved);
-
-        EXPECT_GE(t.result_count, 0);
-        EXPECT_EQ(t.result_count, t_fresh.result_count);  // 结果数必须一致
-    }
-
-    printf("\n--- component (GDAL B+ 树) ---\n");
-    printf("%-20s %8s %10s %10s %10s %10s\n",
-           "Scenario", "Results", "total(ms)", "load(ms)", "query(ms)", "fetch(ms)");
-    printf("%-20s %8s %10s %10s %10s %10s\n",
-           "--------------------", "--------", "----------", "----------", "----------", "----------");
-
-    for (const auto& c : kLargeCases) {
-        auto t = query_component_large(c.xmin, c.ymin, c.xmax, c.ymax);
-
-        printf("%-20s %8d %10.1f %10.1f %10.1f %10.1f\n",
-               c.name, t.result_count, t.total_ms, t.load_ms,
-               t.query_ms, t.fetch_ms);
-
-        EXPECT_GE(t.result_count, 0);
-    }
-
-    printf("\n--- 对比汇总 ---\n");
-    printf("%-20s %10s %10s %10s\n", "Scenario", "explorgdb(ms)", "component(ms)", "Ratio");
-    printf("%-20s %10s %10s %10s\n",
-           "--------------------", "----------", "----------", "----------");
-
-    for (const auto& c : kLargeCases) {
-        auto t_explorgdb = query_explorgdb_large(c.xmin, c.ymin, c.xmax, c.ymax);
-        auto t_component = query_component_large(c.xmin, c.ymin, c.xmax, c.ymax);
-
-        double ratio = (t_component.total_ms > 0.01)
-                           ? t_explorgdb.total_ms / t_component.total_ms
-                           : 0;
-
-        printf("%-20s %10.1f %10.1f %9.1fx\n",
-               c.name, t_explorgdb.total_ms, t_component.total_ms, ratio);
-    }
-}
-
-// ═══════════════════════════════════════════════════════════
-//  超大规模数据集基准测试（1000万要素）
-//  数据路径: test_data/large_10m/large_10m_test.gdb
-// ═══════════════════════════════════════════════════════════
-
-static const std::string kLarge10mGdbPath =
-    explorgdb_test_paths::test_data_path("test_data/large_10m/large_10m_test.gdb").string();
-
-static const uint32_t kLarge10mTableId = 0x9;  // a00000009
-
-static bool run_10m_benchmarks() {
-    const char* value = std::getenv("FAST_GDB_RUN_10M_BENCHMARKS");
+// ============================================================================
+// Environment helpers
+// ============================================================================
+
+bool env_enabled(const char* name) {
+    const char* value = std::getenv(name);
     return value != nullptr && std::string(value) == "1";
 }
 
-// 查询 bbox（数据范围相同 [0,0,100000,100000]，用相同比例）
-static const BenchmarkCase kLarge10mCases[] = {
-    {"Point_10M (~局部)",    40000, 40000, 41000, 41000},
-    {"Local_10M (~周边)",    30000, 30000, 50000, 50000},
-    {"Regional_10M (~1/4)",  25000, 25000, 75000, 75000},
-    {"Large_10M (~全部)",     5000,  5000, 95000, 95000},
+// ============================================================================
+// Benchmark mode selection
+// ============================================================================
+
+enum class BenchmarkMode {
+    SteadyState,  // default: open once, warm up, only time queries
+    FreshOpen,    // each run: open, query, close, time everything
 };
 
-static DetailedTiming query_explorgdb_10m(double xmin, double ymin, double xmax, double ymax) {
-    DetailedTiming t;
-    auto t0 = Clock::now();
+BenchmarkMode get_benchmark_mode() {
+    const char* mode = std::getenv("FAST_GDB_BENCHMARK_MODE");
+    if (mode && std::string(mode) == "fresh-open") {
+        return BenchmarkMode::FreshOpen;
+    }
+    return BenchmarkMode::SteadyState;
+}
 
-    explorgdb::GdbCatalog catalog;
-    if (!catalog.scan(kLarge10mGdbPath)) return t;
+// ============================================================================
+// Query helpers
+// ============================================================================
 
-    const auto* table_entry = catalog.find_table(kLarge10mTableId);
-    if (!table_entry) return t;
-    std::string table_path = (fs::path(kLarge10mGdbPath) / table_entry->filename).string();
-    explorgdb::GdbTableParser table_parser(table_path);
-    if (!table_parser.open())
-        return t;
+std::unique_ptr<QueryEngine> open_fast_engine(
+    const std::string& gdb_path,
+    GdbCatalog& catalog) {
+    if (!catalog.scan(gdb_path)) return nullptr;
+    CatalogResolver resolver(catalog);
+    if (!resolver.load()) return nullptr;
+    const auto resolved = resolver.resolve(kLayerName);
+    if (!resolved.has_value()) return nullptr;
 
-    std::vector<double> grid_resolutions;
-    double xorig = 0, yorig = 0, xyscale = 0;
-    for (const auto& fd : table_parser.fields()) {
-        if (fd.type == explorgdb::FieldType::Geometry) {
-            xorig = (std::fabs(fd.xorig) > 1e8) ? 0.0 : fd.xorig;
-            yorig = (std::fabs(fd.yorig) > 1e8) ? 0.0 : fd.yorig;
-            xyscale = fd.xyscale;
-            grid_resolutions = fd.grid_sizes;
-            break;
+    auto engine = std::make_unique<QueryEngine>(catalog, *resolved);
+    if (!engine->open()) return nullptr;
+    return engine;
+}
+
+struct TimedQueryResult {
+    QueryResult query;
+    double wall_ms = 0.0;
+};
+
+TimedQueryResult query_fast_gdb(
+    QueryEngine& engine,
+    const BenchmarkCase& benchmark) {
+    const auto start = Clock::now();
+    TimedQueryResult timed;
+    timed.query = engine.query_bbox_unified(
+        benchmark.xmin, benchmark.ymin,
+        benchmark.xmax, benchmark.ymax);
+    timed.wall_ms = std::chrono::duration<double, std::milli>(
+        Clock::now() - start).count();
+    return timed;
+}
+
+struct GdalTimedResult {
+    std::vector<uint32_t> fids;
+    double wall_ms = 0.0;
+};
+
+GdalTimedResult query_gdal_steady_state(
+    GDALDataset* dataset,
+    const BenchmarkCase& benchmark) {
+    GdalTimedResult timed;
+    OGRLayer* layer = dataset->GetLayerByName(kLayerName);
+    if (layer == nullptr) return timed;
+
+    const auto start = Clock::now();
+    layer->SetSpatialFilterRect(
+        benchmark.xmin, benchmark.ymin,
+        benchmark.xmax, benchmark.ymax);
+    layer->ResetReading();
+    while (OGRFeature* feature = layer->GetNextFeature()) {
+        const GIntBig source_fid = feature->GetFID();
+        if (source_fid >= 1) {
+            timed.fids.push_back(
+                static_cast<uint32_t>(source_fid - 1));
+        }
+        OGRFeature::DestroyFeature(feature);
+    }
+    timed.wall_ms = std::chrono::duration<double, std::milli>(
+        Clock::now() - start).count();
+
+    // Sort and deduplicate
+    std::sort(timed.fids.begin(), timed.fids.end());
+    timed.fids.erase(
+        std::unique(timed.fids.begin(), timed.fids.end()),
+        timed.fids.end());
+    return timed;
+}
+
+TimedQueryResult query_fast_gdb_fresh_open(
+    const std::string& gdb_path,
+    const BenchmarkCase& benchmark) {
+    TimedQueryResult timed;
+    const auto start = Clock::now();
+
+    // Open, query, and close (via RAII) all inside the timer,
+    // symmetric with query_gdal_fresh_open
+    {
+        GdbCatalog catalog;
+        auto engine = open_fast_engine(gdb_path, catalog);
+        if (engine) {
+            timed.query = engine->query_bbox_unified(
+                benchmark.xmin, benchmark.ymin,
+                benchmark.xmax, benchmark.ymax);
         }
     }
 
-    const auto* tablx_entry = catalog.find_tablx(kLarge10mTableId);
-    if (tablx_entry) {
-        std::string tablx_path = (fs::path(kLarge10mGdbPath) / tablx_entry->filename).string();
-        table_parser.load_tablx(tablx_path);
-    }
-    auto t_load = Clock::now();
-    t.load_ms = std::chrono::duration<double, std::milli>(t_load - t0).count();
-
-    const auto* spx_entry = catalog.find_spx(kLarge10mTableId);
-    if (!spx_entry) return t;
-    std::string spx_path = (fs::path(kLarge10mGdbPath) / spx_entry->filename).string();
-
-    auto t_spx0 = Clock::now();
-    explorgdb::GdbSpatialIndexParser spx_parser(spx_path);
-    if (!spx_parser.parse()) return t;
-    auto t_spx1 = Clock::now();
-    t.spx_load_ms = std::chrono::duration<double, std::milli>(t_spx1 - t_spx0).count();
-
-    std::vector<uint32_t> result_fids = spx_parser.query_bbox(
-        xmin, ymin, xmax, ymax, xorig, yorig, xyscale, grid_resolutions,
-        static_cast<uint32_t>(table_parser.feature_count()) - 1);
-    auto t2 = Clock::now();
-    t.query_bbox_ms = std::chrono::duration<double, std::milli>(t2 - t_spx1).count();
-    t.candidate_count = static_cast<int>(result_fids.size());
-
-    explorgdb::GdbGeomDecoder decoder(xorig, yorig, xyscale, 0, 0, 0, 0, false, false);
-
-    std::vector<uint32_t> filtered_fids;
-    for (uint32_t fid : result_fids) {
-        auto t_blob = Clock::now();
-        const uint8_t* blob_data = nullptr;
-        size_t blob_size = 0;
-        if (!table_parser.peek_geometry_blob(fid, blob_data, blob_size)) continue;
-        t.peek_blob_ms += std::chrono::duration<double, std::milli>(Clock::now() - t_blob).count();
-        t.peek_success_count++;
-
-        auto t_peek = Clock::now();
-        if (!decoder.intersects_with_peek(blob_data, blob_size, xmin, ymin, xmax, ymax)) continue;
-        t.peek_bbox_ms += std::chrono::duration<double, std::milli>(Clock::now() - t_peek).count();
-        t.bbox_pass_count++;
-        t.intersect_pass_count++;
-
-        t.result_count++;
-    }
-
-    t.total_ms = std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
-    return t;
+    timed.wall_ms = std::chrono::duration<double, std::milli>(
+        Clock::now() - start).count();
+    return timed;
 }
 
-static Timing query_component_10m(double xmin, double ymin, double xmax, double ymax) {
-    Timing t;
-    auto t0 = Clock::now();
+GdalTimedResult query_gdal_fresh_open(
+    const std::string& gdb_path,
+    const BenchmarkCase& benchmark) {
+    GdalTimedResult timed;
+    const auto start = Clock::now();
 
-    GdbDatasource gdb;
-    if (!gdb.openExisting(kLarge10mGdbPath)) return t;
+    GDALDataset* dataset = static_cast<GDALDataset*>(GDALOpenEx(
+        gdb_path.c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY,
+        nullptr, nullptr, nullptr));
+    if (dataset == nullptr) return timed;
 
-    auto t1 = Clock::now();
-    t.load_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+    OGRLayer* layer = dataset->GetLayerByName(kLayerName);
+    if (layer == nullptr) {
+        GDALClose(dataset);
+        return timed;
+    }
 
-    GdbDataset ds = gdb.getDatasets().get(kLargeLayerName);
-    if (!ds.isValid()) return t;
+    layer->SetSpatialFilterRect(
+        benchmark.xmin, benchmark.ymin,
+        benchmark.xmax, benchmark.ymax);
+    layer->ResetReading();
+    while (OGRFeature* feature = layer->GetNextFeature()) {
+        const GIntBig source_fid = feature->GetFID();
+        if (source_fid >= 1) {
+            timed.fids.push_back(
+                static_cast<uint32_t>(source_fid - 1));
+        }
+        OGRFeature::DestroyFeature(feature);
+    }
+    GDALClose(dataset);
 
-    GdbQueryParameter param;
-    param.setSpatialFilterRect(xmin, ymin, xmax, ymax);
+    timed.wall_ms = std::chrono::duration<double, std::milli>(
+        Clock::now() - start).count();
 
-    auto t2 = Clock::now();
-    GdbRecordset rs = ds.query(param);
-    auto t3 = Clock::now();
-    t.query_ms = std::chrono::duration<double, std::milli>(t3 - t2).count();
-
-    int count = 0;
-    while (rs.isValid() && rs.moveNext()) { count++; }
-
-    auto t4 = Clock::now();
-    t.fetch_ms = std::chrono::duration<double, std::milli>(t4 - t3).count();
-    t.total_ms = std::chrono::duration<double, std::milli>(t4 - t0).count();
-    t.result_count = count;
-    return t;
+    std::sort(timed.fids.begin(), timed.fids.end());
+    timed.fids.erase(
+        std::unique(timed.fids.begin(), timed.fids.end()),
+        timed.fids.end());
+    return timed;
 }
 
-class Large10mDataBenchmarkFixture : public ::testing::Test {
+// ============================================================================
+// Statistics helpers
+// ============================================================================
+
+double median(std::vector<double>& values) {
+    if (values.empty()) return 0.0;
+    std::sort(values.begin(), values.end());
+    const size_t n = values.size();
+    if (n % 2 == 0) {
+        return (values[n / 2 - 1] + values[n / 2]) / 2.0;
+    }
+    return values[n / 2];
+}
+
+double p95(std::vector<double>& values) {
+    if (values.empty()) return 0.0;
+    std::sort(values.begin(), values.end());
+    const size_t idx = static_cast<size_t>(
+        std::ceil(values.size() * 0.95) - 1);
+    return values[std::min(idx, values.size() - 1)];
+}
+
+// ============================================================================
+// Per-case result collector
+// ============================================================================
+
+struct CaseRunResults {
+    std::vector<double> fast_ms_vals;
+    std::vector<double> gdal_ms_vals;
+    std::vector<QueryResult> fast_results;
+    std::vector<GdalTimedResult> gdal_results;
+};
+
+constexpr int kNumTrials = 5;
+constexpr double kPerformanceRatioLimit = 0.90;
+constexpr double kSmallQueryToleranceMs = 200.0;
+
+// ============================================================================
+// Printing
+// ============================================================================
+
+void print_header(const std::string& label, size_t feature_count,
+                  const char* mode_str, bool profile_enabled) {
+    std::printf("\n\n=== Spatial density benchmark: %s (%s) ===\n",
+                label.c_str(), mode_str);
+    std::printf("features=%zu layer=%s\n", feature_count, kLayerName);
+    if (profile_enabled) {
+        std::printf("profile enabled: diagnostic timings; performance gates disabled\n");
+    }
+    std::printf("%-18s %9s %9s %-31s %8s %8s %8s %8s %8s %8s %8s\n",
+                "case", "candidates", "ratio", "path",
+                "fast_ms", "gdal_ms", "spx_ms", "scan_ms",
+                "blob_ms", "bbox_ms", "exact_ms");
+}
+
+void print_row(const BenchmarkCase& benchmark,
+               const TimedQueryResult& fast,
+               const GdalTimedResult& gdal) {
+    const auto& metrics = fast.query.spatial_metrics;
+    std::printf(
+        "%-18s %9zu %8.2f%% %-31s %8.1f %8.1f %8.1f %8.1f %8.1f %8.1f %8.1f\n",
+        benchmark.name,
+        metrics.candidate_count,
+        metrics.candidate_ratio * 100.0,
+        fast.query.execution_path.c_str(),
+        fast.wall_ms,
+        gdal.wall_ms,
+        metrics.candidate_lookup_ms,
+        metrics.geometry_scan_ms,
+        metrics.blob_lookup_ms,
+        metrics.bbox_filter_ms,
+        metrics.exact_filter_ms);
+    std::printf(
+        "  funnel: candidate=%zu rejected=%zu contained=%zu exact=%zu "
+        "invalid=%zu result=%zu coverage_est=%.2f%% target=%.0f%% "
+        "spx_bypassed=%s geometry_only=%s fast/gdal=%.3f\n",
+        metrics.candidate_count,
+        metrics.bbox_rejected,
+        metrics.bbox_contained,
+        metrics.exact_tested,
+        metrics.invalid_geometries,
+        fast.query.matched_fids.size(),
+        metrics.estimated_coverage * 100.0,
+        benchmark.target_coverage * 100.0,
+        metrics.spx_bypassed ? "true" : "false",
+        metrics.geometry_only_scan ? "true" : "false",
+        gdal.wall_ms > 0.0 ? fast.wall_ms / gdal.wall_ms : 0.0);
+}
+
+void print_summary_row(const char* name,
+                       double fast_median_ms, double gdal_median_ms,
+                       double fast_p95_ms, double gdal_p95_ms,
+                       double ratio) {
+    std::printf(
+        "%-18s %10.1f %10.1f %10.1f %10.1f %10.3f\n",
+        name, fast_median_ms, gdal_median_ms,
+        fast_p95_ms, gdal_p95_ms, ratio);
+}
+
+void print_summary_header(const char* mode_str) {
+    std::printf("\n--- %s Summary (median of %d) ---\n", mode_str, kNumTrials);
+    std::printf("%-18s %10s %10s %10s %10s %10s\n",
+                "case", "fast_med", "gdal_med",
+                "fast_p95", "gdal_p95", "ratio");
+}
+
+// ============================================================================
+// Main benchmark runner
+// ============================================================================
+
+void store_result(CaseRunResults& results, TimedQueryResult fast,
+                  GdalTimedResult gdal) {
+    results.fast_ms_vals.push_back(fast.wall_ms);
+    results.gdal_ms_vals.push_back(gdal.wall_ms);
+    results.fast_results.push_back(std::move(fast.query));
+    results.gdal_results.push_back(std::move(gdal));
+}
+
+void warm_gdal_query(GDALDataset* dataset, const BenchmarkCase& benchmark) {
+    OGRLayer* layer = dataset->GetLayerByName(kLayerName);
+    if (layer == nullptr) return;
+    layer->SetSpatialFilterRect(benchmark.xmin, benchmark.ymin,
+                                benchmark.xmax, benchmark.ymax);
+    layer->ResetReading();
+    while (OGRFeature* feature = layer->GetNextFeature()) {
+        OGRFeature::DestroyFeature(feature);
+    }
+}
+
+void collect_steady_state(QueryEngine& engine, GDALDataset* dataset,
+                          const std::vector<BenchmarkCase>& cases,
+                          std::vector<CaseRunResults>& results) {
+    for (const auto& benchmark : cases) {
+        engine.query_bbox_unified(benchmark.xmin, benchmark.ymin,
+                                  benchmark.xmax, benchmark.ymax);
+        warm_gdal_query(dataset, benchmark);
+    }
+    for (int trial = 0; trial < kNumTrials; ++trial) {
+        for (size_t ci = 0; ci < cases.size(); ++ci) {
+            const size_t idx = (ci + static_cast<size_t>(trial)) % cases.size();
+            store_result(results[idx], query_fast_gdb(engine, cases[idx]),
+                         query_gdal_steady_state(dataset, cases[idx]));
+        }
+    }
+}
+
+void run_fresh_pair(const std::string& gdb_path, const BenchmarkCase& benchmark,
+                    bool fast_first, TimedQueryResult& fast,
+                    GdalTimedResult& gdal) {
+    if (fast_first) {
+        fast = query_fast_gdb_fresh_open(gdb_path, benchmark);
+        gdal = query_gdal_fresh_open(gdb_path, benchmark);
+    } else {
+        gdal = query_gdal_fresh_open(gdb_path, benchmark);
+        fast = query_fast_gdb_fresh_open(gdb_path, benchmark);
+    }
+}
+
+void collect_fresh_open(const std::string& gdb_path,
+                        const std::vector<BenchmarkCase>& cases,
+    std::vector<CaseRunResults>& results) {
+    for (size_t ci = 0; ci < cases.size(); ++ci) {
+        if (ci % 2 == 0) {
+            query_fast_gdb_fresh_open(gdb_path, cases[ci]);
+            query_gdal_fresh_open(gdb_path, cases[ci]);
+        } else {
+            query_gdal_fresh_open(gdb_path, cases[ci]);
+            query_fast_gdb_fresh_open(gdb_path, cases[ci]);
+        }
+    }
+    for (int trial = 0; trial < kNumTrials; ++trial) {
+        for (size_t ci = 0; ci < cases.size(); ++ci) {
+            const size_t idx = (ci + static_cast<size_t>(trial)) % cases.size();
+            TimedQueryResult fast;
+            GdalTimedResult gdal;
+            run_fresh_pair(gdb_path, cases[idx], trial % 2 == 0, fast, gdal);
+            store_result(results[idx], std::move(fast), std::move(gdal));
+        }
+    }
+}
+
+size_t feature_count_from(const std::vector<CaseRunResults>& results) {
+    for (const auto& result : results) {
+        if (!result.fast_results.empty()) {
+            return result.fast_results.front().spatial_metrics.feature_count;
+        }
+    }
+    return 0;
+}
+
+void print_detailed_results(const std::vector<BenchmarkCase>& cases,
+                            const std::vector<CaseRunResults>& results) {
+    for (size_t ci = 0; ci < cases.size(); ++ci) {
+        const size_t last = results[ci].fast_ms_vals.size() - 1;
+        TimedQueryResult fast{results[ci].fast_results[last],
+                               results[ci].fast_ms_vals[last]};
+        print_row(cases[ci], fast, results[ci].gdal_results[last]);
+    }
+}
+
+void print_summary(const std::vector<BenchmarkCase>& cases,
+                   std::vector<CaseRunResults>& results,
+                   const char* mode_str) {
+    print_summary_header(mode_str);
+    for (size_t ci = 0; ci < cases.size(); ++ci) {
+        const double fast_med = median(results[ci].fast_ms_vals);
+        const double gdal_med = median(results[ci].gdal_ms_vals);
+        const double ratio = gdal_med > 0.0 ? fast_med / gdal_med : 0.0;
+        print_summary_row(cases[ci].name, fast_med, gdal_med,
+                          p95(results[ci].fast_ms_vals),
+                          p95(results[ci].gdal_ms_vals), ratio);
+    }
+}
+
+bool meets_performance_gate(const BenchmarkCase& benchmark, double fast_ms,
+                            double gdal_ms) {
+    if (gdal_ms <= 0.0) return false;
+    if (benchmark.target_coverage <= 0.10) {
+        return fast_ms <= gdal_ms + kSmallQueryToleranceMs ||
+               fast_ms <= gdal_ms * kPerformanceRatioLimit;
+    }
+    return fast_ms <= gdal_ms * kPerformanceRatioLimit;
+}
+
+void verify_results(const std::vector<BenchmarkCase>& cases,
+                    std::vector<CaseRunResults>& results,
+                    bool profile_enabled) {
+    for (size_t ci = 0; ci < cases.size(); ++ci) {
+        for (size_t trial = 0; trial < results[ci].fast_results.size(); ++trial) {
+            const auto& fast = results[ci].fast_results[trial];
+            const auto& gdal = results[ci].gdal_results[trial];
+            EXPECT_EQ(fast.matched_fids, gdal.fids) << cases[ci].name << trial;
+            EXPECT_EQ(fast.spatial_metrics.invalid_geometries, 0u)
+                << fast.fallback_reason;
+            EXPECT_LE(fast.spatial_metrics.bbox_rejected,
+                      fast.spatial_metrics.feature_count);
+            EXPECT_LE(fast.spatial_metrics.bbox_contained,
+                      fast.spatial_metrics.feature_count);
+            EXPECT_LE(fast.spatial_metrics.exact_tested,
+                      fast.spatial_metrics.feature_count);
+        }
+        if (!profile_enabled) {
+            const double fast_ms = median(results[ci].fast_ms_vals);
+            const double gdal_ms = median(results[ci].gdal_ms_vals);
+            EXPECT_TRUE(meets_performance_gate(cases[ci], fast_ms, gdal_ms))
+                << "Performance gate failed for " << cases[ci].name
+                << ": fast=" << fast_ms << "ms gdal=" << gdal_ms << "ms";
+        }
+    }
+}
+
+size_t collect_steady_state(const fs::path& gdb_path,
+                            const std::vector<BenchmarkCase>& cases,
+    std::vector<CaseRunResults>& results) {
+    GdbCatalog catalog;
+    auto engine = open_fast_engine(gdb_path.string(), catalog);
+    if (!engine || !engine->table()) {
+        ADD_FAILURE() << "Cannot open fast-gdb engine";
+        return 0;
+    }
+    GDALDataset* dataset = static_cast<GDALDataset*>(GDALOpenEx(
+        gdb_path.c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY,
+        nullptr, nullptr, nullptr));
+    if (dataset == nullptr) {
+        ADD_FAILURE() << "Cannot open GDB via GDAL";
+        return 0;
+    }
+    const size_t feature_count = engine->table()->active_feature_count();
+    collect_steady_state(*engine, dataset, cases, results);
+    GDALClose(dataset);
+    return feature_count;
+}
+
+void run_density_matrix(const fs::path& gdb_path, const std::string& label) {
+    ASSERT_TRUE(fs::is_directory(gdb_path))
+        << "Benchmark data not found: " << gdb_path;
+    const auto mode = get_benchmark_mode();
+    const char* mode_str = mode == BenchmarkMode::FreshOpen
+        ? "fresh-open" : "steady-state";
+    const bool profile_enabled = env_enabled("FAST_GDB_SPATIAL_PROFILE");
+    const auto cases = density_cases();
+    std::vector<CaseRunResults> results(cases.size());
+    size_t feature_count = 0;
+    if (mode == BenchmarkMode::SteadyState) {
+        feature_count = collect_steady_state(gdb_path, cases, results);
+    } else {
+        collect_fresh_open(gdb_path.string(), cases, results);
+        feature_count = feature_count_from(results);
+    }
+    print_header(label, feature_count, mode_str, profile_enabled);
+    print_detailed_results(cases, results);
+    print_summary(cases, results, mode_str);
+    verify_results(cases, results, profile_enabled);
+}
+
+// ============================================================================
+// Test fixture
+// ============================================================================
+
+class SpatialDensityBenchmark : public ::testing::Test {
 protected:
-    explorgdb::GdbCatalog catalog_;
-    explorgdb::GdbTableParser* table_parser_ = nullptr;
-    explorgdb::GdbSpatialIndexParser* spx_parser_ = nullptr;
-    explorgdb::GdbGeomDecoder* geom_decoder_ = nullptr;
-    std::vector<double> grid_resolutions_;
-    double xorig_ = 0, yorig_ = 0, xyscale_ = 0;
-
     void SetUp() override {
         GDALAllRegister();
-        CPLSetConfigOption("CPL_DEBUG", "NO");
-
-        if (!run_10m_benchmarks()) {
-            GTEST_SKIP() << "Set FAST_GDB_RUN_10M_BENCHMARKS=1 to run 10M performance benchmarks";
+        if (!env_enabled("FAST_GDB_RUN_SPATIAL_BENCHMARKS")) {
+            GTEST_SKIP()
+                << "Set FAST_GDB_RUN_SPATIAL_BENCHMARKS=1 to run benchmarks";
         }
-
-        const fs::path table_file = fs::path(kLarge10mGdbPath) / "a00000009.gdbtable";
-        if (!fs::is_regular_file(table_file)) {
-            GTEST_SKIP() << "10M test data not found — run generate_large_gdb --count 10000000 first";
-        }
-
-        if (!catalog_.scan(kLarge10mGdbPath)) return;
-
-        const auto* table_entry = catalog_.find_table(kLarge10mTableId);
-        if (!table_entry) return;
-        std::string table_path = (fs::path(kLarge10mGdbPath) / table_entry->filename).string();
-        table_parser_ = new explorgdb::GdbTableParser(table_path);
-        if (!table_parser_->open()) return;
-
-        const auto* tablx_entry = catalog_.find_tablx(kLarge10mTableId);
-        if (tablx_entry) {
-            std::string tablx_path = (fs::path(kLarge10mGdbPath) / tablx_entry->filename).string();
-            table_parser_->load_tablx(tablx_path);
-        }
-
-        for (const auto& fd : table_parser_->fields()) {
-            if (fd.type == explorgdb::FieldType::Geometry) {
-                xorig_ = (std::fabs(fd.xorig) > 1e8) ? 0.0 : fd.xorig;
-                yorig_ = (std::fabs(fd.yorig) > 1e8) ? 0.0 : fd.yorig;
-                xyscale_ = fd.xyscale;
-                grid_resolutions_ = fd.grid_sizes;
-                break;
-            }
-        }
-
-        const auto* spx_entry = catalog_.find_spx(kLarge10mTableId);
-        if (spx_entry) {
-            std::string spx_file = (fs::path(kLarge10mGdbPath) / spx_entry->filename).string();
-            spx_parser_ = new explorgdb::GdbSpatialIndexParser(spx_file);
-            spx_parser_->parse();
-        }
-
-        geom_decoder_ = new explorgdb::GdbGeomDecoder(xorig_, yorig_, xyscale_, 0, 0, 0, 0, false, false);
-    }
-
-    void TearDown() override {
-        delete table_parser_;
-        delete spx_parser_;
-        delete geom_decoder_;
-    }
-
-    DetailedTiming query_reused(double xmin, double ymin, double xmax, double ymax) {
-        DetailedTiming t;
-        auto t0 = Clock::now();
-
-        if (!table_parser_ || !spx_parser_ || !geom_decoder_) return t;
-
-        auto t1 = Clock::now();
-        t.load_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
-
-        std::vector<uint32_t> result_fids = spx_parser_->query_bbox(
-            xmin, ymin, xmax, ymax, xorig_, yorig_, xyscale_, grid_resolutions_,
-            static_cast<uint32_t>(table_parser_->feature_count()) - 1);
-
-        auto t2 = Clock::now();
-        t.query_bbox_ms = std::chrono::duration<double, std::milli>(t2 - t1).count();
-        t.candidate_count = static_cast<int>(result_fids.size());
-
-        for (uint32_t fid : result_fids) {
-            auto t_blob = Clock::now();
-            const uint8_t* blob_data = nullptr;
-            size_t blob_size = 0;
-            if (!table_parser_->peek_geometry_blob(fid, blob_data, blob_size)) continue;
-            t.peek_blob_ms += std::chrono::duration<double, std::milli>(Clock::now() - t_blob).count();
-            t.peek_success_count++;
-
-            auto t_peek = Clock::now();
-            if (!geom_decoder_->intersects_with_peek(blob_data, blob_size, xmin, ymin, xmax, ymax)) continue;
-            t.peek_bbox_ms += std::chrono::duration<double, std::milli>(Clock::now() - t_peek).count();
-            t.bbox_pass_count++;
-            t.intersect_pass_count++;
-
-            t.result_count++;
-        }
-
-        t.total_ms = std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
-        return t;
+        // NOTE: FAST_GDB_SPATIAL_PROFILE is NOT forced on here.
+        // For wall-clock performance measurement, leave it unset.
+        // Set FAST_GDB_SPATIAL_PROFILE=1 separately for detailed hotspot analysis.
+        // This change is per Phase A of the spatial optimization plan:
+        // "墙钟性能门禁关闭 FAST_GDB_SPATIAL_PROFILE"
     }
 };
 
-/**
- * LARGE_DATA_10M_Query: 超大规模数据集（1000万要素）对比
- */
-TEST_F(Large10mDataBenchmarkFixture, LARGE_DATA_10M_Query) {
-    printf("\n\n=== Large 10M Data Benchmark (10M polygons, 37M spx entries) ===\n\n");
+} // namespace
 
-    printf("--- explorgdb (分阶段计时 + 计数器) ---\n");
-    printf("%-22s %9s %10s %10s %10s %10s %10s %10s %10s %10s\n",
-           "Scenario", "Results", "total(ms)", "load(ms)", "spx(ms)",
-           "q_bbox(ms)", "peek_blob", "peek_bbox", "intersect", "read");
-    printf("%-22s %9s %10s %10s %10s %10s %10s %10s %10s %10s\n",
-           "----------------------", "---------", "----------", "----------", "----------",
-           "----------", "----------", "----------", "----------", "----------");
-
-    for (const auto& c : kLarge10mCases) {
-        auto t = query_explorgdb_10m(c.xmin, c.ymin, c.xmax, c.ymax);
-
-        printf("%-22s %9d %10.1f %10.1f %10.1f %10.1f %10.1f %10.1f %10.1f %10.1f\n",
-               c.name, t.result_count, t.total_ms, t.load_ms, t.spx_load_ms,
-               t.query_bbox_ms, t.peek_blob_ms, t.peek_bbox_ms,
-               t.geom_intersect_ms, t.read_record_ms);
-
-        EXPECT_GE(t.result_count, 0);
+TEST_F(SpatialDensityBenchmark, DensityMatrix1M) {
+    const fs::path path = explorgdb_test_paths::test_data_path(
+        "test_data/large/large_test.gdb");
+    if (!fs::is_directory(path)) {
+        GTEST_SKIP() << "1M benchmark data not found: " << path;
     }
+    run_density_matrix(path, "1M generated polygons");
+}
 
-    printf("\n--- 过滤漏斗 (Large_10M) ---\n");
-    auto t_count = query_explorgdb_10m(kLarge10mCases[3].xmin, kLarge10mCases[3].ymin,
-                                       kLarge10mCases[3].xmax, kLarge10mCases[3].ymax);
-    printf("  candidate: %d -> peek_success: %d -> bbox_pass: %d -> intersect_pass: %d -> full_read: %d -> result: %d\n",
-           t_count.candidate_count, t_count.peek_success_count, t_count.bbox_pass_count,
-           t_count.intersect_pass_count, t_count.full_read_count, t_count.result_count);
-
-    printf("\n--- explorgdb (对象复用) ---\n");
-    printf("%-22s %9s %10s %10s %10s %10s %10s %10s %10s\n",
-           "Scenario", "Results", "total(ms)", "q_bbox(ms)", "peek_blob",
-           "peek_bbox", "intersect", "read", "saved");
-    printf("%-22s %9s %10s %10s %10s %10s %10s %10s %10s\n",
-           "----------------------", "---------", "----------", "----------", "----------",
-           "----------", "----------", "----------", "----------");
-
-    for (const auto& c : kLarge10mCases) {
-        auto t = query_reused(c.xmin, c.ymin, c.xmax, c.ymax);
-        auto t_fresh = query_explorgdb_10m(c.xmin, c.ymin, c.xmax, c.ymax);
-        double saved = t_fresh.total_ms - t.total_ms;
-
-        printf("%-22s %9d %10.1f %10.1f %10.1f %10.1f %10.1f %10.1f %+10.1f\n",
-               c.name, t.result_count, t.total_ms, t.query_bbox_ms, t.peek_blob_ms,
-               t.peek_bbox_ms, t.geom_intersect_ms, t.read_record_ms, saved);
-
-        EXPECT_GE(t.result_count, 0);
-        EXPECT_EQ(t.result_count, t_fresh.result_count);
+TEST_F(SpatialDensityBenchmark, DensityMatrix10M) {
+    if (!env_enabled("FAST_GDB_RUN_10M_BENCHMARKS")) {
+        GTEST_SKIP()
+            << "Set FAST_GDB_RUN_10M_BENCHMARKS=1 for the 10M matrix";
     }
-
-    printf("\n--- component (GDAL B+ 树) ---\n");
-    printf("%-22s %9s %10s %10s %10s %10s\n",
-           "Scenario", "Results", "total(ms)", "load(ms)", "query(ms)", "fetch(ms)");
-    printf("%-22s %9s %10s %10s %10s %10s\n",
-           "----------------------", "---------", "----------", "----------", "----------", "----------");
-
-    for (const auto& c : kLarge10mCases) {
-        auto t = query_component_10m(c.xmin, c.ymin, c.xmax, c.ymax);
-
-        printf("%-22s %9d %10.1f %10.1f %10.1f %10.1f\n",
-               c.name, t.result_count, t.total_ms, t.load_ms,
-               t.query_ms, t.fetch_ms);
-
-        EXPECT_GE(t.result_count, 0);
+    const fs::path path = explorgdb_test_paths::test_data_path(
+        "test_data/large_10m/large_10m_test.gdb");
+    if (!fs::is_directory(path)) {
+        GTEST_SKIP() << "10M benchmark data not found: " << path;
     }
+    run_density_matrix(path, "10M generated polygons");
+}
 
-    printf("\n--- 对比汇总 ---\n");
-    printf("%-22s %10s %10s %10s\n", "Scenario", "explorgdb(ms)", "component(ms)", "Ratio");
-    printf("%-22s %10s %10s %10s\n",
-           "----------------------", "----------", "----------", "----------");
-
-    for (const auto& c : kLarge10mCases) {
-        auto t_explorgdb = query_explorgdb_10m(c.xmin, c.ymin, c.xmax, c.ymax);
-        auto t_component = query_component_10m(c.xmin, c.ymin, c.xmax, c.ymax);
-
-        double ratio = (t_component.total_ms > 0.01)
-                           ? t_explorgdb.total_ms / t_component.total_ms
-                           : 0;
-
-        printf("%-22s %10.1f %10.1f %9.1fx\n",
-               c.name, t_explorgdb.total_ms, t_component.total_ms, ratio);
+TEST_F(SpatialDensityBenchmark, DensityMatrixConfigured) {
+    const char* configured_path = std::getenv("FAST_GDB_BENCHMARK_PATH");
+    if (configured_path == nullptr || configured_path[0] == '\0') {
+        GTEST_SKIP() << "Set FAST_GDB_BENCHMARK_PATH to run a configured matrix";
     }
+    const char* configured_label = std::getenv("FAST_GDB_BENCHMARK_LABEL");
+    run_density_matrix(configured_path,
+                       configured_label == nullptr ? "configured matrix" : configured_label);
 }
