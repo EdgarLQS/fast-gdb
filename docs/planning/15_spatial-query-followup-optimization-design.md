@@ -33,8 +33,7 @@
 
 经过 Phase A 公平基准构建，以下为 Release (`-O3 -DNDEBUG`) + profile OFF + 稳态 + 中位数 of 5 的真实数据。
 
-> **范围限制**：当前数据仅覆盖 1M 和 10M Polygon。Point、MultiPoint、Polyline 及 1K/10K/100K 规模尚未测试。
-> 当前结论仅适用于大型 Polygon 数据集；其他几何类型和小数据的 Phase B/C/D/F 触发判断暂缺。
+> **更新（2026-07-14）**：Point、MultiPoint、Polyline、Polygon 的 1K/10K/100K/1M/10M 稳态矩阵已全部完成并通过完整 FID 对照与分档性能门槛。详细原始中位数见 `docs/evidence/spatial-query-baseline-2026-07-14.md`。
 
 **10M steady-state (profile OFF), 中位数 of 5:**
 
@@ -58,11 +57,11 @@
 
 **关键发现**：
 
-1. **大型 Polygon steady-state 的所有覆盖率均已通过验收标准**；fresh-open 修正后仍需重跑。
+1. **全几何、全规模 steady-state 的所有覆盖率均已通过验收标准**；10M fresh-open 已重跑，但 1% 因每轮完整解析 `.gdbtablx` 而未达小范围 200ms 门槛。
 2. **旧数据为测量伪影**：profile 开销在 30% 达 +51%，80% 达 +73%，100% 达 +104%。
-3. **30% 处于交叉点附近**：sequential (339ms) 和 spx (358ms) 路径差距 < 6%。
+3. **Phase E 已校准**：将 direct scan 默认估算覆盖率阈值由 35% 下调到 29%，使实际约 29.76% 的 30% 窗口选择顺序扫描。
 4. **profile OFF 下的绝对差距极小**：最慢的 30% 也仅 320ms (vs GDAL 1492ms)。
-5. 基于现有大型 Polygon steady-state，Phase B/C/D/F 暂不触发；Phase E（规划器校准）为可选。补齐 fresh-open 和完整矩阵后再作最终判断。
+5. steady-state 下 Phase B/C/D/F 均不触发；fresh-open 仅 10M 1% 触发新的 `.gdbtablx` 跨 open 缓存专项，不能归因于空间查询主路径。
 - 方向性复测（旧数据，2026-07-14 早期）
 - [当前结论](../evidence/spatial-query-baseline-2026-07-14.md)
 
@@ -366,3 +365,24 @@ docs: record spatial optimization evidence
 - 固定查询顺序让首项承担主要冷页成本；
 - 当前生成矩阵以 Polygon 为主，尚不能代表所有常规 Geometry；
 - `docs/evidence/spatial-query-optimization-2026-07-13.md` 的实施状态已经落后于当前代码，最终验收时必须同步更新。
+
+## 12. Phase G — `.gdbtablx` 跨 open 元数据缓存
+
+**触发依据**：对称计时的 10M fresh-open 中，1% 为 fast-gdb 1444.4ms、GDAL 264.7ms，超过小范围 +200ms 门槛；稳态相同查询为 58.5ms、132.8ms，说明瓶颈在打开期而不是空间谓词。
+
+### 12.1 实施范围
+
+1. 为已解析的 `.gdbtablx` 不可变偏移数据建立进程内共享缓存，键为规范化路径与文件身份（设备/inode、大小、修改时间）；命中时 `QueryEngine::open()` 共享只读数据，不重复解码 10M 条偏移。
+2. 缓存只保存 `.gdbtablx` 元数据，不缓存 Feature、Geometry、查询 FID 或查询结果；文件身份不匹配时自动失效并重新解析。
+3. 缓存必须线程安全且有明确容量上限/淘汰规则；打开失败、损坏 `.gdbtablx` 和缓存分配失败均回退现有解析流程，不改变查询语义。
+
+### 12.2 验证与口径
+
+- 增加缓存命中、未命中、解析耗时指标，以及命中/失效/损坏文件单元测试。
+- 保留 `FAST_GDB_TABLX_CACHE=0` 的真正冷打开基线；默认缓存路径单独标为“进程内重复 fresh-open”，不得与冷打开数据混写。
+- 两种口径均继续计入 catalog、resolver、engine 打开、查询和析构，并逐 trial 与 GDAL 比较完整 FID 集合。
+- 验收目标：10M 1% 默认缓存 fresh-open 满足 `fast <= gdal + 200ms` 或 `fast <= gdal * 0.90`，同时既有 1M/10M steady-state 不回归。
+
+### 12.3 大型数据集复用
+
+基准数据路径统一为 `test_data/spatial_matrix/<geometry>_<size>.gdb`。生成器验证图层名、几何类型、要素数和 `.spx` 后复用有效目录；数据仅在缺失、不完整或生成定义变更时重建，且同一输出路径必须串行生成。

@@ -12,7 +12,7 @@ namespace explorgdb {
 namespace {
 
 constexpr double kDefaultSequentialDensity = 0.50;
-constexpr double kDefaultDirectScanCoverage = 0.35;
+constexpr double kDefaultDirectScanCoverage = 0.29;
 constexpr size_t kMinimumAdaptiveFeatureCount = 1024;
 using SpatialClock = std::chrono::steady_clock;
 

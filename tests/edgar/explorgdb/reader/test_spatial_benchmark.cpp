@@ -565,3 +565,13 @@ TEST_F(SpatialDensityBenchmark, DensityMatrix10M) {
     }
     run_density_matrix(path, "10M generated polygons");
 }
+
+TEST_F(SpatialDensityBenchmark, DensityMatrixConfigured) {
+    const char* configured_path = std::getenv("FAST_GDB_BENCHMARK_PATH");
+    if (configured_path == nullptr || configured_path[0] == '\0') {
+        GTEST_SKIP() << "Set FAST_GDB_BENCHMARK_PATH to run a configured matrix";
+    }
+    const char* configured_label = std::getenv("FAST_GDB_BENCHMARK_LABEL");
+    run_density_matrix(configured_path,
+                       configured_label == nullptr ? "configured matrix" : configured_label);
+}

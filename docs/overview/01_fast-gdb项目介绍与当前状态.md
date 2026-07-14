@@ -152,6 +152,10 @@ FileGDB Geometry Blob
 
 复用了仓库 `test_data/large_10m/large_10m_test.gdb`（约 1.9 GB）仅作读取/空间查询。该夹具在 Large 窗口返回 8,172,990 个候选，fast-gdb 总耗时 40,881.4 ms，GDAL component 为 3,842.5 ms；在此数据集、实现路径和热缓存条件下 GDAL component 更快。该结果不能与 2026-06-16 的 0.1% 合成查询数字直接比较，也不能用来推断 10M 写入。完整命令、分阶段耗时和限制见 [性能基准与优化](../technical/01_性能基准与优化.md)。
 
+### 5.4 2026-07-14 空间查询当前状态
+
+Release/profile-off 的 Point、MultiPoint、Polyline、Polygon 在 1K–10M 的 steady-state 覆盖率矩阵均通过完整 FID 对照和分档性能门槛。大数据集存放于 `test_data/spatial_matrix/` 并按已验证的图层、几何类型、要素数和 `.spx` 复用，不应在日常复测中重复生成。10M fresh-open 的 1% 仍慢于 GDAL，当前专项是 `.gdbtablx` 跨 open 元数据缓存；完整数据、边界和计划见 [空间查询公平基准验收记录](../evidence/spatial-query-baseline-2026-07-14.md) 与 [全规模空间查询性能优化计划](../planning/15_spatial-query-followup-optimization-design.md)。
+
 ## 6. 测试与验收体系
 
 | 层级 | 覆盖内容 | 证据/入口 |
