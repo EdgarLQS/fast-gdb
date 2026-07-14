@@ -20,9 +20,9 @@ using ssize_t = SSIZE_T;
 #endif
 
 // The MSVC CRT does not provide a UTF-8 aware POSIX open(). Open the file with
-// CreateFileW so non-ASCII geodatabase paths work, and retain a CRT descriptor
-// for the existing parser/fstat/close call sites. The handle is opened for
-// sequential and overlapped I/O so the same descriptor supports P1-P3.
+// CreateFileW so non-ASCII geodatabase paths work, and retain a synchronous CRT
+// descriptor for parser/fstat/close call sites. P3 acquires a separate cached
+// FILE_FLAG_OVERLAPPED handle through ReOpenFile, keeping CRT behavior stable.
 int fast_gdb_open_utf8(const char* path, int flags, int mode = 0);
 
 // Do not macro-map open/close: a macro would also rewrite
