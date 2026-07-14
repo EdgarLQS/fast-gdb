@@ -2,8 +2,16 @@
 #include "field_layout.h"
 
 #include <algorithm>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <limits>
+#include <vector>
+
+#ifdef _WIN32
+#include <deque>
+#include <future>
+#endif
 
 namespace explorgdb {
 namespace {
@@ -88,6 +96,138 @@ bool null_bit(const uint8_t* bitmap,
     return ((bitmap[byte_index] >> bit_index) & 1U) != 0;
 }
 
+struct GeometryLocation {
+    bool accepted = false;
+    const uint8_t* geometry = nullptr;
+    size_t geometry_size = 0;
+    bool geometry_null = true;
+};
+
+GeometryLocation locate_geometry(const std::vector<FieldDescriptor>& fields,
+                                 int geometry_field_index,
+                                 int nullable_count,
+                                 const uint8_t* row_begin,
+                                 const uint8_t* row_end) {
+    GeometryLocation result;
+    const size_t max_bitmap_bytes = bitmap_bytes_for(nullable_count);
+    size_t best_padding = static_cast<size_t>(row_end - row_begin) + 1;
+
+    for (size_t bitmap_bytes = max_bitmap_bytes;; --bitmap_bytes) {
+        if (bitmap_bytes <= static_cast<size_t>(row_end - row_begin)) {
+            const int max_present_bits = std::min(
+                nullable_count, static_cast<int>(bitmap_bytes * 8));
+            for (int present_bits = max_present_bits;
+                 present_bits >= 0;
+                 --present_bits) {
+                const uint8_t* cursor = row_begin + bitmap_bytes;
+                const uint8_t* bitmap = bitmap_bytes ? row_begin : nullptr;
+                const uint8_t* geometry = nullptr;
+                size_t geometry_size = 0;
+                bool geometry_null = true;
+                int nullable_bit = 0;
+                bool valid = true;
+
+                for (size_t field_index = 0;
+                     field_index < fields.size();
+                     ++field_index) {
+                    const FieldDescriptor& field = fields[field_index];
+                    bool is_null = false;
+                    if ((field.flag & 1U) != 0) {
+                        is_null = null_bit(bitmap, bitmap_bytes,
+                                           nullable_bit, present_bits);
+                        ++nullable_bit;
+                    }
+                    if (is_null) {
+                        if (static_cast<int>(field_index) ==
+                            geometry_field_index) {
+                            geometry_null = true;
+                        }
+                        continue;
+                    }
+
+                    const uint8_t* value_data = nullptr;
+                    size_t value_size = 0;
+                    if (!skip_value(field, cursor, row_end,
+                                    &value_data, &value_size)) {
+                        valid = false;
+                        break;
+                    }
+                    if (static_cast<int>(field_index) ==
+                        geometry_field_index) {
+                        geometry = value_data;
+                        geometry_size = value_size;
+                        geometry_null = false;
+                    }
+                }
+
+                if (!valid) continue;
+                const size_t padding = static_cast<size_t>(row_end - cursor);
+                if (!all_zero(cursor, row_end) || padding >= best_padding)
+                    continue;
+
+                result.accepted = true;
+                result.geometry = geometry;
+                result.geometry_size = geometry_size;
+                result.geometry_null = geometry_null;
+                best_padding = padding;
+                if (padding == 0) break;
+            }
+        }
+        if (result.accepted && best_padding == 0) break;
+        if (bitmap_bytes == 0) break;
+    }
+    return result;
+}
+
+size_t dense_batch_bytes() {
+    constexpr size_t kMiB = 1024U * 1024U;
+    constexpr size_t kDefaultMiB = 4;
+    constexpr size_t kMaximumMiB = 8;
+    const char* value = std::getenv("FAST_GDB_WINDOWS_BATCH_MB");
+    if (value == nullptr || *value == '\0') return kDefaultMiB * kMiB;
+    char* end = nullptr;
+    const unsigned long parsed = std::strtoul(value, &end, 10);
+    if (end == value || *end != '\0' || parsed == 0) return kDefaultMiB * kMiB;
+    return std::min<size_t>(static_cast<size_t>(parsed), kMaximumMiB) * kMiB;
+}
+
+bool io_trace_enabled() {
+    const char* value = std::getenv("FAST_GDB_WINDOWS_IO_TRACE");
+    return value != nullptr && value[0] == '1';
+}
+
+#ifdef _WIN32
+size_t async_depth() {
+    constexpr size_t kDefaultDepth = 4;
+    constexpr size_t kMaximumDepth = 8;
+    const char* enabled = std::getenv("FAST_GDB_WINDOWS_ASYNC_IO");
+    if (enabled != nullptr && enabled[0] == '0') return 1;
+    const char* value = std::getenv("FAST_GDB_WINDOWS_ASYNC_DEPTH");
+    if (value == nullptr || *value == '\0') return kDefaultDepth;
+    char* end = nullptr;
+    const unsigned long parsed = std::strtoul(value, &end, 10);
+    if (end == value || *end != '\0' || parsed == 0) return kDefaultDepth;
+    return std::min<size_t>(static_cast<size_t>(parsed), kMaximumDepth);
+}
+#endif
+
+struct RowRef {
+    uint32_t fid = 0;
+    uint64_t offset = 0;
+};
+
+struct ReadBatch {
+    uint64_t offset = 0;
+    size_t size = 0;
+    std::vector<RowRef> rows;
+};
+
+struct BatchResult {
+    ReadBatch batch;
+    std::vector<uint8_t> bytes;
+    bool ok = false;
+};
+
 } // namespace
 
 uint64_t GdbTableParser::scan_geometry_blobs(GeometryScanCallback callback) {
@@ -98,133 +238,217 @@ uint64_t GdbTableParser::scan_geometry_blobs(GeometryScanCallback callback) {
     }
 
     const int nullable_count = nullable_field_count();
-    const size_t max_bitmap_bytes = bitmap_bytes_for(nullable_count);
     uint64_t scanned = 0;
+
+    auto emit_row = [&](uint32_t fid,
+                        const uint8_t* row_begin,
+                        size_t row_size) -> bool {
+        if (row_size == 0) {
+            if (!callback(fid, nullptr, 0, true)) return false;
+            ++scanned;
+            return true;
+        }
+        const uint8_t* row_end = row_begin + row_size;
+        const GeometryLocation located = locate_geometry(
+            fields_, geometry_field_index_, nullable_count,
+            row_begin, row_end);
+        if (!located.accepted) {
+            if (!callback(fid, nullptr, 0, true)) return false;
+        } else if (!callback(fid, located.geometry, located.geometry_size,
+                             located.geometry_null)) {
+            return false;
+        }
+        ++scanned;
+        return true;
+    };
+
+    // P0: MapViewOfFile follows the existing zero-copy mapped_data_ path.
+    if (mapped_data_ != nullptr) {
+        for (uint32_t fid = 0; fid < feature_offsets_.size(); ++fid) {
+            const uint64_t offset = feature_offsets_[fid];
+            if (offset == 0 || offset >= file_size_) continue;
+            if (offset + 4 > file_size_) return 0;
+
+            uint32_t row_size = 0;
+            const uint8_t* length_ptr = mapped_data_ + offset;
+            std::memcpy(&row_size, length_ptr, sizeof(row_size));
+            const uint8_t* row_begin = length_ptr + 4;
+            if (row_size > static_cast<size_t>(
+                    mapped_data_ + file_size_ - row_begin)) {
+                return 0;
+            }
+            if (!emit_row(fid, row_begin, row_size)) break;
+        }
+        if (io_trace_enabled()) {
+            std::fprintf(stderr,
+                         "fast-gdb windows dense-scan: mode=mmap records=%llu "
+                         "batch_reads=0 bytes=0 async_depth=0\n",
+                         static_cast<unsigned long long>(scanned));
+        }
+        return scanned;
+    }
+
+    if (fd_ < 0) return 0;
+
+    // P1: build bounded physical windows instead of issuing two reads per FID.
+    // The .gdbtablx order is normally physical/FID order; an out-of-order offset
+    // closes the current window, retaining correctness without a 10M-entry sort.
+    const size_t batch_limit = dense_batch_bytes();
+    const uint64_t max_record_bytes =
+        static_cast<uint64_t>(std::max<uint32_t>(header_.largest_size_record, 1U)) + 4U;
+    ReadBatch current;
+    uint64_t batch_reads = 0;
+    uint64_t bytes_read = 0;
+    bool io_failed = false;
+    bool callback_stopped = false;
+
+    auto read_batch = [&](ReadBatch batch) -> BatchResult {
+        BatchResult result;
+        result.batch = std::move(batch);
+        result.bytes.resize(result.batch.size);
+        result.ok = result.batch.size != 0 &&
+                    read_at(result.batch.offset, result.bytes.data(),
+                            result.batch.size);
+        return result;
+    };
+
+    auto process_batch = [&](BatchResult& result) -> bool {
+        if (!result.ok) {
+            // P3 failure contract: one synchronous retry before abandoning the
+            // dense path and allowing QueryEngine to use candidate fallback.
+            result.bytes.resize(result.batch.size);
+            result.ok = result.batch.size != 0 &&
+                        read_at(result.batch.offset, result.bytes.data(),
+                                result.batch.size);
+        }
+        if (!result.ok) {
+            io_failed = true;
+            return false;
+        }
+
+        ++batch_reads;
+        bytes_read += result.bytes.size();
+        for (const RowRef& row : result.batch.rows) {
+            if (row.offset < result.batch.offset) {
+                io_failed = true;
+                return false;
+            }
+            const uint64_t local64 = row.offset - result.batch.offset;
+            if (local64 > result.bytes.size()) {
+                io_failed = true;
+                return false;
+            }
+            const size_t local = static_cast<size_t>(local64);
+            if (local + 4 > result.bytes.size()) {
+                io_failed = true;
+                return false;
+            }
+
+            uint32_t row_size = 0;
+            std::memcpy(&row_size, result.bytes.data() + local,
+                        sizeof(row_size));
+            if (row_size > result.bytes.size() - local - 4) {
+                io_failed = true;
+                return false;
+            }
+            if (!emit_row(row.fid, result.bytes.data() + local + 4,
+                          row_size)) {
+                callback_stopped = true;
+                return false;
+            }
+        }
+        return true;
+    };
+
+#ifdef _WIN32
+    const size_t prefetch_depth = async_depth();
+    std::deque<std::future<BatchResult>> pending;
+
+    auto consume_front = [&]() -> bool {
+        if (pending.empty()) return true;
+        BatchResult result = pending.front().get();
+        pending.pop_front();
+        return process_batch(result);
+    };
+
+    auto submit_batch = [&](ReadBatch batch) -> bool {
+        if (batch.rows.empty()) return true;
+        if (prefetch_depth <= 1) {
+            BatchResult result = read_batch(std::move(batch));
+            return process_batch(result);
+        }
+        pending.emplace_back(std::async(
+            std::launch::async,
+            [&, batch = std::move(batch)]() mutable {
+                return read_batch(std::move(batch));
+            }));
+        if (pending.size() >= prefetch_depth)
+            return consume_front();
+        return true;
+    };
+#else
+    const size_t prefetch_depth = 1;
+    auto submit_batch = [&](ReadBatch batch) -> bool {
+        if (batch.rows.empty()) return true;
+        BatchResult result = read_batch(std::move(batch));
+        return process_batch(result);
+    };
+#endif
+
+    auto finish_current = [&]() -> bool {
+        if (current.rows.empty()) return true;
+        ReadBatch batch = std::move(current);
+        current = ReadBatch{};
+        return submit_batch(std::move(batch));
+    };
 
     for (uint32_t fid = 0; fid < feature_offsets_.size(); ++fid) {
         const uint64_t offset = feature_offsets_[fid];
         if (offset == 0 || offset >= file_size_) continue;
+        const uint64_t available = file_size_ - offset;
+        const uint64_t bounded_record = std::min(max_record_bytes, available);
+        const uint64_t row_end = offset + bounded_record;
 
-        uint32_t row_size = 0;
-        const uint8_t* row_begin = nullptr;
-        const uint8_t* row_end = nullptr;
-
-        if (mapped_data_ != nullptr) {
-            if (offset > file_size_ - std::min<size_t>(file_size_, 4U))
-                return 0;
-            const uint8_t* length_ptr = mapped_data_ + offset;
-            if (length_ptr + 4 > mapped_data_ + file_size_) return 0;
-            std::memcpy(&row_size, length_ptr, sizeof(row_size));
-            row_begin = length_ptr + 4;
-            if (row_size > static_cast<size_t>(mapped_data_ + file_size_ - row_begin))
-                return 0;
-            row_end = row_begin + row_size;
-        } else if (fd_ >= 0) {
-            uint8_t length_buffer[4];
-            if (!read_at(offset, length_buffer, sizeof(length_buffer))) return 0;
-            std::memcpy(&row_size, length_buffer, sizeof(row_size));
-            if (offset + 4 > file_size_ ||
-                row_size > file_size_ - static_cast<size_t>(offset + 4)) {
-                return 0;
-            }
-            if (row_buffer_.size() < row_size) row_buffer_.resize(row_size);
-            if (row_size != 0 &&
-                !read_at(offset + 4, row_buffer_.data(), row_size)) {
-                return 0;
-            }
-            row_begin = row_buffer_.data();
-            row_end = row_begin + row_size;
+        bool fits = false;
+        if (!current.rows.empty() && offset >= current.offset) {
+            const uint64_t span = row_end - current.offset;
+            fits = span <= batch_limit;
+        }
+        if (!fits) {
+            if (!finish_current()) break;
+            current.offset = offset;
+            current.size = static_cast<size_t>(bounded_record);
         } else {
-            return 0;
+            current.size = std::max(
+                current.size, static_cast<size_t>(row_end - current.offset));
         }
-
-        if (row_size == 0) {
-            if (!callback(fid, nullptr, 0, true)) break;
-            ++scanned;
-            continue;
-        }
-
-        bool accepted = false;
-        size_t best_padding = static_cast<size_t>(row_end - row_begin) + 1;
-        const uint8_t* best_geometry = nullptr;
-        size_t best_geometry_size = 0;
-        bool best_geometry_null = true;
-
-        for (size_t bitmap_bytes = max_bitmap_bytes;; --bitmap_bytes) {
-            if (bitmap_bytes <= static_cast<size_t>(row_end - row_begin)) {
-                const int max_present_bits = std::min(
-                    nullable_count, static_cast<int>(bitmap_bytes * 8));
-                for (int present_bits = max_present_bits;
-                     present_bits >= 0;
-                     --present_bits) {
-                    const uint8_t* cursor = row_begin + bitmap_bytes;
-                    const uint8_t* bitmap = bitmap_bytes ? row_begin : nullptr;
-                    const uint8_t* geometry = nullptr;
-                    size_t geometry_size = 0;
-                    bool geometry_null = true;
-                    int nullable_bit = 0;
-                    bool valid = true;
-
-                    for (size_t field_index = 0;
-                         field_index < fields_.size();
-                         ++field_index) {
-                        const FieldDescriptor& field = fields_[field_index];
-                        bool is_null = false;
-                        if ((field.flag & 1U) != 0) {
-                            is_null = null_bit(bitmap, bitmap_bytes,
-                                               nullable_bit, present_bits);
-                            ++nullable_bit;
-                        }
-                        if (is_null) {
-                            if (static_cast<int>(field_index) ==
-                                geometry_field_index_) {
-                                geometry_null = true;
-                            }
-                            continue;
-                        }
-
-                        const uint8_t* value_data = nullptr;
-                        size_t value_size = 0;
-                        if (!skip_value(field, cursor, row_end,
-                                        &value_data, &value_size)) {
-                            valid = false;
-                            break;
-                        }
-                        if (static_cast<int>(field_index) ==
-                            geometry_field_index_) {
-                            geometry = value_data;
-                            geometry_size = value_size;
-                            geometry_null = false;
-                        }
-                    }
-
-                    if (!valid) continue;
-                    const size_t padding = static_cast<size_t>(row_end - cursor);
-                    if (!all_zero(cursor, row_end) || padding >= best_padding)
-                        continue;
-
-                    accepted = true;
-                    best_padding = padding;
-                    best_geometry = geometry;
-                    best_geometry_size = geometry_size;
-                    best_geometry_null = geometry_null;
-                    if (padding == 0) break;
-                }
-            }
-            if (accepted && best_padding == 0) break;
-            if (bitmap_bytes == 0) break;
-        }
-
-        if (!accepted) {
-            if (!callback(fid, nullptr, 0, true)) break;
-        } else if (!callback(fid, best_geometry, best_geometry_size,
-                             best_geometry_null)) {
-            break;
-        }
-        ++scanned;
+        current.rows.push_back(RowRef{fid, offset});
     }
 
-    return scanned;
+    if (!callback_stopped && !io_failed)
+        finish_current();
+
+#ifdef _WIN32
+    while (!pending.empty()) {
+        if (!callback_stopped && !io_failed) {
+            consume_front();
+        } else {
+            pending.front().wait();
+            pending.pop_front();
+        }
+    }
+#endif
+
+    if (io_trace_enabled()) {
+        std::fprintf(stderr,
+                     "fast-gdb windows dense-scan: mode=fallback records=%llu "
+                     "batch_reads=%llu bytes=%llu async_depth=%zu failed=%s\n",
+                     static_cast<unsigned long long>(scanned),
+                     static_cast<unsigned long long>(batch_reads),
+                     static_cast<unsigned long long>(bytes_read),
+                     prefetch_depth, io_failed ? "true" : "false");
+    }
+    return io_failed ? 0 : scanned;
 }
 
 } // namespace explorgdb
