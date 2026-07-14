@@ -12,21 +12,23 @@
   - `fallback-sync`: mmap disabled and true synchronous positional batch reads
   - `fallback-overlapped`: mmap disabled and bounded asynchronous `ReadFile/OVERLAPPED` batches
 - Cache modes:
-  - `cold`: RAMMap clears the Windows file cache separately before every fast-gdb sample and every GDAL sample
+  - `cold`: before every fast-gdb sample and every GDAL sample, RAMMap empties process working sets and the standby list; fast-gdb's process-level `.gdbtablx` cache is bypassed
   - `warm`: explicit warm-up followed by steady-state trials
 - Trials: 20 per independent coverage process; median and P95 are reported
 - Baselines:
-  - Windows `fallback-sync` is compared with a Release build of `main` using the same benchmark harness
+  - Windows `fallback-sync` must not be slower than a Release build of `main` using the same benchmark harness
   - Linux and macOS run a separate 10M warm current-versus-`main` matrix with a 5% regression limit
 
 ## P0-P3 implementation record
 
 | Priority | Implementation | Failure behavior |
 |---|---|---|
-| P0 | UTF-8 `CreateFileW`; allocation-granularity aligned full mappings; parser-owned one-handle/one-view sliding mapping for large or forced-windowed files; dense and sparse scanners both use mapped geometry bytes | Mapping creation/view failure leaves the CRT descriptor open and selects the synchronous positional-I/O path; view is unmapped and mapping handle closed before descriptor teardown |
+| P0 | UTF-8 `CreateFileW`; allocation-granularity aligned full mappings; parser-owned one-handle/one-view sliding mapping for large or forced-windowed files; dense and sparse scanners both use mapped geometry bytes | Mapping creation/view failure leaves the CRT descriptor open and selects the synchronous positional-I/O path; sliding views are unmapped and their mapping handle is closed before the parser can close the descriptor |
 | P1 | Dense fallback reads configurable 1-8 MiB physical windows. Record prefixes are parsed from the window; only a record that actually crosses the window receives one exact follow-up read | Persistent synchronous read or parse failure returns zero so `QueryEngine` rolls back the sequential optimization and evaluates canonical candidates |
 | P2 | Sparse `.spx` FIDs are resolved through `.gdbtablx`, sorted by physical offset, grouped by bounded physical windows, evaluated, and final matched FIDs restored to ascending order | Metrics and matched FIDs are snapshotted; partial failure rolls back and runs the canonical exact per-FID locator |
 | P3 | Opt-in bounded prefetch uses short-lived `ReOpenFile(...FILE_FLAG_OVERLAPPED)` handles. Live handles are bounded by in-flight depth; no process-lifetime handle cache remains | Async launch, future retrieval, allocation, and overlapped-read failures all retry the affected batch with the true synchronous positional reader |
+
+The public parser header includes a macro-free Windows mapping declaration. POSIX compatibility macros remain private to the Windows implementation boundary.
 
 ## Self-review fixes covered by tests
 
@@ -55,7 +57,7 @@ Every benchmark process fails unless all applicable conditions hold:
 5. `mmap` observes an actual successful full or windowed mapping and no fallback geometry scan.
 6. `fallback-sync` observes a synchronous fallback path, zero OVERLAPPED batches, and no parallel depth.
 7. `fallback-overlapped` observes OVERLAPPED batches and an actual in-flight depth of at least two.
-8. Windows fallback median does not regress more than 5% against the same-machine `main` Release build.
+8. Windows fallback median is not greater than the same-machine `main` Release median for any matrix row.
 9. Linux and macOS 10M warm medians do not regress more than 5% against `main` for any coverage row.
 
 ## Evidence layout
@@ -76,7 +78,7 @@ The POSIX workflow uploads `posix-10m-main-regression.csv` and per-case logs sep
 
 ## Windows reproduction
 
-Build the current branch and a `main` worktree with the same configuration, then run:
+Build the current branch and a `main` worktree with the same configuration. Create a cache-clear command that runs both `RAMMap64.exe -Ew` and `RAMMap64.exe -Es`, then pass that command file as `-RamMapPath`:
 
 ```powershell
 ./scripts/windows/run_spatial_acceptance.ps1 `
@@ -84,11 +86,11 @@ Build the current branch and a `main` worktree with the same configuration, then
   -BaselineBuildDir baseline/build-windows `
   -DataRoot test_data/spatial_matrix/windows `
   -OutputDir artifacts/windows-spatial-acceptance `
-  -RamMapPath tools/rammap/RAMMap64.exe `
+  -RamMapPath tools/rammap/clear-file-cache.cmd `
   -Generate
 ```
 
-RAMMap must have its Sysinternals EULA accepted before strict cold samples. The workflow performs that initialization explicitly.
+The committed workflow creates this wrapper and accepts the Sysinternals EULA before sampling.
 
 ## POSIX reproduction
 
@@ -106,6 +108,10 @@ python3 scripts/run_spatial_regression.py \
 
 **BLOCKED — no acceptance result or PASS is claimed.**
 
-Latest inspected Windows run `29322020908` failed before a hosted runner executed any step. Its only job has `steps=null` and no log URL. The same commit's `release`, `spatial-query`, and `geometry-correctness` workflows exhibit the same pre-step failure pattern.
+On commit `7a0343dcaf9aa0662c96c75219878dff4497156c`:
 
-The implementation, deterministic tests, strict cache protocol, path assertions, and A/B workflows are committed, but none has produced compiler, unit-test, benchmark, or artifact output in GitHub Actions. This document must be updated with successful run URLs, uploaded CSV files, machine details, and the final PASS/FAIL decision before the draft pull request is marked ready.
+- Windows acceptance run `29322601432` created its expected job, but the job completed with `steps=None` and no log URL.
+- POSIX regression run `29322601366` created both Linux and macOS jobs, but both completed with `steps=None` and no log URLs.
+- The existing `release`, `spatial-query`, and `geometry-correctness` workflows showed the same pre-step failure pattern.
+
+This demonstrates that both new workflows are syntactically registered, but no hosted runner has executed checkout, configuration, compilation, tests, or benchmarks. The implementation, deterministic tests, strict cache protocol, path assertions, and A/B workflows are committed, but none has produced runtime evidence. This document must be updated with successful run URLs, uploaded CSV files, machine details, and the final PASS/FAIL decision before the draft pull request is marked ready.
