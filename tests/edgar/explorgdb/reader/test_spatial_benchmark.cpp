@@ -458,7 +458,7 @@ size_t collect_steady_state(const fs::path& gdb_path,
         return 0;
     }
     GDALDataset* dataset = static_cast<GDALDataset*>(GDALOpenEx(
-        gdb_path.c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY,
+        gdb_path.string().c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY,
         nullptr, nullptr, nullptr));
     if (dataset == nullptr) {
         ADD_FAILURE() << "Cannot open GDB via GDAL";

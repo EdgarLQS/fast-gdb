@@ -78,8 +78,9 @@ private:
             if (include_wide_blob) {
                 const auto& payload = index == feature_count / 2U
                     ? wide_payload : small_payload;
+                const int payload_idx = layer->GetLayerDefn()->GetFieldIndex("payload");
                 feature->SetField(
-                    "payload",
+                    payload_idx,
                     static_cast<int>(payload.size()),
                     payload.data());
             }

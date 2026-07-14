@@ -6,6 +6,13 @@
 #include <filesystem>
 #include <fstream>
 #include <gtest/gtest.h>
+
+// MinGW 兼容：setenv/unsetenv 不可用，使用 _putenv_s
+#if defined(_WIN32) || defined(__MINGW32__) || defined(__MINGW64__)
+# include <stdlib.h>
+# define setenv(name, value, overwrite) _putenv_s(name, value)
+# define unsetenv(name) _putenv_s(name, "")
+#endif
 #include <atomic>
 #include <chrono>
 #include <cstdlib>

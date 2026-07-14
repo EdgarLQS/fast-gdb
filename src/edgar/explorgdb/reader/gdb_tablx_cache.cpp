@@ -42,6 +42,8 @@ bool TablxCache::make_key(const std::string& file_path, TablxCacheKey& key) {
     key.mtime = static_cast<int64_t>(st.st_mtime);
 #if defined(__APPLE__)
     key.mtime_nsec = static_cast<int64_t>(st.st_mtimespec.tv_nsec);
+#elif defined(_WIN32) || defined(__MINGW32__) || defined(__MINGW64__)
+    key.mtime_nsec = 0;
 #else
     key.mtime_nsec = static_cast<int64_t>(st.st_mtim.tv_nsec);
 #endif
