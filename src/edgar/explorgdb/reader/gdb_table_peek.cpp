@@ -66,10 +66,16 @@ bool GdbTableParser::peek_geometry_blob(uint32_t fid,
     } else if (fd_ >= 0) {
         if (offset + 4 > file_size_) return false;
 
-        // P2: merge physically adjacent sparse candidates into one bounded read
-        // window. .spx candidates are normally close to FID/physical order, so
-        // subsequent lookups reuse this buffer; non-local candidates simply
-        // replace it without changing spatial semantics or FID identity.
+        if (sparse_window_fd_ != fd_) {
+            sparse_window_buffer_.clear();
+            sparse_window_offset_ = 0;
+            sparse_window_size_ = 0;
+            sparse_window_fd_ = fd_;
+        }
+
+        // The bulk P2 path sorts and merges all candidate ranges. This canonical
+        // per-FID path keeps a smaller aligned cache for isolated callers and for
+        // the transactional fallback when bulk range processing is unavailable.
         constexpr uint64_t kAlignment = 64U * 1024U;
         const uint64_t window_end = sparse_window_offset_ + sparse_window_size_;
         bool in_window = !sparse_window_buffer_.empty() &&
