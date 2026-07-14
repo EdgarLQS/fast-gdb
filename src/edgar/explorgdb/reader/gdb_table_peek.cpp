@@ -1,7 +1,10 @@
 #include "gdb_table.h"
 #include "field_layout.h"
 #include <algorithm>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <limits>
 
 namespace explorgdb {
 namespace {
@@ -11,6 +14,23 @@ bool is_zero_padding(const uint8_t* cursor, const uint8_t* end) {
         if (*cursor++ != 0) return false;
     }
     return true;
+}
+
+size_t sparse_window_bytes() {
+    constexpr size_t kMiB = 1024U * 1024U;
+    constexpr size_t kDefaultMiB = 1;
+    constexpr size_t kMaximumMiB = 8;
+    const char* value = std::getenv("FAST_GDB_WINDOWS_SPARSE_WINDOW_MB");
+    if (value == nullptr || *value == '\0') return kDefaultMiB * kMiB;
+    char* end = nullptr;
+    const unsigned long parsed = std::strtoul(value, &end, 10);
+    if (end == value || *end != '\0' || parsed == 0) return kDefaultMiB * kMiB;
+    return std::min<size_t>(static_cast<size_t>(parsed), kMaximumMiB) * kMiB;
+}
+
+bool io_trace_enabled() {
+    const char* value = std::getenv("FAST_GDB_WINDOWS_IO_TRACE");
+    return value != nullptr && value[0] == '1';
 }
 
 } // namespace
@@ -46,16 +66,54 @@ bool GdbTableParser::peek_geometry_blob(uint32_t fid,
     } else if (fd_ >= 0) {
         if (offset + 4 > file_size_) return false;
 
-        uint8_t len_buffer[4];
-        if (!read_at(offset, len_buffer, sizeof(len_buffer))) return false;
-        BinaryReader len_reader(len_buffer, sizeof(len_buffer));
-        const uint32_t blob_len = len_reader.read_u32();
+        // P2: merge physically adjacent sparse candidates into one bounded read
+        // window. .spx candidates are normally close to FID/physical order, so
+        // subsequent lookups reuse this buffer; non-local candidates simply
+        // replace it without changing spatial semantics or FID identity.
+        constexpr uint64_t kAlignment = 64U * 1024U;
+        const uint64_t window_end = sparse_window_offset_ + sparse_window_size_;
+        bool in_window = !sparse_window_buffer_.empty() &&
+                         offset >= sparse_window_offset_ &&
+                         offset + 4 <= window_end;
+        if (!in_window) {
+            sparse_window_offset_ = offset - (offset % kAlignment);
+            sparse_window_size_ = static_cast<size_t>(std::min<uint64_t>(
+                sparse_window_bytes(), file_size_ - sparse_window_offset_));
+            sparse_window_buffer_.resize(sparse_window_size_);
+            if (sparse_window_size_ == 0 ||
+                !read_at(sparse_window_offset_, sparse_window_buffer_.data(),
+                         sparse_window_size_)) {
+                sparse_window_buffer_.clear();
+                sparse_window_size_ = 0;
+                return false;
+            }
+            if (io_trace_enabled()) {
+                std::fprintf(stderr,
+                             "fast-gdb windows sparse-read: offset=%llu bytes=%zu\n",
+                             static_cast<unsigned long long>(sparse_window_offset_),
+                             sparse_window_size_);
+            }
+        }
+
+        const size_t local_offset = static_cast<size_t>(
+            offset - sparse_window_offset_);
+        if (local_offset + 4 > sparse_window_buffer_.size()) return false;
+        uint32_t blob_len = 0;
+        std::memcpy(&blob_len, sparse_window_buffer_.data() + local_offset,
+                    sizeof(blob_len));
         if (blob_len == 0 || offset + 4 + blob_len > file_size_) return false;
 
-        if (row_buffer_.size() < blob_len) row_buffer_.resize(blob_len);
-        if (!read_at(offset + 4, row_buffer_.data(), blob_len)) return false;
-        row_data = row_buffer_.data();
-        row_size = blob_len;
+        if (local_offset + 4 + blob_len <= sparse_window_buffer_.size()) {
+            row_data = sparse_window_buffer_.data() + local_offset + 4;
+            row_size = blob_len;
+        } else {
+            // A wide record straddles the bounded window. Preserve correctness
+            // with one exact positional read rather than growing the cache.
+            if (row_buffer_.size() < blob_len) row_buffer_.resize(blob_len);
+            if (!read_at(offset + 4, row_buffer_.data(), blob_len)) return false;
+            row_data = row_buffer_.data();
+            row_size = blob_len;
+        }
     } else {
         if (offset + 4 > file_data_.size()) return false;
         BinaryReader len_reader(file_data_.data() + offset, file_data_.size() - offset);
