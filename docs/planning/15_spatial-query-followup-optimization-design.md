@@ -57,11 +57,12 @@
 
 **关键发现**：
 
-1. **全几何、全规模 steady-state 的所有覆盖率均已通过验收标准**；10M fresh-open 已重跑，但 1% 因每轮完整解析 `.gdbtablx` 而未达小范围 200ms 门槛。
+1. **全几何、全规模 steady-state 的所有覆盖率均已通过验收标准**；Polygon 的 10M fresh-open 缓存矩阵和 1% 冷打开复测也已通过验收。
 2. **旧数据为测量伪影**：profile 开销在 30% 达 +51%，80% 达 +73%，100% 达 +104%。
 3. **Phase E 已校准**：将 direct scan 默认估算覆盖率阈值由 35% 下调到 29%，使实际约 29.76% 的 30% 窗口选择顺序扫描。
 4. **profile OFF 下的绝对差距极小**：最慢的 30% 也仅 320ms (vs GDAL 1492ms)。
-5. steady-state 下 Phase B/C/D/F 均不触发；**Phase G（TablxCache）** 已实施——10M fresh-open 1% 从 1444ms 降至 90ms，通过所有验收标准。
+5. steady-state 下 Phase B/C/D/F 均不触发；**Phase G（TablxCache）** 已完成——Polygon 的 10M fresh-open 1% 从 1444.4ms 降至 92.8ms，通过所有当前验收标准。
+6. 当前 fresh-open 完整矩阵仅覆盖 Polygon；Point、MultiPoint、Polyline 的 fresh-open 性能仍不作完成声明。
 - 方向性复测（旧数据，2026-07-14 早期）
 - [当前结论](../evidence/spatial-query-baseline-2026-07-14.md)
 
@@ -323,13 +324,16 @@ streaming_invalid
 
 ### 9.2 性能效果
 
-10M fresh-open Polygon 1%（进程内重复 open，中位数 of 5）：
+10M fresh-open Polygon 全矩阵（进程内重复 open，中位数 of 5）：
 
 | 模式 | fast_med | gdal_med | ratio | 验收 |
 |:----|:--------:|:--------:|:-----:|:----:|
-| 无缓存（cold-open） | 152.1 ms | 127.8 ms | 1.191 | ✅（+24ms < 200ms） |
-| 有缓存（重复 fresh-open） | 89.6 ms | 124.2 ms | 0.721 | ✅ |
-| 稳态 | 37.8 ms | 123.7 ms | 0.305 | ✅ |
+| 有缓存 1% | 92.8 ms | 126.3 ms | 0.735 | ✅（-33.5ms） |
+| 有缓存 10% | 228.8 ms | 605.4 ms | 0.378 | ✅ |
+| 有缓存 30% | 404.5 ms | 1438.1 ms | 0.281 | ✅ |
+| 有缓存 80% | 391.8 ms | 3413.1 ms | 0.115 | ✅ |
+| 有缓存 100% | 314.8 ms | 2909.7 ms | 0.108 | ✅ |
+| 冷打开 1% | 154.9 ms | 124.5 ms | 1.245 | ✅（+30.4ms < 200ms） |
 
 ### 9.3 测试
 
@@ -337,7 +341,9 @@ streaming_invalid
 - 8 线程并发读写 —— 无死锁、无数据损坏 ✅
 - 绕过标志 `FAST_GDB_TABLX_CACHE=0` ✅
 - 1M/10M steady-state 无回归 ✅
-- 10M fresh-open 全矩阵（1%/10%/30%/80%/100%）通过 ✅
+- 10M Polygon fresh-open 全矩阵（1%/10%/30%/80%/100%）通过 ✅
+- 10M Polygon 冷打开 1% 通过 +200ms 容忍 ✅
+- 全量 CTest 481/481 通过 ✅
 
 ---
 
@@ -399,26 +405,11 @@ docs: record spatial optimization evidence
 - benchmark 强制开启逐候选细粒度计时；
 - fast-gdb 与 GDAL 的打开和结果物化口径不对称；
 - 固定查询顺序让首项承担主要冷页成本；
-- 当前生成矩阵以 Polygon 为主，尚不能代表所有常规 Geometry；
-- `docs/evidence/spatial-query-optimization-2026-07-13.md` 的实施状态已经落后于当前代码，最终验收时必须同步更新。
+- steady-state 矩阵已覆盖 Point、MultiPoint、Polyline、Polygon；fresh-open 完整矩阵当前仅覆盖 Polygon；
+- `docs/evidence/spatial-query-optimization-2026-07-13.md` 保留为历史实施记录，当前 Phase G 结论以本计划和最新验收记录为准。
 
-## 12. Phase G — `.gdbtablx` 跨 open 元数据缓存
+## 12. Phase G 历史触发依据
 
-**触发依据**：对称计时的 10M fresh-open 中，1% 为 fast-gdb 1444.4ms、GDAL 264.7ms，超过小范围 +200ms 门槛；稳态相同查询为 58.5ms、132.8ms，说明瓶颈在打开期而不是空间谓词。
+**触发依据**：优化前对称计时的 10M fresh-open 1% 为 fast-gdb 1444.4ms、GDAL 264.7ms，超过小范围 +200ms 门槛；稳态相同查询为 58.5ms、132.8ms，说明瓶颈在打开期而不是空间谓词。
 
-### 12.1 实施范围
-
-1. 为已解析的 `.gdbtablx` 不可变偏移数据建立进程内共享缓存，键为规范化路径与文件身份（设备/inode、大小、修改时间）；命中时 `QueryEngine::open()` 共享只读数据，不重复解码 10M 条偏移。
-2. 缓存只保存 `.gdbtablx` 元数据，不缓存 Feature、Geometry、查询 FID 或查询结果；文件身份不匹配时自动失效并重新解析。
-3. 缓存必须线程安全且有明确容量上限/淘汰规则；打开失败、损坏 `.gdbtablx` 和缓存分配失败均回退现有解析流程，不改变查询语义。
-
-### 12.2 验证与口径
-
-- 增加缓存命中、未命中、解析耗时指标，以及命中/失效/损坏文件单元测试。
-- 保留 `FAST_GDB_TABLX_CACHE=0` 的真正冷打开基线；默认缓存路径单独标为“进程内重复 fresh-open”，不得与冷打开数据混写。
-- 两种口径均继续计入 catalog、resolver、engine 打开、查询和析构，并逐 trial 与 GDAL 比较完整 FID 集合。
-- 验收目标：10M 1% 默认缓存 fresh-open 满足 `fast <= gdal + 200ms` 或 `fast <= gdal * 0.90`，同时既有 1M/10M steady-state 不回归。
-
-### 12.3 大型数据集复用
-
-基准数据路径统一为 `test_data/spatial_matrix/<geometry>_<size>.gdb`。生成器验证图层名、几何类型、要素数和 `.spx` 后复用有效目录；数据仅在缺失、不完整或生成定义变更时重建，且同一输出路径必须串行生成。
+Phase G 已完成，正式实施内容、缓存边界、验证口径和数据复用规则见 Section 9 及当前证据文档。这里仅保留触发时的历史依据，避免将历史计划重复解释为待实施任务。

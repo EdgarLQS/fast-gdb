@@ -154,7 +154,7 @@ FileGDB Geometry Blob
 
 ### 5.4 2026-07-14 空间查询当前状态
 
-Release/profile-off 的 Point、MultiPoint、Polyline、Polygon 在 1K–10M 的 steady-state 覆盖率矩阵均通过完整 FID 对照和分档性能门槛。大数据集存放于 `test_data/spatial_matrix/` 并按已验证的图层、几何类型、要素数和 `.spx` 复用，不应在日常复测中重复生成。10M fresh-open 的 1% 仍慢于 GDAL，当前专项是 `.gdbtablx` 跨 open 元数据缓存；完整数据、边界和计划见 [空间查询公平基准验收记录](../evidence/spatial-query-baseline-2026-07-14.md) 与 [全规模空间查询性能优化计划](../planning/15_spatial-query-followup-optimization-design.md)。
+Release/profile-off 的 Point、MultiPoint、Polyline、Polygon 在 1K–10M 的 steady-state 覆盖率矩阵均通过完整 FID 对照和分档性能门槛。Polygon 的 10M fresh-open 缓存全矩阵也已通过，1% 冷打开为 154.9ms，比 GDAL 多 30.4ms，仍在 +200ms 容忍内。大数据集存放于 `test_data/spatial_matrix/` 并按已验证的图层、几何类型、要素数和 `.spx` 复用，不应在日常复测中重复生成。当前 fresh-open 完整矩阵仅覆盖 Polygon，Point、MultiPoint、Polyline 尚不作 fresh-open 完成声明；完整数据、边界和证据见 [空间查询公平基准验收记录](../evidence/spatial-query-baseline-2026-07-14.md) 与 [全规模空间查询性能优化计划](../planning/15_spatial-query-followup-optimization-design.md)。
 
 ## 6. 测试与验收体系
 

@@ -2,7 +2,7 @@
 
 **测试日期**: 2026-07-14
 **分支**: `agent/spatial-query-optimization`
-**提交**: 当前分支 `agent/spatial-query-optimization`；本次矩阵与规划器校准变更待提交
+**提交**: `e6230ad fix: harden tablx cache concurrency and invalidation`
 **测试机器**: Apple M5, 10 核, 16 GB RAM, SSD
 **操作系统**: macOS 26.4 (Darwin 25.4.0)
 **编译器**: Apple clang 21.0.0 (clang-2100.0.123.102)
@@ -22,7 +22,7 @@
 
 - [x] Adaptive 空间查询测试通过（5/5 测试通过）
 - [x] SpatialIndex 测试通过（11/11 测试通过）
-- [x] 全量 CTest 通过（354/369 通过，15 预期跳过）
+- [x] 全量 CTest 通过（481/481 通过，0 failed）
 - [x] 1K、10K、100K、1M、10M × Point、MultiPoint、Polyline、Polygon FID 一致性通过（全部覆盖率皆对比 GDAL 完整 FID 集合）
 - [x] 无 FID 不一致、无重复 FID、0 异常几何
 
@@ -38,10 +38,10 @@
 | 80% | 312.7 ms | 4049.0 ms | **0.077** | ≤ 0.90× GDAL | ✅ |
 | 100% | 235.2 ms | 3575.4 ms | **0.066** | ≤ 0.90× GDAL | ✅ |
 
-### 10M fresh-open（含打开+关闭，中位数 of 5）
+### 10M fresh-open 优化前基线（含打开+关闭，中位数 of 5）
 
 > 该组已使用对称计时重跑：fast-gdb 的 `catalog.scan()`、解析、`engine->open()`、查询和析构，以及 GDAL 的打开、查询和关闭都在计时内。
-> 1% 未通过小范围 200ms 容忍门槛；其余窗口通过。其根因是每次 fresh open 都完整解析 10M `.gdbtablx`，不是空间谓词路径。
+> 该表保留为 Phase G 优化前基线。1% 未通过小范围 200ms 容忍门槛，根因是每次 fresh open 都完整解析 10M `.gdbtablx`，不是空间谓词路径。
 
 | 覆盖率 | fast_med | gdal_med | ratio |
 |------:|--------:|--------:|------:|
@@ -58,23 +58,35 @@
 
 | 覆盖率 | fast_med | gdal_med | ratio | 验收目标 | 结果 |
 |------:|--------:|--------:|------:|---------|:---:|
-| 1% | 89.6 ms | 124.2 ms | **0.721** | ≤ +200ms 或 ≤ 0.90× GDAL | ✅ |
-| 10% | 234.4 ms | 601.0 ms | **0.390** | ≤ +200ms 或 ≤ 0.90× GDAL | ✅ |
-| 30% | 401.2 ms | 1435.8 ms | **0.279** | ≤ 0.90× GDAL | ✅ |
-| 80% | 391.7 ms | 3387.2 ms | **0.116** | ≤ 0.90× GDAL | ✅ |
-| 100% | 317.8 ms | 2897.2 ms | **0.110** | ≤ 0.90× GDAL | ✅ |
+| 1% | 92.8 ms | 126.3 ms | **0.735** | ≤ +200ms 或 ≤ 0.90× GDAL | ✅ |
+| 10% | 228.8 ms | 605.4 ms | **0.378** | ≤ +200ms 或 ≤ 0.90× GDAL | ✅ |
+| 30% | 404.5 ms | 1438.1 ms | **0.281** | ≤ 0.90× GDAL | ✅ |
+| 80% | 391.8 ms | 3413.1 ms | **0.115** | ≤ 0.90× GDAL | ✅ |
+| 100% | 314.8 ms | 2909.7 ms | **0.108** | ≤ 0.90× GDAL | ✅ |
 
 ### 10M cold-open fresh-open（FAST_GDB_TABLX_CACHE=0，真正的冷打开，中位数 of 5）
 
-> 无 TablxCache，每次均完整解析 `.gdbtablx`。1% 落在 +200ms 容忍内（+24ms），但 ratio 落后 GDAL。
+> 无 TablxCache，每次均完整解析 `.gdbtablx`。当前仅对 1% 窗口执行冷打开复测；其结果落在 +200ms 容忍内（+30.4ms），但 ratio 落后 GDAL。
 
 | 覆盖率 | fast_med | gdal_med | ratio | 验收目标 | 结果 |
 |------:|--------:|--------:|------:|---------|:---:|
-| 1% | 152.1 ms | 127.8 ms | 1.191 | ≤ +200ms 或 ≤ 0.90× GDAL | ✅ |
-| 10% | 282.9 ms | 620.0 ms | 0.456 | ≤ +200ms 或 ≤ 0.90× GDAL | ✅ |
-| 30% | 455.4 ms | 1488.2 ms | 0.306 | ≤ 0.90× GDAL | ✅ |
-| 80% | 449.3 ms | 3514.4 ms | 0.128 | ≤ 0.90× GDAL | ✅ |
-| 100% | 372.9 ms | 3063.2 ms | 0.122 | ≤ 0.90× GDAL | ✅ |
+| 1% | 154.9 ms | 124.5 ms | 1.245 | ≤ +200ms 或 ≤ 0.90× GDAL | ✅ |
+
+### 10M steady-state 回归（Phase G 后）
+
+| 覆盖率 | 本轮 fast_med | 基线 fast_med | 差异 | 结果 |
+|------:|--------------:|--------------:|-----:|:---:|
+| 1% | 40.6 ms | 58.5 ms | -31.0% | ✅ |
+| 30% | 324.0 ms | 321.4 ms | +0.8% | ✅ |
+| 80% | 314.8 ms | 312.7 ms | +0.7% | ✅ |
+| 100% | 243.2 ms | 235.2 ms | +3.4% | ✅ |
+
+### 1M steady-state 回归（Phase G 后）
+
+| 覆盖率 | 本轮 fast_med | 基线 fast_med | 差异 | 结果 |
+|------:|--------------:|--------------:|-----:|:---:|
+| 1% | 7.0 ms | 7.8 ms | -10.0% | ✅ |
+| 30% | 32.1 ms | 32.2 ms | -0.3% | ✅ |
 
 ### 1M steady-state（中位数 of 5）
 
@@ -131,8 +143,9 @@
 3. **路径规划生效**：80%+ 成功绕过 .spx (`spx_bypassed=true`)，走 sequential-planned。
 4. **Phase E 已执行**：将 direct scan 默认估算覆盖率阈值从 35% 调整为 29%，以覆盖实际约 29.76% 的 30% 窗口；原先 100K Polygon、1M Point、1M MultiPoint 的 30% 门禁均由此通过。
 5. **P95（观察值）**：仅5个样本，P95等价于最大值，不足以支撑稳定性结论。所列P95仅作为同批次内最大值观察，不应用于外推。
-6. **Phase G 完成**：`.gdbtablx` 跨 open 元数据缓存使 10M fresh-open 1% 从 1444ms 降到 90ms（16×改善），所有覆盖率通过验收。
-7. **冷打开仍可接受**：即使 `FAST_GDB_TABLX_CACHE=0`，10M fresh-open 1% 为 152ms，仅比 GDAL 多 24ms，仍在 +200ms 容忍内。
+6. **Phase G 完成**：`.gdbtablx` 跨 open 元数据缓存使 10M fresh-open 1% 从 1444.4ms 降到 92.8ms（15.5×改善），缓存 fresh-open 全矩阵通过验收。
+7. **冷打开仍可接受**：`FAST_GDB_TABLX_CACHE=0` 时 10M fresh-open 1% 为 154.9ms，仅比 GDAL 多 30.4ms，仍在 +200ms 容忍内。
+8. **稳态无回归**：1M/10M 回归窗口与基线差异在可接受范围内。
 
 ## 优化阶段触发判断
 
@@ -142,7 +155,7 @@
 | Phase C (spx 中密度) | Phase B 后 10%/30% 未达标 | **不触发** |
 | Phase D (Streaming Predicate) | Phase B/C 后 30% 未达标 | **不触发** |
 | Phase E (规划器校准) | 两个路径通过验证 | **已完成**：35% → 29% |
-| Phase G (gdbtablx 缓存) | fresh-open 10M 1% 因重复解析未达标 | **已完成**：TablxCache 使 1% 从 1444ms 降至 90ms |
+| Phase G (gdbtablx 缓存) | fresh-open 10M 1% 因重复解析未达标 | **已完成**：TablxCache 使 1% 从 1444.4ms 降至 92.8ms |
 | Phase F (条件并行) | 单线程 80%/100% 未达 0.90× GDAL | **不触发** |
 
 ## 新增/修改文件
