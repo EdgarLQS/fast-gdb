@@ -58,7 +58,7 @@ endif()
 
 function(fast_gdb_enable_warnings target)
     if(MSVC)
-        target_compile_options(${target} PRIVATE /W4 /permissive- /wd4100 /wd4244)
+        target_compile_options(${target} PRIVATE /W4 /permissive- /utf-8 /wd4100 /wd4244)
     else()
         target_compile_options(${target} PRIVATE -Wall -Wextra
                                -Wpedantic -Wno-unused-result)
