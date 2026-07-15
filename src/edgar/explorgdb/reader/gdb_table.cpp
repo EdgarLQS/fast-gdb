@@ -136,7 +136,7 @@ GdbTableParser::~GdbTableParser() {
 bool GdbTableParser::open() {
     if (fd_ >= 0 || mapped_data_) close_file();
 
-    fd_ = ::open(file_path_.c_str(), O_RDONLY);
+    fd_ = fast_gdb_open_utf8(file_path_.c_str(), O_RDONLY);
     if (fd_ < 0) {
         std::cerr << "Failed to open: " << file_path_ << "\n";
         return false;
