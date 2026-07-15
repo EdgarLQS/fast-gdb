@@ -2,3 +2,6 @@ test_data/
 .DS_Store
 /build/
 /build-*/
+/build_win
+/stderr.txt
+/stdout.txt

@@ -8,6 +8,10 @@
 #include "binary_reader.h"
 #include "gdb_geometry.h"
 
+#ifdef _WIN32
+#include "windows_sliding_map.h"
+#endif
+
 #include <functional>
 #include <shared_mutex>
 #include <string>
@@ -73,14 +77,24 @@ public:
 
     // Dedicated high-density spatial-query scanner. It validates the complete
     // physical row layout but never materializes FieldRef arrays and never
-    // exposes unrelated attribute columns. In mmap mode the geometry pointer is
-    // a stable zero-copy view into the table mapping for the callback duration.
+    // exposes unrelated attribute columns. mmap uses a stable zero-copy view;
+    // fd fallback uses bounded physical windows and P3 may prefetch a bounded
+    // number of those windows with ReadFile + OVERLAPPED.
     using GeometryScanCallback =
         std::function<bool(uint32_t fid,
                            const uint8_t* geometry_blob,
                            size_t geometry_size,
                            bool is_null)>;
     uint64_t scan_geometry_blobs(GeometryScanCallback callback);
+
+    // P2 sparse-candidate scanner. It resolves candidate FIDs through .gdbtablx,
+    // sorts by physical offset, merges nearby records into bounded read ranges,
+    // and invokes the callback in physical order. QueryEngine restores ascending
+    // FID order before exposing the final result set. A zero return means the
+    // caller should retain the canonical exact-read fallback.
+    uint64_t scan_geometry_candidates(
+        const std::vector<uint32_t>& candidates,
+        GeometryScanCallback callback);
 
 private:
     void parse_field_descriptor(BinaryReader& reader,
@@ -102,6 +116,13 @@ private:
     size_t file_size_ = 0;
     uint8_t* mapped_data_ = nullptr;
     std::vector<uint8_t> row_buffer_;
+
+#ifdef _WIN32
+    // P0 parser-owned mapping state. The object owns the mapping handle, current
+    // aligned view base/length, and logical pointer. Scanner scope guards reset
+    // it before the CRT file descriptor is closed.
+    FastGdbSlidingMap sliding_map_;
+#endif
 
     TableHeader header_;
     std::vector<FieldDescriptor> fields_;

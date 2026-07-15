@@ -95,10 +95,11 @@ jobs:
       - name: Detect repository real-data fixtures
         shell: bash
         run: |
-          if [[ -d "${GITHUB_WORKSPACE}/test_data/gdb/test_spatial_gdb.gdb" ]]; then
-            echo "FAST_GDB_REAL_DATASET=${GITHUB_WORKSPACE}/test_data/gdb/test_spatial_gdb.gdb" >> "$GITHUB_ENV"
+          regular="${GITHUB_WORKSPACE}/test_data/gdb/test_spatial_gdb.gdb/test_spatial_gdb.gdb"
+          if [[ -d "$regular" && -f "$regular/a0000000c.spx" ]]; then
+            echo "FAST_GDB_REAL_DATASET=$regular" >> "$GITHUB_ENV"
           else
-            echo "::notice::FAST_GDB_REAL_DATASET fixture is not present in this checkout; environment-gated contract will skip."
+            echo "::notice::regular FileGDB fixture is not present; local-only contract will skip."
           fi
           if [[ -d "${GITHUB_WORKSPACE}/test_data/gdb/testcurve.gdb" ]]; then
             echo "FAST_GDB_CURVE_DATASET=${GITHUB_WORKSPACE}/test_data/gdb/testcurve.gdb" >> "$GITHUB_ENV"

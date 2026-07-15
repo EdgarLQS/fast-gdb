@@ -4,8 +4,8 @@ generate_all_data.py
 在 testcurve.gdb 中创建完整的矢量测试数据集，覆盖 File GDB 主要矢量数据类型。
 包含：基础几何、曲线、椭圆、M/ZM、FID 间断、坏拓扑、大规模性能数据等。
 
-执行方式：
-    "D:\\software\\arcgis\\install\\arcpro352\\bin\\Python\\envs\\arcgispro-py3\\python.exe" generate_all_data.py
+执行前设置：
+    FAST_GDB_ARCPY_OUTPUT=C:\\fast-gdb-data\\testcurve.gdb
 
 环境要求：ArcGIS Pro 3.0+（含 arcpy）
 输出路径：testcurve.gdb/VectorData, FIDTest, BadTopology, PerfTest
@@ -23,7 +23,13 @@ import csv
 # ============================================================
 # 配置
 # ============================================================
-GDB = r"D:\software\arcgis\project\MyProject\testcurve.gdb"
+GDB = os.environ.get("FAST_GDB_ARCPY_OUTPUT", "").strip()
+if not GDB:
+    raise RuntimeError(
+        "请将 FAST_GDB_ARCPY_OUTPUT 设置为可重建的 testcurve.gdb 输出路径"
+    )
+if os.path.splitext(GDB)[1].lower() != ".gdb":
+    raise RuntimeError("FAST_GDB_ARCPY_OUTPUT 必须指向 .gdb 目录")
 FD = "VectorData"
 SR = arcpy.SpatialReference(3857)
 

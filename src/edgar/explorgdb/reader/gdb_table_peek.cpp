@@ -34,40 +34,57 @@ bool GdbTableParser::peek_geometry_blob(uint32_t fid,
     size_t row_size = 0;
 
     // The table is normally mmap-backed. Return a stable view into that mapping
-    // instead of copying every candidate row into row_buffer_. Large spatial
-    // queries can otherwise perform millions of avoidable memcpy operations.
+    // instead of copying every candidate row into row_buffer_.
     if (mapped_data_ != nullptr) {
-        if (offset + 4 > file_size_) return false;
+        if (offset > file_size_ - std::min<size_t>(file_size_, 4U)) return false;
         uint32_t blob_len = 0;
         std::memcpy(&blob_len, mapped_data_ + offset, sizeof(blob_len));
-        if (blob_len == 0 || offset + 4 + blob_len > file_size_) return false;
+        if (blob_len == 0 ||
+            blob_len > file_size_ - static_cast<size_t>(offset + 4)) {
+            return false;
+        }
         row_data = mapped_data_ + offset + 4;
         row_size = blob_len;
     } else if (fd_ >= 0) {
-        if (offset + 4 > file_size_) return false;
+        if (offset > file_size_ - std::min<size_t>(file_size_, 4U)) return false;
 
-        uint8_t len_buffer[4];
-        if (!read_at(offset, len_buffer, sizeof(len_buffer))) return false;
-        BinaryReader len_reader(len_buffer, sizeof(len_buffer));
-        const uint32_t blob_len = len_reader.read_u32();
-        if (blob_len == 0 || offset + 4 + blob_len > file_size_) return false;
-
-        if (row_buffer_.size() < blob_len) row_buffer_.resize(blob_len);
+        // Bulk spatial queries use scan_geometry_candidates(), which performs
+        // bounded physical range merging. This canonical per-FID fallback uses
+        // exact positional reads so no cached data can survive descriptor reuse.
+        uint32_t blob_len = 0;
+        if (!read_at(offset, &blob_len, sizeof(blob_len))) return false;
+        if (blob_len == 0 ||
+            blob_len > file_size_ - static_cast<size_t>(offset + 4)) {
+            return false;
+        }
+        try {
+            row_buffer_.resize(blob_len);
+        } catch (...) {
+            return false;
+        }
         if (!read_at(offset + 4, row_buffer_.data(), blob_len)) return false;
         row_data = row_buffer_.data();
         row_size = blob_len;
     } else {
-        if (offset + 4 > file_data_.size()) return false;
-        BinaryReader len_reader(file_data_.data() + offset, file_data_.size() - offset);
+        if (offset > file_data_.size() -
+                         std::min<size_t>(file_data_.size(), 4U)) {
+            return false;
+        }
+        BinaryReader len_reader(file_data_.data() + offset,
+                                file_data_.size() - offset);
         const uint32_t blob_len = len_reader.read_u32();
-        if (blob_len == 0 || offset + 4 + blob_len > file_data_.size()) return false;
+        if (blob_len == 0 ||
+            blob_len > file_data_.size() - static_cast<size_t>(offset + 4)) {
+            return false;
+        }
         row_data = file_data_.data() + offset + 4;
         row_size = blob_len;
     }
 
     try {
         const int nullable_count = nullable_field_count();
-        const size_t max_bitmap_size = static_cast<size_t>((nullable_count + 7) / 8);
+        const size_t max_bitmap_size =
+            static_cast<size_t>((nullable_count + 7) / 8);
         const uint8_t* best_blob = nullptr;
         size_t best_size = 0;
         size_t best_padding = row_size + 1;
@@ -80,7 +97,9 @@ bool GdbTableParser::peek_geometry_blob(uint32_t fid,
 
             const int max_present_bits =
                 std::min(nullable_count, static_cast<int>(bitmap_size * 8));
-            for (int present_bits = max_present_bits; present_bits >= 0; --present_bits) {
+            for (int present_bits = max_present_bits;
+                 present_bits >= 0;
+                 --present_bits) {
                 BinaryReader reader(row_data, row_size);
                 const uint8_t* nullable_bitmap = nullptr;
                 if (bitmap_size > 0) {
@@ -123,9 +142,9 @@ bool GdbTableParser::peek_geometry_blob(uint32_t fid,
                     }
                 }
 
-                if (valid &&
-                    reader.tell() <= row_size &&
-                    is_zero_padding(row_data + reader.tell(), row_data + row_size) &&
+                if (valid && reader.tell() <= row_size &&
+                    is_zero_padding(row_data + reader.tell(),
+                                    row_data + row_size) &&
                     candidate_blob != nullptr) {
                     const size_t padding = row_size - reader.tell();
                     if (padding < best_padding ||

@@ -45,7 +45,11 @@ GdbSpatialIndexParser::~GdbSpatialIndexParser() {
 }
 
 bool GdbSpatialIndexParser::parse() {
-    fd_ = open(file_path_.c_str(), O_RDONLY);
+#ifdef _WIN32
+    fd_ = fast_gdb_open_utf8(file_path_.c_str(), O_RDONLY);
+#else
+    fd_ = ::open(file_path_.c_str(), O_RDONLY);
+#endif
     if (fd_ < 0) return false;
 
     struct stat st;

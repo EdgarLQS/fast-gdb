@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -29,10 +30,6 @@ namespace {
 
 constexpr const char* kLayerName = "features";
 
-// ============================================================================
-// Benchmark case definitions
-// ============================================================================
-
 struct BenchmarkCase {
     const char* name;
     double target_coverage;
@@ -46,58 +43,81 @@ BenchmarkCase centered_case(const char* name, double coverage) {
     constexpr double kExtentMin = 0.0;
     constexpr double kExtentMax = 100000.0;
     constexpr double kCenter = (kExtentMin + kExtentMax) / 2.0;
-    const double side =
-        std::sqrt(coverage) * (kExtentMax - kExtentMin);
+    const double side = std::sqrt(coverage) * (kExtentMax - kExtentMin);
     const double half = side / 2.0;
-    return BenchmarkCase{
-        name, coverage,
-        kCenter - half, kCenter - half,
-        kCenter + half, kCenter + half};
+    return BenchmarkCase{name, coverage,
+                         kCenter - half, kCenter - half,
+                         kCenter + half, kCenter + half};
 }
 
 std::vector<BenchmarkCase> density_cases() {
-    return {
+    std::vector<BenchmarkCase> cases = {
         centered_case("coverage_01pct", 0.01),
         centered_case("coverage_10pct", 0.10),
         centered_case("coverage_30pct", 0.30),
         centered_case("coverage_80pct", 0.80),
         {"coverage_full", 1.0, -1000.0, -1000.0, 101000.0, 101000.0},
     };
+    const char* selected = std::getenv("FAST_GDB_BENCHMARK_CASE");
+    if (selected == nullptr || selected[0] == '\0') return cases;
+    cases.erase(std::remove_if(cases.begin(), cases.end(),
+                              [&](const BenchmarkCase& item) {
+                                  return std::string(item.name) != selected;
+                              }),
+                cases.end());
+    return cases;
 }
-
-// ============================================================================
-// Environment helpers
-// ============================================================================
 
 bool env_enabled(const char* name) {
     const char* value = std::getenv(name);
     return value != nullptr && std::string(value) == "1";
 }
 
-// ============================================================================
-// Benchmark mode selection
-// ============================================================================
+constexpr int kDefaultNumTrials = 5;
+constexpr int kMaximumNumTrials = 100;
+
+int benchmark_trials() {
+    const char* value = std::getenv("FAST_GDB_BENCHMARK_TRIALS");
+    if (value == nullptr || *value == '\0') return kDefaultNumTrials;
+    char* end = nullptr;
+    const long parsed = std::strtol(value, &end, 10);
+    if (end == value || *end != '\0' || parsed < 1 ||
+        parsed > kMaximumNumTrials) {
+        return kDefaultNumTrials;
+    }
+    return static_cast<int>(parsed);
+}
 
 enum class BenchmarkMode {
-    SteadyState,  // default: open once, warm up, only time queries
-    FreshOpen,    // each run: open, query, close, time everything
+    SteadyState,
+    FreshOpen,
 };
 
 BenchmarkMode get_benchmark_mode() {
     const char* mode = std::getenv("FAST_GDB_BENCHMARK_MODE");
-    if (mode && std::string(mode) == "fresh-open") {
-        return BenchmarkMode::FreshOpen;
-    }
-    return BenchmarkMode::SteadyState;
+    return mode != nullptr && std::string(mode) == "fresh-open"
+        ? BenchmarkMode::FreshOpen : BenchmarkMode::SteadyState;
 }
 
-// ============================================================================
-// Query helpers
-// ============================================================================
+bool strict_cold_mode() {
+    return env_enabled("FAST_GDB_BENCHMARK_STRICT_COLD");
+}
 
-std::unique_ptr<QueryEngine> open_fast_engine(
-    const std::string& gdb_path,
-    GdbCatalog& catalog) {
+void clear_external_file_cache() {
+    if (!strict_cold_mode()) return;
+    const char* command = std::getenv("FAST_GDB_BENCHMARK_CACHE_CLEAR_COMMAND");
+    if (command == nullptr || command[0] == '\0') {
+        throw std::runtime_error(
+            "strict cold mode requires FAST_GDB_BENCHMARK_CACHE_CLEAR_COMMAND");
+    }
+    const int exit_code = std::system(command);
+    if (exit_code != 0) {
+        throw std::runtime_error("external file-cache clear failed");
+    }
+}
+
+std::unique_ptr<QueryEngine> open_fast_engine(const std::string& gdb_path,
+                                               GdbCatalog& catalog) {
     if (!catalog.scan(gdb_path)) return nullptr;
     CatalogResolver resolver(catalog);
     if (!resolver.load()) return nullptr;
@@ -114,9 +134,8 @@ struct TimedQueryResult {
     double wall_ms = 0.0;
 };
 
-TimedQueryResult query_fast_gdb(
-    QueryEngine& engine,
-    const BenchmarkCase& benchmark) {
+TimedQueryResult query_fast_gdb(QueryEngine& engine,
+                                const BenchmarkCase& benchmark) {
     const auto start = Clock::now();
     TimedQueryResult timed;
     timed.query = engine.query_bbox_unified(
@@ -132,45 +151,34 @@ struct GdalTimedResult {
     double wall_ms = 0.0;
 };
 
-GdalTimedResult query_gdal_steady_state(
-    GDALDataset* dataset,
-    const BenchmarkCase& benchmark) {
+GdalTimedResult query_gdal_steady_state(GDALDataset* dataset,
+                                        const BenchmarkCase& benchmark) {
     GdalTimedResult timed;
     OGRLayer* layer = dataset->GetLayerByName(kLayerName);
     if (layer == nullptr) return timed;
 
     const auto start = Clock::now();
-    layer->SetSpatialFilterRect(
-        benchmark.xmin, benchmark.ymin,
-        benchmark.xmax, benchmark.ymax);
+    layer->SetSpatialFilterRect(benchmark.xmin, benchmark.ymin,
+                                benchmark.xmax, benchmark.ymax);
     layer->ResetReading();
     while (OGRFeature* feature = layer->GetNextFeature()) {
         const GIntBig source_fid = feature->GetFID();
-        if (source_fid >= 1) {
-            timed.fids.push_back(
-                static_cast<uint32_t>(source_fid - 1));
-        }
+        if (source_fid >= 1)
+            timed.fids.push_back(static_cast<uint32_t>(source_fid - 1));
         OGRFeature::DestroyFeature(feature);
     }
     timed.wall_ms = std::chrono::duration<double, std::milli>(
         Clock::now() - start).count();
-
-    // Sort and deduplicate
     std::sort(timed.fids.begin(), timed.fids.end());
-    timed.fids.erase(
-        std::unique(timed.fids.begin(), timed.fids.end()),
-        timed.fids.end());
+    timed.fids.erase(std::unique(timed.fids.begin(), timed.fids.end()),
+                     timed.fids.end());
     return timed;
 }
 
-TimedQueryResult query_fast_gdb_fresh_open(
-    const std::string& gdb_path,
-    const BenchmarkCase& benchmark) {
+TimedQueryResult query_fast_gdb_fresh_open(const std::string& gdb_path,
+                                            const BenchmarkCase& benchmark) {
     TimedQueryResult timed;
     const auto start = Clock::now();
-
-    // Open, query, and close (via RAII) all inside the timer,
-    // symmetric with query_gdal_fresh_open
     {
         GdbCatalog catalog;
         auto engine = open_fast_engine(gdb_path, catalog);
@@ -180,18 +188,15 @@ TimedQueryResult query_fast_gdb_fresh_open(
                 benchmark.xmax, benchmark.ymax);
         }
     }
-
     timed.wall_ms = std::chrono::duration<double, std::milli>(
         Clock::now() - start).count();
     return timed;
 }
 
-GdalTimedResult query_gdal_fresh_open(
-    const std::string& gdb_path,
-    const BenchmarkCase& benchmark) {
+GdalTimedResult query_gdal_fresh_open(const std::string& gdb_path,
+                                      const BenchmarkCase& benchmark) {
     GdalTimedResult timed;
     const auto start = Clock::now();
-
     GDALDataset* dataset = static_cast<GDALDataset*>(GDALOpenEx(
         gdb_path.c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY,
         nullptr, nullptr, nullptr));
@@ -202,43 +207,31 @@ GdalTimedResult query_gdal_fresh_open(
         GDALClose(dataset);
         return timed;
     }
-
-    layer->SetSpatialFilterRect(
-        benchmark.xmin, benchmark.ymin,
-        benchmark.xmax, benchmark.ymax);
+    layer->SetSpatialFilterRect(benchmark.xmin, benchmark.ymin,
+                                benchmark.xmax, benchmark.ymax);
     layer->ResetReading();
     while (OGRFeature* feature = layer->GetNextFeature()) {
         const GIntBig source_fid = feature->GetFID();
-        if (source_fid >= 1) {
-            timed.fids.push_back(
-                static_cast<uint32_t>(source_fid - 1));
-        }
+        if (source_fid >= 1)
+            timed.fids.push_back(static_cast<uint32_t>(source_fid - 1));
         OGRFeature::DestroyFeature(feature);
     }
     GDALClose(dataset);
-
     timed.wall_ms = std::chrono::duration<double, std::milli>(
         Clock::now() - start).count();
-
     std::sort(timed.fids.begin(), timed.fids.end());
-    timed.fids.erase(
-        std::unique(timed.fids.begin(), timed.fids.end()),
-        timed.fids.end());
+    timed.fids.erase(std::unique(timed.fids.begin(), timed.fids.end()),
+                     timed.fids.end());
     return timed;
 }
-
-// ============================================================================
-// Statistics helpers
-// ============================================================================
 
 double median(std::vector<double>& values) {
     if (values.empty()) return 0.0;
     std::sort(values.begin(), values.end());
     const size_t n = values.size();
-    if (n % 2 == 0) {
-        return (values[n / 2 - 1] + values[n / 2]) / 2.0;
-    }
-    return values[n / 2];
+    return n % 2 == 0
+        ? (values[n / 2 - 1] + values[n / 2]) / 2.0
+        : values[n / 2];
 }
 
 double p95(std::vector<double>& values) {
@@ -249,10 +242,6 @@ double p95(std::vector<double>& values) {
     return values[std::min(idx, values.size() - 1)];
 }
 
-// ============================================================================
-// Per-case result collector
-// ============================================================================
-
 struct CaseRunResults {
     std::vector<double> fast_ms_vals;
     std::vector<double> gdal_ms_vals;
@@ -260,13 +249,8 @@ struct CaseRunResults {
     std::vector<GdalTimedResult> gdal_results;
 };
 
-constexpr int kNumTrials = 5;
 constexpr double kPerformanceRatioLimit = 0.90;
 constexpr double kSmallQueryToleranceMs = 200.0;
-
-// ============================================================================
-// Printing
-// ============================================================================
 
 void print_header(const std::string& label, size_t feature_count,
                   const char* mode_str, bool profile_enabled) {
@@ -288,27 +272,19 @@ void print_row(const BenchmarkCase& benchmark,
     const auto& metrics = fast.query.spatial_metrics;
     std::printf(
         "%-18s %9zu %8.2f%% %-31s %8.1f %8.1f %8.1f %8.1f %8.1f %8.1f %8.1f\n",
-        benchmark.name,
-        metrics.candidate_count,
+        benchmark.name, metrics.candidate_count,
         metrics.candidate_ratio * 100.0,
-        fast.query.execution_path.c_str(),
-        fast.wall_ms,
-        gdal.wall_ms,
-        metrics.candidate_lookup_ms,
-        metrics.geometry_scan_ms,
-        metrics.blob_lookup_ms,
-        metrics.bbox_filter_ms,
+        fast.query.execution_path.c_str(), fast.wall_ms, gdal.wall_ms,
+        metrics.candidate_lookup_ms, metrics.geometry_scan_ms,
+        metrics.blob_lookup_ms, metrics.bbox_filter_ms,
         metrics.exact_filter_ms);
     std::printf(
         "  funnel: candidate=%zu rejected=%zu contained=%zu exact=%zu "
         "invalid=%zu result=%zu coverage_est=%.2f%% target=%.0f%% "
         "spx_bypassed=%s geometry_only=%s fast/gdal=%.3f\n",
-        metrics.candidate_count,
-        metrics.bbox_rejected,
-        metrics.bbox_contained,
-        metrics.exact_tested,
-        metrics.invalid_geometries,
-        fast.query.matched_fids.size(),
+        metrics.candidate_count, metrics.bbox_rejected,
+        metrics.bbox_contained, metrics.exact_tested,
+        metrics.invalid_geometries, fast.query.matched_fids.size(),
         metrics.estimated_coverage * 100.0,
         benchmark.target_coverage * 100.0,
         metrics.spx_bypassed ? "true" : "false",
@@ -316,26 +292,13 @@ void print_row(const BenchmarkCase& benchmark,
         gdal.wall_ms > 0.0 ? fast.wall_ms / gdal.wall_ms : 0.0);
 }
 
-void print_summary_row(const char* name,
-                       double fast_median_ms, double gdal_median_ms,
-                       double fast_p95_ms, double gdal_p95_ms,
-                       double ratio) {
-    std::printf(
-        "%-18s %10.1f %10.1f %10.1f %10.1f %10.3f\n",
-        name, fast_median_ms, gdal_median_ms,
-        fast_p95_ms, gdal_p95_ms, ratio);
-}
-
 void print_summary_header(const char* mode_str) {
-    std::printf("\n--- %s Summary (median of %d) ---\n", mode_str, kNumTrials);
+    std::printf("\n--- %s Summary (median of %d) ---\n",
+                mode_str, benchmark_trials());
     std::printf("%-18s %10s %10s %10s %10s %10s\n",
                 "case", "fast_med", "gdal_med",
                 "fast_p95", "gdal_p95", "ratio");
 }
-
-// ============================================================================
-// Main benchmark runner
-// ============================================================================
 
 void store_result(CaseRunResults& results, TimedQueryResult fast,
                   GdalTimedResult gdal) {
@@ -345,15 +308,15 @@ void store_result(CaseRunResults& results, TimedQueryResult fast,
     results.gdal_results.push_back(std::move(gdal));
 }
 
-void warm_gdal_query(GDALDataset* dataset, const BenchmarkCase& benchmark) {
+void warm_gdal_query(GDALDataset* dataset,
+                     const BenchmarkCase& benchmark) {
     OGRLayer* layer = dataset->GetLayerByName(kLayerName);
     if (layer == nullptr) return;
     layer->SetSpatialFilterRect(benchmark.xmin, benchmark.ymin,
                                 benchmark.xmax, benchmark.ymax);
     layer->ResetReading();
-    while (OGRFeature* feature = layer->GetNextFeature()) {
+    while (OGRFeature* feature = layer->GetNextFeature())
         OGRFeature::DestroyFeature(feature);
-    }
 }
 
 void collect_steady_state(QueryEngine& engine, GDALDataset* dataset,
@@ -364,7 +327,7 @@ void collect_steady_state(QueryEngine& engine, GDALDataset* dataset,
                                   benchmark.xmax, benchmark.ymax);
         warm_gdal_query(dataset, benchmark);
     }
-    for (int trial = 0; trial < kNumTrials; ++trial) {
+    for (int trial = 0; trial < benchmark_trials(); ++trial) {
         for (size_t ci = 0; ci < cases.size(); ++ci) {
             const size_t idx = (ci + static_cast<size_t>(trial)) % cases.size();
             store_result(results[idx], query_fast_gdb(engine, cases[idx]),
@@ -373,31 +336,35 @@ void collect_steady_state(QueryEngine& engine, GDALDataset* dataset,
     }
 }
 
-void run_fresh_pair(const std::string& gdb_path, const BenchmarkCase& benchmark,
-                    bool fast_first, TimedQueryResult& fast,
+void run_fresh_pair(const std::string& gdb_path,
+                    const BenchmarkCase& benchmark,
+                    bool fast_first,
+                    TimedQueryResult& fast,
                     GdalTimedResult& gdal) {
     if (fast_first) {
+        clear_external_file_cache();
         fast = query_fast_gdb_fresh_open(gdb_path, benchmark);
+        clear_external_file_cache();
         gdal = query_gdal_fresh_open(gdb_path, benchmark);
     } else {
+        clear_external_file_cache();
         gdal = query_gdal_fresh_open(gdb_path, benchmark);
+        clear_external_file_cache();
         fast = query_fast_gdb_fresh_open(gdb_path, benchmark);
     }
 }
 
 void collect_fresh_open(const std::string& gdb_path,
                         const std::vector<BenchmarkCase>& cases,
-    std::vector<CaseRunResults>& results) {
-    for (size_t ci = 0; ci < cases.size(); ++ci) {
-        if (ci % 2 == 0) {
-            query_fast_gdb_fresh_open(gdb_path, cases[ci]);
-            query_gdal_fresh_open(gdb_path, cases[ci]);
-        } else {
-            query_gdal_fresh_open(gdb_path, cases[ci]);
-            query_fast_gdb_fresh_open(gdb_path, cases[ci]);
+                        std::vector<CaseRunResults>& results) {
+    if (!strict_cold_mode()) {
+        for (size_t ci = 0; ci < cases.size(); ++ci) {
+            TimedQueryResult fast;
+            GdalTimedResult gdal;
+            run_fresh_pair(gdb_path, cases[ci], ci % 2 == 0, fast, gdal);
         }
     }
-    for (int trial = 0; trial < kNumTrials; ++trial) {
+    for (int trial = 0; trial < benchmark_trials(); ++trial) {
         for (size_t ci = 0; ci < cases.size(); ++ci) {
             const size_t idx = (ci + static_cast<size_t>(trial)) % cases.size();
             TimedQueryResult fast;
@@ -410,9 +377,8 @@ void collect_fresh_open(const std::string& gdb_path,
 
 size_t feature_count_from(const std::vector<CaseRunResults>& results) {
     for (const auto& result : results) {
-        if (!result.fast_results.empty()) {
+        if (!result.fast_results.empty())
             return result.fast_results.front().spatial_metrics.feature_count;
-        }
     }
     return 0;
 }
@@ -422,7 +388,7 @@ void print_detailed_results(const std::vector<BenchmarkCase>& cases,
     for (size_t ci = 0; ci < cases.size(); ++ci) {
         const size_t last = results[ci].fast_ms_vals.size() - 1;
         TimedQueryResult fast{results[ci].fast_results[last],
-                               results[ci].fast_ms_vals[last]};
+                              results[ci].fast_ms_vals[last]};
         print_row(cases[ci], fast, results[ci].gdal_results[last]);
     }
 }
@@ -435,14 +401,15 @@ void print_summary(const std::vector<BenchmarkCase>& cases,
         const double fast_med = median(results[ci].fast_ms_vals);
         const double gdal_med = median(results[ci].gdal_ms_vals);
         const double ratio = gdal_med > 0.0 ? fast_med / gdal_med : 0.0;
-        print_summary_row(cases[ci].name, fast_med, gdal_med,
-                          p95(results[ci].fast_ms_vals),
-                          p95(results[ci].gdal_ms_vals), ratio);
+        std::printf("%-18s %10.1f %10.1f %10.1f %10.1f %10.3f\n",
+                    cases[ci].name, fast_med, gdal_med,
+                    p95(results[ci].fast_ms_vals),
+                    p95(results[ci].gdal_ms_vals), ratio);
     }
 }
 
-bool meets_performance_gate(const BenchmarkCase& benchmark, double fast_ms,
-                            double gdal_ms) {
+bool meets_performance_gate(const BenchmarkCase& benchmark,
+                            double fast_ms, double gdal_ms) {
     if (gdal_ms <= 0.0) return false;
     if (benchmark.target_coverage <= 0.10) {
         return fast_ms <= gdal_ms + kSmallQueryToleranceMs ||
@@ -455,10 +422,13 @@ void verify_results(const std::vector<BenchmarkCase>& cases,
                     std::vector<CaseRunResults>& results,
                     bool profile_enabled) {
     for (size_t ci = 0; ci < cases.size(); ++ci) {
-        for (size_t trial = 0; trial < results[ci].fast_results.size(); ++trial) {
+        for (size_t trial = 0;
+             trial < results[ci].fast_results.size();
+             ++trial) {
             const auto& fast = results[ci].fast_results[trial];
             const auto& gdal = results[ci].gdal_results[trial];
-            EXPECT_EQ(fast.matched_fids, gdal.fids) << cases[ci].name << trial;
+            EXPECT_EQ(fast.matched_fids, gdal.fids)
+                << cases[ci].name << trial;
             EXPECT_EQ(fast.spatial_metrics.invalid_geometries, 0u)
                 << fast.fallback_reason;
             EXPECT_LE(fast.spatial_metrics.bbox_rejected,
@@ -480,7 +450,7 @@ void verify_results(const std::vector<BenchmarkCase>& cases,
 
 size_t collect_steady_state(const fs::path& gdb_path,
                             const std::vector<BenchmarkCase>& cases,
-    std::vector<CaseRunResults>& results) {
+                            std::vector<CaseRunResults>& results) {
     GdbCatalog catalog;
     auto engine = open_fast_engine(gdb_path.string(), catalog);
     if (!engine || !engine->table()) {
@@ -488,7 +458,7 @@ size_t collect_steady_state(const fs::path& gdb_path,
         return 0;
     }
     GDALDataset* dataset = static_cast<GDALDataset*>(GDALOpenEx(
-        gdb_path.c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY,
+        gdb_path.string().c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY,
         nullptr, nullptr, nullptr));
     if (dataset == nullptr) {
         ADD_FAILURE() << "Cannot open GDB via GDAL";
@@ -500,14 +470,19 @@ size_t collect_steady_state(const fs::path& gdb_path,
     return feature_count;
 }
 
-void run_density_matrix(const fs::path& gdb_path, const std::string& label) {
+void run_density_matrix(const fs::path& gdb_path,
+                        const std::string& label) {
     ASSERT_TRUE(fs::is_directory(gdb_path))
         << "Benchmark data not found: " << gdb_path;
+    const auto cases = density_cases();
+    ASSERT_FALSE(cases.empty())
+        << "FAST_GDB_BENCHMARK_CASE did not match a configured case";
+
     const auto mode = get_benchmark_mode();
     const char* mode_str = mode == BenchmarkMode::FreshOpen
-        ? "fresh-open" : "steady-state";
+        ? (strict_cold_mode() ? "cold-fresh-open" : "fresh-open")
+        : "steady-state";
     const bool profile_enabled = env_enabled("FAST_GDB_SPATIAL_PROFILE");
-    const auto cases = density_cases();
     std::vector<CaseRunResults> results(cases.size());
     size_t feature_count = 0;
     if (mode == BenchmarkMode::SteadyState) {
@@ -522,10 +497,6 @@ void run_density_matrix(const fs::path& gdb_path, const std::string& label) {
     verify_results(cases, results, profile_enabled);
 }
 
-// ============================================================================
-// Test fixture
-// ============================================================================
-
 class SpatialDensityBenchmark : public ::testing::Test {
 protected:
     void SetUp() override {
@@ -534,11 +505,6 @@ protected:
             GTEST_SKIP()
                 << "Set FAST_GDB_RUN_SPATIAL_BENCHMARKS=1 to run benchmarks";
         }
-        // NOTE: FAST_GDB_SPATIAL_PROFILE is NOT forced on here.
-        // For wall-clock performance measurement, leave it unset.
-        // Set FAST_GDB_SPATIAL_PROFILE=1 separately for detailed hotspot analysis.
-        // This change is per Phase A of the spatial optimization plan:
-        // "墙钟性能门禁关闭 FAST_GDB_SPATIAL_PROFILE"
     }
 };
 
@@ -547,9 +513,8 @@ protected:
 TEST_F(SpatialDensityBenchmark, DensityMatrix1M) {
     const fs::path path = explorgdb_test_paths::test_data_path(
         "test_data/large/large_test.gdb");
-    if (!fs::is_directory(path)) {
+    if (!fs::is_directory(path))
         GTEST_SKIP() << "1M benchmark data not found: " << path;
-    }
     run_density_matrix(path, "1M generated polygons");
 }
 
@@ -560,18 +525,19 @@ TEST_F(SpatialDensityBenchmark, DensityMatrix10M) {
     }
     const fs::path path = explorgdb_test_paths::test_data_path(
         "test_data/large_10m/large_10m_test.gdb");
-    if (!fs::is_directory(path)) {
+    if (!fs::is_directory(path))
         GTEST_SKIP() << "10M benchmark data not found: " << path;
-    }
     run_density_matrix(path, "10M generated polygons");
 }
 
 TEST_F(SpatialDensityBenchmark, DensityMatrixConfigured) {
     const char* configured_path = std::getenv("FAST_GDB_BENCHMARK_PATH");
     if (configured_path == nullptr || configured_path[0] == '\0') {
-        GTEST_SKIP() << "Set FAST_GDB_BENCHMARK_PATH to run a configured matrix";
+        GTEST_SKIP()
+            << "Set FAST_GDB_BENCHMARK_PATH to run a configured matrix";
     }
     const char* configured_label = std::getenv("FAST_GDB_BENCHMARK_LABEL");
     run_density_matrix(configured_path,
-                       configured_label == nullptr ? "configured matrix" : configured_label);
+                       configured_label == nullptr
+                           ? "configured matrix" : configured_label);
 }

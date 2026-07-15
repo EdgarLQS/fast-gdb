@@ -16,6 +16,7 @@
 #include <gtest/gtest.h>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -154,6 +155,10 @@ static GDALDataset* createPolygonGdb(const char* path) {
 class WriteBenchmarkFixture : public ::testing::Test {
 protected:
     void SetUp() override {
+        const char* enabled = std::getenv("FAST_GDB_RUN_FULL_BENCHMARKS");
+        if (enabled == nullptr || std::string(enabled) != "1") {
+            GTEST_SKIP() << "Set FAST_GDB_RUN_FULL_BENCHMARKS=1 to run write benchmarks";
+        }
         GDALAllRegister();
         CPLSetConfigOption("CPL_DEBUG", "NO");
     }

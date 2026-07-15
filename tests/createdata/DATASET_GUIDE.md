@@ -1,17 +1,25 @@
 # testcurve.gdb 数据集生成说明
 
+本文保留 `testcurve.gdb` 的图层、字段和预期结果细节。测试数据分层、跨平台验证、环境变量与 GDAL 对照流程统一见
+[`docs/usage/03_测试数据准备与跨平台验证.md`](../../docs/usage/03_测试数据准备与跨平台验证.md)。
+
 ## 概述
 
 本脚本在 `testcurve.gdb` 中创建完整的矢量测试数据集，覆盖 File Geodatabase 支持的主要矢量数据类型和几何结构，用于 `fast-gdb` 项目的真实验收。
 
 **使用条件**：ArcGIS Pro 3.0+（含 arcpy）
 
-**执行命令**：
-```bash
-"D:\software\arcgis\install\arcpro352\bin\Python\envs\arcgispro-py3\python.exe" generate_all_data.py
+**输出配置**：通过环境变量指定本机可重建的测试目录：
+
+**执行命令**（PowerShell，使用 ArcGIS Pro 自带 Python）：
+
+```powershell
+$env:FAST_GDB_ARCPY_OUTPUT = 'C:\fast-gdb-data\testcurve.gdb'
+& 'C:\Program Files\ArcGIS\Pro\bin\Python\envs\arcgispro-py3\python.exe' `
+  tests\createdata\generate_all_data.py
 ```
 
-**输出路径**：`D:\software\arcgis\project\MyProject\testcurve.gdb`
+脚本会删除并重建 `GDB` 指向的数据，不能指向唯一的业务数据。下文的 `testcurve.gdb` 均指该可配置输出目录。
 
 ---
 
@@ -181,9 +189,6 @@ testcurve.gdb (41.1 MB, 1,120,080 要素, 44 图层)
 
 ## 重跑说明
 
-需要重建数据时，直接执行：
-```bash
-"D:\software\arcgis\install\arcpro352\bin\Python\envs\arcgispro-py3\python.exe" generate_all_data.py
-```
+需要重建数据时，确认 `FAST_GDB_ARCPY_OUTPUT` 后重新执行上面的 ArcGIS Pro Python 命令。
 
 脚本会删除所有现有数据并重建，可重复执行。
