@@ -41,7 +41,7 @@ protected:
     }
 
     int open_readonly() const {
-        return ::open(path_.string().c_str(), O_RDONLY);
+        return fast_gdb_open_utf8(path_.string().c_str(), O_RDONLY);
     }
 
     static constexpr std::array<char, 26> kPayload = {
@@ -59,7 +59,7 @@ TEST_F(WindowsMmapIoTest, MapsUnalignedLogicalOffset) {
     ASSERT_NE(view, MAP_FAILED);
     EXPECT_EQ(std::string(static_cast<const char*>(view), 8), "defghijk");
     EXPECT_EQ(munmap(view, 8), 0);
-    EXPECT_EQ(::close(fd), 0);
+    EXPECT_EQ(close(fd), 0);
 }
 
 TEST_F(WindowsMmapIoTest, ForcedFailureKeepsSynchronousFallbackAvailable) {
@@ -71,7 +71,7 @@ TEST_F(WindowsMmapIoTest, ForcedFailureKeepsSynchronousFallbackAvailable) {
     ASSERT_EQ(fast_gdb_pread_sync(fd, bytes.data(), bytes.size(), 10),
               static_cast<ssize_t>(bytes.size()));
     EXPECT_EQ(std::string(bytes.data(), bytes.size()), "klmno");
-    EXPECT_EQ(::close(fd), 0);
+    EXPECT_EQ(close(fd), 0);
 }
 
 TEST_F(WindowsMmapIoTest, SyncAndOverlappedReadsPreserveSharedCursor) {
@@ -92,7 +92,7 @@ TEST_F(WindowsMmapIoTest, SyncAndOverlappedReadsPreserveSharedCursor) {
     EXPECT_EQ(std::string(sync_bytes.data(), sync_bytes.size()), "cdef");
     EXPECT_EQ(std::string(overlapped_bytes.data(), overlapped_bytes.size()),
               "stuv");
-    EXPECT_EQ(::close(fd), 0);
+    EXPECT_EQ(close(fd), 0);
 }
 
 TEST_F(WindowsMmapIoTest, OverlappedReadsDoNotLeakHandles) {
@@ -109,7 +109,7 @@ TEST_F(WindowsMmapIoTest, OverlappedReadsDoNotLeakHandles) {
     DWORD after = 0;
     ASSERT_TRUE(GetProcessHandleCount(GetCurrentProcess(), &after));
     EXPECT_LE(after, before + 1);
-    EXPECT_EQ(::close(fd), 0);
+    EXPECT_EQ(close(fd), 0);
 }
 
 TEST_F(WindowsMmapIoTest, WindowedMappingRemapsBoundedViews) {
@@ -131,7 +131,7 @@ TEST_F(WindowsMmapIoTest, WindowedMappingRemapsBoundedViews) {
     EXPECT_LE(mapping.view_length(), 8u);
     mapping.reset();
     EXPECT_FALSE(mapping.active());
-    EXPECT_EQ(::close(fd), 0);
+    EXPECT_EQ(close(fd), 0);
 }
 
 } // namespace

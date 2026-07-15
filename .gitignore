@@ -3,3 +3,5 @@ test_data/
 /build/
 /build-*/
 /build_win
+/stderr.txt
+/stdout.txt
