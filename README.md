@@ -156,6 +156,9 @@ cmake --build build --target explorgdb_cli --parallel
 
 ## 真实数据回归
 
+完整的数据清单、GDAL/ArcGIS Pro 生成方法、三平台命令和基准环境变量统一见
+[测试数据准备与跨平台验证指南](docs/usage/03_测试数据准备与跨平台验证.md)。
+
 仓库内普通 FileGDB 样本可用于常规读取验证：
 
 ```bash
@@ -182,6 +185,7 @@ FAST_GDB_REAL_DATASET="$PWD/test_data/gdb/test_spatial_gdb.gdb/test_spatial_gdb.
 ## 文档
 
 - `CHANGELOG.md`
+- `docs/usage/03_测试数据准备与跨平台验证.md`
 - `docs/releases/v0.1.0.md`
 - `docs/overview/01_fast-gdb项目介绍与当前状态.md`
 - `docs/planning/00_规划文档状态索引.md`

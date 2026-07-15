@@ -152,14 +152,13 @@ bool verify_attribute_index(const std::string& atx_path) {
 }
 
 int main(int argc, char* argv[]) {
-    // 确定 GDB 路径
-    std::string gdb_path;
-    if (argc > 1) {
-        gdb_path = argv[1];
-    } else {
-        // 默认路径
-        gdb_path = "/Users/edgarlqs/Downloads/daydaydaywork/dailyWork/convert/gdal/fast_gdb/test_data/large/large_test.gdb";
+    if (argc != 2) {
+        std::cerr << "用法: " << argv[0] << " <gdb_path>\n"
+                  << "示例: " << argv[0]
+                  << " test_data/large/large_test.gdb\n";
+        return 2;
     }
+    const std::string gdb_path = argv[1];
 
     // 验证路径存在
     if (!fs::exists(gdb_path)) {

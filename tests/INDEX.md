@@ -2,6 +2,9 @@
 
 本目录包含 GDB 教程配套测试，**测试即教程**——每个测试文件头部的注释就是对应章节的教程内容。
 
+测试数据路径、生成方式、环境变量、跨平台命令和验收标准统一见
+[`docs/usage/03_测试数据准备与跨平台验证.md`](../docs/usage/03_测试数据准备与跨平台验证.md)。本页只维护测试目录、命名规则和入口，避免重复维护数据说明。
+
 ## 目录结构
 
 ```
@@ -84,11 +87,13 @@ tests/
 ctest --output-on-failure
 
 # 独立工具
-./bin/benchmark_index_creation [gdb_path]
-./bin/verify_gdal_indexes [gdb_path]
-./bin/generate_large_gdb <output_dir>
+./bin/benchmark_index_creation <gdb_path>
+./bin/verify_gdal_indexes <gdb_path>
+./bin/generate_large_gdb --output <gdb_path>
 ./bin/generate_100k_polygons <output_dir>
 ```
+
+索引验证工具必须显式传入 `.gdb` 目录，不再隐式使用默认数据路径。
 
 ## 测试命名规则
 
