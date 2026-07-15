@@ -201,7 +201,8 @@ WKT 兼容接口保留至少一个稳定大版本；正式性能和互操作契�
 
 | 能力 | 当前状态 | 说明 |
 |---|:---:|---|
-| 已有数据表二进制追加 | ✅ | `GdbTableWriter::open_existing()` 追加主数据表记录 |
+| 空 schema 二进制批量写 | 🧪 | `GdbTableWriter::open_existing()` 已覆盖 GDAL 创建空表后的直写和回读 |
+| 非空数据表安全追加 | ❌ | 原有记录、FID 和 `.gdbtablx` 保留尚未形成安全契约 |
 | 批量行缓冲写入 | ✅ | 适合顺序批量追加，绕过逐条 GDAL `CreateFeature()` |
 | 源 GDB 读取与过滤 | ✅/⚠️ | Reader 可提供扫描、FID、属性和空间查询；端到端工具流程仍需调用方编排 |
 | 原地删除要素 | ❌ | 当前 writer 没有生产级要素删除、freelist 和删除标记维护接口 |
@@ -209,9 +210,10 @@ WKT 兼容接口保留至少一个稳定大版本；正式性能和互操作契�
 | 追加后的 `.spx/.atx` 同步 | ⚠️ | 需要单独构建/重建并验证，不能假设逐条追加自动完成 |
 | 全量过滤重写 | 🧪 | 可由 Reader 顺序读取 + 新 GDB 批量写入实现，35GB/5 亿级数据必须真实基准验证 |
 
-因此，`explorgdb writer` 当前应描述为高性能追加/直写组件，不应描述为 GDAL/ArcGIS 完整编辑替代品。对于“过滤删除后追加”场景，生产流程应优先考虑新 GDB 全量重写，完成后统一构建索引并做 GDAL/ArcGIS 交叉验证。
+因此，`explorgdb writer` 当前应描述为实验性空表批量直写组件，不应描述为 GDAL/ArcGIS 完整编辑替代品。对于“过滤删除后追加”场景，生产流程应优先考虑新 GDB 全量重写，完成后统一构建索引并做 GDAL/ArcGIS 交叉验证。
 
 详细迁移、FID 和发布检查见：
 
 - `docs/usage/02_几何WKB曲线支持与迁移.md`
-- `docs/planning/13_fast-gdb最终等价与发布验收报告.md`
+- `docs/evidence/13_fast-gdb最终等价与发布验收报告.md`
+- `docs/planning/17_writer生产化与读取后续计划.md`

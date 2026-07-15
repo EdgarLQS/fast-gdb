@@ -2,12 +2,16 @@
 
 **更新日期**：2026-07-14
 **实现基线**：`main` / `2be0938`
-**状态**：Phase A–H 实现已合入；规模化验收和条件优化待按门槛推进
+**状态**：已归档；Phase A–H 实现已合入，未完成的规模化验证已转入计划 17
 **适用范围**：原生 `explorgdb` Reader 的 bbox 空间查询
+
+> 归档说明（2026-07-15）：本文保留 Phase H 的原始目标、实现过程和性能门槛，不再作为当前执行入口。
+> Point/MultiPoint/Polyline 10M fresh-open、50M 阶梯和生产数据验证已转入
+> [Writer 生产化与读取后续计划](../17_writer生产化与读取后续计划.md)。
 
 ## 1. 当前基线与目标
 
-Phase A–H 的空间查询实现已合入 `main`。当前正式性能证据覆盖 1K–10M 的 Point、MultiPoint、Polyline、Polygon steady-state，以及 10M Polygon fresh-open；最新证据见 [空间查询公平基准验收记录](../evidence/spatial-query-baseline-2026-07-14.md)。这些结果作为冻结回归基线，不代表 50M、35GB/5 亿级真实生产数据已经验收。
+Phase A–H 的空间查询实现已合入 `main`。当前正式性能证据覆盖 1K–10M 的 Point、MultiPoint、Polyline、Polygon steady-state，以及 10M Polygon fresh-open；最新证据见 [空间查询公平基准验收记录](../../evidence/spatial-query-baseline-2026-07-14.md)。这些结果作为冻结回归基线，不代表 50M、35GB/5 亿级真实生产数据已经验收。
 
 合入后的后续工作不再围绕已达标的 10M 合成路径盲目优化，目标是：
 
@@ -184,4 +188,4 @@ docs: record Phase H evidence
 - 本计划不把受控合成结果扩大为 35GB/5 亿级生产承诺；
 - `gdb_component` 是单独的 GDAL 依赖路径，其历史数字不得与原生 Reader 公平基准混用；
 - 本计划不处理 Writer、MultiPatch、SQL、Raster 或原生 curve WKB；
-- Phase A–G 的过程和历史门槛见 [归档计划 14](archive/14_fast-gdb空间查询优化计划.md) 与 [归档计划 15](archive/15_spatial-query-followup-optimization-design.md)。
+- Phase A–G 的过程和历史门槛见 [归档计划 14](14_fast-gdb空间查询优化计划.md) 与 [归档计划 15](15_spatial-query-followup-optimization-design.md)。

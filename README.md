@@ -170,7 +170,7 @@ FAST_GDB_REAL_DATASET="$PWD/test_data/gdb/test_spatial_gdb.gdb/test_spatial_gdb.
 该目录是双层 `.gdb` 包装，环境变量必须指向内层目录。ArcGIS Pro 原生曲线验收结果见：
 
 - `docs/evidence/curve-polyline-m-real-acceptance-2026-07-13.md`；
-- `docs/planning/13_fast-gdb最终等价与发布验收报告.md`。
+- `docs/evidence/13_fast-gdb最终等价与发布验收报告.md`。
 
 ## 项目组成
 
@@ -189,7 +189,8 @@ FAST_GDB_REAL_DATASET="$PWD/test_data/gdb/test_spatial_gdb.gdb/test_spatial_gdb.
 - `docs/releases/v0.1.0.md`
 - `docs/overview/01_fast-gdb项目介绍与当前状态.md`
 - `docs/planning/00_规划文档状态索引.md`
-- `docs/planning/13_fast-gdb最终等价与发布验收报告.md`
+- `docs/planning/17_writer生产化与读取后续计划.md`
+- `docs/evidence/13_fast-gdb最终等价与发布验收报告.md`
 - `docs/usage/02_几何WKB曲线支持与迁移.md`
 - `docs/planning/02_GDAL功能对比矩阵.md`
 - `docs/technical/01_性能基准与优化.md`

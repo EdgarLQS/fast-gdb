@@ -85,7 +85,7 @@ install(FILES
 install(FILES README.md CHANGELOG.md
     DESTINATION ${CMAKE_INSTALL_DATADIR}/fast_gdb)
 install(FILES
-    docs/planning/13_fast-gdb最终等价与发布验收报告.md
+    docs/evidence/13_fast-gdb最终等价与发布验收报告.md
     DESTINATION ${CMAKE_INSTALL_DATADIR}/fast_gdb/evidence
     RENAME release-acceptance-report.md)
 install(FILES

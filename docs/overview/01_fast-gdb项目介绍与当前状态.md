@@ -30,7 +30,7 @@ fast-gdb 是一个围绕 ESRI File Geodatabase（`.gdb`）的 C++ 项目，目�
 | `fast_gdb_hybrid` | GDAL | fast-gdb 主路径 + 曲线/复杂拓扑回退 | 支持范围内已完成发布验收 |
 | `usegdal` | GDAL | Datasource/Dataset/Recordset 高层 API 和教程组件 | 已完成既定 Phase 1A-3 |
 | `explorgdb reader` | C++17 | FileGDB 二进制解析、索引、查询和几何输出 | 支持范围内已完成验收；新增类型需单独补证据 |
-| `explorgdb writer` | C++17；索引助手可选依赖 GDAL | 主数据表二进制追加/直写 | 部分完成；完整编辑和系统表同步未完成 |
+| `explorgdb writer` | C++17；索引助手可选依赖 GDAL | GDAL 空 schema 的二进制批量直写 | 实验性；非空追加、完整编辑和系统表同步未完成 |
 
 ### 能力状态说明
 
@@ -144,7 +144,7 @@ FileGDB Geometry Blob
 | `Perf_Polyline_10k` | 3.72 ms | 2.33 ms | 线几何读取回归 |
 | `Perf_Polygon_10k` | 3.76 ms | 3.32 ms | 面几何读取回归 |
 
-这组数据用于真实 FileGDB 回归和趋势观察，不是跨机器性能承诺。35GB/5 亿级数据的读取、过滤重写、追加、索引构建和资源使用仍需单独建立生产基线。完整来源见 [最终等价与发布验收报告](../planning/13_fast-gdb最终等价与发布验收报告.md)。
+这组数据用于真实 FileGDB 回归和趋势观察，不是跨机器性能承诺。35GB/5 亿级数据的读取、过滤重写、追加、索引构建和资源使用仍需单独建立生产基线。完整来源见 [最终等价与发布验收报告](../evidence/13_fast-gdb最终等价与发布验收报告.md)。
 
 ### 5.3 2026-07-13 本轮复测
 
@@ -154,7 +154,7 @@ FileGDB Geometry Blob
 
 ### 5.4 2026-07-14 空间查询当前状态
 
-Release/profile-off 的 Point、MultiPoint、Polyline、Polygon 在 1K–10M 的 steady-state 覆盖率矩阵均通过完整 FID 对照和分档性能门槛。Polygon 的 10M fresh-open 缓存全矩阵也已通过，1% 冷打开为 154.9ms，比 GDAL 多 30.4ms，仍在 +200ms 容忍内。大数据集存放于 `test_data/spatial_matrix/` 并按已验证的图层、几何类型、要素数和 `.spx` 复用，不应在日常复测中重复生成。当前 fresh-open 完整矩阵仅覆盖 Polygon，Point、MultiPoint、Polyline 尚不作 fresh-open 完成声明；完整数据和边界见 [空间查询公平基准验收记录](../evidence/spatial-query-baseline-2026-07-14.md)，下一阶段见 [Phase H 超大规模空间查询优化计划](../planning/16_spatial-query-scale-optimization-plan.md)。
+Release/profile-off 的 Point、MultiPoint、Polyline、Polygon 在 1K–10M 的 steady-state 覆盖率矩阵均通过完整 FID 对照和分档性能门槛。Polygon 的 10M fresh-open 缓存全矩阵也已通过，1% 冷打开为 154.9ms，比 GDAL 多 30.4ms，仍在 +200ms 容忍内。大数据集存放于 `test_data/spatial_matrix/` 并按已验证的图层、几何类型、要素数和 `.spx` 复用，不应在日常复测中重复生成。当前 fresh-open 完整矩阵仅覆盖 Polygon，Point、MultiPoint、Polyline 尚不作 fresh-open 完成声明；完整数据和边界见 [空间查询公平基准验收记录](../evidence/spatial-query-baseline-2026-07-14.md)，下一阶段见 [Writer 生产化与读取后续计划](../planning/17_writer生产化与读取后续计划.md)。
 
 ## 6. 测试与验收体系
 
@@ -202,13 +202,13 @@ FAST_GDB_RUN_10M_BENCHMARKS=1 ./build-linear/bin/gdb_tutorial_test_runner \
 | 真实大规模性能基线 | 未完成 | 现有数据为受控基准，35GB/5 亿级场景需单独实测 |
 | Writer 系统表同步 | 待完成 | 主数据直写完成，生产级完整写入仍需继续完善 |
 
-当前版本在声明范围内可以发布；权威证据见 [最终等价与发布验收报告](../planning/13_fast-gdb最终等价与发布验收报告.md) 和 [Curve_Polyline_M_FC 真实验收证据](../evidence/curve-polyline-m-real-acceptance-2026-07-13.md)，后续新增能力的数据要求见 [真实数据验收资料清单](../planning/13_fast-gdb真实数据验收资料清单.md)。
+当前版本在声明范围内可以发布；权威证据见 [最终等价与发布验收报告](../evidence/13_fast-gdb最终等价与发布验收报告.md) 和 [Curve_Polyline_M_FC 真实验收证据](../evidence/curve-polyline-m-real-acceptance-2026-07-13.md)，后续新增能力的数据要求见 [真实数据验收资料清单](../usage/05_fast-gdb真实数据验收资料清单.md)。
 
 ## 8. 后续路线
 
 1. **短期**：维护现有支持范围，新增 ArcGIS 原生曲线、复杂 Polygon、FID 映射、Z/M/ZM 能力时同步补充证据。
-2. **中期**：在独立开发分支上按 [Phase H 计划](../planning/16_spatial-query-scale-optimization-plan.md) 补齐 10M fresh-open、建立可复用 50M 阶梯，并为 35GB/5 亿级真实数据准备读取、索引和资源基线。
-3. **专项能力**：单独推进非空 MultiPatch、Writer 系统表同步和更完整的写入兼容性。
+2. **中期**：按 [Writer 生产化与读取后续计划](../planning/17_writer生产化与读取后续计划.md) 完成安全批量写、三方回读、系统表和索引工作流，同时补齐 10M fresh-open 和可复用 50M 阶梯。
+3. **专项能力**：在批量写闭环后单独推进非空追加、Update/Delete、MultiPatch 和原生曲线写入。
 4. **长期**：根据实际使用需求评估 SQL、Raster 或其他 OGR 兼容能力，不在当前 Reader 范围内提前承诺。
 
 ## 9. 文档维护规则
@@ -218,7 +218,7 @@ FAST_GDB_RUN_10M_BENCHMARKS=1 ./build-linear/bin/gdb_tutorial_test_runner \
 - 新增验收结论必须记录数据来源、预期行为、通过证据和未覆盖范围。
 - `SKIPPED`、推算值和合成数据必须与真实数据 `PASSED` 分开表述。
 - 本文只保留当前有效结论；详细过程、失败实验和历史状态放在专题或 `planning/archive/`。
-- 若本文与其他文档冲突，以 [规划文档状态索引](../planning/00_规划文档状态索引.md) 和 [最终等价与发布验收报告](../planning/13_fast-gdb最终等价与发布验收报告.md) 为准。
+- 若本文与其他文档冲突，以 [规划文档状态索引](../planning/00_规划文档状态索引.md) 和 [最终等价与发布验收报告](../evidence/13_fast-gdb最终等价与发布验收报告.md) 为准。
 
 ## 10. 继续阅读
 

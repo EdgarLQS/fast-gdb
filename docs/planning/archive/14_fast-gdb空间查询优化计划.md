@@ -1,6 +1,6 @@
 # 14 — fast-gdb 大规模空间查询超越 GDAL 计划
 
-> 归档说明（2026-07-14）：本文档保留初始提案和历史验收背景；Phase A–G 的最终实施状态见 [15_spatial-query-followup-optimization-design.md](15_spatial-query-followup-optimization-design.md)，当前超大规模优化计划见 [16_spatial-query-scale-optimization-plan.md](../16_spatial-query-scale-optimization-plan.md)。
+> 归档说明（2026-07-15）：本文档保留初始提案和历史验收背景；Phase A–G 的最终实施状态见 [15_spatial-query-followup-optimization-design.md](15_spatial-query-followup-optimization-design.md)，Phase H 历史计划见 [16_spatial-query-scale-optimization-plan.md](16_spatial-query-scale-optimization-plan.md)，当前工作见 [计划 17](../17_writer生产化与读取后续计划.md)。
 
 **更新日期**：2026-07-13  
 **状态**：实施中  
@@ -201,6 +201,6 @@ query_bbox_bitmap(...)
 ## 7. 关联证据
 
 - [空间查询优化实施记录](../../evidence/spatial-query-optimization-2026-07-13.md)
-- [最终等价与发布验收报告](../13_fast-gdb最终等价与发布验收报告.md)
+- [最终等价与发布验收报告](../../evidence/13_fast-gdb最终等价与发布验收报告.md)
 - [性能基准与优化](../../technical/01_性能基准与优化.md)
-- [真实数据验收资料清单](../13_fast-gdb真实数据验收资料清单.md)
+- [真实数据验收资料清单](../../usage/05_fast-gdb真实数据验收资料清单.md)

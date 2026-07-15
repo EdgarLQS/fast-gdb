@@ -1,12 +1,13 @@
 # 13 — fast-gdb 最终等价与发布验收报告
 
 **更新日期**：2026-07-13  
+**文档状态**：v0.1.0 历史发布证据，不作为当前执行计划
 **验收基线**：`a5b96523cb0fd26751383c1e099908d4e6f87be5`  
 **验收分支**：`agent/fix-pure-cpp-m-curves-release-gate`  
 **纯 C++ M 曲线代码门禁**：`93d1ccde38a523561642f37f42644f74e5a2347a`  
 **验收 PR**：#2  
 **跨平台代码 CI**：`geometry-correctness` run `29223404842`（run 78）  
-**真实数据证据**：`docs/evidence/curve-polyline-m-real-acceptance-2026-07-13.md`
+**真实数据证据**：[curve-polyline-m-real-acceptance-2026-07-13.md](curve-polyline-m-real-acceptance-2026-07-13.md)
 
 ## 1. 最终结论
 

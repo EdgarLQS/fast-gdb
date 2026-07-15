@@ -4,14 +4,16 @@
 
 归档文档中的“待完成”“发布门禁”和分支信息均属于对应历史阶段。当前结论只看
 `../00_规划文档状态索引.md`、`../01_项目状态与规划.md`、`../02_GDAL功能对比矩阵.md`
-和 `../13_fast-gdb最终等价与发布验收报告.md`。
+和 `../17_writer生产化与读取后续计划.md`；历史发布结论见
+`../../evidence/13_fast-gdb最终等价与发布验收报告.md`。
 
-## 空间查询 Phase A–G 历史
+## 空间查询 Phase A–H 历史
 
 - [14_fast-gdb空间查询优化计划.md](14_fast-gdb空间查询优化计划.md)：大规模空间查询初始提案；
 - [15_spatial-query-followup-optimization-design.md](15_spatial-query-followup-optimization-design.md)：Phase A–G 公平基准、实施门槛和 Phase G 收口记录。
+- [16_spatial-query-scale-optimization-plan.md](16_spatial-query-scale-optimization-plan.md)：Phase H、Windows mmap/I/O 和规模化验收历史计划。
 
-当前性能计划以 [16_spatial-query-scale-optimization-plan.md](../16_spatial-query-scale-optimization-plan.md) 为准；上述归档中的“待实施”只表示对应历史时点。
+当前读写与性能计划以 [17_writer生产化与读取后续计划.md](../17_writer生产化与读取后续计划.md) 为准；上述归档中的“待实施”只表示对应历史时点。
 
 ## v1 历史
 

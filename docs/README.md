@@ -1,6 +1,6 @@
 # fast_gdb 文档索引
 
-本文档是 `docs/` 的分类入口。拿到项目后需要准备数据或验证新平台时，先读测试数据准备与跨平台验证指南；新读者再读总览；判断当前完成度先读规划状态索引、项目状态和最终验收报告。
+本文档是 `docs/` 的分类入口。拿到项目后需要准备数据或验证新平台时，先读测试数据准备与跨平台验证指南；新读者再读总览；判断当前完成度先读规划状态索引、项目状态、当前计划和发布证据。
 
 ## 总览
 
@@ -15,6 +15,7 @@
 |---|---|
 | [03_测试数据准备与跨平台验证.md](usage/03_测试数据准备与跨平台验证.md) | 测试数据权威入口；GDAL/ArcGIS Pro 生成、三平台回归和性能验收 |
 | [04_功能与基准测试覆盖矩阵.md](usage/04_功能与基准测试覆盖矩阵.md) | 能力、测试证据、数据、平台、CI 门禁和基准状态矩阵 |
+| [05_fast-gdb真实数据验收资料清单.md](usage/05_fast-gdb真实数据验收资料清单.md) | 新增能力和真实数据的验收规范 |
 | [01_组件库设计与使用.md](usage/01_组件库设计与使用.md) | usegdal 组件库设计、API 教程、查询与写入示例 |
 | [02_几何WKB曲线支持与迁移.md](usage/02_几何WKB曲线支持与迁移.md) | GeometryValue/Model、ISO WKB、Polygon、曲线、Hybrid FID 和兼容策略 |
 
@@ -36,13 +37,12 @@
 | [00_规划文档状态索引.md](planning/00_规划文档状态索引.md) | 当前入口 | 权威文档顺序和原则 |
 | [01_项目状态与规划.md](planning/01_项目状态与规划.md) | 当前 | 项目总体状态、产品和发布边界 |
 | [02_GDAL功能对比矩阵.md](planning/02_GDAL功能对比矩阵.md) | 当前 | linear / hybrid / GDAL 实际能力差异 |
-| [13_fast-gdb最终等价与发布验收报告.md](planning/13_fast-gdb最终等价与发布验收报告.md) | 当前证据 | 支持范围内的最终发布结论 |
-| [13_fast-gdb真实数据验收资料清单.md](planning/13_fast-gdb真实数据验收资料清单.md) | 当前模板 | 后续新增能力的真实数据验收要求 |
-| [16_spatial-query-scale-optimization-plan.md](planning/16_spatial-query-scale-optimization-plan.md) | 当前计划 | Phase H 超大规模空间查询优化与触发门槛 |
+| [17_writer生产化与读取后续计划.md](planning/17_writer生产化与读取后续计划.md) | 当前计划 | Writer 主线、Reader 遗留验证、基准和发布门禁 |
+| [13_fast-gdb最终等价与发布验收报告.md](evidence/13_fast-gdb最终等价与发布验收报告.md) | 发布证据 | v0.1.0 支持范围内的最终发布结论 |
 | [curve-polyline-m-real-acceptance-2026-07-13.md](evidence/curve-polyline-m-real-acceptance-2026-07-13.md) | 当前证据 | 真实 M 曲线逐要素、WKB、空间查询和 sanitizer 证据 |
 | [11_fast-gdb替换GDAL矢量能力分析.md](planning/archive/11_fast-gdb替换GDAL矢量能力分析.md) | 架构参考 | fast-gdb 与 GDAL 双路径取舍 |
 
-`03`–`12`、空间查询 Phase A–G、旧 v3 计划和阶段性曲线分析属于历史背景；从 [planning/archive/README.md](planning/archive/README.md) 或状态索引进入，不再作为当前完成度来源。
+`03`–`16` 的已完成阶段计划、空间查询 Phase A–H、旧 v3 计划和阶段性曲线分析属于历史背景；从 [planning/archive/README.md](planning/archive/README.md) 或状态索引进入，不再作为当前完成度来源。
 
 ## 当前几何结论
 

@@ -7,7 +7,7 @@
 
 **状态**：已归档；Phase A、E、G 已完成，B/C/D/F 未触发。
 
-本文档曾取代 `14_fast-gdb空间查询优化计划.md` 中的性能优先级与验收门槛，现作为 Phase A–G 历史实施记录归档。当前计划见 [16_spatial-query-scale-optimization-plan.md](../16_spatial-query-scale-optimization-plan.md)。
+本文档曾取代 `14_fast-gdb空间查询优化计划.md` 中的性能优先级与验收门槛，现作为 Phase A–G 历史实施记录归档。Phase H 历史计划见 [16_spatial-query-scale-optimization-plan.md](16_spatial-query-scale-optimization-plan.md)，当前工作见 [计划 17](../17_writer生产化与读取后续计划.md)。
 
 ---
 
