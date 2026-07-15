@@ -92,10 +92,36 @@ static bool Run10mBenchmarks() {
     return value != nullptr && std::string(value) == "1";
 }
 
+static bool RunFullBenchmarks() {
+    const char* value = std::getenv("FAST_GDB_RUN_FULL_BENCHMARKS");
+    return value != nullptr && std::string(value) == "1";
+}
+
+static bool RunSpatialBenchmarks() {
+    const char* value = std::getenv("FAST_GDB_RUN_SPATIAL_BENCHMARKS");
+    return value != nullptr && std::string(value) == "1";
+}
+
+static bool IsSpatialPerformanceTest() {
+    const auto* info = ::testing::UnitTest::GetInstance()->current_test_info();
+    if (info == nullptr) {
+        return false;
+    }
+    const std::string name = info->name();
+    return name.rfind("R3_", 0) == 0 || name.rfind("R4_", 0) == 0;
+}
+
 // ── 测试 Fixture ──
 class PerformanceBenchmarkFixture : public ::testing::Test {
 protected:
     void SetUp() override {
+        if (IsSpatialPerformanceTest()) {
+            if (!RunFullBenchmarks() && !RunSpatialBenchmarks()) {
+                GTEST_SKIP() << "Set FAST_GDB_RUN_SPATIAL_BENCHMARKS=1 to run spatial benchmarks";
+            }
+        } else if (!RunFullBenchmarks()) {
+            GTEST_SKIP() << "Set FAST_GDB_RUN_FULL_BENCHMARKS=1 to run full read/write benchmarks";
+        }
         GDALAllRegister();
 
         // 创建测试数据目录

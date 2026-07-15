@@ -23,6 +23,7 @@
 
 #include <filesystem>
 #include <cmath>
+#include <cstdlib>
 #include <iostream>
 
 using namespace explorgdb;
@@ -217,6 +218,10 @@ TEST_F(WriterTest, T_W02_CoordinateAccuracy) {
 
 // ── T_W03: 多规模性能对比（Phase A vs Phase C） ──
 TEST_F(WriterTest, T_W03_BulkWritePerformance) {
+    const char* enabled = std::getenv("FAST_GDB_RUN_FULL_BENCHMARKS");
+    if (enabled == nullptr || std::string(enabled) != "1") {
+        GTEST_SKIP() << "Set FAST_GDB_RUN_FULL_BENCHMARKS=1 to run bulk write benchmark";
+    }
     // Phase A 基线数据（来自 WriteBenchmarkFixture.T_WBench_ScaleUp）
     struct PhaseABaseline { int count; double total_ms; double per_feat_us; };
     std::vector<PhaseABaseline> phase_a = {
