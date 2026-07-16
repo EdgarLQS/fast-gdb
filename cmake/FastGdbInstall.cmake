@@ -5,6 +5,13 @@ include(${CMAKE_CURRENT_LIST_DIR}/FastGdbPlatform.cmake)
 option(FAST_GDB_INSTALL_LEGACY_WRITER_API
        "Install the deprecated experimental Writer compatibility target" ON)
 
+# The Writer source glob always sees writer_append.cpp. Select the real GDAL
+# implementation explicitly instead of relying on ambient header visibility.
+if(FAST_GDB_WITH_GDAL)
+    target_compile_definitions(explorgdb_writer_lib PRIVATE
+        FAST_GDB_WITH_GDAL_ENABLED=1)
+endif()
+
 set(FAST_GDB_PACKAGE_VARIANT "" CACHE STRING
     "Release package variant name; defaults to linear or hybrid")
 if(NOT FAST_GDB_PACKAGE_VARIANT)
