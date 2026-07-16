@@ -2,16 +2,21 @@
 
 #if __has_include("gdal_priv.h") && __has_include("ogrsf_frmts.h")
 
+#include <cmath>
+
 // Keep the large staging/publish implementation isolated while routing its
-// generic value storage through private unchecked methods. Public setters below
-// validate the exact OGR field type before forwarding, so GDAL coercion cannot
-// weaken the stable API contract.
+// generic storage through private unchecked methods. Public setters below
+// validate field and geometry contracts before forwarding, so GDAL coercion
+// cannot weaken the stable API.
 #define set_null set_null_unchecked
 #define set_i32 set_i32_unchecked
 #define set_i64 set_i64_unchecked
 #define set_f64 set_f64_unchecked
 #define set_string set_string_unchecked
 #define set_binary set_binary_unchecked
+#define set_point set_point_unchecked
+#define set_polyline set_polyline_unchecked
+#define set_polygon set_polygon_unchecked
 #include "writer_append_gdal.inc"
 #undef set_null
 #undef set_i32
@@ -19,6 +24,9 @@
 #undef set_f64
 #undef set_string
 #undef set_binary
+#undef set_point
+#undef set_polyline
+#undef set_polygon
 
 namespace explorgdb {
 namespace writer {
@@ -53,6 +61,53 @@ bool validate_field_type(WriterAppendSession::Impl& impl, int field_index,
                 ", not " + expected_name);
     }
     return true;
+}
+
+bool coordinate_is_finite(const WriterCoordinate& coordinate,
+                          WriterGeometryType type) {
+    const uint32_t raw = static_cast<uint32_t>(type);
+    return std::isfinite(coordinate.x) && std::isfinite(coordinate.y) &&
+           ((raw & 0x80000000u) == 0 || std::isfinite(coordinate.z)) &&
+           ((raw & 0x40000000u) == 0 || std::isfinite(coordinate.m));
+}
+
+bool dimensions_match(OGRwkbGeometryType layer_type,
+                      WriterGeometryType writer_type) {
+    const uint32_t raw = static_cast<uint32_t>(writer_type);
+    return static_cast<bool>(wkbHasZ(layer_type)) ==
+               ((raw & 0x80000000u) != 0) &&
+           static_cast<bool>(wkbHasM(layer_type)) ==
+               ((raw & 0x40000000u) != 0);
+}
+
+bool validate_geometry_layer(WriterAppendSession::Impl& impl,
+                             WriterGeometryType type,
+                             OGRwkbGeometryType expected_flat,
+                             bool allow_multi) {
+    if (!impl.ensure_active(WriterStage::Geometry) || !impl.row_active) {
+        return impl.fail(WriterStage::Geometry, impl.staging_path,
+                         "no row is active");
+    }
+    const OGRwkbGeometryType layer_type = impl.layer->GetGeomType();
+    const OGRwkbGeometryType flat = wkbFlatten(layer_type);
+    const bool type_matches = flat == expected_flat ||
+        (allow_multi && expected_flat == wkbLineString &&
+         flat == wkbMultiLineString);
+    if (!type_matches) {
+        return impl.fail(
+            WriterStage::Geometry, impl.staging_path,
+            "geometry type does not match target layer: layer=" +
+                std::string(OGRGeometryTypeToName(layer_type)));
+    }
+    if (!dimensions_match(layer_type, type)) {
+        return impl.fail(WriterStage::Geometry, impl.staging_path,
+                         "geometry Z/M dimensions do not match target layer");
+    }
+    return true;
+}
+
+bool same_xy(const WriterCoordinate& left, const WriterCoordinate& right) {
+    return left.x == right.x && left.y == right.y;
 }
 
 }  // namespace
@@ -93,6 +148,76 @@ bool WriterAppendSession::set_binary(
     int field_index, const std::vector<uint8_t>& value) {
     return validate_field_type(*impl_, field_index, OFTBinary, "Binary") &&
            set_binary_unchecked(field_index, value);
+}
+
+bool WriterAppendSession::set_point(const WriterCoordinate& point,
+                                    WriterGeometryType type) {
+    if ((static_cast<uint32_t>(type) & 0xFFu) != 1u) {
+        return impl_->fail(WriterStage::Geometry, impl_->staging_path,
+                           "set_point requires a Point type");
+    }
+    if (!validate_geometry_layer(*impl_, type, wkbPoint, false)) return false;
+    if (!coordinate_is_finite(point, type)) {
+        return impl_->fail(WriterStage::Geometry, impl_->staging_path,
+                           "point contains a non-finite ordinate");
+    }
+    return set_point_unchecked(point, type);
+}
+
+bool WriterAppendSession::set_polyline(
+    const std::vector<std::vector<WriterCoordinate>>& parts,
+    WriterGeometryType type) {
+    if ((static_cast<uint32_t>(type) & 0xFFu) != 3u) {
+        return impl_->fail(WriterStage::Geometry, impl_->staging_path,
+                           "set_polyline requires a Polyline type");
+    }
+    if (!validate_geometry_layer(*impl_, type, wkbLineString, true)) return false;
+    const bool target_is_multi =
+        wkbFlatten(impl_->layer->GetGeomType()) == wkbMultiLineString;
+    if (parts.empty() || (!target_is_multi && parts.size() != 1)) {
+        return impl_->fail(WriterStage::Geometry, impl_->staging_path,
+                           "polyline part count does not match target layer");
+    }
+    for (const auto& part : parts) {
+        if (part.size() < 2) {
+            return impl_->fail(WriterStage::Geometry, impl_->staging_path,
+                               "each polyline part requires at least two points");
+        }
+        for (const auto& coordinate : part) {
+            if (!coordinate_is_finite(coordinate, type)) {
+                return impl_->fail(WriterStage::Geometry, impl_->staging_path,
+                                   "polyline contains a non-finite ordinate");
+            }
+        }
+    }
+    return set_polyline_unchecked(parts, type);
+}
+
+bool WriterAppendSession::set_polygon(
+    const std::vector<std::vector<WriterCoordinate>>& rings,
+    WriterGeometryType type) {
+    if ((static_cast<uint32_t>(type) & 0xFFu) != 5u) {
+        return impl_->fail(WriterStage::Geometry, impl_->staging_path,
+                           "set_polygon requires a Polygon type");
+    }
+    if (!validate_geometry_layer(*impl_, type, wkbPolygon, false)) return false;
+    if (rings.empty()) {
+        return impl_->fail(WriterStage::Geometry, impl_->staging_path,
+                           "polygon requires at least one ring");
+    }
+    for (const auto& ring : rings) {
+        if (ring.size() < 4 || !same_xy(ring.front(), ring.back())) {
+            return impl_->fail(WriterStage::Geometry, impl_->staging_path,
+                               "polygon rings must be closed with at least four points");
+        }
+        for (const auto& coordinate : ring) {
+            if (!coordinate_is_finite(coordinate, type)) {
+                return impl_->fail(WriterStage::Geometry, impl_->staging_path,
+                                   "polygon contains a non-finite ordinate");
+            }
+        }
+    }
+    return set_polygon_unchecked(rings, type);
 }
 
 }  // namespace writer
