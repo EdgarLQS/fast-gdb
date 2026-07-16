@@ -190,3 +190,34 @@ TEST_F(WriterSessionTest, PublishFailurePreservesStagingUntilAbort) {
     EXPECT_FALSE(fs::exists(staging));
     EXPECT_TRUE(fs::exists(final_path / "keep.txt"));
 }
+
+TEST_F(WriterSessionTest, FirstFailureLocksSessionUntilAbort) {
+    const fs::path staging = root_ / "failed.staging.gdb";
+    const fs::path final_path = root_ / "failed.gdb";
+    ASSERT_TRUE(create_point_schema(staging.string(), "points"));
+
+    WriterSession session;
+    ASSERT_TRUE(session.open(staging.string(), "points"));
+    ASSERT_TRUE(session.begin_row());
+    EXPECT_FALSE(session.append_string(99, "invalid"));
+    ASSERT_EQ(session.error().stage, WriterStage::Row);
+    const std::string first_message = session.error().message;
+    const std::string first_reason = session.error().system_reason;
+
+    EXPECT_FALSE(session.set_point(
+        WriterCoordinate{120.0, 30.0, 0.0, 0.0}));
+    EXPECT_EQ(session.error().stage, WriterStage::Row);
+    EXPECT_EQ(session.error().message, first_message);
+    EXPECT_EQ(session.error().system_reason, first_reason);
+
+    EXPECT_FALSE(session.commit(final_path.string()));
+    EXPECT_EQ(session.error().stage, WriterStage::Row);
+    EXPECT_EQ(session.error().message, first_message);
+    EXPECT_TRUE(fs::exists(staging));
+    EXPECT_FALSE(fs::exists(final_path));
+
+    EXPECT_TRUE(session.abort()) << session.error().message;
+    EXPECT_TRUE(session.is_aborted());
+    EXPECT_FALSE(fs::exists(staging));
+    EXPECT_FALSE(session.error());
+}
