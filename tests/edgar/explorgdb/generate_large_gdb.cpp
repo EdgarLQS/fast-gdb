@@ -34,6 +34,7 @@ namespace fs = std::filesystem;
 // ── 配置参数 ──
 struct GenConfig {
     uint64_t count = 1'000'000;
+    uint64_t batch_size = 1'000'000;        // FlushCache 间隔（默认 1M，减少 spx 刷新频率）
     std::string geometry_type = "polygon";  // point, multipoint, line, polygon
     std::string distribution = "uniform";   // uniform, clustered, grid
     double xmin = 0.0;
@@ -185,6 +186,8 @@ int main(int argc, char** argv) {
             cfg.ymax = strtod(p, nullptr);
         } else if (strcmp(argv[i], "--output") == 0 && i + 1 < argc) {
             cfg.output_path = argv[++i];
+        } else if (strcmp(argv[i], "--batch-size") == 0 && i + 1 < argc) {
+            cfg.batch_size = strtoull(argv[++i], nullptr, 10);
         } else if (strcmp(argv[i], "--help") == 0) {
             printf("用法: generate_large_gdb [选项]\n");
             printf("  --count N           要素数量 (默认 1000000)\n");
@@ -192,6 +195,7 @@ int main(int argc, char** argv) {
             printf("  --distribution DIST 空间分布: uniform, clustered, grid (默认 uniform)\n");
             printf("  --bbox x1,y1,x2,y2  空间范围 (默认 Albers 投影范围)\n");
             printf("  --output PATH       输出路径 (默认 test_data/large/large_test.gdb)\n");
+            printf("  --batch-size N      FlushCache 间隔 (默认 1000000)\n");
             return 0;
         }
     }
@@ -276,7 +280,8 @@ int main(int argc, char** argv) {
     printf("几何类型: %s\n", cfg.geometry_type.c_str());
     printf("空间分布: %s\n", cfg.distribution.c_str());
     printf("空间范围: [%.0f, %.0f, %.0f, %.0f]\n", cfg.xmin, cfg.ymin, cfg.xmax, cfg.ymax);
-    printf("输出路径: %s\n\n", cfg.output_path.c_str());
+    printf("输出路径: %s\n", cfg.output_path.c_str());
+    printf("Batch size: %llu\n\n", (unsigned long long)cfg.batch_size);
 
     auto t0 = std::chrono::high_resolution_clock::now();
 
@@ -322,7 +327,6 @@ int main(int argc, char** argv) {
     }
 
     printf("开始写入要素...\n");
-    const int kBatchSize = 100000;
     int last_report_pct = -1;
 
     for (uint64_t i = 0; i < cfg.count; ++i) {
@@ -340,21 +344,20 @@ int main(int argc, char** argv) {
 
         auto* poFeature = new OGRFeature(poLayer->GetLayerDefn());
         poFeature->SetField("feat_id", static_cast<int>(i + 1));
-        poFeature->SetGeometry(poGeom);
+        poFeature->SetGeometryDirectly(poGeom);  // 直接转移所有权，避免 clone
 
         if (poLayer->CreateFeature(poFeature) != OGRERR_NONE) {
             fprintf(stderr, "错误: 写入要素失败 (idx=%llu)\n", (unsigned long long)i);
             OGRFeature::DestroyFeature(poFeature);
-            OGRGeometryFactory::destroyGeometry(poGeom);
             GDALClose(poDS);
             return 1;
         }
 
+        // 默认 DestroyFeature 会连带释放通过 SetGeometryDirectly 转移所有权的几何对象
         OGRFeature::DestroyFeature(poFeature);
-        OGRGeometryFactory::destroyGeometry(poGeom);
 
         // 批量刷新 + 进度报告
-        if ((i + 1) % kBatchSize == 0) {
+        if ((i + 1) % cfg.batch_size == 0) {
             poDS->FlushCache();
             int pct = static_cast<int>((i + 1) * 100 / cfg.count);
             if (pct != last_report_pct) {
