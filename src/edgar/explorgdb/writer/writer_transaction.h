@@ -5,6 +5,7 @@
 #include "writer_delete.h"
 #include "writer_update.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -31,11 +32,9 @@ public:
 
     bool open(const std::string& source_gdb_path,
               const std::string& layer_name);
-
     bool append(const AppendEdit& edit);
     bool update(const UpdateEdit& edit);
     bool erase(const DeleteEdit& edit);
-
     bool commit();
     bool abort();
 
