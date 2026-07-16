@@ -1,9 +1,26 @@
-#ifdef FAST_GDB_CONSUMER_WRITER
+#ifdef FAST_GDB_CONSUMER_WRITER_LEGACY
 #include <gdb_table_writer.h>
 
 int main() {
     explorgdb::writer::GdbTableWriter writer;
     return writer.is_open() ? 1 : 0;
+}
+#elif defined(FAST_GDB_CONSUMER_WRITER)
+#include <writer_session.h>
+#ifdef FAST_GDB_CONSUMER_WRITER_INDEX
+#include <writer_index.h>
+#endif
+
+int main() {
+    explorgdb::writer::WriterSession session;
+    if (session.is_open() || session.is_committed() || session.is_aborted()) {
+        return 1;
+    }
+#ifdef FAST_GDB_CONSUMER_WRITER_INDEX
+    auto* create_spatial_index = &explorgdb::writer::CreateSpatialIndex;
+    if (create_spatial_index == nullptr) return 1;
+#endif
+    return 0;
 }
 #elif defined(FAST_GDB_CONSUMER_HYBRID)
 #include <hybrid_geometry_reader.h>
