@@ -70,6 +70,19 @@ jobs:
           cmake --build build-package-nogdal --target explorgdb_writer_lib --parallel
           cmake --install build-package-nogdal \
             --prefix "$GITHUB_WORKSPACE/install-package-nogdal"
+
+          stable="$GITHUB_WORKSPACE/install-package-nogdal/include/fast_gdb/writer"
+          legacy="$GITHUB_WORKSPACE/install-package-nogdal/include/fast_gdb/writer_legacy"
+          test -f "$stable/writer_session.h"
+          test ! -e "$stable/writer_index.h"
+          test ! -e "$stable/row_buffer.h"
+          test ! -e "$stable/tablx_writer.h"
+          test ! -e "$stable/gdb_table_writer.h"
+          test ! -e "$stable/atomic_gdb_write_session.h"
+          test -f "$legacy/gdb_table_writer.h"
+          test -f "$legacy/row_buffer.h"
+          test -f "$legacy/tablx_writer.h"
+
           cmake -S tests/package_consumer -B build-consumer-nogdal -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/install-package-nogdal" \
@@ -97,6 +110,15 @@ jobs:
           cmake --build build-package-gdal --target explorgdb_writer_lib --parallel
           cmake --install build-package-gdal \
             --prefix "$GITHUB_WORKSPACE/install-package-gdal"
+
+          stable="$GITHUB_WORKSPACE/install-package-gdal/include/fast_gdb/writer"
+          test -f "$stable/writer_session.h"
+          test -f "$stable/writer_index.h"
+          test ! -e "$stable/row_buffer.h"
+          test ! -e "$stable/tablx_writer.h"
+          test ! -e "$stable/gdb_table_writer.h"
+          test ! -e "$stable/gdb_index_creator.h"
+
           cmake -S tests/package_consumer -B build-consumer-gdal -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/install-package-gdal" \
