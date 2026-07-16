@@ -13,10 +13,17 @@ int main() {
 #ifdef FAST_GDB_CONSUMER_WRITER_APPEND
 #include <writer_append.h>
 #endif
+#ifdef FAST_GDB_CONSUMER_WRITER_TRANSACTION
+#include <writer_transaction.h>
+#endif
 
 int main() {
     explorgdb::writer::WriterSession session;
     if (session.is_open() || session.is_committed() || session.is_aborted()) {
+        return 1;
+    }
+    if (explorgdb::writer::writer_error_code_name(
+            explorgdb::writer::WriterErrorCode::None) == nullptr) {
         return 1;
     }
 #ifdef FAST_GDB_CONSUMER_WRITER_INDEX
@@ -26,6 +33,13 @@ int main() {
 #ifdef FAST_GDB_CONSUMER_WRITER_APPEND
     explorgdb::writer::WriterAppendSession append;
     if (append.is_open() || append.is_committed() || append.is_aborted()) {
+        return 1;
+    }
+#endif
+#ifdef FAST_GDB_CONSUMER_WRITER_TRANSACTION
+    explorgdb::writer::WriterTransaction transaction;
+    if (transaction.is_open() || transaction.is_committed() ||
+        transaction.is_aborted()) {
         return 1;
     }
 #endif
