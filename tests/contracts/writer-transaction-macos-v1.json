@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "contract_id": "writer-transaction-macos-v1",
-  "title": "Writer unified transaction macOS contract",
+  "title": "Writer unified transaction and recovery macOS contract",
   "platform": "macOS",
   "random_seed": 42,
   "allowed_results": ["PASS", "FAIL", "SKIP"],
@@ -45,6 +45,28 @@
       "data_scale": "small-generated",
       "cache_state": "fresh-open",
       "assertions": ["empty_commit", "source_fingerprint", "no_publish", "structured_error"]
+    },
+    {
+      "id": "W-RECOVERY-001",
+      "title": "Explicit recovery handles unique working and backup states",
+      "kind": "gtest",
+      "binary": "full",
+      "filter": "WriterRecoveryTest.DiscardsWorkingOnlyWhenSourceIsHealthy:WriterRecoveryTest.RestoresUniqueBackupWhenSourceIsMissing",
+      "gate": "required",
+      "data_scale": "unit",
+      "cache_state": "not_applicable",
+      "assertions": ["discard_working", "restore_backup", "never_overwrite_healthy_source"]
+    },
+    {
+      "id": "W-RECOVERY-002",
+      "title": "Ambiguous recovery candidates require manual inspection",
+      "kind": "gtest",
+      "binary": "full",
+      "filter": "WriterRecoveryTest.RefusesAmbiguousCandidates",
+      "gate": "required",
+      "data_scale": "unit",
+      "cache_state": "not_applicable",
+      "assertions": ["ambiguous_state", "no_automatic_mutation", "structured_error"]
     },
     {
       "id": "W-ERROR-001",
