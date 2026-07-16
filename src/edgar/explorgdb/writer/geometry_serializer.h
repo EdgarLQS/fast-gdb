@@ -62,6 +62,7 @@
 #include <cstddef>
 #include <cstring>
 #include <cmath>
+#include <string>
 #include <vector>
 #include <utility>
 #include <algorithm>
@@ -194,9 +195,12 @@ public:
     // 执行序列化，结果存储在内部 buffer
     size_t serialize(GeomType type) {
         blob_.clear();
-        uint32_t base_type = static_cast<uint32_t>(type) & 0xFF;
-        bool has_z = (static_cast<uint32_t>(type) & 0x80000000) != 0;
-        bool has_m = (static_cast<uint32_t>(type) & 0x40000000) != 0;
+        last_error_.clear();
+        serialized_type_ = type;
+        const uint32_t base_type = static_cast<uint32_t>(type) & 0xFF;
+        const bool has_z = (static_cast<uint32_t>(type) & 0x80000000) != 0;
+        const bool has_m = (static_cast<uint32_t>(type) & 0x40000000) != 0;
+        if (!validate_input(base_type, has_z, has_m)) return 0;
 
         switch (base_type) {
             case 1:  return serialize_point(type, has_z, has_m);
@@ -213,8 +217,91 @@ public:
     // 访问序列化后的 blob
     const uint8_t* blob_data() const { return blob_.data(); }
     size_t blob_size() const { return blob_.size(); }
+    GeomType serialized_type() const { return serialized_type_; }
+    const std::string& last_error() const { return last_error_; }
 
 private:
+    bool invalid(const std::string& message) {
+        last_error_ = message;
+        return false;
+    }
+
+    bool validate_finite_points() {
+        for (const auto& point : points_) {
+            if (!std::isfinite(point.x) || !std::isfinite(point.y)) {
+                return invalid("geometry coordinates must be finite");
+            }
+        }
+        for (const auto& part : rings_) {
+            for (const auto& point : part) {
+                if (!std::isfinite(point.x) || !std::isfinite(point.y)) {
+                    return invalid("geometry coordinates must be finite");
+                }
+            }
+        }
+        return true;
+    }
+
+    bool validate_parts(uint32_t base_type) {
+        for (const auto& part : rings_) {
+            if (base_type == 3 && part.size() < 2) {
+                return invalid("polyline parts require at least two points");
+            }
+            if (base_type == 5 && part.size() < 4) {
+                return invalid("polygon rings require at least four points");
+            }
+            if (base_type == 5 &&
+                (part.front().x != part.back().x ||
+                 part.front().y != part.back().y)) {
+                return invalid("polygon rings must be closed");
+            }
+        }
+        return true;
+    }
+
+    bool validate_dimensions(size_t point_count, bool has_z, bool has_m) {
+        if ((has_z && z_values_.size() != point_count) ||
+            (!has_z && !z_values_.empty())) {
+            return invalid("Z value count must match geometry point count");
+        }
+        if ((has_m && m_values_.size() != point_count) ||
+            (!has_m && !m_values_.empty())) {
+            return invalid("M value count must match geometry point count");
+        }
+        for (double value : z_values_) {
+            if (!std::isfinite(value)) return invalid("Z values must be finite");
+        }
+        for (double value : m_values_) {
+            if (!std::isfinite(value)) return invalid("M values must be finite");
+        }
+        return true;
+    }
+
+    bool validate_input(uint32_t base_type, bool has_z, bool has_m) {
+        if (!std::isfinite(xorig_) || !std::isfinite(yorig_) ||
+            !std::isfinite(xyscale_) || xyscale_ <= 0) {
+            return invalid("XY origin and scale must be finite and scale positive");
+        }
+        if (base_type != 1 && base_type != 3 &&
+            base_type != 5 && base_type != 8) {
+            return invalid("unsupported geometry type");
+        }
+        if (!validate_finite_points()) return false;
+        if (base_type == 1 && points_.size() > 1) {
+            return invalid("point geometry accepts at most one point");
+        }
+        if ((base_type == 3 || base_type == 5) &&
+            !validate_parts(base_type)) {
+            return false;
+        }
+        size_t point_count = points_.size();
+        if (base_type == 3 || base_type == 5) {
+            point_count = 0;
+            for (const auto& part : rings_) point_count += part.size();
+        }
+        return validate_dimensions(point_count, has_z, has_m);
+    }
+
     void clear_data() {
         points_.clear();
         rings_.clear();
@@ -467,6 +554,8 @@ private:
     std::vector<double> z_values_;            // Z 值（可选）
     std::vector<double> m_values_;            // M 值（可选）
     std::vector<uint8_t> blob_;               // 序列化结果
+    GeomType serialized_type_ = GeomType::Point;
+    std::string last_error_;
     uint8_t tmp_[64];                         // 临时编码缓冲区
 };
 

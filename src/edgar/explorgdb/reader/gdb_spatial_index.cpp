@@ -41,6 +41,7 @@ GdbSpatialIndexParser::GdbSpatialIndexParser(const std::string& file_path)
     : file_path_(file_path) {}
 
 GdbSpatialIndexParser::~GdbSpatialIndexParser() {
+    if (mapped_data_) munmap(const_cast<uint8_t*>(mapped_data_), mapped_size_);
     if (fd_ >= 0) close(fd_);
 }
 
@@ -61,6 +62,10 @@ bool GdbSpatialIndexParser::parse() {
 
     max_per_page_ = calc_max_per_page(trailer_.value_size);
     values_offset_ = 12 + max_per_page_ * 4;
+    void* mapping = mmap(nullptr, mapped_size_, PROT_READ, MAP_PRIVATE, fd_, 0);
+    if (mapping != MAP_FAILED) {
+        mapped_data_ = static_cast<const uint8_t*>(mapping);
+    }
 
     return true;
 }
@@ -86,6 +91,10 @@ bool GdbSpatialIndexParser::parse_trailer() {
 }
 
 const uint8_t* GdbSpatialIndexParser::read_page(uint32_t page_id, int depth) const {
+    size_t off = static_cast<size_t>(page_id - 1) * kPageSize;
+    if (page_id == 0 || off + kPageSize > mapped_size_) return nullptr;
+    if (mapped_data_) return mapped_data_ + off;
+
     // 计算当前 depth 对应的 slot 范围
     // depth 1 = 叶子层，depth tree_depth = 根节点层
     int depth_idx = (depth - 1) % kMaxDepth;  // 0..3
@@ -115,9 +124,6 @@ const uint8_t* GdbSpatialIndexParser::read_page(uint32_t page_id, int depth) con
             slot = i;
         }
     }
-
-    size_t off = static_cast<size_t>(page_id - 1) * kPageSize;
-    if (off + kPageSize > mapped_size_) return nullptr;
 
     if (!found_empty) {
         page_cache_[slot].valid = false;

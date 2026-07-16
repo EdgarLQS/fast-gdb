@@ -68,7 +68,9 @@ struct IndexDefinition {
 };
 
 /**
- * 创建空间索引
+ * 创建或重建空间索引并重算图层范围。
+ * OpenFileGDB 没有独立的 CREATE SPATIAL INDEX SQL，因此该操作会逐条
+ * SetFeature 以维护原生 .spx，复杂度为 O(n)。小图层可能由 GDAL 省略 .spx。
  *
  * @param gdb_path GDB 目录路径
  * @param layer_name 图层名称
@@ -92,7 +94,8 @@ bool CreateAttributeIndex(const std::string& gdb_path,
                           const std::string& index_name = "");
 
 /**
- * 创建联合索引（多字段复合索引）
+ * 创建属性索引的兼容入口。OpenFileGDB 不支持多字段复合索引，传入多个
+ * 字段时返回 false。
  *
  * @param gdb_path GDB 目录路径
  * @param layer_name 图层名称

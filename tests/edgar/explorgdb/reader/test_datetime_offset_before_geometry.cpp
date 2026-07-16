@@ -66,8 +66,10 @@ TEST(DateTimeWithOffsetBeforeGeometry_ReadRecord, ConsumesOffsetBeforeGeometry) 
     FeatureRecord record;
     ASSERT_TRUE(parser.read_record_by_fid(0, record));
     ASSERT_EQ(record.field_values.size(), 3u);
-    ASSERT_TRUE(std::holds_alternative<double>(record.field_values[1]));
-    EXPECT_DOUBLE_EQ(std::get<double>(record.field_values[1]), 45200.5);
+    ASSERT_TRUE(std::holds_alternative<DateTimeOffsetValue>(record.field_values[1]));
+    const auto value = std::get<DateTimeOffsetValue>(record.field_values[1]);
+    EXPECT_DOUBLE_EQ(value.date, 45200.5);
+    EXPECT_EQ(value.offset_minutes, 60);
 }
 
 TEST(DateTimeWithOffsetBeforeGeometry_PeekGeometry, UsesCanonicalTenByteSkip) {
@@ -94,7 +96,9 @@ TEST(DateTimeWithOffsetBeforeGeometry_SequentialScan, KeepsGeometryFieldAligned)
             EXPECT_EQ(fid, 0u);
             EXPECT_EQ(field_count, 3);
             EXPECT_EQ(fields[1].type, FieldType::DateTimeWithOffset);
-            EXPECT_EQ(fields[1].byte_len, 8u);
+            EXPECT_EQ(fields[1].byte_len, 10u);
+            EXPECT_DOUBLE_EQ(fields[1].as_f64(), 45200.5);
+            EXPECT_EQ(fields[1].as_datetime_offset_minutes(), 60);
             EXPECT_EQ(fields[2].type, FieldType::Geometry);
             EXPECT_EQ(fields[2].byte_len, 1u);
             if (fields[2].data != nullptr) EXPECT_EQ(fields[2].data[0], 0x00);

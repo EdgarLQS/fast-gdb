@@ -27,6 +27,7 @@
 
 #include <cstdint>
 #include <cstddef>
+#include <cerrno>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -51,9 +52,24 @@ public:
     size_t count() const { return offsets_.size(); }
 
     // 写入 .gdbtablx 文件（v3 格式 — GDAL 默认）
-    bool write(const std::string& path) const {
+    bool write(const std::string& path, std::string* error = nullptr) const {
+        if (offsets_.size() > UINT32_MAX) {
+            if (error) *error = "record count exceeds uint32";
+            return false;
+        }
+        for (uint64_t offset : offsets_) {
+            if (offset >= (1ULL << 40)) {
+                if (error) *error = "record offset exceeds 5-byte tablx capacity";
+                return false;
+            }
+        }
+
+        errno = 0;
         std::ofstream ofs(path, std::ios::binary | std::ios::trunc);
-        if (!ofs.is_open()) return false;
+        if (!ofs.is_open()) {
+            if (error) *error = std::strerror(errno);
+            return false;
+        }
 
         uint32_t n_features = static_cast<uint32_t>(offsets_.size());
         uint32_t n_blocks = (n_features + 1023) / 1024;
@@ -82,6 +98,17 @@ public:
         write_u32(ofs, n_blocks);     // n1024BlocksPresent
         write_u32(ofs, 0);            // nLeadingNonZero32BitWords = 0
 
+        ofs.flush();
+        if (!ofs.good()) {
+            if (error) *error = std::strerror(errno);
+            ofs.close();
+            return false;
+        }
+        ofs.close();
+        if (ofs.fail()) {
+            if (error) *error = std::strerror(errno);
+            return false;
+        }
         return true;
     }
 
@@ -109,15 +136,6 @@ private:
     static void write_zero_n(std::ofstream& ofs, uint32_t n) {
         uint8_t buf[8] = {0};
         ofs.write(reinterpret_cast<const char*>(buf), n);
-    }
-
-    static void write_u64(std::ofstream& ofs, uint64_t value) {
-        uint8_t buf[8];
-        for (int i = 0; i < 8; ++i) {
-            buf[i] = static_cast<uint8_t>(value & 0xFF);
-            value >>= 8;
-        }
-        ofs.write(reinterpret_cast<const char*>(buf), 8);
     }
 
     std::vector<uint64_t> offsets_;  // FID → .gdbtable 文件偏移

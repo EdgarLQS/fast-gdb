@@ -1,6 +1,6 @@
 # 02 — fast-gdb / GDAL 功能对比矩阵
 
-**更新日期**：2026-07-13
+**更新日期**：2026-07-15
 **文档状态**：当前权威能力矩阵  
 **对比对象**：`fast_gdb_linear`、`fast_gdb_hybrid`、`explorgdb writer` 与 GDAL OpenFileGDB 能力
 
@@ -159,7 +159,7 @@ WKT 兼容接口保留至少一个稳定大版本；正式性能和互操作契�
 | 能力 | fast-gdb | 说明 |
 |---|:---:|---|
 | 常规数值/字符串/XML/Binary/GUID/GlobalID/Int64 | ✅ | 已暴露 |
-| DateTimeWithOffset | ⚠️ | 10 字节物理读取安全；offset 尚未独立暴露 |
+| DateTimeWithOffset | ✅ | 10 字节读取，日期值与 offset 独立暴露并覆盖 Writer/GDAL 回读 |
 | Raster | ⚠️ | 检测并 degraded，不读像素 |
 | SRS WKT/WKID/LatestWKID/SRSName | ✅ | 不重投影 |
 | coded/range domain | ✅ | 已结构化解析 |
@@ -201,19 +201,19 @@ WKT 兼容接口保留至少一个稳定大版本；正式性能和互操作契�
 
 | 能力 | 当前状态 | 说明 |
 |---|:---:|---|
-| 空 schema 二进制批量写 | 🧪 | `GdbTableWriter::open_existing()` 已覆盖 GDAL 创建空表后的直写和回读 |
+| 空 schema 二进制批量写 | ✅/🧪 | 精确选表、空表拒绝边界、行校验、原子发布、4 GiB 和 GDAL 重开已在 macOS 收口；ArcGIS/其他平台待统一验收 |
 | 非空数据表安全追加 | ❌ | 原有记录、FID 和 `.gdbtablx` 保留尚未形成安全契约 |
 | 批量行缓冲写入 | ✅ | 适合顺序批量追加，绕过逐条 GDAL `CreateFeature()` |
 | 源 GDB 读取与过滤 | ✅/⚠️ | Reader 可提供扫描、FID、属性和空间查询；端到端工具流程仍需调用方编排 |
 | 原地删除要素 | ❌ | 当前 writer 没有生产级要素删除、freelist 和删除标记维护接口 |
-| 完整系统表同步 | ⚠️ | 主数据和 `.gdbtablx` 更新不等于完整 FileGDB 编辑兼容 |
-| 追加后的 `.spx/.atx` 同步 | ⚠️ | 需要单独构建/重建并验证，不能假设逐条追加自动完成 |
-| 全量过滤重写 | 🧪 | 可由 Reader 顺序读取 + 新 GDB 批量写入实现，35GB/5 亿级数据必须真实基准验证 |
+| 新 GDB 元数据闭环 | ✅/⚠️ | schema adapter 保留 SRS/alias/default/domain/extent；不等于既有 GDB 原地编辑 |
+| 写完后的 `.spx/.atx` 重建 | ✅/⚠️ | GDAL 构建可对目标图层重建并以查询验证；删除索引和复合属性索引仍受驱动限制 |
+| 全量过滤重写 | ✅/🧪 | Reader → Writer → 索引 → GDAL 验证已有自动化；35GB/5 亿级仍需真实基准 |
 
-因此，`explorgdb writer` 当前应描述为实验性空表批量直写组件，不应描述为 GDAL/ArcGIS 完整编辑替代品。对于“过滤删除后追加”场景，生产流程应优先考虑新 GDB 全量重写，完成后统一构建索引并做 GDAL/ArcGIS 交叉验证。
+因此，`explorgdb writer` 当前应描述为“受限支持的空 schema 批量写入组件”，不应描述为 GDAL/ArcGIS 完整编辑替代品。对于“过滤删除后追加”场景，生产流程应优先考虑新 GDB 全量重写，完成后统一构建索引并做 GDAL/ArcGIS 交叉验证。
 
 详细迁移、FID 和发布检查见：
 
 - `docs/usage/02_几何WKB曲线支持与迁移.md`
 - `docs/evidence/13_fast-gdb最终等价与发布验收报告.md`
-- `docs/planning/17_writer生产化与读取后续计划.md`
+- `docs/planning/18_writer跨平台测试统一与后续编辑计划.md`

@@ -59,6 +59,7 @@ endif()
 function(fast_gdb_enable_warnings target)
     if(MSVC)
         target_compile_options(${target} PRIVATE /W4 /permissive- /utf-8 /wd4100 /wd4244)
+        target_compile_definitions(${target} PRIVATE _CRT_SECURE_NO_WARNINGS)
     else()
         target_compile_options(${target} PRIVATE -Wall -Wextra
                                -Wpedantic -Wno-unused-result)
@@ -160,7 +161,8 @@ endif()
 add_library(explorgdb_writer_lib STATIC ${WRITER_SOURCES})
 target_include_directories(explorgdb_writer_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/writer)
-target_link_libraries(explorgdb_writer_lib PUBLIC explorgdb_common_lib)
+target_link_libraries(explorgdb_writer_lib PUBLIC explorgdb_common_lib
+                                           PRIVATE explorgdb_reader_lib)
 if(FAST_GDB_WITH_GDAL)
     target_link_libraries(explorgdb_writer_lib PRIVATE ${FAST_GDB_GDAL_TARGET})
 endif()

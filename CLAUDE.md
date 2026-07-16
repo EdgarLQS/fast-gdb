@@ -8,10 +8,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 构建与运行
 
+### macOS / Linux
+
 ```bash
 # 构建
 cd fast_gdb && mkdir -p build && cd build
-cmake ..
+cmake .. -DCMAKE_BUILD_TYPE=Release
 make -j$(sysctl -n hw.ncpu)
 
 # 运行全部 369 个测试（27 教程 + 113 组件 + 229 explorgdb）
@@ -30,8 +32,33 @@ ctest --output-on-failure
 
 # 代码覆盖率（需要 lcov）
 bash scripts/coverage.sh
+```
 
-# explorgdb CLI 工具
+### Windows（MSVC）
+
+```bash
+# 构建（需先安装 GDAL，设置 GDAL_HOME 或 CMAKE_PREFIX_PATH）
+cd fast_gdb
+mkdir build_win && cd build_win
+cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+cmake --build . --config Release -- /maxcpucount:8
+
+# 运行测试
+.\bin\Release\gdb_tutorial_test_runner.exe
+.\bin\Release\gdb_tutorial_test_runner.exe --gtest_filter='TablxCache*'
+
+# Windows 特有构建说明
+# - 自动添加 /utf-8 编译标志处理中文源文件编码
+# - 使用 CMake 默认的 Visual Studio 生成器（VS 2022/2026）
+# - GDAL 路径在 CMakeLists.txt 第 17-19 行配置
+# - PROJ 数据库冲突时设置环境变量：
+#   set PROJ_LIB=C:\path\to\gdal\share\proj
+```
+
+### 通用（各平台）
+
+```bash
+# explorgdb CLI 工具（输出在 build/bin/ 或 build_win/bin/Release/）
 ./bin/explorgdb_cli explore <gdb_path>          # 探索 GDB 目录
 ./bin/explorgdb_cli dump-table <file>           # 解析 .gdbtable
 ./bin/explorgdb_cli dump-tablx <file>           # 解析 .gdbtablx

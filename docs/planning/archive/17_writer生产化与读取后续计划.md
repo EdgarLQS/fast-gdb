@@ -1,11 +1,15 @@
 # 17 — fast-gdb Writer 生产化与读取后续计划
 
 **更新日期**：2026-07-15
-**计划状态**：当前执行计划
-**实现基线**：`main` / `9a8fea4`
+**计划状态**：已归档；macOS 优先阶段于 2026-07-15 收口
+**实现基线**：`codex/writer-empty-schema-safety`
 **适用范围**：Writer 正确性与生产化、Reader 遗留验证、跨平台功能与性能门禁
 
-## 1. 当前结论
+> 归档说明：W0–W3 和 macOS W4 基线已经完成。Windows/Linux 统一测试编码、ArcGIS Pro
+> 抽样、宽表/复杂度/长稳和高级编辑转入[计划 18](../18_writer跨平台测试统一与后续编辑计划.md)。
+> 本文保留原始门槛，不再作为当前待办入口。
+
+## 1. 收口结论
 
 macOS 当前完整本地回归已经通过；Windows 当前本地核心 mmap 功能测试通过，正式空间 acceptance
 仍以对应 evidence 中的产物和判定为准。特殊真实数据、50M 阶梯和 35GB/5 亿级生产数据仍需按数据条件
@@ -13,8 +17,12 @@ macOS 当前完整本地回归已经通过；Windows 当前本地核心 mmap 功
 计时范围：当前已有部分场景优于 GDAL，也存在真实曲线顺序读取或部分大窗口查询由 GDAL 更快的记录，
 不得概括为所有场景全面优于 GDAL。
 
-Writer 当前定位是实验性空表批量直写路径，不是完整 FileGDB 编辑替代品。下一阶段以“安全的新建/批量
-写入闭环”为主线，先完成正确性、失败处理和三方回读，再推进非空表追加、更新和删除。
+Writer 当前定位升级为受限支持的空 schema 批量直写路径，不是完整 FileGDB 编辑替代品。已完成安全
+新建/批量写入、失败处理、GDAL 回读、索引重建和安装消费；非空追加、更新和删除保持明确不支持。
+
+macOS 验收包括 1K 三次采样、100K 空间/属性/全索引、1M 和 10M 写入。10M 在本机写入约
+47.65 秒、占用约 1.09 GB；该结果只描述本次硬件和 warm 场景，不能外推到其他平台。计划原列出的
+宽表、复杂几何阶梯、30 分钟长稳、磁盘不足、50M 和生产数据仍是后续工作。
 
 ## 2. 工作优先级
 
@@ -129,7 +137,7 @@ Reader 主链路保持稳定，不在 Writer 阶段同时进行大规模重构�
 5. DateTimeWithOffset 完整语义、MultiPatch、Raster、Annotation/Dimension 按产品需求单独立项。
 
 原 Phase H 的历史目标和门槛保存在
-[16_spatial-query-scale-optimization-plan.md](archive/16_spatial-query-scale-optimization-plan.md)，不再作为当前执行入口。
+[16_spatial-query-scale-optimization-plan.md](16_spatial-query-scale-optimization-plan.md)，不再作为当前执行入口。
 
 ## 8. CI 与发布门禁
 
@@ -154,10 +162,10 @@ Reader 主链路保持稳定，不在 Writer 阶段同时进行大规模重构�
 只有 W0-W4 全部通过，Writer 才能从“实验性组件”升级为正式支持产物。非空追加、Update/Delete、事务、
 崩溃恢复、原生曲线和 MultiPatch 不自动包含在该结论中。
 
-## 10. 当前已知风险
+## 10. 归档时保留的边界
 
-- 当前 Writer 的目标表解析、非空表处理、原有 tablx 保留和头部累计逻辑尚未形成安全契约；
-- `fseek/ftell` 在 Windows 大文件场景存在平台风险；
-- 系统表同步仍未完成，Writer 也尚未进入正式安装产物；
-- 当前写入测试集中于 GDAL 创建的空 schema，不能证明已有数据追加安全；
-- 现有性能证据来自不同数据和计时范围，后续必须统一结果格式后再做发布比较。
+- 非空追加、原地 Update/Delete、事务、崩溃恢复、原生曲线和 MultiPatch 不在支持范围；
+- Windows/Linux 尚未执行与 macOS 完全相同的 Writer 编号矩阵和 4 GiB 发布门禁；
+- `.spx` 重建当前通过 GDAL OpenFileGDB 对每个要素触发维护，复杂度为 O(n)；
+- OpenFileGDB 的删除索引和复合属性索引能力有限，接口保持失败可诊断；
+- 宽表、复杂几何阶梯、长稳、磁盘不足和 35GB/5 亿级真实性能尚未验收。

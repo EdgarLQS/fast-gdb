@@ -2,8 +2,8 @@ cmake_minimum_required(VERSION 3.15)
 project(fast_gdb_package_consumer LANGUAGES CXX)
 
 set(FAST_GDB_CONSUMER_TARGET "linear" CACHE STRING
-    "Installed fast-gdb target to test: linear or hybrid")
-set_property(CACHE FAST_GDB_CONSUMER_TARGET PROPERTY STRINGS linear hybrid)
+    "Installed fast-gdb target to test: linear, hybrid, or writer")
+set_property(CACHE FAST_GDB_CONSUMER_TARGET PROPERTY STRINGS linear hybrid writer)
 
 find_package(fast_gdb 0.1 CONFIG REQUIRED)
 
@@ -13,4 +13,7 @@ target_link_libraries(fast_gdb_package_consumer PRIVATE
 if(FAST_GDB_CONSUMER_TARGET STREQUAL "hybrid")
     target_compile_definitions(fast_gdb_package_consumer PRIVATE
         FAST_GDB_CONSUMER_HYBRID=1)
+elseif(FAST_GDB_CONSUMER_TARGET STREQUAL "writer")
+    target_compile_definitions(fast_gdb_package_consumer PRIVATE
+        FAST_GDB_CONSUMER_WRITER=1)
 endif()

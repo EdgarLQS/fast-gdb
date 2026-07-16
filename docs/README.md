@@ -37,12 +37,13 @@
 | [00_规划文档状态索引.md](planning/00_规划文档状态索引.md) | 当前入口 | 权威文档顺序和原则 |
 | [01_项目状态与规划.md](planning/01_项目状态与规划.md) | 当前 | 项目总体状态、产品和发布边界 |
 | [02_GDAL功能对比矩阵.md](planning/02_GDAL功能对比矩阵.md) | 当前 | linear / hybrid / GDAL 实际能力差异 |
-| [17_writer生产化与读取后续计划.md](planning/17_writer生产化与读取后续计划.md) | 当前计划 | Writer 主线、Reader 遗留验证、基准和发布门禁 |
+| [18_writer跨平台测试统一与后续编辑计划.md](planning/18_writer跨平台测试统一与后续编辑计划.md) | 当前计划 | Writer 跨平台测试编码、剩余基准和高级编辑入口 |
 | [13_fast-gdb最终等价与发布验收报告.md](evidence/13_fast-gdb最终等价与发布验收报告.md) | 发布证据 | v0.1.0 支持范围内的最终发布结论 |
 | [curve-polyline-m-real-acceptance-2026-07-13.md](evidence/curve-polyline-m-real-acceptance-2026-07-13.md) | 当前证据 | 真实 M 曲线逐要素、WKB、空间查询和 sanitizer 证据 |
+| [reader-fresh-open-macos-2026-07-15.md](evidence/reader-fresh-open-macos-2026-07-15.md) | 当前证据 | Point/MultiPoint/Polyline 10M fresh-open 正确性与性能失败档 |
 | [11_fast-gdb替换GDAL矢量能力分析.md](planning/archive/11_fast-gdb替换GDAL矢量能力分析.md) | 架构参考 | fast-gdb 与 GDAL 双路径取舍 |
 
-`03`–`16` 的已完成阶段计划、空间查询 Phase A–H、旧 v3 计划和阶段性曲线分析属于历史背景；从 [planning/archive/README.md](planning/archive/README.md) 或状态索引进入，不再作为当前完成度来源。
+`03`–`17` 的已完成阶段计划、空间查询 Phase A–H、Writer macOS 生产化阶段、旧 v3 计划和阶段性曲线分析属于历史背景；从 [planning/archive/README.md](planning/archive/README.md) 或状态索引进入，不再作为当前完成度来源。
 
 ## 当前几何结论
 

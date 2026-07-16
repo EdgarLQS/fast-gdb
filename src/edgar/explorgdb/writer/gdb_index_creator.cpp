@@ -2,6 +2,8 @@
 // GDAL OpenFileGDB 索引创建器实现
 
 #include "gdb_index_creator.h"
+#include "catalog_resolver.h"
+#include "gdb_catalog.h"
 #include "gdal.h"
 #include "cpl_error.h"
 #include "cpl_string.h"
@@ -65,6 +67,20 @@ bool ExecuteSQL(GDALDatasetH ds, const std::string& sql, const std::string& cont
     return true;
 }
 
+bool RewriteFeaturesForSpatialIndex(OGRLayerH layer) {
+    OGR_L_ResetReading(layer);
+    while (OGRFeatureH feature = OGR_L_GetNextFeature(layer)) {
+        const OGRErr error = OGR_L_SetFeature(layer, feature);
+        OGR_F_Destroy(feature);
+        if (error != OGRERR_NONE) {
+            std::cerr << "[IndexCreator] Failed to rewrite feature: "
+                      << CPLGetLastErrorMsg() << "\n";
+            return false;
+        }
+    }
+    return true;
+}
+
 std::string GenerateIndexName(const std::string& layer_name,
                                const std::vector<std::string>& fields) {
     std::string name = layer_name;
@@ -78,31 +94,16 @@ std::string GenerateIndexName(const std::string& layer_name,
     return name;
 }
 
-/**
- * Check if spatial index file exists for a GDB
- *
- * @param gdb_path Path to GDB directory
- * @return true if .spx file exists
- */
-bool SpatialIndexExists(const std::string& gdb_path) {
-    namespace fs = std::filesystem;
-
-    if (!fs::exists(gdb_path)) {
-        return false;
-    }
-
-    // Look for any .spx file in the GDB directory
-    try {
-        for (const auto& entry : fs::directory_iterator(gdb_path)) {
-            if (entry.path().extension() == ".spx") {
-                return true;
-            }
-        }
-    } catch (...) {
-        // Ignore filesystem errors
-    }
-
-    return false;
+std::string SpatialIndexPath(const std::string& gdb_path,
+                             const std::string& layer_name) {
+    GdbCatalog catalog;
+    if (!catalog.scan(gdb_path)) return {};
+    CatalogResolver resolver(catalog);
+    if (!resolver.load()) return {};
+    const auto table = resolver.resolve(layer_name);
+    if (!table) return {};
+    const CatalogEntry* spx = catalog.find_spx(table->id);
+    return spx ? gdb_path + "/" + spx->filename : std::string{};
 }
 
 /**
@@ -144,48 +145,20 @@ bool AttributeIndexExists(const std::string& gdb_path, const std::string& index_
 
 bool CreateSpatialIndex(const std::string& gdb_path,
                         const std::string& layer_name) {
-    // 1. Open GDB dataset in update mode
     GDALDatasetH ds = OpenGDBForUpdate(gdb_path);
-    if (!ds) {
+    if (!ds) return false;
+    OGRLayerH layer = GDALDatasetGetLayerByName(ds, layer_name.c_str());
+    if (!layer) {
+        std::cerr << "[IndexCreator] Layer not found: " << layer_name << "\n";
+        GDALClose(ds);
         return false;
     }
 
-    // 2. Try to execute SQL to create spatial index
-    // Note: OpenFileGDB automatically creates spatial indexes when features are written,
-    // so the SQL may fail but the index might already exist.
-    std::string sql = "CREATE SPATIAL INDEX ON " + layer_name;
-
-    // Clear any previous errors
-    CPLErrorReset();
-
-    OGRLayerH result_layer = GDALDatasetExecuteSQL(ds, sql.c_str(), nullptr, nullptr);
-
-    // For SELECT queries, release the result set
-    if (result_layer != nullptr) {
-        GDALDatasetReleaseResultSet(ds, result_layer);
-    }
-
-    // Check if there was an error
-    int err = CPLGetLastErrorNo();
-    bool sql_success = (err == CE_None);
-
-    if (!sql_success) {
-        std::cerr << "[IndexCreator] Warning: CREATE SPATIAL INDEX SQL failed\n";
-        std::cerr << "  Layer: " << layer_name << "\n";
-        std::cerr << "  Error: " << CPLGetLastErrorMsg() << "\n";
-        std::cerr << "  Note: OpenFileGDB auto-creates indexes when features are written\n";
-    }
-
-    // 3. Close the dataset
+    const bool index_ok = RewriteFeaturesForSpatialIndex(layer);
+    const bool extent_ok = index_ok && ExecuteSQL(
+        ds, "RECOMPUTE EXTENT ON " + layer_name, "RECOMPUTE EXTENT");
     GDALClose(ds);
-
-    // 4. Return success if SQL worked OR if index already exists
-    // (GDAL auto-creates indexes, so we check for existing .spx files)
-    if (sql_success || SpatialIndexExists(gdb_path)) {
-        return true;
-    }
-
-    return false;
+    return index_ok && extent_ok;
 }
 
 bool CreateAttributeIndex(const std::string& gdb_path,
@@ -227,8 +200,9 @@ bool CreateCompositeIndex(const std::string& gdb_path,
                           const std::string& layer_name,
                           const std::vector<std::string>& field_names,
                           const std::string& index_name) {
-    if (field_names.empty()) {
-        std::cerr << "[IndexCreator] CreateCompositeIndex: field_names cannot be empty\n";
+    if (field_names.size() != 1) {
+        std::cerr << "[IndexCreator] OpenFileGDB supports only single-field "
+                     "attribute indexes\n";
         return false;
     }
 
@@ -291,37 +265,16 @@ bool CreateIndex(const std::string& gdb_path,
 bool CreateIndexes(const std::string& gdb_path,
                    const std::string& layer_name,
                    const std::vector<IndexDefinition>& definitions) {
-    if (definitions.empty()) {
-        return true;  // Nothing to do
-    }
-
-    // Open dataset once for all index creations
-    GDALDatasetH ds = OpenGDBForUpdate(gdb_path);
-    if (!ds) {
-        return false;
-    }
+    if (definitions.empty()) return true;
 
     bool all_success = true;
     for (size_t i = 0; i < definitions.size(); ++i) {
-        const auto& def = definitions[i];
-
-        bool result = false;
-        if (def.is_spatial) {
-            result = CreateSpatialIndex(gdb_path, layer_name);
-        } else if (def.fields.size() == 1) {
-            result = CreateAttributeIndex(gdb_path, layer_name, def.fields[0], def.index_name);
-        } else if (def.fields.size() > 1) {
-            result = CreateCompositeIndex(gdb_path, layer_name, def.fields, def.index_name);
-        }
-
-        if (!result) {
+        if (!CreateIndex(gdb_path, layer_name, definitions[i])) {
             std::cerr << "[IndexCreator] Failed to create index " << (i + 1)
                       << " of " << definitions.size() << "\n";
             all_success = false;
         }
     }
-
-    GDALClose(ds);
     return all_success;
 }
 
@@ -345,9 +298,7 @@ bool DropIndex(const std::string& gdb_path,
 
 bool HasSpatialIndex(const std::string& gdb_path,
                      const std::string& layer_name) {
-    // Check if .spx file exists for the GDB
-    // Note: OpenFileGDB creates one .spx file per GDB, not per layer
-    return SpatialIndexExists(gdb_path);
+    return !SpatialIndexPath(gdb_path, layer_name).empty();
 }
 
 }  // namespace writer

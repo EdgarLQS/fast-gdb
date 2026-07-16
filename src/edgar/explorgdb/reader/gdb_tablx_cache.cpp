@@ -5,7 +5,12 @@
 
 #include <cstdlib>
 #include <mutex>
+
+#ifdef _WIN32
+#include "windows_posix_compat.h"  // NOMINMAX, Windows.h, CreateFileW
+#else
 #include <sys/stat.h>
+#endif
 
 namespace explorgdb {
 
@@ -31,7 +36,48 @@ bool TablxCache::is_bypassed() {
 // 缓存键生成
 // ============================================================================
 
+#ifdef _WIN32
+
+static bool make_key_windows(const std::string& file_path, TablxCacheKey& key) {
+    // Convert UTF-8 path to UTF-16 for CreateFileW
+    int wlen = MultiByteToWideChar(CP_UTF8, 0, file_path.c_str(), -1, nullptr, 0);
+    if (wlen <= 0) return false;
+    std::wstring wpath(static_cast<size_t>(wlen), L'\0');
+    if (MultiByteToWideChar(CP_UTF8, 0, file_path.c_str(), -1, &wpath[0], wlen) == 0)
+        return false;
+
+    HANDLE hFile = CreateFileW(wpath.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
+                               OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (hFile == INVALID_HANDLE_VALUE) return false;
+
+    BY_HANDLE_FILE_INFORMATION info;
+    if (!GetFileInformationByHandle(hFile, &info)) {
+        CloseHandle(hFile);
+        return false;
+    }
+    CloseHandle(hFile);
+
+    // dwVolumeSerialNumber — uniquely identifies the volume
+    // nFileIndexHigh/Low — 64-bit unique file identifier on NTFS
+    // ftLastWriteTime — 100-nanosecond intervals since 1601-01-01
+    key.device = info.dwVolumeSerialNumber;
+    key.inode = (static_cast<uint64_t>(info.nFileIndexHigh) << 32) | info.nFileIndexLow;
+    key.file_size = (static_cast<uint64_t>(info.nFileSizeHigh) << 32) | info.nFileSizeLow;
+    // Use the full 100ns FILETIME as mtime — it changes on every write
+    key.mtime = static_cast<int64_t>(
+        (static_cast<uint64_t>(info.ftLastWriteTime.dwHighDateTime) << 32) |
+        info.ftLastWriteTime.dwLowDateTime);
+    key.mtime_nsec = 0; // mtime already has 100ns precision
+    return true;
+}
+
+#endif // _WIN32
+
 bool TablxCache::make_key(const std::string& file_path, TablxCacheKey& key) {
+#ifdef _WIN32
+    if (make_key_windows(file_path, key)) return true;
+    // Fallback only if Windows API fails
+#endif
     struct stat st;
     if (stat(file_path.c_str(), &st) != 0) {
         return false;

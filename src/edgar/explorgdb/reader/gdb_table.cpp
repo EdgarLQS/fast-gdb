@@ -52,18 +52,25 @@ bool read_fixed_field_value(BinaryReader& reader,
             return true;
         case FieldType::DateTimeWithOffset: {
             const double date = reader.read_f64();
-            (void)reader.read_i16();
-            value = date;
+            const int16_t offset_minutes = reader.read_i16();
+            value = DateTimeOffsetValue{date, offset_minutes};
             return true;
         }
         case FieldType::UUID_1:
         case FieldType::UUID_2: {
-            const auto bytes = reader.read_bytes(width);
-            char uuid[33];
-            for (size_t i = 0; i < bytes.size(); ++i)
-                std::snprintf(uuid + i * 2, 3, "%02x", bytes[i]);
-            uuid[32] = '\0';
-            value = std::string(uuid, 32);
+            auto bytes = reader.read_bytes(width);
+            std::reverse(bytes.begin(), bytes.begin() + 4);
+            std::reverse(bytes.begin() + 4, bytes.begin() + 6);
+            std::reverse(bytes.begin() + 6, bytes.begin() + 8);
+            char uuid[37];
+            std::snprintf(
+                uuid, sizeof(uuid),
+                "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-"
+                "%02x%02x%02x%02x%02x%02x",
+                bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5],
+                bytes[6], bytes[7], bytes[8], bytes[9], bytes[10], bytes[11],
+                bytes[12], bytes[13], bytes[14], bytes[15]);
+            value = std::string(uuid);
             return true;
         }
         default:
@@ -85,9 +92,7 @@ bool set_fixed_field_ref(const uint8_t*& cursor,
     if (width == 0 || cursor + width > end) return false;
 
     ref.data = cursor;
-    // Preserve the existing FieldRef contract: DateTimeWithOffset exposes the
-    // date double while consuming the complete 10-byte physical value.
-    ref.byte_len = type == FieldType::DateTimeWithOffset ? sizeof(double) : width;
+    ref.byte_len = width;
     cursor += width;
     return true;
 }
@@ -421,7 +426,7 @@ void GdbTableParser::parse_field_descriptor(BinaryReader& reader,
             break;
         }
         case FieldType::String: {
-            field.width = static_cast<uint8_t>(std::min<uint32_t>(reader.read_u32(), 255));
+            field.width = reader.read_u32();
             field.flag = reader.read_u8();
             const uint64_t default_length = reader.read_varuint();
             if (default_length > 0 && (field.flag & 4U) != 0)

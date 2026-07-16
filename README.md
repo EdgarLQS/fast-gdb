@@ -30,11 +30,12 @@ FileGDB geometry blob
 
 MultiPatch 仍属于兼容/降级路径：可以通过 Hybrid 回退读取，但尚未纳入标准线性 `GeometryModel` 的完整表面拓扑。
 
-## 两个正式构建产物
+## 构建产物
 
 | 源码目标 | 安装后目标 | GDAL 依赖 | 曲线策略 | 适用场景 |
 |---|---|---:|---|---|
 | `fast_gdb_linear` | `fast_gdb::linear` | 无 | 内置算法折线化 | 轻量部署、服务端批量读取 |
+| `explorgdb_writer` | `fast_gdb::writer` | 无（索引助手需 GDAL 构建） | 实验性空 schema 顺序批量写 | 新建/全量重写验证 |
 | `fast_gdb_hybrid` | `fast_gdb::hybrid` | 有 | fast-gdb 优先，按需缓存式 GDAL 回退 | 需要 GDAL 对照或复杂拓扑兜底 |
 
 普通非曲线几何在两个产物中都走纯 C++ fast-gdb 主路径。
@@ -93,6 +94,17 @@ find_package(GDAL REQUIRED)
 find_package(fast_gdb 0.1 CONFIG REQUIRED)
 target_link_libraries(my_app PRIVATE fast_gdb::hybrid)
 ```
+
+### Writer 消费项目
+
+```cmake
+find_package(fast_gdb 0.1 CONFIG REQUIRED)
+target_link_libraries(my_app PRIVATE fast_gdb::writer)
+```
+
+Writer 当前是安装包中的实验性受限目标，只验证“已创建空 schema 后顺序批量写入并关闭重开”；
+非空追加、原地更新/删除、事务和原生曲线写入不在支持范围。schema 默认值会保留，但 Writer 不会自动应用，
+调用方必须显式写入该字段。GDAL 构建可在写入结束后调用索引助手。
 
 安装包包含静态库、公共头文件、可重定位的 `fast_gdbConfig.cmake`、变更记录和发布验收证据。
 
@@ -180,7 +192,7 @@ FAST_GDB_REAL_DATASET="$PWD/test_data/gdb/test_spatial_gdb.gdb/test_spatial_gdb.
 | `explorgdb/common` | `src/edgar/explorgdb/common/` | 二进制、公共类型和共享基础设施 |
 | `explorgdb/reader` | `src/edgar/explorgdb/reader/` | 纯 C++ Reader、几何模型、WKB、拓扑和查询 |
 | `explorgdb/curve_gdal` | `src/edgar/explorgdb/curve_gdal/` | 可选缓存式 GDAL Hybrid Bridge |
-| `explorgdb/writer` | `src/edgar/explorgdb/writer/` | 实验性纯 C++ 写入器；不在 v0.1.0 生产支持声明内 |
+| `explorgdb/writer` | `src/edgar/explorgdb/writer/` | 受限支持的纯 C++ 空 schema 批量写入器；不等同完整 FileGDB 编辑器 |
 
 ## 文档
 
@@ -189,7 +201,7 @@ FAST_GDB_REAL_DATASET="$PWD/test_data/gdb/test_spatial_gdb.gdb/test_spatial_gdb.
 - `docs/releases/v0.1.0.md`
 - `docs/overview/01_fast-gdb项目介绍与当前状态.md`
 - `docs/planning/00_规划文档状态索引.md`
-- `docs/planning/17_writer生产化与读取后续计划.md`
+- `docs/planning/18_writer跨平台测试统一与后续编辑计划.md`
 - `docs/evidence/13_fast-gdb最终等价与发布验收报告.md`
 - `docs/usage/02_几何WKB曲线支持与迁移.md`
 - `docs/planning/02_GDAL功能对比矩阵.md`
@@ -208,4 +220,4 @@ FAST_GDB_REAL_DATASET="$PWD/test_data/gdb/test_spatial_gdb.gdb/test_spatial_gdb.
 - 曲线正式输出为线性化标准 WKB，不保留 ArcGIS 原生 curve object；
 - MultiPatch 仅提供 Hybrid degraded support；
 - 不承诺所有未知或未来 FileGDB 几何编码；
-- Writer 仍为实验性组件。
+- Writer 仅支持安全空 schema 批量写和全量重写闭环；高级编辑仍不支持。

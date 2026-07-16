@@ -27,12 +27,17 @@ set_target_properties(explorgdb_reader_lib PROPERTIES
     EXPORT_NAME reader
     INTERFACE_INCLUDE_DIRECTORIES
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader>;$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/reader>")
+set_target_properties(explorgdb_writer_lib PROPERTIES
+    EXPORT_NAME writer
+    INTERFACE_INCLUDE_DIRECTORIES
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/writer>;$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/writer>")
 set_target_properties(fast_gdb_linear PROPERTIES EXPORT_NAME linear)
 
 set(FAST_GDB_INSTALL_TARGETS
     fast_gdb_geometry_core
     explorgdb_common_lib
     explorgdb_reader_lib
+    explorgdb_writer_lib
     fast_gdb_linear)
 
 if(FAST_GDB_WITH_GDAL)
@@ -57,7 +62,13 @@ install(DIRECTORY src/edgar/explorgdb/common/
 install(DIRECTORY src/edgar/explorgdb/reader/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/reader
     FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp")
+install(DIRECTORY src/edgar/explorgdb/writer/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/writer
+    FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp"
+    PATTERN "gdb_index_creator.h" EXCLUDE)
 if(FAST_GDB_WITH_GDAL)
+    install(FILES src/edgar/explorgdb/writer/gdb_index_creator.h
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/writer)
     install(DIRECTORY src/edgar/explorgdb/curve_gdal/
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/curve_gdal
         FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp")
@@ -96,7 +107,7 @@ set(CPACK_PACKAGE_NAME "fast-gdb")
 set(CPACK_PACKAGE_VENDOR "EdgarLQS")
 set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
-    "C++17 FileGDB reader and geometry engine with optional GDAL hybrid fallback")
+    "C++17 FileGDB reader, experimental bulk writer and geometry engine with optional GDAL hybrid fallback")
 set(CPACK_PACKAGE_FILE_NAME
     "fast-gdb-${PROJECT_VERSION}-${FAST_GDB_PACKAGE_VARIANT}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
 set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY ON)

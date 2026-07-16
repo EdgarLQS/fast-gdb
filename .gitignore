@@ -1,4 +1,6 @@
 test_data/
+/benchmark_results/
+/benchmark-results/
 .DS_Store
 /build/
 /build-*/

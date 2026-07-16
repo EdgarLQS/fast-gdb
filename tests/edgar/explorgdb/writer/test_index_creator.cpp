@@ -16,11 +16,21 @@
 using namespace explorgdb::writer;
 namespace fs = std::filesystem;
 
+// 跨平台 getpid
+#ifdef _WIN32
+#include <process.h>
+#endif
+
 class IndexCreatorTest : public ::testing::Test {
 protected:
     void SetUp() override {
         GDALAllRegister();
-        test_dir_ = "/tmp/index_test_" + std::to_string(getpid());
+        auto tmp = fs::temp_directory_path();
+#ifdef _WIN32
+        test_dir_ = (tmp / ("index_test_" + std::to_string(_getpid()))).string();
+#else
+        test_dir_ = (tmp / ("index_test_" + std::to_string(getpid()))).string();
+#endif
         fs::create_directories(test_dir_);
     }
 
@@ -222,6 +232,8 @@ TEST_F(IndexCreatorTest, T_IC03_CreateCompositeIndex) {
     }
 
     EXPECT_TRUE(atx_exists) << "Composite index file (.atx) should exist after CreateCompositeIndex";
+    EXPECT_FALSE(CreateCompositeIndex(
+        gdb_path(), layer_name, {"id", "id"}, "unsupported_idx"));
 }
 
 // T_IC04: 批量创建多个索引
@@ -299,12 +311,15 @@ TEST_F(IndexCreatorTest, T_IC05_DropIndex) {
     EXPECT_TRUE(atx_exists_before) << "Index file should exist before drop";
 
     // 执行：删除索引
-    bool drop_result = DropIndex(gdb_path(), index_name);
-
-    // 验证 2：删除操作返回结果（SQL 可能不支持，但我们至少检查函数调用）
-    // Note: OpenFileGDB may not support DROP INDEX, so we just check the function runs
-    // The actual behavior depends on GDAL OpenFileGDB driver capabilities
-    std::cout << "DropIndex result: " << (drop_result ? "success" : "failed/unsupported") << "\n";
+    EXPECT_FALSE(DropIndex(gdb_path(), index_name));
+    bool atx_exists_after = false;
+    for (const auto& entry : fs::directory_iterator(gdb_path())) {
+        if (entry.path().extension() == ".atx" &&
+            entry.path().stem().string().find(index_name) != std::string::npos) {
+            atx_exists_after = true;
+        }
+    }
+    EXPECT_TRUE(atx_exists_after);
 }
 
 // T_IC06: 检查是否有空间索引
@@ -316,8 +331,7 @@ TEST_F(IndexCreatorTest, T_IC06_HasSpatialIndex) {
     ASSERT_FALSE(layer_name.empty()) << "Could not find layer in GDB";
 
     // 验证 1：创建空间索引前检查
-    bool has_before = HasSpatialIndex(gdb_path(), layer_name);
-    // Note: GDAL may auto-create spatial index when writing features, so this could be true or false
+    EXPECT_TRUE(HasSpatialIndex(gdb_path(), layer_name));
 
     // 执行：创建空间索引
     bool create_result = CreateSpatialIndex(gdb_path(), layer_name);
@@ -326,4 +340,5 @@ TEST_F(IndexCreatorTest, T_IC06_HasSpatialIndex) {
     // 验证 2：创建空间索引后检查
     bool has_after = HasSpatialIndex(gdb_path(), layer_name);
     EXPECT_TRUE(has_after) << "HasSpatialIndex should return true after creating spatial index";
+    EXPECT_FALSE(HasSpatialIndex(gdb_path(), "missing_layer"));
 }

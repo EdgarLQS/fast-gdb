@@ -2,6 +2,18 @@
 
 All notable changes to fast-gdb are documented in this file.
 
+## Unreleased
+
+### Added
+
+- Installed `fast_gdb::writer` target for the supported empty-schema bulk-write workflow.
+- Writer benchmark JSON/CSV evidence with correctness, median/p95, throughput, peak RSS and disk metrics.
+
+### Changed
+
+- Writer now rejects unsafe non-empty mutation, validates field/geometry/time values, supports atomic directory publication, and rebuilds spatial/attribute indexes after writing.
+- DateTimeWithOffset exposes the date value and offset independently.
+
 ## [0.1.0] - 2026-07-13
 
 ### Added

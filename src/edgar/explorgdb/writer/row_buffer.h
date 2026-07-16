@@ -163,7 +163,12 @@ public:
         uint8_t varbuf[10];
         size_t vlen = encode_varuint_to(varbuf, len);
         buf.insert(buf.end(), varbuf, varbuf + vlen);
-        buf.insert(buf.end(), data, data + len);
+        if (len > 0) buf.insert(buf.end(), data, data + len);
+    }
+
+    void append_bytes(const uint8_t* data, size_t len) {
+        auto& buf = cur_buf();
+        if (len > 0) buf.insert(buf.end(), data, data + len);
     }
 
     void append_geometry(const uint8_t* blob, size_t blob_len) {

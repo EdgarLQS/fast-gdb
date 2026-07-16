@@ -1,8 +1,11 @@
 #include <gtest/gtest.h>
 #include <algorithm>
+#include <atomic>
 #include <limits>
 #include <filesystem>
 #include <string>
+#include <thread>
+#include <vector>
 
 #include "test_fixture.h"
 #include "query_engine.h"
@@ -107,6 +110,64 @@ TEST_F(QueryEngineIntegrationTest, OpenReadScanAndQueryBboxOnGeneratedGdb) {
     const auto scan_result = engine.query(scan_request);
     ASSERT_EQ(scan_result.execution_path, "scan:sequential");
     ASSERT_EQ(scan_result.matched_fids.size(), 2u);
+}
+
+TEST_F(QueryEngineIntegrationTest,
+       ConcurrentIndependentReadersReturnDeterministicResults) {
+    const auto path = (std::filesystem::temp_directory_path() /
+                       "fast_gdb_query_engine_concurrent.gdb").string();
+    GDALDataset* dataset = createGdb(path.c_str());
+    ASSERT_NE(dataset, nullptr);
+    OGRLayer* layer = dataset->CreateLayer(
+        "concurrent_points", nullptr, wkbPoint, nullptr);
+    ASSERT_NE(layer, nullptr);
+    OGRFieldDefn id_field("sample_id", OFTInteger);
+    ASSERT_EQ(layer->CreateField(&id_field), OGRERR_NONE);
+    for (int row = 0; row < 1000; ++row) {
+        OGRFeature* feature = OGRFeature::CreateFeature(layer->GetLayerDefn());
+        feature->SetField(0, row);
+        OGRPoint point(row % 100, row / 100);
+        ASSERT_EQ(feature->SetGeometry(&point), OGRERR_NONE);
+        ASSERT_EQ(layer->CreateFeature(feature), OGRERR_NONE);
+        OGRFeature::DestroyFeature(feature);
+    }
+    GDALClose(dataset);
+
+    std::atomic<int> failures{0};
+    std::vector<std::thread> readers;
+    for (int thread = 0; thread < 8; ++thread) {
+        readers.emplace_back([&, thread]() {
+            GdbCatalog catalog;
+            CatalogResolver resolver(catalog);
+            if (!catalog.scan(path) || !resolver.load()) {
+                ++failures;
+                return;
+            }
+            const auto resolved = resolver.resolve("concurrent_points");
+            if (!resolved) {
+                ++failures;
+                return;
+            }
+            QueryEngine engine(catalog, *resolved);
+            if (!engine.open()) {
+                ++failures;
+                return;
+            }
+            for (int iteration = 0; iteration < 40; ++iteration) {
+                const auto hits = engine.query_bbox(0.0, 0.0, 9.0, 9.0);
+                FeatureRecord record;
+                const uint32_t fid = static_cast<uint32_t>(
+                    (thread * 40 + iteration) % 1000);
+                if (hits.size() != 100 || !engine.read_by_fid(fid, record) ||
+                    record.field_values.empty()) {
+                    ++failures;
+                    return;
+                }
+            }
+        });
+    }
+    for (auto& reader : readers) reader.join();
+    EXPECT_EQ(failures.load(), 0);
 }
 
 TEST_F(QueryEngineIntegrationTest, MissingAttributeIndexIsExplicitAndReturnsEmpty) {

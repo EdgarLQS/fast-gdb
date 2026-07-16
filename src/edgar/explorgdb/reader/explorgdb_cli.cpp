@@ -356,6 +356,9 @@ static void cmd_dump_records(const std::string& table_path) {
                 printf("%ld", std::get<int64_t>(val));
             } else if (std::holds_alternative<double>(val)) {
                 printf("%.6f", std::get<double>(val));
+            } else if (std::holds_alternative<explorgdb::DateTimeOffsetValue>(val)) {
+                const auto value = std::get<explorgdb::DateTimeOffsetValue>(val);
+                printf("%.6f (UTC%+d min)", value.date, value.offset_minutes);
             } else if (std::holds_alternative<std::string>(val)) {
                 const std::string& s = std::get<std::string>(val);
                 if (s.size() > 80) {
@@ -528,6 +531,9 @@ static void print_record(const explorgdb::FeatureRecord& rec,
             printf("%ld", std::get<int64_t>(val));
         } else if (std::holds_alternative<double>(val)) {
             printf("%.6f", std::get<double>(val));
+        } else if (std::holds_alternative<explorgdb::DateTimeOffsetValue>(val)) {
+            const auto value = std::get<explorgdb::DateTimeOffsetValue>(val);
+            printf("%.6f (UTC%+d min)", value.date, value.offset_minutes);
         } else if (std::holds_alternative<std::string>(val)) {
             const std::string& s = std::get<std::string>(val);
             if (s.size() > 80) {

@@ -33,7 +33,12 @@
 #include <fstream>
 #include <iomanip>
 #include <algorithm>
+#include <memory>
 #include <set>
+#include <sstream>
+#ifndef _WIN32
+#include <sys/resource.h>
+#endif
 
 // GDAL
 #include "gdal_priv.h"
@@ -51,6 +56,8 @@
 
 // explorgdb
 #include "gdb_catalog.h"
+#include "catalog_resolver.h"
+#include "query_engine.h"
 #include "gdb_table.h"
 #include "gdb_spatial_index.h"
 #include "gdb_attribute_index.h"
@@ -73,14 +80,208 @@ struct Timing {
     double total_ms = 0;       // 总计
     int feature_count = 0;     // 要素数量
     int result_count = 0;      // 查询结果数量
+    int iteration_count = 0;   // 长稳或重复工作流次数
     double disk_mb = 0;        // 磁盘占用 (MB)
+    double rss_start_mb = 0;
+    double rss_growth_mb = 0;
+    bool correct = false;       // 数量与回读正确性门禁
+    std::string manifest = "polygon_4_fields_seed_42";
+    std::vector<double> samples_ms;
 };
+
+struct ReaderSteadyCycle {
+    double elapsed_ms = 0;
+    int spatial_hits = 0;
+    bool correct = false;
+};
+
+static std::string BenchmarkPlatform() {
+#if defined(__APPLE__)
+    return "macOS";
+#elif defined(_WIN32)
+    return "Windows";
+#else
+    return "Linux";
+#endif
+}
+
+static std::string BenchmarkCompiler() {
+#if defined(__clang__)
+    return "Clang " + std::to_string(__clang_major__) + "." +
+           std::to_string(__clang_minor__);
+#elif defined(__GNUC__)
+    return "GCC " + std::to_string(__GNUC__) + "." +
+           std::to_string(__GNUC_MINOR__);
+#elif defined(_MSC_VER)
+    return "MSVC " + std::to_string(_MSC_VER);
+#else
+    return "unknown";
+#endif
+}
+
+static double PeakRssMb() {
+#ifdef _WIN32
+    return 0.0;
+#else
+    rusage usage{};
+    if (getrusage(RUSAGE_SELF, &usage) != 0) return 0.0;
+#if defined(__APPLE__)
+    return static_cast<double>(usage.ru_maxrss) / (1024.0 * 1024.0);
+#else
+    return static_cast<double>(usage.ru_maxrss) / 1024.0;
+#endif
+#endif
+}
+
+static std::string JsonCell(const std::string& value) {
+    std::string escaped;
+    escaped.reserve(value.size() + 2);
+    escaped.push_back('"');
+    for (char character : value) {
+        switch (character) {
+            case '"': escaped += "\\\""; break;
+            case '\\': escaped += "\\\\"; break;
+            case '\n': escaped += "\\n"; break;
+            case '\r': escaped += "\\r"; break;
+            case '\t': escaped += "\\t"; break;
+            default: escaped.push_back(character); break;
+        }
+    }
+    escaped.push_back('"');
+    return escaped;
+}
+
+static std::string CsvCell(const std::string& value) {
+    std::string escaped = value;
+    size_t position = 0;
+    while ((position = escaped.find('"', position)) != std::string::npos) {
+        escaped.insert(position, 1, '"');
+        position += 2;
+    }
+    return "\"" + escaped + "\"";
+}
+
+static double Percentile(std::vector<double> samples, double percentile) {
+    if (samples.empty()) return 0.0;
+    std::sort(samples.begin(), samples.end());
+    const size_t index = static_cast<size_t>(
+        std::ceil(percentile * samples.size())) - 1;
+    return samples[std::min(index, samples.size() - 1)];
+}
+
+static const char* BenchmarkCsvHeader() {
+    return "scenario,engine,code_version,platform,compiler,gdal_version,"
+           "manifest,cache_state,sample_count,median_ms,p95_ms,throughput_features_s,"
+           "peak_rss_mb,disk_mb,feature_count,result_count,correct,create_ms,write_ms,"
+           "index_ms,read_ms,query_ms,total_ms,rss_start_mb,rss_growth_mb,iteration_count";
+}
+
+static fs::path BenchmarkCsvPath(const fs::path& output_dir) {
+    const fs::path primary = output_dir / "benchmark_results.csv";
+    if (!fs::exists(primary)) return primary;
+    std::ifstream input(primary);
+    std::string header;
+    std::getline(input, header);
+    return header == BenchmarkCsvHeader()
+        ? primary : output_dir / "benchmark_results-v2.csv";
+}
+
+static void WriteBenchmarkEvidence(const std::string& scenario,
+                                   const std::string& engine,
+                                   const Timing& timing) {
+    const char* configured = std::getenv("FAST_GDB_BENCHMARK_OUTPUT_DIR");
+    const fs::path output_dir = configured ? configured : "benchmark_results";
+    fs::create_directories(output_dir);
+    const std::vector<double> samples = timing.samples_ms.empty()
+        ? std::vector<double>{timing.total_ms}
+        : timing.samples_ms;
+    const double median = Percentile(samples, 0.5);
+    const double p95 = Percentile(samples, 0.95);
+    const double throughput = median > 0.0
+        ? timing.feature_count * 1000.0 / median : 0.0;
+    const char* version = std::getenv("FAST_GDB_BENCHMARK_CODE_VERSION");
+    const char* cache = std::getenv("FAST_GDB_BENCHMARK_CACHE_STATE");
+    const std::string code_version = version ? version : "unknown";
+    const std::string cache_state = cache ? cache : "warm";
+    const std::string stem = scenario + "-" + engine + "-" +
+                             std::to_string(timing.feature_count);
+
+    std::ofstream json(output_dir / (stem + ".json"));
+    json << std::fixed << std::setprecision(3)
+         << "{\n  \"evidence_schema_version\": 2"
+         << ",\n  \"scenario\": " << JsonCell(scenario)
+         << ",\n  \"engine\": " << JsonCell(engine)
+         << ",\n  \"code_version\": " << JsonCell(code_version)
+         << ",\n  \"platform\": " << JsonCell(BenchmarkPlatform())
+         << ",\n  \"compiler\": " << JsonCell(BenchmarkCompiler())
+         << ",\n  \"gdal_version\": " << JsonCell(GDALVersionInfo("RELEASE_NAME"))
+         << ",\n  \"manifest\": " << JsonCell(timing.manifest)
+         << ",\n  \"cache_state\": " << JsonCell(cache_state)
+         << ",\n  \"sample_count\": " << samples.size()
+         << ",\n  \"median_ms\": " << median
+         << ",\n  \"p95_ms\": " << p95
+         << ",\n  \"throughput_features_s\": " << throughput
+         << ",\n  \"peak_rss_mb\": " << PeakRssMb()
+         << ",\n  \"disk_mb\": " << timing.disk_mb
+         << ",\n  \"create_ms\": " << timing.create_ms
+         << ",\n  \"write_ms\": " << timing.write_ms
+         << ",\n  \"index_ms\": " << timing.index_ms
+         << ",\n  \"read_ms\": " << timing.read_ms
+         << ",\n  \"query_ms\": " << timing.query_ms
+         << ",\n  \"total_ms\": " << timing.total_ms
+         << ",\n  \"rss_start_mb\": " << timing.rss_start_mb
+         << ",\n  \"rss_growth_mb\": " << timing.rss_growth_mb
+         << ",\n  \"feature_count\": " << timing.feature_count
+         << ",\n  \"result_count\": " << timing.result_count
+         << ",\n  \"iteration_count\": " << timing.iteration_count
+         << ",\n  \"correct\": " << (timing.correct ? "true" : "false")
+         << "\n}\n";
+    EXPECT_TRUE(json.good()) << "failed to write "
+                             << (output_dir / (stem + ".json"));
+
+    const fs::path csv_path = BenchmarkCsvPath(output_dir);
+    const bool needs_header = !fs::exists(csv_path);
+    std::ofstream csv(csv_path, std::ios::app);
+    if (needs_header) {
+        csv << BenchmarkCsvHeader() << '\n';
+    }
+    csv << CsvCell(scenario) << ',' << CsvCell(engine) << ','
+        << CsvCell(code_version) << ',' << CsvCell(BenchmarkPlatform()) << ','
+        << CsvCell(BenchmarkCompiler()) << ','
+        << CsvCell(GDALVersionInfo("RELEASE_NAME")) << ','
+        << CsvCell(timing.manifest) << ',' << CsvCell(cache_state)
+        << ',' << samples.size() << ',' << median << ',' << p95 << ','
+        << throughput << ',' << PeakRssMb() << ',' << timing.disk_mb << ','
+        << timing.feature_count << ',' << timing.result_count << ','
+        << (timing.correct ? "true" : "false") << ','
+        << timing.create_ms << ',' << timing.write_ms << ','
+        << timing.index_ms << ',' << timing.read_ms << ','
+        << timing.query_ms << ',' << timing.total_ms << ','
+        << timing.rss_start_mb << ',' << timing.rss_growth_mb << ','
+        << timing.iteration_count << '\n';
+    EXPECT_TRUE(csv.good()) << "failed to write " << csv_path;
+}
 
 // ── 测试配置 ──
 struct TestConfig {
     int count;
     std::string name;
     std::string gdb_path;
+};
+
+enum class GeometryWorkload {
+    Point,
+    Polyline10,
+    Polygon,
+    MultipartLine,
+    PolygonWithHole,
+};
+
+enum class DimensionWorkload {
+    XY,
+    XYZ,
+    XYM,
+    XYZM,
 };
 
 // ── 常量 ──
@@ -97,9 +298,51 @@ static bool RunFullBenchmarks() {
     return value != nullptr && std::string(value) == "1";
 }
 
+static bool RunWriterLongSteady() {
+    const char* value = std::getenv("FAST_GDB_RUN_WRITER_LONG_STEADY");
+    return value != nullptr && std::string(value) == "1";
+}
+
+static int WriterLongSteadySeconds() {
+    const char* value = std::getenv("FAST_GDB_WRITER_LONG_STEADY_SECONDS");
+    if (!value) return 30 * 60;
+    return std::max(1, std::atoi(value));
+}
+
+static double WriterLongSteadyMaxRssGrowthMb() {
+    const char* value = std::getenv(
+        "FAST_GDB_WRITER_LONG_STEADY_MAX_RSS_GROWTH_MB");
+    if (!value) return 32.0;
+    return std::max(0.0, std::atof(value));
+}
+
+static bool RunReaderLongSteady() {
+    const char* value = std::getenv("FAST_GDB_RUN_READER_LONG_STEADY");
+    return value != nullptr && std::string(value) == "1";
+}
+
+static int ReaderLongSteadySeconds() {
+    const char* value = std::getenv("FAST_GDB_READER_LONG_STEADY_SECONDS");
+    if (!value) return 30 * 60;
+    return std::max(1, std::atoi(value));
+}
+
+static double ReaderLongSteadyMaxRssGrowthMb() {
+    const char* value = std::getenv(
+        "FAST_GDB_READER_LONG_STEADY_MAX_RSS_GROWTH_MB");
+    if (!value) return 32.0;
+    return std::max(0.0, std::atof(value));
+}
+
 static bool RunSpatialBenchmarks() {
     const char* value = std::getenv("FAST_GDB_RUN_SPATIAL_BENCHMARKS");
     return value != nullptr && std::string(value) == "1";
+}
+
+static int BenchmarkSamples() {
+    const char* value = std::getenv("FAST_GDB_BENCHMARK_SAMPLES");
+    if (!value) return 3;
+    return std::max(1, std::min(20, std::atoi(value)));
 }
 
 static bool IsSpatialPerformanceTest() {
@@ -174,9 +417,17 @@ protected:
 
         OGRSpatialReference srs;
         srs.SetWellKnownGeogCS("WGS84");
-        OGRLayer* layer = ds->CreateLayer(LAYER_NAME.c_str(), &srs, wkbPolygon, nullptr);
+        char** layer_options = nullptr;
+        layer_options = CSLSetNameValue(
+            layer_options, "TARGET_ARCGIS_VERSION", "ARCGIS_PRO_3_2_OR_LATER");
+        OGRLayer* layer = ds->CreateLayer(
+            LAYER_NAME.c_str(), &srs, wkbPolygon, layer_options);
+        CSLDestroy(layer_options);
 
-        OGRFieldDefn pop_field("population", OFTInteger64);
+        // Use Float64 for the indexed benchmark. The low-level .atx benchmark
+        // parser needs an explicit numeric representation; Int64 correctness
+        // is covered by the Writer field contract tests.
+        OGRFieldDefn pop_field("population", OFTReal);
         layer->CreateField(&pop_field);
 
         OGRFieldDefn name_field("name", OFTString);
@@ -191,6 +442,74 @@ protected:
         layer->CreateField(&area_field);
 
         GDALClose(ds);
+    }
+
+    static std::string WideFieldName(int index) {
+        std::ostringstream name;
+        name << "value_" << std::setw(3) << std::setfill('0') << index;
+        return name.str();
+    }
+
+    static double WideFieldValue(int row, int field) {
+        return static_cast<double>(row) * 0.5 + field;
+    }
+
+    static std::string WideScenario(int field_count) {
+        return "write-wide-" + std::to_string(field_count) + "-fields";
+    }
+
+    bool CreateWideSchema(const std::string& gdb_path, int field_count) {
+        fs::remove_all(gdb_path);
+        auto* driver = GetGDALDriverManager()->GetDriverByName("OpenFileGDB");
+        if (!driver) return false;
+        auto* dataset = driver->Create(
+            gdb_path.c_str(), 0, 0, 0, GDT_Unknown, nullptr);
+        if (!dataset) return false;
+        OGRSpatialReference srs;
+        srs.SetWellKnownGeogCS("WGS84");
+        OGRLayer* layer = dataset->CreateLayer(
+            LAYER_NAME.c_str(), &srs, wkbPoint, nullptr);
+        bool valid = layer != nullptr;
+        for (int field = 0; valid && field < field_count; ++field) {
+            OGRFieldDefn definition(WideFieldName(field).c_str(), OFTReal);
+            valid = layer->CreateField(&definition) == OGRERR_NONE;
+        }
+        GDALClose(dataset);
+        return valid;
+    }
+
+    bool ValidateWideDataset(const std::string& gdb_path, int row_count,
+                             int field_count) {
+        auto* dataset = static_cast<GDALDataset*>(GDALOpenEx(
+            gdb_path.c_str(), GDAL_OF_VECTOR, nullptr, nullptr, nullptr));
+        if (!dataset) return false;
+        OGRLayer* layer = dataset->GetLayerByName(LAYER_NAME.c_str());
+        bool valid = layer && layer->GetFeatureCount() == row_count &&
+                     layer->GetLayerDefn()->GetFieldCount() == field_count;
+        OGRFeature* first = valid ? layer->GetNextFeature() : nullptr;
+        valid = valid && ValidateWideFeature(first, 0, field_count);
+        if (valid) valid = layer->SetNextByIndex(row_count - 1) == OGRERR_NONE;
+        OGRFeature* last = valid ? layer->GetNextFeature() : nullptr;
+        valid = valid && ValidateWideFeature(last, row_count - 1, field_count);
+        OGRFeature::DestroyFeature(first);
+        OGRFeature::DestroyFeature(last);
+        GDALClose(dataset);
+        return valid;
+    }
+
+    static bool ValidateWideFeature(const OGRFeature* feature, int row,
+                                    int field_count) {
+        if (!feature || field_count <= 0) return false;
+        const auto* point = feature->GetGeometryRef()
+            ? feature->GetGeometryRef()->toPoint() : nullptr;
+        const double expected_x = static_cast<double>(row % 1000);
+        const double expected_y = static_cast<double>(row / 1000);
+        return point && std::abs(point->getX() - expected_x) < 1e-9 &&
+               std::abs(point->getY() - expected_y) < 1e-9 &&
+               std::abs(feature->GetFieldAsDouble(0) -
+                        WideFieldValue(row, 0)) < 1e-9 &&
+               std::abs(feature->GetFieldAsDouble(field_count - 1) -
+                        WideFieldValue(row, field_count - 1)) < 1e-9;
     }
 
     /**
@@ -209,6 +528,7 @@ protected:
         t.create_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
 
         // 打开并写入数据
+        auto t_write_start = Clock::now();
         GDALDataset* ds = (GDALDataset*) GDALOpenEx(gdb_path.c_str(), GDAL_OF_UPDATE | GDAL_OF_VECTOR,
                                      nullptr, nullptr, nullptr);
         OGRLayer* layer = ds->GetLayerByName(LAYER_NAME.c_str());
@@ -219,7 +539,6 @@ protected:
         std::uniform_int_distribution<int> cat_dist(0, 3);
         const char* categories[] = {"A", "B", "C", "D"};
 
-        auto t_write_start = Clock::now();
         for (int i = 0; i < count; ++i) {
             double x = coord_dist(rng);
             double y = coord_dist(rng);
@@ -235,15 +554,19 @@ protected:
             layer->CreateFeature(feature);
             OGRFeature::DestroyFeature(feature);
         }
-        auto t_write_end = Clock::now();
-        t.write_ms = std::chrono::duration<double, std::milli>(t_write_end - t_write_start).count();
-
         GDALClose(ds);
+        auto t_write_end = Clock::now();
+        t.write_ms = std::chrono::duration<double, std::milli>(
+            t_write_end - t_write_start).count();
 
         auto t_end = Clock::now();
         t.total_ms = std::chrono::duration<double, std::milli>(t_end - t_total).count();
         t.feature_count = count;
         t.disk_mb = CalculateDiskUsage(gdb_path);
+        t.correct = ValidateFeatureCount(gdb_path, count);
+        t.samples_ms.push_back(t.write_ms);
+        WriteBenchmarkEvidence("write", "gdal-single", t);
+        EXPECT_TRUE(t.correct);
 
         printf("  [GDAL] 写入 %d 要素: schema=%.2fms, write=%.2fms (%.2f us/要素), total=%.2fms, disk=%.2fMB\n",
                count, t.create_ms, t.write_ms, t.write_ms * 1000.0 / count, t.total_ms, t.disk_mb);
@@ -266,6 +589,7 @@ protected:
         t.create_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
 
         // 通过组件库打开
+        auto t_write_start = Clock::now();
         GdbDatasource ds;
         EXPECT_TRUE(ds.openExisting(gdb_path));
         auto datasets = ds.getDatasets();
@@ -281,7 +605,6 @@ protected:
         std::uniform_int_distribution<int> cat_dist(0, 3);
         const char* categories[] = {"A", "B", "C", "D"};
 
-        auto t_write_start = Clock::now();
         for (int i = 0; i < count; ++i) {
             double x = coord_dist(rng);
             double y = coord_dist(rng);
@@ -289,7 +612,7 @@ protected:
 
             // 构造 GdbFeature
             GdbFeature feat;
-            feat.setField("population", GdbField(pop_dist(rng)));
+            feat.setField("population", GdbField(static_cast<double>(pop_dist(rng))));
             feat.setField("name", GdbField("区域_" + std::to_string(i)));
             feat.setField("category", GdbField(std::string(categories[cat_dist(rng)])));
             feat.setField("area", GdbField(poly.get_Area()));
@@ -298,15 +621,18 @@ protected:
             writer.addFeature(feat);
         }
         writer.commit();
+        ds.close();
         auto t_write_end = Clock::now();
         t.write_ms = std::chrono::duration<double, std::milli>(t_write_end - t_write_start).count();
-
-        ds.close();
 
         auto t_end = Clock::now();
         t.total_ms = std::chrono::duration<double, std::milli>(t_end - t_total).count();
         t.feature_count = count;
         t.disk_mb = CalculateDiskUsage(gdb_path);
+        t.correct = ValidateFeatureCount(gdb_path, count);
+        t.samples_ms.push_back(t.write_ms);
+        WriteBenchmarkEvidence("write", "gdal-batch", t);
+        EXPECT_TRUE(t.correct);
 
         printf("  [BatchWriter] 写入 %d 要素: schema=%.2fms, write=%.2fms (%.2f us/要素), total=%.2fms, disk=%.2fMB\n",
                count, t.create_ms, t.write_ms, t.write_ms * 1000.0 / count, t.total_ms, t.disk_mb);
@@ -316,7 +642,9 @@ protected:
     /**
      * 使用 GdbTableWriter 生成测试数据（二进制直写）
      */
-    Timing GenerateWithWriter(int count, const std::string& gdb_path) {
+    Timing GenerateWithWriter(int count, const std::string& gdb_path,
+                              bool emit_evidence = true,
+                              bool verbose = true) {
         Timing t;
         auto t_total = Clock::now();
 
@@ -345,6 +673,7 @@ protected:
         std::uniform_int_distribution<int> cat_dist(0, 3);
         const char* categories[] = {"A", "B", "C", "D"};
 
+        bool write_ok = true;
         for (int i = 0; i < count; ++i) {
             double x = coord_dist(rng);
             double y = coord_dist(rng);
@@ -360,31 +689,738 @@ protected:
                 }
             };
             geom_ser.set_rings(rings);
-            geom_ser.serialize(explorgdb::writer::GeomType::Polygon);
+            if (geom_ser.serialize(explorgdb::writer::GeomType::Polygon) == 0) {
+                write_ok = false;
+                break;
+            }
 
             // 写入行
-            writer.begin_row();
-            writer.append_i64(0, pop_dist(rng));                    // population
-            writer.append_string(1, "区域_" + std::to_string(i));   // name
-            writer.append_string(2, categories[cat_dist(rng)]);     // category
-            writer.append_f64(3, 200.0 * 200.0);                    // area
-            writer.append_geometry(4);                              // geometry
-            writer.end_row();
+            write_ok = writer.begin_row() &&
+                writer.append_f64(0, static_cast<double>(pop_dist(rng))) &&
+                writer.append_string(1, "区域_" + std::to_string(i)) &&
+                writer.append_string(2, categories[cat_dist(rng)]) &&
+                writer.append_f64(3, 200.0 * 200.0) &&
+                writer.append_geometry(4) && writer.end_row();
+            if (!write_ok) break;
         }
 
-        writer.close();
+        write_ok = writer.close() && write_ok;
 
         auto t_write_end = Clock::now();
         t.write_ms = std::chrono::duration<double, std::milli>(t_write_end - t_write_start).count();
 
         auto t_end = Clock::now();
         t.total_ms = std::chrono::duration<double, std::milli>(t_end - t_total).count();
-        t.feature_count = count;
+        t.feature_count = static_cast<int>(writer.row_count());
         t.disk_mb = CalculateDiskUsage(gdb_path);
+        t.correct = write_ok && t.feature_count == count &&
+                    ValidateFeatureCount(gdb_path, count);
+        t.samples_ms.push_back(t.write_ms);
+        if (emit_evidence) {
+            WriteBenchmarkEvidence("write", "fast-gdb-writer", t);
+        }
+        EXPECT_TRUE(t.correct) << writer.last_error();
 
-        printf("  [Writer] 写入 %d 要素: schema=%.2fms, write=%.2fms (%.2f us/要素), total=%.2fms, disk=%.2fMB\n",
-               count, t.create_ms, t.write_ms, t.write_ms * 1000.0 / count, t.total_ms, t.disk_mb);
+        if (verbose) {
+            printf("  [Writer] 写入 %d 要素: schema=%.2fms, write=%.2fms (%.2f us/要素), total=%.2fms, disk=%.2fMB\n",
+                   count, t.create_ms, t.write_ms,
+                   t.write_ms * 1000.0 / count, t.total_ms, t.disk_mb);
+        }
         return t;
+    }
+
+    Timing GenerateWideWithGDAL(int count, int field_count,
+                                const std::string& gdb_path) {
+        Timing timing;
+        const auto total_start = Clock::now();
+        const auto schema_start = Clock::now();
+        bool write_ok = CreateWideSchema(gdb_path, field_count);
+        timing.create_ms = std::chrono::duration<double, std::milli>(
+            Clock::now() - schema_start).count();
+        const auto write_start = Clock::now();
+        auto* dataset = write_ok ? static_cast<GDALDataset*>(GDALOpenEx(
+            gdb_path.c_str(), GDAL_OF_UPDATE | GDAL_OF_VECTOR,
+            nullptr, nullptr, nullptr)) : nullptr;
+        OGRLayer* layer = dataset ? dataset->GetLayerByName(LAYER_NAME.c_str()) : nullptr;
+        write_ok = write_ok && layer;
+        for (int row = 0; write_ok && row < count; ++row) {
+            OGRFeature* feature = OGRFeature::CreateFeature(layer->GetLayerDefn());
+            for (int field = 0; field < field_count; ++field) {
+                feature->SetField(field, WideFieldValue(row, field));
+            }
+            OGRPoint point(row % 1000, row / 1000);
+            feature->SetGeometry(&point);
+            write_ok = layer->CreateFeature(feature) == OGRERR_NONE;
+            OGRFeature::DestroyFeature(feature);
+        }
+        if (dataset) GDALClose(dataset);
+        timing.write_ms = std::chrono::duration<double, std::milli>(
+            Clock::now() - write_start).count();
+        CompleteWideTiming(timing, gdb_path, count, field_count,
+                           write_ok, total_start);
+        WriteBenchmarkEvidence(WideScenario(field_count), "gdal-single", timing);
+        EXPECT_TRUE(timing.correct);
+        return timing;
+    }
+
+    Timing GenerateWideWithWriter(int count, int field_count,
+                                  const std::string& gdb_path) {
+        Timing timing;
+        const auto total_start = Clock::now();
+        const auto schema_start = Clock::now();
+        bool write_ok = CreateWideSchema(gdb_path, field_count);
+        timing.create_ms = std::chrono::duration<double, std::milli>(
+            Clock::now() - schema_start).count();
+        const auto write_start = Clock::now();
+        explorgdb::writer::GdbTableWriter writer;
+        write_ok = write_ok && writer.open_existing(gdb_path, LAYER_NAME);
+        auto& serializer = writer.geometry_serializer();
+        for (int row = 0; write_ok && row < count; ++row) {
+            serializer.set_point({static_cast<double>(row % 1000),
+                                  static_cast<double>(row / 1000)});
+            write_ok = serializer.serialize(explorgdb::writer::GeomType::Point) > 0 &&
+                       writer.begin_row();
+            for (int field = 0; write_ok && field < field_count; ++field) {
+                write_ok = writer.append_f64(field, WideFieldValue(row, field));
+            }
+            write_ok = write_ok && writer.append_geometry(field_count) &&
+                       writer.end_row();
+        }
+        write_ok = writer.close() && write_ok;
+        timing.write_ms = std::chrono::duration<double, std::milli>(
+            Clock::now() - write_start).count();
+        CompleteWideTiming(timing, gdb_path, count, field_count,
+                           write_ok, total_start);
+        WriteBenchmarkEvidence(
+            WideScenario(field_count), "fast-gdb-writer", timing);
+        EXPECT_TRUE(timing.correct) << writer.last_error();
+        return timing;
+    }
+
+    void CompleteWideTiming(Timing& timing, const std::string& gdb_path,
+                            int count, int field_count, bool write_ok,
+                            Clock::time_point total_start) {
+        timing.total_ms = std::chrono::duration<double, std::milli>(
+            Clock::now() - total_start).count();
+        timing.feature_count = count;
+        timing.disk_mb = CalculateDiskUsage(gdb_path);
+        timing.correct = write_ok &&
+            ValidateWideDataset(gdb_path, count, field_count);
+        timing.manifest = "point_" + std::to_string(field_count) +
+                          "_float64_fields_formula_v1";
+        timing.samples_ms.push_back(timing.write_ms);
+    }
+
+    void RunWideAttributeBenchmark(int field_count) {
+        constexpr int row_count = 10000;
+        const std::string suffix = std::to_string(field_count);
+        Timing gdal;
+        Timing writer;
+        bool all_correct = true;
+        std::vector<double> gdal_samples;
+        std::vector<double> writer_samples;
+        for (int sample = 0; sample < BenchmarkSamples(); ++sample) {
+            gdal = GenerateWideWithGDAL(
+                row_count, field_count,
+                test_data_dir + "/wide_" + suffix + "_gdal.gdb");
+            writer = GenerateWideWithWriter(
+                row_count, field_count,
+                test_data_dir + "/wide_" + suffix + "_writer.gdb");
+            all_correct = all_correct && gdal.correct && writer.correct;
+            gdal_samples.push_back(gdal.write_ms);
+            writer_samples.push_back(writer.write_ms);
+        }
+        gdal.samples_ms = std::move(gdal_samples);
+        writer.samples_ms = std::move(writer_samples);
+        gdal.correct = writer.correct = all_correct;
+        WriteBenchmarkEvidence(WideScenario(field_count), "gdal-single", gdal);
+        WriteBenchmarkEvidence(
+            WideScenario(field_count), "fast-gdb-writer", writer);
+        ASSERT_TRUE(gdal.correct);
+        ASSERT_TRUE(writer.correct);
+        const double gdal_median = Percentile(gdal.samples_ms, 0.5);
+        const double writer_median = Percentile(writer.samples_ms, 0.5);
+        printf("  [W7/%d fields] GDAL=%.2fms, Writer=%.2fms, ratio=%.3f\n",
+               field_count, gdal_median, writer_median,
+               writer_median / std::max(gdal_median, 0.001));
+    }
+
+    static std::string GeometryWorkloadName(GeometryWorkload workload) {
+        switch (workload) {
+            case GeometryWorkload::Point: return "point";
+            case GeometryWorkload::Polyline10: return "polyline-10";
+            case GeometryWorkload::Polygon: return "polygon";
+            case GeometryWorkload::MultipartLine: return "multipart-line-3x10";
+            case GeometryWorkload::PolygonWithHole: return "polygon-hole";
+        }
+        return "unknown";
+    }
+
+    static OGRwkbGeometryType GeometryWorkloadType(GeometryWorkload workload) {
+        switch (workload) {
+            case GeometryWorkload::Point: return wkbPoint;
+            case GeometryWorkload::Polyline10: return wkbLineString;
+            case GeometryWorkload::MultipartLine: return wkbMultiLineString;
+            case GeometryWorkload::Polygon:
+            case GeometryWorkload::PolygonWithHole: return wkbPolygon;
+        }
+        return wkbUnknown;
+    }
+
+    static int GeometryWorkloadPointCount(GeometryWorkload workload) {
+        switch (workload) {
+            case GeometryWorkload::Point: return 1;
+            case GeometryWorkload::Polyline10: return 10;
+            case GeometryWorkload::Polygon: return 5;
+            case GeometryWorkload::MultipartLine: return 30;
+            case GeometryWorkload::PolygonWithHole: return 10;
+        }
+        return 0;
+    }
+
+    bool CreateGeometrySchema(const std::string& gdb_path,
+                              GeometryWorkload workload) {
+        fs::remove_all(gdb_path);
+        auto* driver = GetGDALDriverManager()->GetDriverByName("OpenFileGDB");
+        if (!driver) return false;
+        auto* dataset = driver->Create(
+            gdb_path.c_str(), 0, 0, 0, GDT_Unknown, nullptr);
+        if (!dataset) return false;
+        OGRSpatialReference srs;
+        srs.SetWellKnownGeogCS("WGS84");
+        OGRLayer* layer = dataset->CreateLayer(
+            LAYER_NAME.c_str(), &srs, GeometryWorkloadType(workload), nullptr);
+        OGRFieldDefn id_field("sample_id", OFTReal);
+        const bool valid = layer && layer->CreateField(&id_field) == OGRERR_NONE;
+        GDALClose(dataset);
+        return valid;
+    }
+
+    static std::vector<explorgdb::writer::GeomPoint> MakeLine(
+        double x, double y, int count) {
+        std::vector<explorgdb::writer::GeomPoint> points;
+        points.reserve(static_cast<size_t>(count));
+        for (int point = 0; point < count; ++point) {
+            points.push_back({x + point, y + (point % 2)});
+        }
+        return points;
+    }
+
+    static std::vector<explorgdb::writer::GeomPoint> MakeRing(
+        double x, double y, double size) {
+        return {{x, y}, {x + size, y}, {x + size, y + size},
+                {x, y + size}, {x, y}};
+    }
+
+    static std::unique_ptr<OGRGeometry> BuildOgrGeometry(
+        GeometryWorkload workload, int row) {
+        const double x = static_cast<double>(row % 1000) * 100.0;
+        const double y = static_cast<double>(row / 1000) * 100.0;
+        if (workload == GeometryWorkload::Point) {
+            return std::make_unique<OGRPoint>(x, y);
+        }
+        if (workload == GeometryWorkload::Polyline10) {
+            return BuildOgrLine(x, y);
+        }
+        if (workload == GeometryWorkload::MultipartLine) {
+            return BuildOgrMultipartLine(x, y);
+        }
+        return BuildOgrPolygon(
+            x, y, workload == GeometryWorkload::PolygonWithHole);
+    }
+
+    static std::unique_ptr<OGRGeometry> BuildOgrLine(double x, double y) {
+        auto line = std::make_unique<OGRLineString>();
+        for (const auto& point : MakeLine(x, y, 10)) {
+            line->addPoint(point.x, point.y);
+        }
+        return line;
+    }
+
+    static std::unique_ptr<OGRGeometry> BuildOgrMultipartLine(
+        double x, double y) {
+        auto multiline = std::make_unique<OGRMultiLineString>();
+        for (int part = 0; part < 3; ++part) {
+            auto line = BuildOgrLine(x, y + part * 10.0);
+            multiline->addGeometry(line.get());
+        }
+        return multiline;
+    }
+
+    static std::unique_ptr<OGRGeometry> BuildOgrPolygon(
+        double x, double y, bool with_hole) {
+        auto polygon = std::make_unique<OGRPolygon>();
+        OGRLinearRing outer;
+        for (const auto& point : MakeRing(x, y, 20.0)) {
+            outer.addPoint(point.x, point.y);
+        }
+        polygon->addRing(&outer);
+        if (with_hole) {
+            OGRLinearRing inner;
+            for (const auto& point : MakeRing(x + 5.0, y + 5.0, 5.0)) {
+                inner.addPoint(point.x, point.y);
+            }
+            polygon->addRing(&inner);
+        }
+        return polygon;
+    }
+
+    static bool SerializeGeometryWorkload(
+        GeometryWorkload workload, int row,
+        explorgdb::writer::GeometrySerializer& serializer) {
+        const double x = static_cast<double>(row % 1000) * 100.0;
+        const double y = static_cast<double>(row / 1000) * 100.0;
+        if (workload == GeometryWorkload::Point) {
+            serializer.set_point({x, y});
+            return serializer.serialize(explorgdb::writer::GeomType::Point) > 0;
+        }
+        if (workload == GeometryWorkload::Polyline10) {
+            serializer.set_lines({MakeLine(x, y, 10)});
+            return serializer.serialize(explorgdb::writer::GeomType::Polyline) > 0;
+        }
+        if (workload == GeometryWorkload::MultipartLine) {
+            serializer.set_lines({MakeLine(x, y, 10), MakeLine(x, y + 10.0, 10),
+                                  MakeLine(x, y + 20.0, 10)});
+            return serializer.serialize(explorgdb::writer::GeomType::Polyline) > 0;
+        }
+        std::vector<std::vector<explorgdb::writer::GeomPoint>> rings = {
+            MakeRing(x, y, 20.0)};
+        if (workload == GeometryWorkload::PolygonWithHole) {
+            rings.push_back(MakeRing(x + 5.0, y + 5.0, 5.0));
+        }
+        serializer.set_rings(rings);
+        return serializer.serialize(explorgdb::writer::GeomType::Polygon) > 0;
+    }
+
+    static int OgrPointCount(const OGRGeometry* geometry) {
+        if (!geometry) return 0;
+        switch (wkbFlatten(geometry->getGeometryType())) {
+            case wkbPoint: return 1;
+            case wkbLineString:
+                return geometry->toLineString()->getNumPoints();
+            case wkbPolygon: {
+                const auto* polygon = geometry->toPolygon();
+                int count = polygon->getExteriorRing()
+                    ? polygon->getExteriorRing()->getNumPoints() : 0;
+                for (int ring = 0; ring < polygon->getNumInteriorRings(); ++ring) {
+                    count += polygon->getInteriorRing(ring)->getNumPoints();
+                }
+                return count;
+            }
+            default: break;
+        }
+        const auto* collection = geometry->toGeometryCollection();
+        int count = 0;
+        for (int part = 0; part < collection->getNumGeometries(); ++part) {
+            count += OgrPointCount(collection->getGeometryRef(part));
+        }
+        return count;
+    }
+
+    static bool ValidateGeometryFeature(const OGRFeature* feature, int row,
+                                        GeometryWorkload workload) {
+        if (!feature || std::abs(feature->GetFieldAsDouble(0) - row) > 1e-9) {
+            return false;
+        }
+        const OGRGeometry* geometry = feature->GetGeometryRef();
+        if (!geometry) return false;
+        const auto actual_type = wkbFlatten(geometry->getGeometryType());
+        const double x = static_cast<double>(row % 1000) * 100.0;
+        const double y = static_cast<double>(row / 1000) * 100.0;
+        OGREnvelope envelope;
+        geometry->getEnvelope(&envelope);
+        return GeometryTypeMatches(actual_type, workload) &&
+               OgrPointCount(geometry) == GeometryWorkloadPointCount(workload) &&
+               GeometryEnvelopeMatches(envelope, x, y, workload);
+    }
+
+    static bool GeometryEnvelopeMatches(const OGREnvelope& envelope,
+                                        double x, double y,
+                                        GeometryWorkload workload) {
+        double max_x = x;
+        double max_y = y;
+        if (workload == GeometryWorkload::Polyline10) {
+            max_x += 9.0;
+            max_y += 1.0;
+        } else if (workload == GeometryWorkload::MultipartLine) {
+            max_x += 9.0;
+            max_y += 21.0;
+        } else if (workload == GeometryWorkload::Polygon ||
+                   workload == GeometryWorkload::PolygonWithHole) {
+            max_x += 20.0;
+            max_y += 20.0;
+        }
+        return std::abs(envelope.MinX - x) < 1e-6 &&
+               std::abs(envelope.MinY - y) < 1e-6 &&
+               std::abs(envelope.MaxX - max_x) < 1e-6 &&
+               std::abs(envelope.MaxY - max_y) < 1e-6;
+    }
+
+    static bool GeometryTypeMatches(OGRwkbGeometryType actual,
+                                    GeometryWorkload workload) {
+        if (workload == GeometryWorkload::Point) return actual == wkbPoint;
+        if (workload == GeometryWorkload::MultipartLine) {
+            return actual == wkbMultiLineString;
+        }
+        if (workload == GeometryWorkload::Polyline10) {
+            return actual == wkbLineString || actual == wkbMultiLineString;
+        }
+        return actual == wkbPolygon || actual == wkbMultiPolygon;
+    }
+
+    bool ValidateGeometryDataset(const std::string& gdb_path, int row_count,
+                                 GeometryWorkload workload) {
+        auto* dataset = static_cast<GDALDataset*>(GDALOpenEx(
+            gdb_path.c_str(), GDAL_OF_VECTOR, nullptr, nullptr, nullptr));
+        if (!dataset) return false;
+        OGRLayer* layer = dataset->GetLayerByName(LAYER_NAME.c_str());
+        bool valid = layer && layer->GetFeatureCount() == row_count;
+        OGRFeature* first = valid ? layer->GetNextFeature() : nullptr;
+        valid = valid && ValidateGeometryFeature(first, 0, workload);
+        if (valid) valid = layer->SetNextByIndex(row_count - 1) == OGRERR_NONE;
+        OGRFeature* last = valid ? layer->GetNextFeature() : nullptr;
+        valid = valid && ValidateGeometryFeature(last, row_count - 1, workload);
+        OGRFeature::DestroyFeature(first);
+        OGRFeature::DestroyFeature(last);
+        GDALClose(dataset);
+        return valid;
+    }
+
+    Timing GenerateGeometryWithGDAL(int count, GeometryWorkload workload,
+                                    const std::string& gdb_path) {
+        Timing timing;
+        const auto total_start = Clock::now();
+        const auto schema_start = Clock::now();
+        bool write_ok = CreateGeometrySchema(gdb_path, workload);
+        timing.create_ms = std::chrono::duration<double, std::milli>(
+            Clock::now() - schema_start).count();
+        const auto write_start = Clock::now();
+        auto* dataset = write_ok ? static_cast<GDALDataset*>(GDALOpenEx(
+            gdb_path.c_str(), GDAL_OF_UPDATE | GDAL_OF_VECTOR,
+            nullptr, nullptr, nullptr)) : nullptr;
+        OGRLayer* layer = dataset ? dataset->GetLayerByName(LAYER_NAME.c_str()) : nullptr;
+        write_ok = write_ok && layer;
+        for (int row = 0; write_ok && row < count; ++row) {
+            OGRFeature* feature = OGRFeature::CreateFeature(layer->GetLayerDefn());
+            feature->SetField(0, static_cast<double>(row));
+            const auto geometry = BuildOgrGeometry(workload, row);
+            feature->SetGeometry(geometry.get());
+            write_ok = layer->CreateFeature(feature) == OGRERR_NONE;
+            OGRFeature::DestroyFeature(feature);
+        }
+        if (dataset) GDALClose(dataset);
+        timing.write_ms = std::chrono::duration<double, std::milli>(
+            Clock::now() - write_start).count();
+        CompleteGeometryTiming(
+            timing, gdb_path, count, workload, write_ok, total_start);
+        return timing;
+    }
+
+    Timing GenerateGeometryWithWriter(int count, GeometryWorkload workload,
+                                      const std::string& gdb_path) {
+        Timing timing;
+        const auto total_start = Clock::now();
+        const auto schema_start = Clock::now();
+        bool write_ok = CreateGeometrySchema(gdb_path, workload);
+        timing.create_ms = std::chrono::duration<double, std::milli>(
+            Clock::now() - schema_start).count();
+        const auto write_start = Clock::now();
+        explorgdb::writer::GdbTableWriter writer;
+        write_ok = write_ok && writer.open_existing(gdb_path, LAYER_NAME);
+        auto& serializer = writer.geometry_serializer();
+        for (int row = 0; write_ok && row < count; ++row) {
+            write_ok = SerializeGeometryWorkload(workload, row, serializer) &&
+                       writer.begin_row() &&
+                       writer.append_f64(0, static_cast<double>(row)) &&
+                       writer.append_geometry(1) && writer.end_row();
+        }
+        write_ok = writer.close() && write_ok;
+        timing.write_ms = std::chrono::duration<double, std::milli>(
+            Clock::now() - write_start).count();
+        CompleteGeometryTiming(
+            timing, gdb_path, count, workload, write_ok, total_start);
+        EXPECT_TRUE(timing.correct) << writer.last_error();
+        return timing;
+    }
+
+    void CompleteGeometryTiming(Timing& timing, const std::string& gdb_path,
+                                int count, GeometryWorkload workload,
+                                bool write_ok, Clock::time_point total_start) {
+        timing.total_ms = std::chrono::duration<double, std::milli>(
+            Clock::now() - total_start).count();
+        timing.feature_count = count;
+        timing.disk_mb = CalculateDiskUsage(gdb_path);
+        timing.correct = write_ok &&
+            ValidateGeometryDataset(gdb_path, count, workload);
+        timing.manifest = GeometryWorkloadName(workload) +
+                          "_1_float64_field_formula_v1";
+        timing.samples_ms.push_back(timing.write_ms);
+    }
+
+    void RunGeometryWorkloadBenchmark(GeometryWorkload workload) {
+        constexpr int row_count = 10000;
+        const std::string name = GeometryWorkloadName(workload);
+        Timing gdal;
+        Timing writer;
+        bool all_correct = true;
+        std::vector<double> gdal_samples;
+        std::vector<double> writer_samples;
+        for (int sample = 0; sample < BenchmarkSamples(); ++sample) {
+            gdal = GenerateGeometryWithGDAL(
+                row_count, workload,
+                test_data_dir + "/geometry_" + name + "_gdal.gdb");
+            writer = GenerateGeometryWithWriter(
+                row_count, workload,
+                test_data_dir + "/geometry_" + name + "_writer.gdb");
+            all_correct = all_correct && gdal.correct && writer.correct;
+            gdal_samples.push_back(gdal.write_ms);
+            writer_samples.push_back(writer.write_ms);
+        }
+        gdal.samples_ms = std::move(gdal_samples);
+        writer.samples_ms = std::move(writer_samples);
+        gdal.correct = writer.correct = all_correct;
+        WriteBenchmarkEvidence("write-geometry-" + name, "gdal-single", gdal);
+        WriteBenchmarkEvidence(
+            "write-geometry-" + name, "fast-gdb-writer", writer);
+        ASSERT_TRUE(gdal.correct);
+        ASSERT_TRUE(writer.correct);
+        const double gdal_median = Percentile(gdal.samples_ms, 0.5);
+        const double writer_median = Percentile(writer.samples_ms, 0.5);
+        printf("  [W8/%s] GDAL=%.2fms, Writer=%.2fms, ratio=%.3f\n",
+               name.c_str(), gdal_median, writer_median,
+               writer_median / std::max(gdal_median, 0.001));
+    }
+
+    static std::string DimensionWorkloadName(DimensionWorkload workload) {
+        switch (workload) {
+            case DimensionWorkload::XY: return "xy";
+            case DimensionWorkload::XYZ: return "xyz";
+            case DimensionWorkload::XYM: return "xym";
+            case DimensionWorkload::XYZM: return "xyzm";
+        }
+        return "unknown";
+    }
+
+    static bool DimensionHasZ(DimensionWorkload workload) {
+        return workload == DimensionWorkload::XYZ ||
+               workload == DimensionWorkload::XYZM;
+    }
+
+    static bool DimensionHasM(DimensionWorkload workload) {
+        return workload == DimensionWorkload::XYM ||
+               workload == DimensionWorkload::XYZM;
+    }
+
+    static OGRwkbGeometryType DimensionGeometryType(
+        DimensionWorkload workload) {
+        switch (workload) {
+            case DimensionWorkload::XY: return wkbPoint;
+            case DimensionWorkload::XYZ: return wkbPoint25D;
+            case DimensionWorkload::XYM: return wkbPointM;
+            case DimensionWorkload::XYZM: return wkbPointZM;
+        }
+        return wkbUnknown;
+    }
+
+    static explorgdb::writer::GeomType WriterDimensionType(
+        DimensionWorkload workload) {
+        switch (workload) {
+            case DimensionWorkload::XY:
+                return explorgdb::writer::GeomType::Point;
+            case DimensionWorkload::XYZ:
+                return explorgdb::writer::GeomType::PointZ;
+            case DimensionWorkload::XYM:
+                return explorgdb::writer::GeomType::PointM;
+            case DimensionWorkload::XYZM:
+                return explorgdb::writer::GeomType::PointZM;
+        }
+        return explorgdb::writer::GeomType::Point;
+    }
+
+    bool CreateDimensionSchema(const std::string& gdb_path,
+                               DimensionWorkload workload) {
+        fs::remove_all(gdb_path);
+        auto* driver = GetGDALDriverManager()->GetDriverByName("OpenFileGDB");
+        if (!driver) return false;
+        auto* dataset = driver->Create(
+            gdb_path.c_str(), 0, 0, 0, GDT_Unknown, nullptr);
+        if (!dataset) return false;
+        OGRSpatialReference srs;
+        srs.SetWellKnownGeogCS("WGS84");
+        OGRLayer* layer = dataset->CreateLayer(
+            LAYER_NAME.c_str(), &srs, DimensionGeometryType(workload), nullptr);
+        OGRFieldDefn id_field("sample_id", OFTReal);
+        const bool valid = layer && layer->CreateField(&id_field) == OGRERR_NONE;
+        GDALClose(dataset);
+        return valid;
+    }
+
+    static std::unique_ptr<OGRPoint> BuildDimensionPoint(
+        DimensionWorkload workload, int row) {
+        auto point = std::make_unique<OGRPoint>();
+        point->setX(static_cast<double>(row % 1000));
+        point->setY(static_cast<double>(row / 1000));
+        if (DimensionHasZ(workload)) point->setZ(100.0 + row);
+        if (DimensionHasM(workload)) point->setM(500.0 + row);
+        return point;
+    }
+
+    static bool SerializeDimensionPoint(
+        DimensionWorkload workload, int row,
+        explorgdb::writer::GeometrySerializer& serializer) {
+        serializer.set_point({static_cast<double>(row % 1000),
+                              static_cast<double>(row / 1000)});
+        if (DimensionHasZ(workload)) serializer.set_z_values({100.0 + row});
+        if (DimensionHasM(workload)) serializer.set_m_values({500.0 + row});
+        return serializer.serialize(WriterDimensionType(workload)) > 0;
+    }
+
+    static bool ValidateDimensionFeature(const OGRFeature* feature, int row,
+                                         DimensionWorkload workload) {
+        if (!feature || std::abs(feature->GetFieldAsDouble(0) - row) > 1e-9) {
+            return false;
+        }
+        const auto* geometry = feature->GetGeometryRef();
+        if (!geometry || wkbFlatten(geometry->getGeometryType()) != wkbPoint) {
+            return false;
+        }
+        const auto* point = geometry->toPoint();
+        const bool dimensions_match =
+            static_cast<bool>(wkbHasZ(geometry->getGeometryType())) ==
+                DimensionHasZ(workload) &&
+            static_cast<bool>(wkbHasM(geometry->getGeometryType())) ==
+                DimensionHasM(workload);
+        const bool ordinates_match =
+            std::abs(point->getX() - row % 1000) < 1e-6 &&
+            std::abs(point->getY() - row / 1000) < 1e-6 &&
+            (!DimensionHasZ(workload) ||
+             std::abs(point->getZ() - (100.0 + row)) < 1e-6) &&
+            (!DimensionHasM(workload) ||
+             std::abs(point->getM() - (500.0 + row)) < 1e-6);
+        return dimensions_match && ordinates_match;
+    }
+
+    bool ValidateDimensionDataset(const std::string& gdb_path, int row_count,
+                                  DimensionWorkload workload) {
+        auto* dataset = static_cast<GDALDataset*>(GDALOpenEx(
+            gdb_path.c_str(), GDAL_OF_VECTOR, nullptr, nullptr, nullptr));
+        if (!dataset) return false;
+        OGRLayer* layer = dataset->GetLayerByName(LAYER_NAME.c_str());
+        bool valid = layer && layer->GetFeatureCount() == row_count;
+        OGRFeature* first = valid ? layer->GetNextFeature() : nullptr;
+        valid = valid && ValidateDimensionFeature(first, 0, workload);
+        if (valid) valid = layer->SetNextByIndex(row_count - 1) == OGRERR_NONE;
+        OGRFeature* last = valid ? layer->GetNextFeature() : nullptr;
+        valid = valid && ValidateDimensionFeature(last, row_count - 1, workload);
+        OGRFeature::DestroyFeature(first);
+        OGRFeature::DestroyFeature(last);
+        GDALClose(dataset);
+        return valid;
+    }
+
+    Timing GenerateDimensionWithGDAL(int count, DimensionWorkload workload,
+                                     const std::string& gdb_path) {
+        Timing timing;
+        const auto total_start = Clock::now();
+        const auto schema_start = Clock::now();
+        bool write_ok = CreateDimensionSchema(gdb_path, workload);
+        timing.create_ms = std::chrono::duration<double, std::milli>(
+            Clock::now() - schema_start).count();
+        const auto write_start = Clock::now();
+        auto* dataset = write_ok ? static_cast<GDALDataset*>(GDALOpenEx(
+            gdb_path.c_str(), GDAL_OF_UPDATE | GDAL_OF_VECTOR,
+            nullptr, nullptr, nullptr)) : nullptr;
+        OGRLayer* layer = dataset ? dataset->GetLayerByName(LAYER_NAME.c_str()) : nullptr;
+        write_ok = write_ok && layer;
+        for (int row = 0; write_ok && row < count; ++row) {
+            OGRFeature* feature = OGRFeature::CreateFeature(layer->GetLayerDefn());
+            feature->SetField(0, static_cast<double>(row));
+            const auto point = BuildDimensionPoint(workload, row);
+            feature->SetGeometry(point.get());
+            write_ok = layer->CreateFeature(feature) == OGRERR_NONE;
+            OGRFeature::DestroyFeature(feature);
+        }
+        if (dataset) GDALClose(dataset);
+        timing.write_ms = std::chrono::duration<double, std::milli>(
+            Clock::now() - write_start).count();
+        CompleteDimensionTiming(
+            timing, gdb_path, count, workload, write_ok, total_start);
+        return timing;
+    }
+
+    Timing GenerateDimensionWithWriter(int count, DimensionWorkload workload,
+                                       const std::string& gdb_path) {
+        Timing timing;
+        const auto total_start = Clock::now();
+        const auto schema_start = Clock::now();
+        bool write_ok = CreateDimensionSchema(gdb_path, workload);
+        timing.create_ms = std::chrono::duration<double, std::milli>(
+            Clock::now() - schema_start).count();
+        const auto write_start = Clock::now();
+        explorgdb::writer::GdbTableWriter writer;
+        write_ok = write_ok && writer.open_existing(gdb_path, LAYER_NAME);
+        auto& serializer = writer.geometry_serializer();
+        for (int row = 0; write_ok && row < count; ++row) {
+            write_ok = SerializeDimensionPoint(workload, row, serializer) &&
+                       writer.begin_row() &&
+                       writer.append_f64(0, static_cast<double>(row)) &&
+                       writer.append_geometry(1) && writer.end_row();
+        }
+        write_ok = writer.close() && write_ok;
+        timing.write_ms = std::chrono::duration<double, std::milli>(
+            Clock::now() - write_start).count();
+        CompleteDimensionTiming(
+            timing, gdb_path, count, workload, write_ok, total_start);
+        EXPECT_TRUE(timing.correct) << writer.last_error();
+        return timing;
+    }
+
+    void CompleteDimensionTiming(Timing& timing, const std::string& gdb_path,
+                                 int count, DimensionWorkload workload,
+                                 bool write_ok, Clock::time_point total_start) {
+        timing.total_ms = std::chrono::duration<double, std::milli>(
+            Clock::now() - total_start).count();
+        timing.feature_count = count;
+        timing.disk_mb = CalculateDiskUsage(gdb_path);
+        timing.correct = write_ok &&
+            ValidateDimensionDataset(gdb_path, count, workload);
+        timing.manifest = "point_" + DimensionWorkloadName(workload) +
+                          "_1_float64_field_formula_v1";
+        timing.samples_ms.push_back(timing.write_ms);
+    }
+
+    void RunDimensionWorkloadBenchmark(DimensionWorkload workload) {
+        constexpr int row_count = 10000;
+        const std::string name = DimensionWorkloadName(workload);
+        Timing gdal;
+        Timing writer;
+        bool all_correct = true;
+        std::vector<double> gdal_samples;
+        std::vector<double> writer_samples;
+        for (int sample = 0; sample < BenchmarkSamples(); ++sample) {
+            gdal = GenerateDimensionWithGDAL(
+                row_count, workload,
+                test_data_dir + "/dimension_" + name + "_gdal.gdb");
+            writer = GenerateDimensionWithWriter(
+                row_count, workload,
+                test_data_dir + "/dimension_" + name + "_writer.gdb");
+            all_correct = all_correct && gdal.correct && writer.correct;
+            gdal_samples.push_back(gdal.write_ms);
+            writer_samples.push_back(writer.write_ms);
+        }
+        gdal.samples_ms = std::move(gdal_samples);
+        writer.samples_ms = std::move(writer_samples);
+        gdal.correct = writer.correct = all_correct;
+        WriteBenchmarkEvidence("write-dimension-" + name, "gdal-single", gdal);
+        WriteBenchmarkEvidence(
+            "write-dimension-" + name, "fast-gdb-writer", writer);
+        ASSERT_TRUE(gdal.correct);
+        ASSERT_TRUE(writer.correct);
+        const double gdal_median = Percentile(gdal.samples_ms, 0.5);
+        const double writer_median = Percentile(writer.samples_ms, 0.5);
+        printf("  [W9/%s] GDAL=%.2fms, Writer=%.2fms, ratio=%.3f\n",
+               name.c_str(), gdal_median, writer_median,
+               writer_median / std::max(gdal_median, 0.001));
     }
 
     /**
@@ -393,25 +1429,31 @@ protected:
     double CreateIndexes(const std::string& gdb_path,
                          bool spatial, bool attr_population, bool attr_name, bool attr_category) {
         auto t0 = Clock::now();
+        bool success = true;
 
         if (spatial) {
-            explorgdb::writer::CreateSpatialIndex(gdb_path, LAYER_NAME);
+            success = explorgdb::writer::CreateSpatialIndex(
+                gdb_path, LAYER_NAME) && success;
         }
         if (attr_population) {
-            explorgdb::writer::CreateAttributeIndex(gdb_path, LAYER_NAME, "population");
+            success = explorgdb::writer::CreateAttributeIndex(
+                gdb_path, LAYER_NAME, "population") && success;
         }
         if (attr_name) {
-            explorgdb::writer::CreateAttributeIndex(gdb_path, LAYER_NAME, "name");
+            success = explorgdb::writer::CreateAttributeIndex(
+                gdb_path, LAYER_NAME, "name") && success;
         }
         if (attr_category) {
-            explorgdb::writer::CreateAttributeIndex(gdb_path, LAYER_NAME, "category");
+            success = explorgdb::writer::CreateAttributeIndex(
+                gdb_path, LAYER_NAME, "category") && success;
         }
 
         auto t1 = Clock::now();
         double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
         printf("  [Index] 创建索引 (spatial=%d, pop=%d, name=%d, cat=%d): %.2f ms\n",
                spatial, attr_population, attr_name, attr_category, ms);
-        return ms;
+        EXPECT_TRUE(success);
+        return success ? ms : -1.0;
     }
 
     /**
@@ -425,6 +1467,16 @@ protected:
             }
         }
         return total_bytes / (1024.0 * 1024.0);
+    }
+
+    bool ValidateFeatureCount(const std::string& gdb_path, int expected) {
+        GDALDataset* dataset = static_cast<GDALDataset*>(GDALOpenEx(
+            gdb_path.c_str(), GDAL_OF_VECTOR, nullptr, nullptr, nullptr));
+        if (!dataset) return false;
+        OGRLayer* layer = dataset->GetLayerByName(LAYER_NAME.c_str());
+        const bool valid = layer && layer->GetFeatureCount() == expected;
+        GDALClose(dataset);
+        return valid;
     }
 
     /**
@@ -449,35 +1501,6 @@ protected:
             }
         }
         return 0;
-    }
-
-    /**
-     * 获取数据表的几何字段参数
-     */
-    bool GetGeometryParams(const std::string& gdb_path, uint32_t table_id,
-                           double& xorig, double& yorig, double& xyscale,
-                           std::vector<double>& grid_sizes) {
-        explorgdb::GdbCatalog catalog;
-        if (!catalog.scan(gdb_path)) return false;
-
-        const auto* entry = catalog.find_table(table_id);
-        if (!entry) return false;
-
-        std::string table_path = gdb_path + "/" + entry->filename;
-        explorgdb::GdbTableParser parser(table_path);
-        if (!parser.open()) return false;
-        if (!parser.ensure_fields_loaded()) return false;
-
-        for (const auto& field : parser.fields()) {
-            if (field.type == explorgdb::FieldType::Geometry) {
-                xorig = field.xorig;
-                yorig = field.yorig;
-                xyscale = field.xyscale;
-                grid_sizes = field.grid_sizes;
-                return true;
-            }
-        }
-        return false;
     }
 
     /**
@@ -702,44 +1725,27 @@ protected:
     /**
      * explorgdb 空间查询（通过 .spx 空间索引）
      */
-    Timing SpatialQueryWithExplorgdb(const std::string& gdb_path, uint32_t table_id,
-                                     double xmin, double ymin, double xmax, double ymax) {
+    Timing SpatialQueryWithExplorgdb(const std::string& gdb_path,
+                                     double xmin, double ymin,
+                                     double xmax, double ymax) {
         Timing t;
-
-        // 获取几何参数
-        double xorig, yorig, xyscale;
-        std::vector<double> grid_sizes;
-        if (!GetGeometryParams(gdb_path, table_id, xorig, yorig, xyscale, grid_sizes)) {
-            printf("  [ERROR] 无法获取几何参数\n");
-            return t;
-        }
-
-        // 查找 .spx 文件
         explorgdb::GdbCatalog catalog;
         if (!catalog.scan(gdb_path)) return t;
-        const auto* spx_entry = catalog.find_spx(table_id);
-
-        if (!spx_entry) {
-            printf("  [explorgdb Spatial Query] 无空间索引，跳过\n");
-            t.query_ms = -1;  // 标记为不可用
-            return t;
-        }
-
-        std::string spx_path = gdb_path + "/" + spx_entry->filename;
-        explorgdb::GdbSpatialIndexParser spx(spx_path);
-        if (!spx.parse()) {
-            printf("  [ERROR] 解析 .spx 失败\n");
-            return t;
-        }
+        explorgdb::CatalogResolver resolver(catalog);
+        if (!resolver.load()) return t;
+        const auto resolved = resolver.resolve(LAYER_NAME);
+        if (!resolved) return t;
+        explorgdb::QueryEngine engine(catalog, *resolved);
+        if (!engine.open()) return t;
 
         // 预热
-        spx.query_bbox(xmin, ymin, xmax, ymax, xorig, yorig, xyscale, grid_sizes);
+        engine.query_bbox(xmin, ymin, xmax, ymax);
 
         double total_ms = 0;
         int result_count = 0;
         for (int iter = 0; iter < QUERY_ITERATIONS; ++iter) {
             auto t0 = Clock::now();
-            auto fids = spx.query_bbox(xmin, ymin, xmax, ymax, xorig, yorig, xyscale, grid_sizes);
+            auto fids = engine.query_bbox(xmin, ymin, xmax, ymax);
             auto t1 = Clock::now();
             total_ms += std::chrono::duration<double, std::milli>(t1 - t0).count();
             result_count = static_cast<int>(fids.size());
@@ -751,6 +1757,38 @@ protected:
         printf("  [explorgdb Spatial Query] bbox=[%.0f,%.0f,%.0f,%.0f] -> %d 结果, 平均 %.2f ms/次 (%d 次)\n",
                xmin, ymin, xmax, ymax, result_count, t.query_ms, QUERY_ITERATIONS);
         return t;
+    }
+
+    ReaderSteadyCycle RunReaderSteadyCycle(
+        const std::string& gdb_path, int expected_hits = -1) {
+        ReaderSteadyCycle cycle;
+        const auto start = Clock::now();
+        explorgdb::GdbCatalog catalog;
+        if (!catalog.scan(gdb_path)) return cycle;
+        explorgdb::CatalogResolver resolver(catalog);
+        if (!resolver.load()) return cycle;
+        const auto resolved = resolver.resolve(LAYER_NAME);
+        if (!resolved) return cycle;
+        explorgdb::QueryEngine engine(catalog, *resolved);
+        if (!engine.open()) return cycle;
+
+        const auto hits = engine.query_bbox(
+            20000.0, 20000.0, 40000.0, 40000.0);
+        explorgdb::FeatureRecord first;
+        const bool fid_ok = engine.read_by_fid(0, first) &&
+                            !first.field_values.empty();
+        size_t scanned = 0;
+        const uint64_t scan_count = engine.scan(
+            [&](uint32_t, const explorgdb::FieldRef*, int) {
+                ++scanned;
+                return true;
+            });
+        cycle.elapsed_ms = std::chrono::duration<double, std::milli>(
+            Clock::now() - start).count();
+        cycle.spatial_hits = static_cast<int>(hits.size());
+        cycle.correct = fid_ok && scan_count == 100000 && scanned == 100000 &&
+            (expected_hits < 0 || cycle.spatial_hits == expected_hits);
+        return cycle;
     }
 
     /**
@@ -856,8 +1894,37 @@ protected:
 };
 
 // ══════════════════════════════════════════════════════════════════════════════
-// 写入性能测试（W1-W6）
+// 写入性能测试（W0-W7）
 // ══════════════════════════════════════════════════════════════════════════════
+
+TEST_F(PerformanceBenchmarkFixture, W0_ReleaseEvidence_1K) {
+    Timing gdal;
+    Timing writer;
+    std::vector<double> gdal_samples;
+    std::vector<double> writer_samples;
+    for (int sample = 0; sample < BenchmarkSamples(); ++sample) {
+        Timing current_gdal = GenerateWithGDAL(1000, configs[0].gdb_path);
+        Timing current_writer = GenerateWithWriter(1000, configs[0].gdb_path);
+        gdal = current_gdal;
+        writer = current_writer;
+        gdal_samples.push_back(current_gdal.write_ms);
+        writer_samples.push_back(current_writer.write_ms);
+    }
+    gdal.samples_ms = std::move(gdal_samples);
+    writer.samples_ms = std::move(writer_samples);
+    gdal.correct = gdal.correct && gdal.feature_count == 1000;
+    writer.correct = writer.correct && writer.feature_count == 1000;
+    WriteBenchmarkEvidence("release-write-1k", "gdal-single", gdal);
+    WriteBenchmarkEvidence("release-write-1k", "fast-gdb-writer", writer);
+
+    const char* baseline = std::getenv("FAST_GDB_BENCHMARK_BASELINE_MS");
+    if (baseline) {
+        const double baseline_ms = std::atof(baseline);
+        ASSERT_GT(baseline_ms, 0.0);
+        EXPECT_LE(Percentile(writer.samples_ms, 0.5), baseline_ms * 1.05)
+            << "Writer median regressed more than 5% from main baseline";
+    }
+}
 
 // W1: GDAL 逐条写入（CreateFeature per feature）
 TEST_F(PerformanceBenchmarkFixture, W1_GDAL_Single_1K) {
@@ -929,6 +1996,9 @@ TEST_F(PerformanceBenchmarkFixture, W4_Writer_WithSpatialIdx_100K) {
     t.index_ms = CreateIndexes(configs[2].gdb_path, true, false, false, false);
     t.total_ms += t.index_ms;
     t.disk_mb = CalculateDiskUsage(configs[2].gdb_path);
+    t.correct = t.correct && t.index_ms >= 0.0;
+    t.samples_ms = {t.total_ms};
+    WriteBenchmarkEvidence("write-spatial-index", "fast-gdb-writer", t);
     printf("  [合计] write=%.2fms + index=%.2fms = %.2fms, disk=%.2fMB\n",
            t.write_ms, t.index_ms, t.total_ms, t.disk_mb);
 }
@@ -940,6 +2010,9 @@ TEST_F(PerformanceBenchmarkFixture, W5_Writer_WithAttrIdx_100K) {
     t.index_ms = CreateIndexes(configs[2].gdb_path, false, true, true, true);
     t.total_ms += t.index_ms;
     t.disk_mb = CalculateDiskUsage(configs[2].gdb_path);
+    t.correct = t.correct && t.index_ms >= 0.0;
+    t.samples_ms = {t.total_ms};
+    WriteBenchmarkEvidence("write-attribute-index", "fast-gdb-writer", t);
     printf("  [合计] write=%.2fms + index=%.2fms = %.2fms, disk=%.2fMB\n",
            t.write_ms, t.index_ms, t.total_ms, t.disk_mb);
 }
@@ -951,8 +2024,121 @@ TEST_F(PerformanceBenchmarkFixture, W6_Writer_FullIdx_100K) {
     t.index_ms = CreateIndexes(configs[2].gdb_path, true, true, true, true);
     t.total_ms += t.index_ms;
     t.disk_mb = CalculateDiskUsage(configs[2].gdb_path);
+    t.correct = t.correct && t.index_ms >= 0.0;
+    t.samples_ms = {t.total_ms};
+    WriteBenchmarkEvidence("write-all-indexes", "fast-gdb-writer", t);
     printf("  [合计] write=%.2fms + index=%.2fms = %.2fms, disk=%.2fMB\n",
            t.write_ms, t.index_ms, t.total_ms, t.disk_mb);
+}
+
+// W7: 宽属性表；同时验证 GDAL 与 Writer 生成结果的首尾记录。
+TEST_F(PerformanceBenchmarkFixture, W7_WideAttributes_10Fields_10K) {
+    printf("\n=== W7: 宽属性表 10 字段 / 10K ===\n");
+    RunWideAttributeBenchmark(10);
+}
+
+TEST_F(PerformanceBenchmarkFixture, W7_WideAttributes_50Fields_10K) {
+    printf("\n=== W7: 宽属性表 50 字段 / 10K ===\n");
+    RunWideAttributeBenchmark(50);
+}
+
+TEST_F(PerformanceBenchmarkFixture, W7_WideAttributes_100Fields_10K) {
+    printf("\n=== W7: 宽属性表 100 字段 / 10K ===\n");
+    RunWideAttributeBenchmark(100);
+}
+
+// W8: 固定 10K 行，逐级提高单行几何的顶点、part 和洞复杂度。
+TEST_F(PerformanceBenchmarkFixture, W8_Geometry_Point_10K) {
+    RunGeometryWorkloadBenchmark(GeometryWorkload::Point);
+}
+
+TEST_F(PerformanceBenchmarkFixture, W8_Geometry_Polyline10_10K) {
+    RunGeometryWorkloadBenchmark(GeometryWorkload::Polyline10);
+}
+
+TEST_F(PerformanceBenchmarkFixture, W8_Geometry_Polygon_10K) {
+    RunGeometryWorkloadBenchmark(GeometryWorkload::Polygon);
+}
+
+TEST_F(PerformanceBenchmarkFixture, W8_Geometry_MultipartLine_10K) {
+    RunGeometryWorkloadBenchmark(GeometryWorkload::MultipartLine);
+}
+
+TEST_F(PerformanceBenchmarkFixture, W8_Geometry_PolygonWithHole_10K) {
+    RunGeometryWorkloadBenchmark(GeometryWorkload::PolygonWithHole);
+}
+
+// W9: 相同 Point 数据模型，仅改变 Z/M 维度。
+TEST_F(PerformanceBenchmarkFixture, W9_Dimension_XY_10K) {
+    RunDimensionWorkloadBenchmark(DimensionWorkload::XY);
+}
+
+TEST_F(PerformanceBenchmarkFixture, W9_Dimension_XYZ_10K) {
+    RunDimensionWorkloadBenchmark(DimensionWorkload::XYZ);
+}
+
+TEST_F(PerformanceBenchmarkFixture, W9_Dimension_XYM_10K) {
+    RunDimensionWorkloadBenchmark(DimensionWorkload::XYM);
+}
+
+TEST_F(PerformanceBenchmarkFixture, W9_Dimension_XYZM_10K) {
+    RunDimensionWorkloadBenchmark(DimensionWorkload::XYZM);
+}
+
+TEST_F(PerformanceBenchmarkFixture, W10_WriterLongSteady_100KCycles) {
+    if (!RunWriterLongSteady()) {
+        GTEST_SKIP() << "Set FAST_GDB_RUN_WRITER_LONG_STEADY=1 to run the "
+                        "30-minute writer stability gate";
+    }
+    constexpr int rows_per_cycle = 100000;
+    const int target_seconds = WriterLongSteadySeconds();
+    Timing warmup = GenerateWithWriter(
+        rows_per_cycle, test_data_dir + "/writer_long_steady.gdb",
+        false, false);
+    ASSERT_TRUE(warmup.correct);
+    const auto steady_start = Clock::now();
+    double last_report_seconds = 0.0;
+    bool all_correct = warmup.correct;
+    Timing steady;
+    const double rss_start_mb = PeakRssMb();
+    std::vector<double> samples;
+    int cycles = 0;
+    do {
+        Timing current = GenerateWithWriter(
+            rows_per_cycle, test_data_dir + "/writer_long_steady.gdb",
+            false, false);
+        all_correct = all_correct && current.correct;
+        steady = current;
+        samples.push_back(current.write_ms);
+        ++cycles;
+        if (!current.correct) break;
+        const double elapsed_seconds = std::chrono::duration<double>(
+            Clock::now() - steady_start).count();
+        if (elapsed_seconds - last_report_seconds >= 60.0) {
+            printf("  [W10] elapsed=%.0fs cycles=%d peak_rss=%.1fMB\n",
+                   elapsed_seconds, cycles, PeakRssMb());
+            std::fflush(stdout);
+            last_report_seconds = elapsed_seconds;
+        }
+    } while (std::chrono::duration<double>(
+                 Clock::now() - steady_start).count() < target_seconds);
+
+    steady.total_ms = std::chrono::duration<double, std::milli>(
+        Clock::now() - steady_start).count();
+    steady.feature_count = rows_per_cycle;
+    steady.iteration_count = cycles;
+    steady.samples_ms = std::move(samples);
+    steady.correct = all_correct;
+    steady.manifest = "polygon_4_fields_seed_42_100k_repeated";
+    steady.rss_start_mb = rss_start_mb;
+    steady.rss_growth_mb = std::max(0.0, PeakRssMb() - rss_start_mb);
+    WriteBenchmarkEvidence("writer-long-steady", "fast-gdb-writer", steady);
+    EXPECT_TRUE(steady.correct);
+    EXPECT_GE(steady.total_ms, target_seconds * 1000.0);
+    EXPECT_LE(steady.rss_growth_mb, WriterLongSteadyMaxRssGrowthMb());
+    printf("  [W10] completed %.1fs, cycles=%d, rss_growth=%.1fMB\n",
+           steady.total_ms / 1000.0, steady.iteration_count,
+           steady.rss_growth_mb);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1119,7 +2305,7 @@ TEST_F(PerformanceBenchmarkFixture, R3_SpatialQuery_100K) {
     auto gdal_t = SpatialQueryWithGDAL(configs[2].gdb_path, xmin, ymin, xmax, ymax);
 
     printf("\n  --- explorgdb 空间索引查询 ---\n");
-    auto exp_t = SpatialQueryWithExplorgdb(configs[2].gdb_path, table_id, xmin, ymin, xmax, ymax);
+    auto exp_t = SpatialQueryWithExplorgdb(configs[2].gdb_path, xmin, ymin, xmax, ymax);
 
     if (exp_t.query_ms > 0) {
         double speedup = gdal_t.query_ms / exp_t.query_ms;
@@ -1163,7 +2349,7 @@ TEST_F(PerformanceBenchmarkFixture, R4_SpatialQuery_WindowSize_100K) {
         double xmax = cx + w.size, ymax = cy + w.size;
 
         auto gdal_t = SpatialQueryWithGDAL(configs[2].gdb_path, xmin, ymin, xmax, ymax);
-        auto exp_t = SpatialQueryWithExplorgdb(configs[2].gdb_path, table_id, xmin, ymin, xmax, ymax);
+        auto exp_t = SpatialQueryWithExplorgdb(configs[2].gdb_path, xmin, ymin, xmax, ymax);
 
         if (exp_t.query_ms > 0) {
             double speedup = gdal_t.query_ms / exp_t.query_ms;
@@ -1216,7 +2402,7 @@ TEST_F(PerformanceBenchmarkFixture, R4_SpatialQuery_WindowSize_10M) {
         double xmax = cx + w.size, ymax = cy + w.size;
 
         auto gdal_t = SpatialQueryWithGDAL(configs[4].gdb_path, xmin, ymin, xmax, ymax);
-        auto exp_t = SpatialQueryWithExplorgdb(configs[4].gdb_path, table_id, xmin, ymin, xmax, ymax);
+        auto exp_t = SpatialQueryWithExplorgdb(configs[4].gdb_path, xmin, ymin, xmax, ymax);
 
         if (exp_t.query_ms > 0 && exp_t.query_ms > 0.001) {
             double speedup = gdal_t.query_ms / exp_t.query_ms;
@@ -1247,7 +2433,8 @@ TEST_F(PerformanceBenchmarkFixture, R5_AttributeQuery_100K) {
 
     printf("\n  --- explorgdb 属性索引查询 ---\n");
     auto exp_t = AttributeQueryWithExplorgdb(configs[2].gdb_path, table_id,
-                                             "population", query_value, explorgdb::AttrOp::Eq);
+                                             "population", query_value, explorgdb::AttrOp::Gt);
+    EXPECT_EQ(exp_t.result_count, gdal_t.result_count);
 
     if (exp_t.query_ms > 0) {
         double speedup = gdal_t.query_ms / exp_t.query_ms;
@@ -1291,6 +2478,7 @@ TEST_F(PerformanceBenchmarkFixture, R6_AttributeQuery_VariousFilters_100K) {
         auto gdal_t = AttributeQueryWithGDAL(configs[2].gdb_path, q.filter);
         auto exp_t = AttributeQueryWithExplorgdb(configs[2].gdb_path, table_id,
                                                  "population", q.value, q.op);
+        EXPECT_EQ(exp_t.result_count, gdal_t.result_count) << q.filter;
 
         if (exp_t.query_ms > 0) {
             double speedup = gdal_t.query_ms / exp_t.query_ms;
@@ -1298,6 +2486,66 @@ TEST_F(PerformanceBenchmarkFixture, R6_AttributeQuery_VariousFilters_100K) {
                    q.desc.c_str(), q.filter.c_str(), gdal_t.query_ms, exp_t.query_ms, speedup);
         }
     }
+}
+
+TEST_F(PerformanceBenchmarkFixture, R7_ReaderLongSteady_100KCycles) {
+    if (!RunReaderLongSteady()) {
+        GTEST_SKIP() << "Set FAST_GDB_RUN_READER_LONG_STEADY=1 to run the "
+                        "30-minute reader stability gate";
+    }
+    constexpr int row_count = 100000;
+    Timing generated = GenerateWithWriter(
+        row_count, configs[2].gdb_path, false, false);
+    ASSERT_TRUE(generated.correct);
+    ASSERT_GE(CreateIndexes(
+        configs[2].gdb_path, true, false, false, false), 0.0);
+    const ReaderSteadyCycle warmup = RunReaderSteadyCycle(configs[2].gdb_path);
+    ASSERT_TRUE(warmup.correct);
+
+    const int target_seconds = ReaderLongSteadySeconds();
+    const auto steady_start = Clock::now();
+    const double rss_start_mb = PeakRssMb();
+    std::vector<double> samples;
+    bool all_correct = true;
+    double last_report_seconds = 0.0;
+    int cycles = 0;
+    do {
+        const ReaderSteadyCycle cycle = RunReaderSteadyCycle(
+            configs[2].gdb_path, warmup.spatial_hits);
+        samples.push_back(cycle.elapsed_ms);
+        all_correct = all_correct && cycle.correct;
+        ++cycles;
+        if (!cycle.correct) break;
+        const double elapsed_seconds = std::chrono::duration<double>(
+            Clock::now() - steady_start).count();
+        if (elapsed_seconds - last_report_seconds >= 60.0) {
+            printf("  [R7] elapsed=%.0fs cycles=%d peak_rss=%.1fMB\n",
+                   elapsed_seconds, cycles, PeakRssMb());
+            std::fflush(stdout);
+            last_report_seconds = elapsed_seconds;
+        }
+    } while (std::chrono::duration<double>(
+                 Clock::now() - steady_start).count() < target_seconds);
+
+    Timing steady;
+    steady.total_ms = std::chrono::duration<double, std::milli>(
+        Clock::now() - steady_start).count();
+    steady.feature_count = row_count;
+    steady.result_count = warmup.spatial_hits;
+    steady.iteration_count = cycles;
+    steady.read_ms = Percentile(samples, 0.5);
+    steady.samples_ms = std::move(samples);
+    steady.correct = all_correct;
+    steady.disk_mb = CalculateDiskUsage(configs[2].gdb_path);
+    steady.manifest = "polygon_4_fields_seed_42_100k_reader_reopen";
+    steady.rss_start_mb = rss_start_mb;
+    steady.rss_growth_mb = std::max(0.0, PeakRssMb() - rss_start_mb);
+    WriteBenchmarkEvidence("reader-long-steady", "fast-gdb-reader", steady);
+    EXPECT_TRUE(steady.correct);
+    EXPECT_GE(steady.total_ms, target_seconds * 1000.0);
+    EXPECT_LE(steady.rss_growth_mb, ReaderLongSteadyMaxRssGrowthMb());
+    printf("  [R7] completed %.1fs, cycles=%d, rss_growth=%.1fMB\n",
+           steady.total_ms / 1000.0, cycles, steady.rss_growth_mb);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1320,6 +2568,12 @@ TEST_F(PerformanceBenchmarkFixture, C1_FullWorkflow_GDAL_100K) {
 
     auto t1 = Clock::now();
     double total_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+    write_t.read_ms = read_t.read_ms;
+    write_t.total_ms = total_ms;
+    write_t.result_count = read_t.feature_count;
+    write_t.correct = write_t.correct && read_t.feature_count == 100000;
+    write_t.samples_ms = {total_ms};
+    WriteBenchmarkEvidence("full-workflow", "gdal-single", write_t);
 
     printf("\n  ╔══════════════════════════════════════════╗\n");
     printf("  ║  C1: GDAL 完整工作流 (100K)             ║\n");
@@ -1347,6 +2601,12 @@ TEST_F(PerformanceBenchmarkFixture, C2_FullWorkflow_Binary_100K) {
 
     auto t1 = Clock::now();
     double total_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+    write_t.read_ms = read_t.read_ms;
+    write_t.total_ms = total_ms;
+    write_t.result_count = read_t.feature_count;
+    write_t.correct = write_t.correct && read_t.feature_count == 100000;
+    write_t.samples_ms = {total_ms};
+    WriteBenchmarkEvidence("full-workflow", "fast-gdb-writer", write_t);
 
     printf("\n  ╔══════════════════════════════════════════╗\n");
     printf("  ║  C2: Binary Writer 完整工作流 (100K)    ║\n");
@@ -1378,8 +2638,8 @@ TEST_F(PerformanceBenchmarkFixture, C3_FullWorkflow_WithIndexes_100K) {
 
     // 3. 空间查询
     printf("\n");
-    auto spatial_t = SpatialQueryWithExplorgdb(configs[2].gdb_path, table_id,
-                                               40000, 40000, 60000, 60000);
+    auto spatial_t = SpatialQueryWithExplorgdb(
+        configs[2].gdb_path, 40000, 40000, 60000, 60000);
 
     // 4. 属性查询
     printf("\n");
@@ -1388,6 +2648,24 @@ TEST_F(PerformanceBenchmarkFixture, C3_FullWorkflow_WithIndexes_100K) {
 
     auto t1 = Clock::now();
     double total_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+
+    // Correctness references are outside the measured workflow boundary.
+    auto spatial_reference = SpatialQueryWithGDAL(
+        configs[2].gdb_path, 40000, 40000, 60000, 60000);
+    auto attr_reference = AttributeQueryWithGDAL(
+        configs[2].gdb_path, "population > 5000000");
+    write_t.index_ms = index_ms;
+    write_t.query_ms = spatial_t.query_ms + attr_t.query_ms;
+    write_t.total_ms = total_ms;
+    write_t.disk_mb = disk_mb;
+    write_t.result_count = spatial_t.result_count + attr_t.result_count;
+    write_t.correct = write_t.correct && index_ms >= 0.0 &&
+                      spatial_t.query_ms >= 0.0 && attr_t.query_ms >= 0.0 &&
+                      spatial_t.result_count == spatial_reference.result_count &&
+                      attr_t.result_count == attr_reference.result_count;
+    EXPECT_TRUE(write_t.correct);
+    write_t.samples_ms = {total_ms};
+    WriteBenchmarkEvidence("full-workflow-indexed", "fast-gdb-writer", write_t);
 
     printf("\n  ╔═══════════════════════════════════════════════════╗\n");
     printf("  ║  C3: 完整工作流 + 全索引 (100K)                  ║\n");
@@ -1421,7 +2699,7 @@ TEST_F(PerformanceBenchmarkFixture, C4_IndexBenefit_Spatial_100K) {
     // 有索引：explorgdb 空间索引查询
     CreateIndexes(configs[2].gdb_path, true, false, false, false);
     printf("\n  --- 有索引（explorgdb .spx 查询） ---\n");
-    auto idx_t = SpatialQueryWithExplorgdb(configs[2].gdb_path, table_id, xmin, ymin, xmax, ymax);
+    auto idx_t = SpatialQueryWithExplorgdb(configs[2].gdb_path, xmin, ymin, xmax, ymax);
 
     if (idx_t.query_ms > 0 && idx_t.query_ms > 0.001) {
         double speedup = no_idx_t.query_ms / idx_t.query_ms;
@@ -1458,6 +2736,7 @@ TEST_F(PerformanceBenchmarkFixture, C5_IndexBenefit_Attribute_100K) {
     printf("\n  --- 有索引（explorgdb .atx 查询） ---\n");
     auto idx_t = AttributeQueryWithExplorgdb(configs[2].gdb_path, table_id,
                                              "population", query_value, explorgdb::AttrOp::Gt);
+    EXPECT_EQ(idx_t.result_count, no_idx_t.result_count);
 
     if (idx_t.query_ms > 0 && idx_t.query_ms > 0.001) {
         double speedup = no_idx_t.query_ms / idx_t.query_ms;

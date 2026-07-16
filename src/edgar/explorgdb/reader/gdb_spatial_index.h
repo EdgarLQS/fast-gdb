@@ -73,6 +73,7 @@ private:
     std::string file_path_;
     int fd_ = -1;                    // 文件句柄（保持打开）
     size_t mapped_size_ = 0;         // 文件大小
+    const uint8_t* mapped_data_ = nullptr;  // 全文件只读映射；失败时回退 pread
     BPlusTreeTrailer trailer_;
     int max_per_page_ = 0;           // 每页最大条目数
     int values_offset_ = 0;          // 值数组固定偏移 = 12 + max_per_page * 4

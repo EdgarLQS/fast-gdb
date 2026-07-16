@@ -66,7 +66,7 @@ struct FieldDescriptor {
     std::string name;        // 列名（UTF-16LE 编码）
     std::string alias;       // 列别名（UTF-16LE 编码，可为空）
     FieldType type;          // 字段类型（见 FieldType 枚举）
-    uint8_t width = 0;       // 字段宽度（String 类型表示最大字符数，数值类型表示字节数）
+    uint32_t width = 0;      // 字段宽度（String 类型表示最大字符数，数值类型表示字节数）
     uint8_t flag = 0;        // 字段标志位（见上方说明）
     std::string default_value; // 默认值（仅当 flag & 0x04 时存在）
 
@@ -104,10 +104,18 @@ struct FieldDescriptor {
 //   nullptr_t         — null 值（当 nullable flag 对应位为 1 时）
 //   int32_t           — Int16/Int32 值
 //   int64_t           — Int64 值
-//   double            — Float32/Float64/DateTime 值
+//   double            — Float32/Float64/DateTime/Date/Time 值
+//   DateTimeOffsetValue — DateTimeWithOffset 的时间值和 UTC 偏移分钟
 //   std::string       — String/XML/UUID 值
 //   std::vector<uint8_t> — Binary/Geometry 值
-using FieldValue = std::variant<std::nullptr_t, int32_t, int64_t, double, std::string, std::vector<uint8_t>>;
+struct DateTimeOffsetValue {
+    double date = 0.0;
+    int16_t offset_minutes = 0;
+};
+
+using FieldValue = std::variant<std::nullptr_t, int32_t, int64_t, double,
+                                DateTimeOffsetValue, std::string,
+                                std::vector<uint8_t>>;
 
 struct FeatureRecord {
     uint32_t fid = 0;                          // 要素 ID（0 起始索引）
@@ -361,6 +369,13 @@ struct FieldRef {
         double v;
         std::memcpy(&v, data, 8);
         return v;
+    }
+
+    int16_t as_datetime_offset_minutes() const {
+        if (is_null || byte_len < 10) return 0;
+        int16_t value;
+        std::memcpy(&value, data + 8, sizeof(value));
+        return value;
     }
 
     // 返回 string_view，零拷贝（指向 mmap 内存）

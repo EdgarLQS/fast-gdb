@@ -1,4 +1,11 @@
-#ifdef FAST_GDB_CONSUMER_HYBRID
+#ifdef FAST_GDB_CONSUMER_WRITER
+#include <gdb_table_writer.h>
+
+int main() {
+    explorgdb::writer::GdbTableWriter writer;
+    return writer.is_open() ? 1 : 0;
+}
+#elif defined(FAST_GDB_CONSUMER_HYBRID)
 #include <hybrid_geometry_reader.h>
 
 int main() {
