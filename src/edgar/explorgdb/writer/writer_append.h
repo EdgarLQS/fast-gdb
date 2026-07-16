@@ -3,6 +3,7 @@
 
 #include "writer_session.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -17,6 +18,10 @@ namespace writer {
 // supported.
 class WriterAppendSession {
 public:
+    // Public declaration allows implementation-file helpers to name the PImpl
+    // type without exposing any fields in the installed header.
+    struct Impl;
+
     WriterAppendSession();
     ~WriterAppendSession();
 
@@ -59,7 +64,6 @@ public:
     const WriterError& error() const noexcept;
 
 private:
-    struct Impl;
     std::unique_ptr<Impl> impl_;
 };
 
