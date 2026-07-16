@@ -71,6 +71,14 @@ private:
     bool set_string_unchecked(int field_index, const std::string& value);
     bool set_binary_unchecked(int field_index,
                               const std::vector<uint8_t>& value);
+    bool set_point_unchecked(const WriterCoordinate& point,
+                             WriterGeometryType type);
+    bool set_polyline_unchecked(
+        const std::vector<std::vector<WriterCoordinate>>& parts,
+        WriterGeometryType type);
+    bool set_polygon_unchecked(
+        const std::vector<std::vector<WriterCoordinate>>& rings,
+        WriterGeometryType type);
 
     std::unique_ptr<Impl> impl_;
 };
