@@ -13,6 +13,7 @@ on:
       - 'src/edgar/explorgdb/writer/**'
       - 'tests/contracts/writer-transaction-macos-v1.json'
       - 'tests/edgar/explorgdb/writer/test_writer_transaction.cpp'
+      - 'tests/edgar/explorgdb/writer/test_writer_recovery.cpp'
       - 'tests/package_consumer/**'
   workflow_dispatch:
 
@@ -57,6 +58,7 @@ jobs:
             --prefix "$GITHUB_WORKSPACE/install-transaction"
           stable="$GITHUB_WORKSPACE/install-transaction/include/fast_gdb/writer"
           test -f "$stable/writer_transaction.h"
+          test -f "$stable/writer_recovery.h"
           test -f "$stable/writer_delete.h"
           test -f "$stable/writer_update.h"
           test -f "$stable/writer_append.h"
