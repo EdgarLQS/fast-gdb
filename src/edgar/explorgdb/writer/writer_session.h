@@ -9,8 +9,6 @@
 namespace explorgdb {
 namespace writer {
 
-// Stable Writer lifecycle stages. The stage is part of the public error
-// contract and may be persisted in acceptance evidence.
 enum class WriterStage : uint8_t {
     None = 0,
     Open,
@@ -24,11 +22,34 @@ enum class WriterStage : uint8_t {
 
 const char* writer_stage_name(WriterStage stage) noexcept;
 
-// Structured public error. system_reason preserves the lower-level Writer,
-// filesystem or operating-system reason without requiring callers to parse the
-// human-readable message.
+// Stable machine-readable category. Existing implementations that have not yet
+// classified an error use Unknown; callers must not infer a code from message.
+enum class WriterErrorCode : uint16_t {
+    None = 0,
+    Unknown,
+    InvalidState,
+    InvalidArgument,
+    UnsupportedOperation,
+    SourceNotFound,
+    LayerNotFound,
+    FeatureNotFound,
+    TypeMismatch,
+    NullConstraint,
+    InvalidGeometry,
+    SourceChanged,
+    ValidationFailed,
+    IoFailure,
+    PublishConflict,
+    RollbackFailed,
+    CleanupFailed,
+    DependencyUnavailable,
+};
+
+const char* writer_error_code_name(WriterErrorCode code) noexcept;
+
 struct WriterError {
     WriterStage stage = WriterStage::None;
+    WriterErrorCode code = WriterErrorCode::None;
     std::string layer;
     std::string path;
     std::string system_reason;
@@ -66,17 +87,10 @@ struct WriterCoordinate {
     double m = 0.0;
 };
 
-// Stable one-shot Writer entry point.
-//
-// The caller creates the empty staging FileGDB schema. After open() succeeds,
-// the session owns that staging directory until commit() publishes it or
-// abort()/destruction removes it. Schema creation, non-empty append, Update,
-// Delete and nested transactions are intentionally outside this API.
 class WriterSession {
 public:
     WriterSession();
     ~WriterSession();
-
     WriterSession(WriterSession&&) noexcept;
     WriterSession& operator=(WriterSession&&) noexcept;
     WriterSession(const WriterSession&) = delete;
@@ -84,7 +98,6 @@ public:
 
     bool open(const std::string& staging_gdb_path,
               const std::string& layer_name);
-
     bool begin_row();
     bool set_null(int field_index);
     bool append_i16(int field_index, int16_t value);
@@ -114,17 +127,9 @@ public:
         const std::vector<std::vector<WriterCoordinate>>& rings,
         WriterGeometryType type = WriterGeometryType::Polygon);
     bool append_geometry(int field_index);
-
     bool end_row();
     bool flush();
-
-    // commit() closes and validates the Writer, then performs an exclusive
-    // no-overwrite directory publish. A failed commit is not retryable on the
-    // same one-shot session; staging remains owned until abort/destruction.
     bool commit(const std::string& final_gdb_path);
-
-    // abort() removes session-owned staging data. Calling abort() before a
-    // successful open is a harmless no-op; committed sessions cannot abort.
     bool abort();
 
     uint64_t row_count() const noexcept;
