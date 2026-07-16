@@ -15,9 +15,6 @@ if(NOT FAST_GDB_PACKAGE_VARIANT)
     endif()
 endif()
 
-# Make exported targets relocatable while keeping implementation headers private
-# from the stable Writer target. The deprecated writer_legacy target exposes the
-# previous experimental header layout from a separate include directory.
 set_target_properties(fast_gdb_geometry_core PROPERTIES
     EXPORT_NAME geometry_core
     INTERFACE_INCLUDE_DIRECTORIES
@@ -81,8 +78,8 @@ install(DIRECTORY src/edgar/explorgdb/reader/
     FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp")
 
 # Stable Writer installation: empty-schema session is dependency-free; index,
-# append and update are available only in GDAL builds. Physical-layout headers
-# remain absent from the stable include directory.
+# append, update and delete are available only in GDAL builds. Physical-layout
+# headers remain absent from the stable include directory.
 install(FILES
     src/edgar/explorgdb/writer/writer_session.h
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/writer)
@@ -91,11 +88,10 @@ if(FAST_GDB_WITH_GDAL)
         src/edgar/explorgdb/writer/writer_index.h
         src/edgar/explorgdb/writer/writer_append.h
         src/edgar/explorgdb/writer/writer_update.h
+        src/edgar/explorgdb/writer/writer_delete.h
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/writer)
 endif()
 
-# Transitional compatibility surface. It is isolated from fast_gdb::writer so
-# new consumers cannot accidentally depend on implementation headers.
 if(FAST_GDB_INSTALL_LEGACY_WRITER_API)
     install(DIRECTORY src/edgar/explorgdb/writer/
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/writer_legacy
@@ -104,6 +100,7 @@ if(FAST_GDB_INSTALL_LEGACY_WRITER_API)
         PATTERN "writer_index.h" EXCLUDE
         PATTERN "writer_append.h" EXCLUDE
         PATTERN "writer_update.h" EXCLUDE
+        PATTERN "writer_delete.h" EXCLUDE
         PATTERN "gdb_index_creator.h" EXCLUDE)
     if(FAST_GDB_WITH_GDAL)
         install(FILES
