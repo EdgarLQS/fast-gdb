@@ -65,6 +65,7 @@ jobs:
             -DFAST_GDB_GEOMETRY_OUTPUT=STANDARD_WKB \
             -DFAST_GDB_BUILD_TOOLS=OFF \
             -DFAST_GDB_BUILD_FULL_TESTS=OFF \
+            -DFAST_GDB_INSTALL_LEGACY_WRITER_API=ON \
             -DBUILD_TESTING=OFF
           cmake --build build-package-nogdal --target explorgdb_writer_lib --parallel
           cmake --install build-package-nogdal \
@@ -74,6 +75,12 @@ jobs:
             -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/install-package-nogdal" \
             -DFAST_GDB_CONSUMER_TARGET=writer
           cmake --build build-consumer-nogdal --parallel
+          cmake -S tests/package_consumer -B build-consumer-legacy -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/install-package-nogdal" \
+            -DFAST_GDB_CONSUMER_TARGET=writer_legacy
+          cmake --build build-consumer-legacy --parallel
+          ./build-consumer-legacy/fast_gdb_package_consumer
 
       - name: Configure and install Writer package with GDAL
         shell: bash
@@ -93,7 +100,8 @@ jobs:
           cmake -S tests/package_consumer -B build-consumer-gdal -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/install-package-gdal" \
-            -DFAST_GDB_CONSUMER_TARGET=writer
+            -DFAST_GDB_CONSUMER_TARGET=writer \
+            -DFAST_GDB_CONSUMER_CHECK_INDEX=ON
           cmake --build build-consumer-gdal --parallel
 
       - name: Run schema-v2 Writer contract
