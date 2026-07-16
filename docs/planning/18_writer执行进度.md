@@ -15,8 +15,24 @@
 | M18.3 macOS 性能专项 | 测量基础设施已实现 | 已完成 | Blocked | current/main/GDAL 比较、5% 门禁和 `sample(1)` profile 链路已建立；尚无真实 profile artifact |
 | M18.4.1 非空追加 | 已实现 | 已完成 | Blocked | staging 追加、FID 单调、逐行回读、索引查询、回滚及专用合同已实现 |
 | M18.4.2 Update | 进行中 | 已发现 3 个 Major | 未达出口 | 核心 staging Update、ADR、manifest、测试和 workflow 已加入；见下方未完成项 |
-| M18.4.3 Delete | 未开始 | — | — | 等 Update 代码级 Major 清零后开始 |
-| M18.4.4 事务/崩溃恢复 | 设计阶段 | API/架构评审待完成 | — | 本轮先冻结模型，不实现运行时代码 |
+| M18.4.3 Delete | 未开始 | — | — | 等 Update 代码级 Major 清零并确认事务接口约束后开始 |
+| M18.4.4 事务/崩溃恢复 | 设计完成，未实现 | API/架构初审完成 | — | ADR-004 与恢复分类已冻结为 Proposed |
+
+## 本轮文档收口
+
+已完成：
+
+- 主计划同步：`docs/planning/18_writer跨平台测试统一与后续编辑计划.md`
+- Roadmap：`docs/roadmap/writer-roadmap.md`
+- 生命周期：`docs/architecture/writer-lifecycle.md`
+- 设计原则：`docs/architecture/writer-design-principles.md`
+- 已知限制：`docs/architecture/writer-known-limitations.md`
+- ADR 索引：`docs/adr/README.md`
+- API Freeze：`docs/reviews/API_FREEZE_REVIEW.md`
+- 事务 ADR：`docs/adr/ADR-004-writer-transaction.md`
+- 事务详细设计：`docs/design/writer-transaction.md`
+
+文档状态经过一致性检查：Append 标记为“实现完成、待证据”，Update 标记为“进行中”，Transaction 标记为 Proposed，Delete 标记为未开始；没有把计划能力误写为已通过。
 
 ## M18.4.2 当前未完成项
 
@@ -55,7 +71,7 @@ GitHub Actions 在 checkout 前失败，多个新旧 workflow 均返回：
 ## 下一执行顺序
 
 1. 清零 Update 自审中的 3 个 Major。
-2. 完成 Public API Freeze 审查并冻结统一错误模型。
-3. 完成事务 ADR 与设计文档，确认 Delete API 不与事务模型冲突。
+2. 统一稳定 `WriterErrorCode`，避免调用方解析错误 message。
+3. 根据 ADR-004 确认 Delete 的公共接口和事务接入方式。
 4. 开始 Delete：staging 重写、FID 不复用、范围收缩、索引无残留、全删空表。
 5. CI 恢复后按 M18.1 → M18.2 → M18.3 → Append → Update 顺序补齐当前证据。
