@@ -72,6 +72,23 @@
         "topology",
         "source_unchanged"
       ]
+    },
+    {
+      "id": "W-APPEND-005",
+      "title": "Append preserves spatial and attribute indexes",
+      "kind": "gtest",
+      "binary": "full",
+      "filter": "WriterAppendIndexTest.*",
+      "gate": "required",
+      "data_scale": "small-generated-indexed",
+      "cache_state": "fresh-open",
+      "assertions": [
+        "spatial_index_file",
+        "attribute_index_file",
+        "attribute_query_new_row",
+        "spatial_query_new_row",
+        "gdal_reopen"
+      ]
     }
   ]
 }
