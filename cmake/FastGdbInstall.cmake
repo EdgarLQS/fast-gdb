@@ -77,10 +77,9 @@ install(DIRECTORY src/edgar/explorgdb/reader/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/reader
     FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp")
 
-# Stable Writer installation: empty-schema session is dependency-free; GDAL
-# builds additionally expose index, append, update, delete and transaction.
 install(FILES
     src/edgar/explorgdb/writer/writer_session.h
+    src/edgar/explorgdb/writer/writer_recovery.h
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/writer)
 if(FAST_GDB_WITH_GDAL)
     install(FILES
@@ -97,6 +96,7 @@ if(FAST_GDB_INSTALL_LEGACY_WRITER_API)
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/writer_legacy
         FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp"
         PATTERN "writer_session.h" EXCLUDE
+        PATTERN "writer_recovery.h" EXCLUDE
         PATTERN "writer_index.h" EXCLUDE
         PATTERN "writer_append.h" EXCLUDE
         PATTERN "writer_update.h" EXCLUDE
