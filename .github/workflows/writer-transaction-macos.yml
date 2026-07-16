@@ -1,0 +1,90 @@
+name: writer-transaction-macos
+
+on:
+  push:
+    branches:
+      - main
+      - 'codex/**'
+  pull_request:
+    paths:
+      - '.github/workflows/writer-transaction-macos.yml'
+      - 'cmake/**'
+      - 'scripts/run_test_contract.py'
+      - 'src/edgar/explorgdb/writer/**'
+      - 'tests/contracts/writer-transaction-macos-v1.json'
+      - 'tests/edgar/explorgdb/writer/test_writer_transaction.cpp'
+      - 'tests/package_consumer/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: writer-transaction-macos-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  transaction-contract:
+    name: writer-unified-transaction-macos
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: brew install ninja gdal
+      - name: Verify OpenFileGDB
+        run: |
+          set -euo pipefail
+          ogrinfo --formats | tee transaction-gdal-formats.log
+          grep -q 'OpenFileGDB' transaction-gdal-formats.log
+      - name: Configure and build Release tests
+        run: |
+          set -euo pipefail
+          cmake -S . -B build-transaction -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DFAST_GDB_WITH_GDAL=ON \
+            -DFAST_GDB_BUILD_TOOLS=OFF \
+            -DFAST_GDB_BUILD_FULL_TESTS=ON \
+            -DBUILD_TESTING=ON
+          cmake --build build-transaction --target gdb_tutorial_test_runner --parallel
+      - name: Install and consume transaction package
+        run: |
+          set -euo pipefail
+          cmake --install build-transaction \
+            --prefix "$GITHUB_WORKSPACE/install-transaction"
+          stable="$GITHUB_WORKSPACE/install-transaction/include/fast_gdb/writer"
+          test -f "$stable/writer_transaction.h"
+          test -f "$stable/writer_delete.h"
+          test -f "$stable/writer_update.h"
+          test -f "$stable/writer_append.h"
+          test ! -e "$stable/gdb_table_writer.h"
+          cmake -S tests/package_consumer -B build-transaction-consumer -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/install-transaction" \
+            -DFAST_GDB_CONSUMER_TARGET=writer \
+            -DFAST_GDB_CONSUMER_CHECK_TRANSACTION=ON
+          cmake --build build-transaction-consumer --parallel
+          ./build-transaction-consumer/fast_gdb_package_consumer
+      - name: Run schema-v2 transaction contract three times
+        run: |
+          set -euo pipefail
+          python3 scripts/run_test_contract.py \
+            --manifest tests/contracts/writer-transaction-macos-v1.json \
+            --full-test-binary build-transaction/bin/gdb_tutorial_test_runner \
+            --workspace "$GITHUB_WORKSPACE" \
+            --output-dir "$GITHUB_WORKSPACE/writer-transaction-results" \
+            --build-type Release \
+            --repeat 3
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: writer-transaction-macos-${{ github.sha }}
+          path: |
+            writer-transaction-results/
+            transaction-gdal-formats.log
+          if-no-files-found: error
+          retention-days: 30
