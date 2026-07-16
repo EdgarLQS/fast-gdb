@@ -98,6 +98,7 @@ struct WriterSession::Impl {
     bool adopted = false;
     bool committed = false;
     bool aborted = false;
+    bool failed = false;
 
     GdbTableWriter& writer() { return atomic.writer(); }
     const GdbTableWriter& writer() const {
@@ -108,6 +109,7 @@ struct WriterSession::Impl {
 
     bool fail(WriterStage stage, const std::string& path,
               const std::string& system_reason, bool retryable = false) {
+        failed = true;
         error.stage = stage;
         error.layer = layer_name;
         error.path = path;
@@ -125,6 +127,7 @@ struct WriterSession::Impl {
     }
 
     bool ensure_active(WriterStage stage) {
+        if (failed) return false;
         if (!adopted || committed || aborted || !writer().is_open()) {
             return fail(stage, staging_gdb_path,
                         "session is not active", false);
@@ -174,7 +177,8 @@ WriterSession& WriterSession::operator=(WriterSession&&) noexcept = default;
 
 bool WriterSession::open(const std::string& staging_gdb_path,
                          const std::string& layer_name) {
-    if (impl_->adopted || impl_->committed || impl_->aborted) {
+    if (impl_->failed || impl_->adopted || impl_->committed ||
+        impl_->aborted) {
         return impl_->fail(WriterStage::Open, staging_gdb_path,
                            "WriterSession is single-use", false);
     }
@@ -372,6 +376,7 @@ bool WriterSession::commit(const std::string& final_gdb_path) {
         return impl_->fail(stage, final_gdb_path, reason, false);
     }
     impl_->committed = true;
+    impl_->failed = false;
     impl_->clear_error();
     return true;
 }
@@ -384,7 +389,6 @@ bool WriterSession::abort() {
     }
     if (impl_->aborted) return true;
     if (!impl_->adopted) {
-        impl_->aborted = true;
         impl_->clear_error();
         return true;
     }
@@ -398,6 +402,7 @@ bool WriterSession::abort() {
                            error.message(), true);
     }
     impl_->aborted = true;
+    impl_->failed = false;
     impl_->clear_error();
     return true;
 }
