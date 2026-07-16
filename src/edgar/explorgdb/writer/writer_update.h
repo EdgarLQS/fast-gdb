@@ -4,8 +4,6 @@
 #include "writer_session.h"
 
 #include <cstdint>
-#include <fstream>
-#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
