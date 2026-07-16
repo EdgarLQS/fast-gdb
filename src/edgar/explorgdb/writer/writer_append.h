@@ -79,6 +79,7 @@ private:
     bool set_polygon_unchecked(
         const std::vector<std::vector<WriterCoordinate>>& rings,
         WriterGeometryType type);
+    bool end_row_unchecked();
 
     std::unique_ptr<Impl> impl_;
 };
