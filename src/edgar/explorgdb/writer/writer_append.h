@@ -64,6 +64,14 @@ public:
     const WriterError& error() const noexcept;
 
 private:
+    bool set_null_unchecked(int field_index);
+    bool set_i32_unchecked(int field_index, int32_t value);
+    bool set_i64_unchecked(int field_index, int64_t value);
+    bool set_f64_unchecked(int field_index, double value);
+    bool set_string_unchecked(int field_index, const std::string& value);
+    bool set_binary_unchecked(int field_index,
+                              const std::vector<uint8_t>& value);
+
     std::unique_ptr<Impl> impl_;
 };
 
