@@ -80,15 +80,16 @@ install(DIRECTORY src/edgar/explorgdb/reader/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/reader
     FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp")
 
-# Stable Writer installation: session lifecycle and, for GDAL builds, the
-# public index helper only. RowBuffer, TablxWriter and physical-layout headers
-# are intentionally absent from this include directory.
+# Stable Writer installation: empty-schema session is dependency-free; index and
+# non-empty append are available only in GDAL builds. Physical-layout headers
+# remain absent from the stable include directory.
 install(FILES
     src/edgar/explorgdb/writer/writer_session.h
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/writer)
 if(FAST_GDB_WITH_GDAL)
     install(FILES
         src/edgar/explorgdb/writer/writer_index.h
+        src/edgar/explorgdb/writer/writer_append.h
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/writer)
 endif()
 
@@ -100,6 +101,7 @@ if(FAST_GDB_INSTALL_LEGACY_WRITER_API)
         FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp"
         PATTERN "writer_session.h" EXCLUDE
         PATTERN "writer_index.h" EXCLUDE
+        PATTERN "writer_append.h" EXCLUDE
         PATTERN "gdb_index_creator.h" EXCLUDE)
     if(FAST_GDB_WITH_GDAL)
         install(FILES
@@ -148,7 +150,7 @@ set(CPACK_PACKAGE_NAME "fast-gdb")
 set(CPACK_PACKAGE_VENDOR "EdgarLQS")
 set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
-    "C++17 FileGDB reader, stable empty-schema Writer session and geometry engine with optional GDAL hybrid fallback")
+    "C++17 FileGDB reader, stable Writer sessions and geometry engine with optional GDAL hybrid fallback")
 set(CPACK_PACKAGE_FILE_NAME
     "fast-gdb-${PROJECT_VERSION}-${FAST_GDB_PACKAGE_VARIANT}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
 set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY ON)
