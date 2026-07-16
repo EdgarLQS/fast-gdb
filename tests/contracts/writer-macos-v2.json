@@ -36,6 +36,17 @@
       "assertions": ["non_empty_rejection", "original_dataset_unchanged", "structured_error"]
     },
     {
+      "id": "W-SCHEMA-003",
+      "title": "Stable WriterSession lifecycle, ownership and rollback",
+      "kind": "gtest",
+      "binary": "full",
+      "filter": "WriterSessionTest.*",
+      "gate": "required",
+      "data_scale": "small-generated",
+      "cache_state": "fresh-open",
+      "assertions": ["session_lifecycle", "explicit_values", "structured_error", "no_overwrite_publish", "abort_cleanup", "destructor_cleanup", "gdal_reopen"]
+    },
+    {
       "id": "W-FIELD-001",
       "title": "Writer field encoding and validation matrix",
       "kind": "gtest",
@@ -125,25 +136,36 @@
     },
     {
       "id": "W-PKG-001",
-      "title": "Installed Writer consumer without GDAL",
+      "title": "Installed stable Writer consumer without GDAL",
       "kind": "command",
       "command": ["{workspace}/build-consumer-nogdal/fast_gdb_package_consumer"],
       "gate": "required",
       "repeat": 1,
       "data_scale": "compile-and-run",
       "cache_state": "not_applicable",
-      "assertions": ["relocatable_install", "writer_public_headers", "no_gdal_dependency"]
+      "assertions": ["relocatable_install", "stable_writer_session_header", "no_gdal_dependency", "no_internal_header_dependency"]
     },
     {
       "id": "W-PKG-002",
-      "title": "Installed Writer consumer with GDAL",
+      "title": "Installed stable Writer and index consumer with GDAL",
       "kind": "command",
       "command": ["{workspace}/build-consumer-gdal/fast_gdb_package_consumer"],
       "gate": "required",
       "repeat": 1,
       "data_scale": "compile-and-run",
       "cache_state": "not_applicable",
-      "assertions": ["relocatable_install", "writer_public_headers", "gdal_package_configuration"]
+      "assertions": ["relocatable_install", "stable_writer_session_header", "stable_writer_index_header", "gdal_package_configuration"]
+    },
+    {
+      "id": "W-PKG-003",
+      "title": "Deprecated legacy Writer consumer remains buildable",
+      "kind": "command",
+      "command": ["{workspace}/build-consumer-legacy/fast_gdb_package_consumer"],
+      "gate": "required",
+      "repeat": 1,
+      "data_scale": "compile-and-run",
+      "cache_state": "not_applicable",
+      "assertions": ["legacy_target", "source_compatibility", "isolated_legacy_include_surface"]
     },
     {
       "id": "R-CONC-001",
