@@ -133,9 +133,13 @@ def main() -> int:
                     f"median_ms is not positive in {record.get('_path', 'unknown evidence')}"
                 )
 
-        cache_states = {str(record.get("cache_state")) for record in records}
-        if len(cache_states) != 1:
-            invalid_reasons.append(f"cache_state mismatch: {sorted(cache_states)}")
+        consistency_fields = ("cache_state", "compiler", "gdal_version", "sample_count")
+        for field in consistency_fields:
+            values = {str(record.get(field)) for record in records}
+            if len(values) != 1:
+                invalid_reasons.append(f"{field} mismatch: {sorted(values)}")
+        if not isinstance(current_writer.get("sample_count"), int) or current_writer["sample_count"] <= 0:
+            invalid_reasons.append("sample_count must be a positive integer")
 
         if invalid_reasons:
             reason = "; ".join(invalid_reasons)
@@ -166,6 +170,9 @@ def main() -> int:
                 "benchmark_scenario": benchmark_scenario,
                 "manifest": expected_manifest,
                 "cache_state": current_writer.get("cache_state"),
+                "compiler": current_writer.get("compiler"),
+                "gdal_version": current_writer.get("gdal_version"),
+                "sample_count": current_writer.get("sample_count"),
                 "current_code_version": current_writer.get("code_version"),
                 "main_code_version": main_writer.get("code_version"),
                 "current_writer_median_ms": current_ms,
@@ -199,6 +206,9 @@ def main() -> int:
         "benchmark_scenario",
         "manifest",
         "cache_state",
+        "compiler",
+        "gdal_version",
+        "sample_count",
         "current_code_version",
         "main_code_version",
         "current_writer_median_ms",
