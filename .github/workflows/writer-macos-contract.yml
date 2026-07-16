@@ -75,6 +75,7 @@ jobs:
           legacy="$GITHUB_WORKSPACE/install-package-nogdal/include/fast_gdb/writer_legacy"
           test -f "$stable/writer_session.h"
           test ! -e "$stable/writer_index.h"
+          test ! -e "$stable/writer_append.h"
           test ! -e "$stable/row_buffer.h"
           test ! -e "$stable/tablx_writer.h"
           test ! -e "$stable/gdb_table_writer.h"
@@ -82,6 +83,7 @@ jobs:
           test -f "$legacy/gdb_table_writer.h"
           test -f "$legacy/row_buffer.h"
           test -f "$legacy/tablx_writer.h"
+          test ! -e "$legacy/writer_append.h"
 
           cmake -S tests/package_consumer -B build-consumer-nogdal -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
@@ -114,6 +116,7 @@ jobs:
           stable="$GITHUB_WORKSPACE/install-package-gdal/include/fast_gdb/writer"
           test -f "$stable/writer_session.h"
           test -f "$stable/writer_index.h"
+          test -f "$stable/writer_append.h"
           test ! -e "$stable/row_buffer.h"
           test ! -e "$stable/tablx_writer.h"
           test ! -e "$stable/gdb_table_writer.h"
@@ -123,8 +126,10 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/install-package-gdal" \
             -DFAST_GDB_CONSUMER_TARGET=writer \
-            -DFAST_GDB_CONSUMER_CHECK_INDEX=ON
+            -DFAST_GDB_CONSUMER_CHECK_INDEX=ON \
+            -DFAST_GDB_CONSUMER_CHECK_APPEND=ON
           cmake --build build-consumer-gdal --parallel
+          ./build-consumer-gdal/fast_gdb_package_consumer
 
       - name: Run schema-v2 Writer contract
         shell: bash
