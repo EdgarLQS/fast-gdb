@@ -10,6 +10,9 @@ int main() {
 #ifdef FAST_GDB_CONSUMER_WRITER_INDEX
 #include <writer_index.h>
 #endif
+#ifdef FAST_GDB_CONSUMER_WRITER_APPEND
+#include <writer_append.h>
+#endif
 
 int main() {
     explorgdb::writer::WriterSession session;
@@ -19,6 +22,12 @@ int main() {
 #ifdef FAST_GDB_CONSUMER_WRITER_INDEX
     auto* create_spatial_index = &explorgdb::writer::CreateSpatialIndex;
     if (create_spatial_index == nullptr) return 1;
+#endif
+#ifdef FAST_GDB_CONSUMER_WRITER_APPEND
+    explorgdb::writer::WriterAppendSession append;
+    if (append.is_open() || append.is_committed() || append.is_aborted()) {
+        return 1;
+    }
 #endif
     return 0;
 }
