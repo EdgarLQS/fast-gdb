@@ -1,12 +1,5 @@
 #!/usr/bin/env python3
-"""Run the fast-gdb macOS Writer contract and emit schema-v2 evidence.
-
-The runner intentionally treats PASS, FAIL and SKIP as distinct results. A SKIP
-must use one of the reasons frozen by M18.1 and never contributes to a pass
-count. Required scenarios fail the process unless every executed iteration
-passes. Observation scenarios are recorded without becoming release gates;
-manual scenarios remain explicit SKIP entries until enabled.
-"""
+"""Run a fast-gdb test contract and emit schema-v2 evidence."""
 
 from __future__ import annotations
 
@@ -19,6 +12,7 @@ import os
 import platform
 import shlex
 import shutil
+import statistics
 import subprocess
 import sys
 import time
@@ -27,7 +21,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-
+RESULTS = {"PASS", "FAIL", "SKIP"}
+GATES = {"required", "observe", "manual"}
 PHASE_COLUMNS = (
     "open_ms",
     "schema_ms",
@@ -43,6 +38,13 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def display_path(path: Path, workspace: Path) -> str:
+    try:
+        return str(path.resolve().relative_to(workspace.resolve()))
+    except ValueError:
+        return str(path.resolve())
+
+
 def safe_output(command: list[str]) -> str:
     try:
         completed = subprocess.run(
@@ -55,14 +57,13 @@ def safe_output(command: list[str]) -> str:
         )
     except (OSError, subprocess.SubprocessError):
         return "unknown"
-    first_line = completed.stdout.strip().splitlines()
-    return first_line[0] if first_line else "unknown"
+    lines = completed.stdout.strip().splitlines()
+    return lines[0] if lines else "unknown"
 
 
 def git_commit(workspace: Path) -> str:
-    value = os.environ.get("GITHUB_SHA")
-    if value:
-        return value
+    if os.environ.get("GITHUB_SHA"):
+        return os.environ["GITHUB_SHA"]
     try:
         return subprocess.check_output(
             ["git", "-C", str(workspace), "rev-parse", "HEAD"],
@@ -82,18 +83,16 @@ def parse_gtest_listing(output: str) -> list[str]:
         if not raw_line.startswith((" ", "\t")):
             suite = raw_line.split("#", 1)[0].strip()
             continue
-        if not suite:
-            continue
         test_name = raw_line.split("#", 1)[0].strip()
-        if test_name:
+        if suite and test_name:
             tests.append(f"{suite}{test_name}")
     return tests
 
 
 def split_gtest_filter(expression: str) -> tuple[list[str], list[str]]:
     positive, separator, negative = expression.partition("-")
-    positives = [item for item in positive.split(":") if item] or ["*"]
-    negatives = [item for item in negative.split(":") if item] if separator else []
+    positives = [value for value in positive.split(":") if value] or ["*"]
+    negatives = [value for value in negative.split(":") if value] if separator else []
     return positives, negatives
 
 
@@ -115,6 +114,10 @@ def flatten_gtest_cases(payload: dict[str, Any]) -> list[dict[str, Any]]:
     return cases
 
 
+def case_result(case: dict[str, Any]) -> str:
+    return str(case.get("result", "")).upper()
+
+
 def infer_skip_reason(text: str, allowed: set[str]) -> str | None:
     lowered = text.lower()
     candidates = (
@@ -124,8 +127,8 @@ def infer_skip_reason(text: str, allowed: set[str]) -> str | None:
         ("insufficient_disk", ("insufficient disk", "not enough disk", "free disk")),
         ("unsupported_platform", ("unsupported platform", "windows currently", "only supported on")),
     )
-    for reason, needles in candidates:
-        if reason in allowed and any(needle in lowered for needle in needles):
+    for reason, markers in candidates:
+        if reason in allowed and any(marker in lowered for marker in markers):
             return reason
     return None
 
@@ -134,12 +137,32 @@ def percentile95(values: list[float]) -> float | None:
     if not values:
         return None
     ordered = sorted(values)
-    index = max(0, math.ceil(0.95 * len(ordered)) - 1)
-    return ordered[index]
+    return ordered[max(0, math.ceil(0.95 * len(ordered)) - 1)]
 
 
 def format_command(command: list[str]) -> str:
     return shlex.join(command)
+
+
+def execute(
+    command: list[str],
+    cwd: Path,
+    env: dict[str, str],
+    stdout_path: Path,
+) -> tuple[subprocess.CompletedProcess[str], float]:
+    started = time.perf_counter()
+    completed = subprocess.run(
+        command,
+        cwd=cwd,
+        env=env,
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    elapsed_ms = (time.perf_counter() - started) * 1000.0
+    stdout_path.write_text(completed.stdout, encoding="utf-8")
+    return completed, elapsed_ms
 
 
 def base_record(
@@ -183,27 +206,36 @@ def base_record(
         "gtest_json_path": None,
         "message": None,
     }
-    for phase in PHASE_COLUMNS:
-        record[phase] = None
+    for column in PHASE_COLUMNS:
+        record[column] = None
     return record
 
 
-def execute_process(
-    command: list[str], cwd: Path, env: dict[str, str], stdout_path: Path
-) -> tuple[subprocess.CompletedProcess[str], float]:
-    started = time.perf_counter()
-    completed = subprocess.run(
-        command,
-        cwd=cwd,
-        env=env,
-        check=False,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
+def skip_record(
+    record: dict[str, Any],
+    reason: str,
+    message: str,
+    stdout_path: Path,
+) -> dict[str, Any]:
+    record.update(
+        result="SKIP",
+        skip_reason=reason,
+        message=message,
+        finished_at_utc=utc_now(),
     )
-    elapsed_ms = (time.perf_counter() - started) * 1000.0
-    stdout_path.write_text(completed.stdout, encoding="utf-8")
-    return completed, elapsed_ms
+    stdout_path.write_text(message + "\n", encoding="utf-8")
+    return record
+
+
+def fail_record(
+    record: dict[str, Any],
+    message: str,
+    stdout_path: Path,
+) -> dict[str, Any]:
+    record.update(result="FAIL", message=message, finished_at_utc=utc_now())
+    if not stdout_path.exists():
+        stdout_path.write_text(message + "\n", encoding="utf-8")
+    return record
 
 
 def run_scenario(
@@ -213,41 +245,35 @@ def run_scenario(
     workspace: Path,
     output_dir: Path,
     binaries: dict[str, Path],
-    listed_tests: dict[str, list[str]],
+    listings: dict[str, list[str]],
     iteration: int,
     include_manual: bool,
 ) -> dict[str, Any]:
     record = base_record(manifest, scenario, metadata, iteration)
-    allowed_skip_reasons = set(manifest["allowed_skip_reasons"])
     stem = f"{scenario['id']}-run-{iteration}"
     stdout_path = output_dir / f"{stem}.log"
-    record["stdout_path"] = str(stdout_path.relative_to(workspace))
+    record["stdout_path"] = display_path(stdout_path, workspace)
 
     if metadata["platform"] != manifest["platform"]:
-        record.update(
-            result="SKIP",
-            skip_reason="unsupported_platform",
-            message=f"Contract targets {manifest['platform']}; current platform is {metadata['platform']}.",
-            finished_at_utc=utc_now(),
+        return skip_record(
+            record,
+            "unsupported_platform",
+            f"Contract targets {manifest['platform']}; current platform is {metadata['platform']}.",
+            stdout_path,
         )
-        stdout_path.write_text(record["message"] + "\n", encoding="utf-8")
-        return record
 
     if scenario["gate"] == "manual":
-        manual_variable = scenario.get("manual_environment")
-        enabled = include_manual and manual_variable and os.environ.get(manual_variable) == "1"
-        if not enabled:
-            record.update(
-                result="SKIP",
-                skip_reason="manual_gate_disabled",
-                message=f"Manual gate requires --include-manual and {manual_variable}=1.",
-                finished_at_utc=utc_now(),
+        variable = scenario.get("manual_environment")
+        if not (include_manual and variable and os.environ.get(variable) == "1"):
+            return skip_record(
+                record,
+                "manual_gate_disabled",
+                f"Manual gate requires --include-manual and {variable}=1.",
+                stdout_path,
             )
-            stdout_path.write_text(record["message"] + "\n", encoding="utf-8")
-            return record
 
     environment = os.environ.copy()
-    environment.update({str(k): str(v) for k, v in scenario.get("environment", {}).items()})
+    environment.update({str(key): str(value) for key, value in scenario.get("environment", {}).items()})
     environment.setdefault("FAST_GDB_BENCHMARK_CODE_VERSION", metadata["commit"][:12])
     environment.setdefault("FAST_GDB_BENCHMARK_CACHE_STATE", scenario.get("cache_state", "unspecified"))
     environment.setdefault("FAST_GDB_BENCHMARK_OUTPUT_DIR", str(output_dir / "native-benchmarks"))
@@ -257,46 +283,33 @@ def run_scenario(
         command = [part.format(workspace=str(workspace)) for part in scenario["command"]]
         record["command"] = format_command(command)
         if not Path(command[0]).exists():
-            record.update(
-                result="FAIL",
-                message=f"Command executable does not exist: {command[0]}",
-                finished_at_utc=utc_now(),
-            )
-            stdout_path.write_text(record["message"] + "\n", encoding="utf-8")
-            return record
-        completed, elapsed_ms = execute_process(command, workspace, environment, stdout_path)
+            return fail_record(record, f"Command executable does not exist: {command[0]}", stdout_path)
+        completed, elapsed_ms = execute(command, workspace, environment, stdout_path)
         record["total_ms"] = elapsed_ms
-        record["result"] = "PASS" if completed.returncode == 0 else "FAIL"
-        record["assertions_verified"] = completed.returncode == 0
-        if completed.returncode != 0:
-            record["message"] = f"Command exited with code {completed.returncode}."
         record["finished_at_utc"] = utc_now()
+        if completed.returncode == 0:
+            record["result"] = "PASS"
+            record["assertions_verified"] = True
+        else:
+            record["message"] = f"Command exited with code {completed.returncode}."
         return record
 
     binary_key = scenario.get("binary", "full")
     binary = binaries.get(binary_key)
     if binary is None or not binary.exists():
-        record.update(
-            result="FAIL",
-            message=f"Test binary '{binary_key}' is unavailable: {binary}",
-            finished_at_utc=utc_now(),
-        )
-        stdout_path.write_text(record["message"] + "\n", encoding="utf-8")
-        return record
+        return fail_record(record, f"Test binary '{binary_key}' is unavailable: {binary}", stdout_path)
 
-    selected_tests = matched_tests(listed_tests[binary_key], scenario["filter"])
-    record["matched_tests"] = selected_tests
-    if not selected_tests:
-        record.update(
-            result="FAIL",
-            message=f"Google Test filter matched no tests: {scenario['filter']}",
-            finished_at_utc=utc_now(),
+    selected = matched_tests(listings.get(binary_key, []), scenario["filter"])
+    record["matched_tests"] = selected
+    if not selected:
+        return fail_record(
+            record,
+            f"Google Test filter matched no tests: {scenario['filter']}",
+            stdout_path,
         )
-        stdout_path.write_text(record["message"] + "\n", encoding="utf-8")
-        return record
 
     gtest_json_path = output_dir / f"{stem}.gtest.json"
-    record["gtest_json_path"] = str(gtest_json_path.relative_to(workspace))
+    record["gtest_json_path"] = display_path(gtest_json_path, workspace)
     command = [
         str(binary),
         f"--gtest_filter={scenario['filter']}",
@@ -304,30 +317,37 @@ def run_scenario(
         f"--gtest_output=json:{gtest_json_path}",
     ]
     record["command"] = format_command(command)
-    completed, elapsed_ms = execute_process(command, workspace, environment, stdout_path)
+    completed, elapsed_ms = execute(command, workspace, environment, stdout_path)
     record["total_ms"] = elapsed_ms
+    record["finished_at_utc"] = utc_now()
 
-    cases: list[dict[str, Any]] = []
-    if gtest_json_path.exists():
-        try:
-            cases = flatten_gtest_cases(json.loads(gtest_json_path.read_text(encoding="utf-8")))
-        except (OSError, json.JSONDecodeError) as error:
-            record["message"] = f"Could not parse Google Test JSON: {error}"
+    if not gtest_json_path.exists():
+        record["message"] = "Google Test JSON was not produced."
+        return record
 
-    skipped_cases = [case for case in cases if str(case.get("result", "")).upper() == "SKIPPED"]
+    try:
+        payload = json.loads(gtest_json_path.read_text(encoding="utf-8"))
+        cases = flatten_gtest_cases(payload)
+    except (OSError, json.JSONDecodeError) as error:
+        record["message"] = f"Could not parse Google Test JSON: {error}"
+        return record
+
+    if not cases:
+        record["message"] = "Google Test JSON contains no executed cases."
+        return record
+
+    skipped_cases = [case for case in cases if case_result(case) == "SKIPPED"]
     failed_cases = [
         case
         for case in cases
-        if case.get("failures") or str(case.get("result", "")).upper() == "FAILED"
+        if case.get("failures") or case_result(case) == "FAILED"
     ]
 
     if completed.returncode != 0 or failed_cases:
-        record["result"] = "FAIL"
-        record["message"] = record["message"] or f"Google Test exited with code {completed.returncode}."
+        record["message"] = f"Google Test exited with code {completed.returncode}."
     elif skipped_cases:
-        reason = infer_skip_reason(completed.stdout, allowed_skip_reasons)
+        reason = infer_skip_reason(completed.stdout, set(manifest["allowed_skip_reasons"]))
         if reason is None:
-            record["result"] = "FAIL"
             record["message"] = "Google Test skipped without an allowed structured reason."
         else:
             record["result"] = "SKIP"
@@ -336,9 +356,32 @@ def run_scenario(
     else:
         record["result"] = "PASS"
         record["assertions_verified"] = True
-
-    record["finished_at_utc"] = utc_now()
     return record
+
+
+def validate_manifest(manifest: dict[str, Any]) -> None:
+    if manifest.get("schema_version") != 2:
+        raise ValueError("Manifest schema_version must be 2.")
+    if set(manifest.get("allowed_results", [])) != RESULTS:
+        raise ValueError("Manifest must freeze PASS, FAIL and SKIP as the only results.")
+    allowed_skips = manifest.get("allowed_skip_reasons", [])
+    if not allowed_skips or len(allowed_skips) != len(set(allowed_skips)):
+        raise ValueError("Manifest skip reasons must be unique and non-empty.")
+    scenarios = manifest.get("scenarios", [])
+    ids = [scenario.get("id") for scenario in scenarios]
+    if not scenarios or None in ids or len(ids) != len(set(ids)):
+        raise ValueError("Manifest scenario IDs must be unique and non-empty.")
+    for scenario in scenarios:
+        if scenario.get("gate") not in GATES:
+            raise ValueError(f"Scenario {scenario['id']} has invalid gate.")
+        if scenario.get("kind") not in {"gtest", "command"}:
+            raise ValueError(f"Scenario {scenario['id']} has invalid kind.")
+        if scenario["kind"] == "gtest" and not scenario.get("filter"):
+            raise ValueError(f"Scenario {scenario['id']} is missing a Google Test filter.")
+        if scenario["kind"] == "command" and not scenario.get("command"):
+            raise ValueError(f"Scenario {scenario['id']} is missing a command.")
+        if scenario["gate"] == "manual" and not scenario.get("manual_environment"):
+            raise ValueError(f"Manual scenario {scenario['id']} is missing manual_environment.")
 
 
 def annotate_statistics(records: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
@@ -348,24 +391,16 @@ def annotate_statistics(records: list[dict[str, Any]]) -> dict[str, dict[str, An
 
     summaries: dict[str, dict[str, Any]] = {}
     for scenario_id, scenario_records in grouped.items():
-        passed_times = [
+        pass_times = [
             float(record["total_ms"])
             for record in scenario_records
             if record["result"] == "PASS" and record["total_ms"] is not None
         ]
-        median = None
-        if passed_times:
-            ordered = sorted(passed_times)
-            middle = len(ordered) // 2
-            median = (
-                ordered[middle]
-                if len(ordered) % 2
-                else (ordered[middle - 1] + ordered[middle]) / 2.0
-            )
-        p95 = percentile95(passed_times)
+        median_ms = statistics.median(pass_times) if pass_times else None
+        p95_ms = percentile95(pass_times)
         for record in scenario_records:
-            record["median_ms"] = median
-            record["p95_ms"] = p95
+            record["median_ms"] = median_ms
+            record["p95_ms"] = p95_ms
         results = [record["result"] for record in scenario_records]
         summaries[scenario_id] = {
             "result": "FAIL" if "FAIL" in results else ("SKIP" if "SKIP" in results else "PASS"),
@@ -373,8 +408,8 @@ def annotate_statistics(records: list[dict[str, Any]]) -> dict[str, dict[str, An
             "pass_count": results.count("PASS"),
             "fail_count": results.count("FAIL"),
             "skip_count": results.count("SKIP"),
-            "median_ms": median,
-            "p95_ms": p95,
+            "median_ms": median_ms,
+            "p95_ms": p95_ms,
         }
     return summaries
 
@@ -433,7 +468,10 @@ def load_listing(binary: Path) -> list[str]:
     )
     if completed.returncode != 0:
         raise RuntimeError(f"Could not list Google Tests from {binary}:\n{completed.stdout}")
-    return parse_gtest_listing(completed.stdout)
+    tests = parse_gtest_listing(completed.stdout)
+    if not tests:
+        raise RuntimeError(f"Google Test listing from {binary} was empty.")
+    return tests
 
 
 def parse_args() -> argparse.Namespace:
@@ -452,6 +490,9 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    if args.repeat < 1:
+        raise ValueError("--repeat must be at least 1.")
+
     workspace = args.workspace.resolve()
     manifest_path = args.manifest.resolve()
     output_dir = args.output_dir.resolve()
@@ -459,9 +500,7 @@ def main() -> int:
     (output_dir / "native-benchmarks").mkdir(exist_ok=True)
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    allowed_results = set(manifest.get("allowed_results", []))
-    if allowed_results != {"PASS", "FAIL", "SKIP"}:
-        raise ValueError("Manifest must freeze PASS, FAIL and SKIP as the only results.")
+    validate_manifest(manifest)
 
     selected_ids = set(args.scenarios or [])
     scenarios = [
@@ -469,9 +508,9 @@ def main() -> int:
         for scenario in manifest["scenarios"]
         if not selected_ids or scenario["id"] in selected_ids
     ]
-    if selected_ids - {scenario["id"] for scenario in scenarios}:
-        missing = sorted(selected_ids - {scenario["id"] for scenario in scenarios})
-        raise ValueError(f"Unknown scenario id(s): {', '.join(missing)}")
+    unknown = selected_ids - {scenario["id"] for scenario in scenarios}
+    if unknown:
+        raise ValueError(f"Unknown scenario id(s): {', '.join(sorted(unknown))}")
 
     metadata = {
         "commit": git_commit(workspace),
@@ -488,21 +527,23 @@ def main() -> int:
     if args.geometry_test_binary:
         binaries["geometry"] = args.geometry_test_binary.resolve()
 
-    listed_tests: dict[str, list[str]] = {}
+    listings: dict[str, list[str]] = {}
     if metadata["platform"] == manifest["platform"]:
         for key, binary in binaries.items():
-            if binary.exists():
-                listed_tests[key] = load_listing(binary)
-            else:
-                listed_tests[key] = []
+            listings[key] = load_listing(binary) if binary.exists() else []
     else:
-        listed_tests = {key: [] for key in binaries}
+        listings = {key: [] for key in binaries}
 
     shutil.copyfile(manifest_path, output_dir / "manifest.snapshot.json")
 
     records: list[dict[str, Any]] = []
     for scenario in scenarios:
-        repeat = int(scenario.get("repeat", args.repeat if scenario["gate"] == "required" else 1))
+        repeat = int(
+            scenario.get(
+                "repeat",
+                args.repeat if scenario["gate"] == "required" else 1,
+            )
+        )
         if repeat < 1:
             raise ValueError(f"Scenario {scenario['id']} has invalid repeat={repeat}")
         for iteration in range(1, repeat + 1):
@@ -513,52 +554,56 @@ def main() -> int:
                 workspace,
                 output_dir,
                 binaries,
-                listed_tests,
+                listings,
                 iteration,
                 args.include_manual,
             )
             records.append(record)
+            suffix = f" reason={record['skip_reason']}" if record.get("skip_reason") else ""
             print(
                 f"[{record['result']}] {record['scenario_id']} "
-                f"iteration={record['iteration']}"
-                + (f" reason={record['skip_reason']}" if record.get("skip_reason") else "")
+                f"iteration={record['iteration']}{suffix}"
             )
 
-    scenario_summaries = annotate_statistics(records)
-    required_ids = {scenario["id"] for scenario in scenarios if scenario["gate"] == "required"}
+    summaries = annotate_statistics(records)
+    required_ids = {
+        scenario["id"] for scenario in scenarios if scenario["gate"] == "required"
+    }
     required_failures = sorted(
         scenario_id
         for scenario_id in required_ids
-        if scenario_summaries.get(scenario_id, {}).get("result") != "PASS"
+        if summaries.get(scenario_id, {}).get("result") != "PASS"
     )
 
+    result_json = output_dir / "writer-contract-results-v2.json"
+    result_csv = output_dir / "benchmark_results-v2.csv"
     evidence = {
         "schema_version": 2,
         "contract_id": manifest["contract_id"],
         "generated_at_utc": utc_now(),
         "metadata": metadata,
-        "manifest_path": str(manifest_path.relative_to(workspace)),
-        "output_directory": str(output_dir.relative_to(workspace)),
+        "manifest_path": display_path(manifest_path, workspace),
+        "output_directory": display_path(output_dir, workspace),
         "allowed_results": manifest["allowed_results"],
         "allowed_skip_reasons": manifest["allowed_skip_reasons"],
-        "scenario_summaries": scenario_summaries,
+        "scenario_summaries": summaries,
         "required_failures": required_failures,
         "records": records,
     }
-    (output_dir / "writer-contract-results-v2.json").write_text(
+    result_json.write_text(
         json.dumps(evidence, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
-    write_csv(output_dir / "benchmark_results-v2.csv", records)
+    write_csv(result_csv, records)
 
     execution_manifest = {
         "schema_version": 2,
         "contract_id": manifest["contract_id"],
         "commit": metadata["commit"],
-        "complete_command": format_command(sys.argv),
-        "manifest": str(manifest_path.relative_to(workspace)),
-        "result_json": str((output_dir / "writer-contract-results-v2.json").relative_to(workspace)),
-        "result_csv": str((output_dir / "benchmark_results-v2.csv").relative_to(workspace)),
+        "complete_command": format_command([sys.executable, *sys.argv]),
+        "manifest": display_path(manifest_path, workspace),
+        "result_json": display_path(result_json, workspace),
+        "result_csv": display_path(result_csv, workspace),
         "skip_items": [
             {
                 "scenario_id": record["scenario_id"],
@@ -575,7 +620,10 @@ def main() -> int:
     )
 
     if required_failures:
-        print("Required scenario failures: " + ", ".join(required_failures), file=sys.stderr)
+        print(
+            "Required scenario failures: " + ", ".join(required_failures),
+            file=sys.stderr,
+        )
         return 1
     return 0
 
