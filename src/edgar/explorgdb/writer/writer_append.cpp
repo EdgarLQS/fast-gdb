@@ -5,9 +5,9 @@
 #include <cmath>
 
 // Keep the large staging/publish implementation isolated while routing its
-// generic storage through private unchecked methods. Public setters below
-// validate field and geometry contracts before forwarding, so GDAL coercion
-// cannot weaken the stable API.
+// generic storage through private unchecked methods. Public methods below
+// validate contracts and immediately read back each appended row, so GDAL
+// coercion or encoding drift cannot reach commit().
 #define set_null set_null_unchecked
 #define set_i32 set_i32_unchecked
 #define set_i64 set_i64_unchecked
@@ -17,6 +17,7 @@
 #define set_point set_point_unchecked
 #define set_polyline set_polyline_unchecked
 #define set_polygon set_polygon_unchecked
+#define end_row end_row_unchecked
 #include "writer_append_gdal.inc"
 #undef set_null
 #undef set_i32
@@ -27,6 +28,7 @@
 #undef set_point
 #undef set_polyline
 #undef set_polygon
+#undef end_row
 
 namespace explorgdb {
 namespace writer {
@@ -108,6 +110,32 @@ bool validate_geometry_layer(WriterAppendSession::Impl& impl,
 
 bool same_xy(const WriterCoordinate& left, const WriterCoordinate& right) {
     return left.x == right.x && left.y == right.y;
+}
+
+bool field_value_matches(const OGRFeature& feature, int field_index,
+                         const FieldValue& value) {
+    if (std::holds_alternative<std::nullptr_t>(value)) {
+        return feature.IsFieldNull(field_index);
+    }
+    if (const auto* expected = std::get_if<int32_t>(&value)) {
+        return feature.GetFieldAsInteger(field_index) == *expected;
+    }
+    if (const auto* expected = std::get_if<int64_t>(&value)) {
+        return feature.GetFieldAsInteger64(field_index) == *expected;
+    }
+    if (const auto* expected = std::get_if<double>(&value)) {
+        return feature.GetFieldAsDouble(field_index) == *expected;
+    }
+    if (const auto* expected = std::get_if<std::string>(&value)) {
+        return std::string(feature.GetFieldAsString(field_index)) == *expected;
+    }
+    if (const auto* expected = std::get_if<std::vector<uint8_t>>(&value)) {
+        int size = 0;
+        const GByte* bytes = feature.GetFieldAsBinary(field_index, &size);
+        return size == static_cast<int>(expected->size()) &&
+               std::equal(expected->begin(), expected->end(), bytes);
+    }
+    return false;
 }
 
 }  // namespace
@@ -218,6 +246,44 @@ bool WriterAppendSession::set_polygon(
         }
     }
     return set_polygon_unchecked(rings, type);
+}
+
+bool WriterAppendSession::end_row() {
+    if (!impl_->ensure_active(WriterStage::Row) || !impl_->row_active) {
+        return impl_->fail(WriterStage::Row, impl_->staging_path,
+                           "no row is active");
+    }
+    std::unique_ptr<OGRGeometry> expected_geometry(
+        impl_->geometry ? impl_->geometry->clone() : nullptr);
+    const std::vector<FieldValue> expected_values = impl_->values;
+    const std::vector<bool> expected_written = impl_->written;
+    if (!end_row_unchecked()) return false;
+
+    const int64_t fid = impl_->appended_fids.back();
+    std::unique_ptr<OGRFeature, decltype(&OGRFeature::DestroyFeature)> feature(
+        impl_->layer->GetFeature(fid), &OGRFeature::DestroyFeature);
+    if (!feature) {
+        return impl_->fail(WriterStage::Row, impl_->staging_path,
+                           "cannot read back appended FID " +
+                           std::to_string(fid));
+    }
+    for (size_t index = 0; index < expected_written.size(); ++index) {
+        if (expected_written[index] &&
+            !field_value_matches(*feature, static_cast<int>(index),
+                                 expected_values[index])) {
+            return impl_->fail(WriterStage::Row, impl_->staging_path,
+                               "read-back field mismatch at index " +
+                               std::to_string(index));
+        }
+    }
+    const OGRGeometry* actual_geometry = feature->GetGeometryRef();
+    if (!expected_geometry || !actual_geometry ||
+        !expected_geometry->Equals(actual_geometry)) {
+        return impl_->fail(WriterStage::Geometry, impl_->staging_path,
+                           "read-back geometry mismatch for FID " +
+                           std::to_string(fid));
+    }
+    return true;
 }
 
 }  // namespace writer
