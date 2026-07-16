@@ -1,6 +1,6 @@
 # Writer macOS 测试契约与 CI
 
-本文是计划 18 的 M18.1 执行入口，冻结 macOS Writer/Index/package consumer 与 Reader 并发、长稳场景的编号、门禁语义和证据格式。
+本文是计划 18 的统一 macOS 测试入口，冻结 Writer/Index/package consumer 与 Reader 并发、长稳场景的编号、门禁语义和证据格式。M18.2 的稳定会话和安装面仍复用同一 manifest，不另建一套测试编号。
 
 当前只实施 macOS。Linux、Windows 和 50M 阶梯不进入本工作流、不计入完成率，也不得因未执行而标记为通过。
 
@@ -10,6 +10,7 @@
 - 统一执行器：`scripts/run_test_contract.py`
 - GitHub Actions：`.github/workflows/writer-macos-contract.yml`
 - 自动证据目录：`writer-contract-results/`
+- 稳定 API ADR：`docs/adr/ADR-001-writer-session-api.md`
 
 CI 使用 Release、GDAL OpenFileGDB 和完整测试目标，构建一次后按 manifest 逐场景执行。小型必选场景默认连续执行 3 次；package consumer 和 1K 观察项各执行 1 次。
 
@@ -19,6 +20,7 @@ CI 使用 Release、GDAL OpenFileGDB 和完整测试目标，构建一次后按 
 |---|---|---:|---|
 | `W-SCHEMA-001` | `WriterTest.W1_OpenExistingTargetsRequestedLayer` | 必须通过 | 精确图层、数量、FID、属性、几何 |
 | `W-SCHEMA-002` | `WriterTest.W1_OpenExistingRejectsNonEmptyLayerWithoutModification` | 必须通过 | 非空拒绝、原数据不变、错误信息 |
+| `W-SCHEMA-003` | `WriterSessionTest.*` | 必须通过 | 稳定会话生命周期、所有权、错误、回滚、GDAL 重开 |
 | `W-FIELD-001` | `WriterTest.W2_*` | 必须通过 | 数值、UTF-8、Binary/XML、GUID、时间、Null、类型错误 |
 | `W-GEOM-001` | `T_W01`、`T_W02`、`T_W04` | 必须通过 | 基础面、量化、GDAL 重开 |
 | `W-GEOM-002` | `T_W05`–`T_W07` | 必须通过 | Point、Polyline、MultiPoint |
@@ -27,8 +29,9 @@ CI 使用 Release、GDAL OpenFileGDB 和完整测试目标，构建一次后按 
 | `W-FAIL-002` | `W1_AtomicSession*`、`W1_RowValidation*`、`W1_OpenExistingRejects*` | 必须通过 | 行状态、输入错误、原子发布失败路径 |
 | `W-FAIL-003` | 其余 `WriterTest.W4_*` | 必须通过 | flush/close/tablx 等 I/O 失败 |
 | `W-INDEX-001` | `IndexCreatorTest.*` | 必须通过 | 空间、属性、联合索引 |
-| `W-PKG-001` | 无 GDAL 安装后的 Writer consumer | 必须通过 | 可重定位、无 GDAL 依赖 |
-| `W-PKG-002` | GDAL 安装后的 Writer consumer | 必须通过 | 可重定位、GDAL 包配置 |
+| `W-PKG-001` | 无 GDAL 安装后的 `fast_gdb::writer` consumer | 必须通过 | 稳定头文件、可重定位、无 GDAL/内部头依赖 |
+| `W-PKG-002` | GDAL 安装后的稳定 Writer/Index consumer | 必须通过 | 稳定会话、索引助手、GDAL 包配置 |
+| `W-PKG-003` | `fast_gdb::writer_legacy` consumer | 必须通过 | 旧代码可编译、兼容头隔离、deprecated 目标 |
 | `R-CONC-001` | `TablxCacheTest.ConcurrentAccess` | 必须通过 | 并发缓存结果一致 |
 | `R-CONC-002` | `QueryEngineIntegrationTest.ConcurrentIndependentReadersReturnDeterministicResults` | 必须通过 | 8 个独立 QueryEngine 结果一致 |
 | `W-GEOM-090` | `PerformanceBenchmarkFixture.W0_ReleaseEvidence_1K` | 只观察 | 1K 正确性和吞吐证据 |
@@ -84,7 +87,7 @@ cmake -S . -B build-contract -G Ninja \
 cmake --build build-contract --target gdb_tutorial_test_runner --parallel
 ```
 
-package consumer 的无 GDAL 和 GDAL 安装构建完成后，运行：
+package consumer 的无 GDAL、GDAL 和 legacy 安装构建完成后，运行：
 
 ```bash
 python3 scripts/run_test_contract.py \
@@ -103,8 +106,8 @@ python3 scripts/run_test_contract.py \
   --manifest tests/contracts/writer-macos-v2.json \
   --full-test-binary build-contract/bin/gdb_tutorial_test_runner \
   --output-dir "$PWD/writer-contract-results" \
-  --scenario W-SCHEMA-001 \
-  --scenario W-FAIL-001
+  --scenario W-SCHEMA-003 \
+  --scenario W-PKG-001
 ```
 
 手工门禁必须同时使用 `--include-manual` 和对应环境变量。例如 4 GiB：
@@ -119,8 +122,8 @@ python3 scripts/run_test_contract.py \
   --include-manual
 ```
 
-## 6. M18.1 出口
+## 6. 阶段出口
 
-M18.1 只有在 macOS Release CI 的 required 场景全部通过、小型矩阵连续 3 次一致、没有无原因 SKIP，并保留本次 manifest、命令和 schema-v2 JSON/CSV 后才能收口。
+M18.1/M18.2 只有在 macOS Release CI 的 required 场景全部通过、小型矩阵连续 3 次一致、没有无原因 SKIP，并保留本次 manifest、命令和 schema-v2 JSON/CSV 后才能记为当前验收完成。
 
-4 GiB、10M、磁盘真实写满和 1800 秒长稳仍是显式手工门禁。历史记录、短时 smoke、推算值或 SKIP 均不能替代当前验收。
+4 GiB、10M、磁盘真实写满和 1800 秒长稳仍是显式手工门禁。历史记录、短时 smoke、推算值或 SKIP 均不能替代当前验收。GitHub Actions 无法启动 runner 的外部问题单独记录，不得误记为产品测试失败或通过。
