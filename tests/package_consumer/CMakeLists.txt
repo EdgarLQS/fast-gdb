@@ -7,6 +7,8 @@ set_property(CACHE FAST_GDB_CONSUMER_TARGET PROPERTY STRINGS
              linear hybrid writer writer_legacy)
 option(FAST_GDB_CONSUMER_CHECK_INDEX
        "Compile and link the GDAL-backed stable Writer index helper" OFF)
+option(FAST_GDB_CONSUMER_CHECK_APPEND
+       "Compile and link the GDAL-backed non-empty append session" OFF)
 
 find_package(fast_gdb 0.1 CONFIG REQUIRED)
 
@@ -22,6 +24,10 @@ elseif(FAST_GDB_CONSUMER_TARGET STREQUAL "writer")
     if(FAST_GDB_CONSUMER_CHECK_INDEX)
         target_compile_definitions(fast_gdb_package_consumer PRIVATE
             FAST_GDB_CONSUMER_WRITER_INDEX=1)
+    endif()
+    if(FAST_GDB_CONSUMER_CHECK_APPEND)
+        target_compile_definitions(fast_gdb_package_consumer PRIVATE
+            FAST_GDB_CONSUMER_WRITER_APPEND=1)
     endif()
 elseif(FAST_GDB_CONSUMER_TARGET STREQUAL "writer_legacy")
     target_compile_definitions(fast_gdb_package_consumer PRIVATE
