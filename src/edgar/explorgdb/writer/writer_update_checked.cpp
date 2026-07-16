@@ -12,16 +12,38 @@
 
 #include <algorithm>
 #include <cstring>
-#include <unordered_map>
+#include <filesystem>
+#include <fstream>
 #include <vector>
 
 namespace explorgdb {
 namespace writer {
 namespace {
-std::unordered_map<WriterUpdateSession::Impl*, std::vector<int64_t>>&
-updated_fids() {
-    static std::unordered_map<WriterUpdateSession::Impl*, std::vector<int64_t>> map;
-    return map;
+namespace fs = std::filesystem;
+
+fs::path validation_file(const WriterUpdateSession::Impl& impl) {
+    return fs::path(impl.staging) / ".fast-gdb-update-fids";
+}
+
+bool append_validated_fid(WriterUpdateSession::Impl& impl, int64_t fid) {
+    std::ofstream output(validation_file(impl), std::ios::app);
+    if (!output) {
+        return impl.fail(WriterStage::Row, impl.staging,
+                         "cannot persist updated FID validation state");
+    }
+    output << fid << '\n';
+    return static_cast<bool>(output);
+}
+
+std::vector<int64_t> read_validated_fids(WriterUpdateSession::Impl& impl) {
+    std::ifstream input(validation_file(impl));
+    std::vector<int64_t> fids;
+    int64_t fid = -1;
+    while (input >> fid) {
+        if (std::find(fids.begin(), fids.end(), fid) == fids.end())
+            fids.push_back(fid);
+    }
+    return fids;
 }
 }  // namespace
 
@@ -64,10 +86,7 @@ bool WriterUpdateSession::end_update() {
                            "Binary field byte-for-byte validation failed");
     }
 
-    auto& fids = updated_fids()[impl_.get()];
-    if (std::find(fids.begin(), fids.end(), fid) == fids.end())
-        fids.push_back(fid);
-    return true;
+    return append_validated_fid(*impl_, fid);
 }
 
 bool WriterUpdateSession::commit() {
@@ -76,12 +95,18 @@ bool WriterUpdateSession::commit() {
         return impl_->fail(WriterStage::Row, impl_->staging,
                            "cannot commit with an active update");
 
-    const auto found = updated_fids().find(impl_.get());
-    if (found == updated_fids().end() || found->second.empty())
+    const std::vector<int64_t> fids = read_validated_fids(*impl_);
+    if (fids.empty())
         return impl_->fail(WriterStage::Publish, impl_->staging,
                            "no validated updated FIDs were recorded");
 
-    const std::vector<int64_t> fids = found->second;
+    std::error_code remove_error;
+    fs::remove(validation_file(*impl_), remove_error);
+    if (remove_error)
+        return impl_->fail(WriterStage::Close, impl_->staging,
+                           "cannot remove Update validation state: " +
+                               remove_error.message());
+
     impl_->close();
     auto* reopened = static_cast<GDALDataset*>(GDALOpenEx(
         impl_->staging.c_str(), GDAL_OF_VECTOR, nullptr, nullptr, nullptr));
@@ -112,15 +137,11 @@ bool WriterUpdateSession::commit() {
         return impl_->fail(WriterStage::Open, impl_->staging,
                            "updated layer disappeared after validation reopen");
 
-    const bool result = commit_unchecked();
-    updated_fids().erase(impl_.get());
-    return result;
+    return commit_unchecked();
 }
 
 bool WriterUpdateSession::abort() {
-    const bool result = abort_unchecked();
-    updated_fids().erase(impl_.get());
-    return result;
+    return abort_unchecked();
 }
 
 }  // namespace writer
