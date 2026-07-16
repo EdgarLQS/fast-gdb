@@ -64,6 +64,8 @@ public:
     const WriterError& error() const noexcept;
 
 private:
+    bool open_unchecked(const std::string& source_gdb_path,
+                        const std::string& layer_name);
     bool set_null_unchecked(int field_index);
     bool set_i32_unchecked(int field_index, int32_t value);
     bool set_i64_unchecked(int field_index, int64_t value);
