@@ -11,9 +11,6 @@
 namespace explorgdb {
 namespace writer {
 
-// GDAL-only, one-shot update session for an existing FileGDB layer.
-// Updates are applied to a complete sibling staging copy and published only
-// after FID, row-count, field and geometry validation succeeds.
 class WriterUpdateSession {
 public:
     struct Impl;
@@ -55,6 +52,9 @@ public:
     const WriterError& error() const noexcept;
 
 private:
+    bool end_update_unchecked();
+    bool commit_unchecked();
+    bool abort_unchecked();
     std::unique_ptr<Impl> impl_;
 };
 
