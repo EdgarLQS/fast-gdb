@@ -207,7 +207,7 @@ FAST_GDB_RUN_10M_BENCHMARKS=1 ./build-linear/bin/gdb_tutorial_test_runner \
 ## 8. 后续路线
 
 1. **短期**：维护现有支持范围，新增 ArcGIS 原生曲线、复杂 Polygon、FID 映射、Z/M/ZM 能力时同步补充证据。
-2. **中期**：按 [Writer 跨平台测试统一与后续编辑计划](../planning/18_writer跨平台测试统一与后续编辑计划.md) 处理 10M fresh-open 失败档、统一 Windows/Linux 测试编码，并建立可复用 50M 阶梯。
+2. **中期**：按 [Writer 跨平台测试统一与后续编辑计划](../planning/18_writer跨平台测试统一与后续编辑计划.md) 在 macOS 冻结 Writer 测试契约、收窄 API/安装面、优化已证明瓶颈，并按独立契约推进高级编辑；Linux/Windows 和 50M 阶梯暂缓。
 3. **专项能力**：在批量写闭环后单独推进非空追加、Update/Delete、MultiPatch 和原生曲线写入。
 4. **长期**：根据实际使用需求评估 SQL、Raster 或其他 OGR 兼容能力，不在当前 Reader 范围内提前承诺。
 
