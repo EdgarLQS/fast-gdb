@@ -22,8 +22,6 @@ enum class WriterStage : uint8_t {
 
 const char* writer_stage_name(WriterStage stage) noexcept;
 
-// Stable machine-readable category. Existing implementations that have not yet
-// classified an error use Unknown; callers must not infer a code from message.
 enum class WriterErrorCode : uint16_t {
     None = 0,
     Unknown,
@@ -58,6 +56,14 @@ struct WriterError {
 
     explicit operator bool() const noexcept {
         return stage != WriterStage::None;
+    }
+
+    // Older one-shot sessions predate WriterErrorCode. They remain source/ABI
+    // compatible and are exposed as Unknown rather than forcing callers to
+    // parse message text. New transaction/recovery paths set explicit codes.
+    WriterErrorCode effective_code() const noexcept {
+        if (stage == WriterStage::None) return WriterErrorCode::None;
+        return code == WriterErrorCode::None ? WriterErrorCode::Unknown : code;
     }
 };
 
