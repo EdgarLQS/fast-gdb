@@ -1,6 +1,17 @@
 # fast_gdb 文档索引
 
-本文档是 `docs/` 的分类入口。拿到项目后需要准备数据或验证新平台时，先读测试数据准备与跨平台验证指南；新读者再读总览；判断当前完成度先读规划状态索引、项目状态、当前计划和发布证据。
+本文档是 `docs/` 的分类入口。当前分支为 `codex/spatial-attribute-query`，空间与属性联合查询已完成实现、测试代码、三轮静态自审和文档自检，状态为 **Code review ready / Formal acceptance blocked**。分支内容尚未进入 `main`，不得作为正式发布声明。
+
+## 当前分支审核入口
+
+| 文件 | 内容 |
+|---|---|
+| [21_空间属性联合查询实现计划.md](planning/21_空间属性联合查询实现计划.md) | 实现范围、GDAL 参考、执行路径、测试矩阵、进度和验收清单 |
+| [10_空间属性联合查询代码审核指南.md](usage/10_空间属性联合查询代码审核指南.md) | 审核顺序、重点文件、P0/P1 检查点、建议命令和报告格式 |
+| [spatial-attribute-query-self-review-2026-07-17.md](evidence/spatial-attribute-query-self-review-2026-07-17.md) | 三轮静态代码审核发现和修复记录 |
+| [spatial-attribute-query-document-audit-2026-07-17.md](evidence/spatial-attribute-query-document-audit-2026-07-17.md) | 文档一致性自检、冲突和修复记录 |
+| [04_功能与基准测试覆盖矩阵.md](usage/04_功能与基准测试覆盖矩阵.md) | 当前自动化、性能和正式验证缺口 |
+| [Reader QUERY_FLOW](../src/edgar/explorgdb/reader/QUERY_FLOW.md) | 联合查询源码执行链和回退语义 |
 
 ## 总览
 
@@ -16,6 +27,7 @@
 | [03_测试数据准备与跨平台验证.md](usage/03_测试数据准备与跨平台验证.md) | 测试数据权威入口；GDAL/ArcGIS Pro 生成、三平台回归和性能验收 |
 | [04_功能与基准测试覆盖矩阵.md](usage/04_功能与基准测试覆盖矩阵.md) | 能力、测试证据、数据、平台、CI 门禁和基准状态矩阵 |
 | [05_fast-gdb真实数据验收资料清单.md](usage/05_fast-gdb真实数据验收资料清单.md) | 新增能力和真实数据的验收规范 |
+| [10_空间属性联合查询代码审核指南.md](usage/10_空间属性联合查询代码审核指南.md) | 当前分支代码审核入口 |
 | [01_组件库设计与使用.md](usage/01_组件库设计与使用.md) | usegdal 组件库设计、API 教程、查询与写入示例 |
 | [02_几何WKB曲线支持与迁移.md](usage/02_几何WKB曲线支持与迁移.md) | GeometryValue/Model、ISO WKB、Polygon、曲线、Hybrid FID 和兼容策略 |
 
@@ -27,6 +39,7 @@
 | [02_索引构建方案.md](technical/02_索引构建方案.md) | 空间/属性索引构建策略和验证工具 |
 | [03_技术探索与教训.md](technical/03_技术探索与教训.md) | B+ 树、LRU、mmap、失败实验和经验沉淀 |
 | [04_GDB二进制格式图解教程.md](technical/04_GDB二进制格式图解教程.md) | FileGDB 二进制格式图解、查询链路和源码链接 |
+| [Reader QUERY_FLOW](../src/edgar/explorgdb/reader/QUERY_FLOW.md) | 空间、属性和 `SpatialWhere` 联合执行流程 |
 
 ## 规划与状态
 
@@ -34,23 +47,24 @@
 
 | 文件 | 状态 | 内容 |
 |---|:---:|---|
-| [00_规划文档状态索引.md](planning/00_规划文档状态索引.md) | 当前入口 | 权威文档顺序和原则 |
-| [01_项目状态与规划.md](planning/01_项目状态与规划.md) | 当前 | 项目总体状态、产品和发布边界 |
+| [00_规划文档状态索引.md](planning/00_规划文档状态索引.md) | 当前入口 | 当前分支审核顺序、进度和未完成证据 |
+| [01_项目状态与规划.md](planning/01_项目状态与规划.md) | 当前 | 项目总体状态、发布边界和联合查询分支状态 |
 | [02_GDAL功能对比矩阵.md](planning/02_GDAL功能对比矩阵.md) | 当前 | linear / hybrid / GDAL 实际能力差异 |
-| [18_writer跨平台测试统一与后续编辑计划.md](planning/18_writer跨平台测试统一与后续编辑计划.md) | 当前计划 | Writer macOS 测试契约、API 收口、性能和高级编辑；Linux/Windows 暂缓 |
-| [13_fast-gdb最终等价与发布验收报告.md](evidence/13_fast-gdb最终等价与发布验收报告.md) | 发布证据 | v0.1.0 支持范围内的最终发布结论 |
-| [curve-polyline-m-real-acceptance-2026-07-13.md](evidence/curve-polyline-m-real-acceptance-2026-07-13.md) | 当前证据 | 真实 M 曲线逐要素、WKB、空间查询和 sanitizer 证据 |
-| [reader-fresh-open-macos-2026-07-15.md](evidence/reader-fresh-open-macos-2026-07-15.md) | 当前证据 | Point/MultiPoint/Polyline 10M fresh-open 正确性与性能失败档 |
-| [11_fast-gdb替换GDAL矢量能力分析.md](planning/archive/11_fast-gdb替换GDAL矢量能力分析.md) | 架构参考 | fast-gdb 与 GDAL 双路径取舍 |
+| [21_空间属性联合查询实现计划.md](planning/21_空间属性联合查询实现计划.md) | 当前计划 | 联合查询实现、测试、自审、文档和验收状态 |
+| [18_writer跨平台测试统一与后续编辑计划.md](planning/18_writer跨平台测试统一与后续编辑计划.md) | 其他工作流 | Writer 能力、合同和验收边界 |
+| [13_fast-gdb最终等价与发布验收报告.md](evidence/13_fast-gdb最终等价与发布验收报告.md) | 发布证据 | v0.1.0 既有支持范围，不含本分支新增能力 |
+| [curve-polyline-m-real-acceptance-2026-07-13.md](evidence/curve-polyline-m-real-acceptance-2026-07-13.md) | 历史证据 | 真实 M 曲线逐要素、WKB、空间查询和 sanitizer 证据 |
+| [reader-fresh-open-macos-2026-07-15.md](evidence/reader-fresh-open-macos-2026-07-15.md) | 历史证据 | Point/MultiPoint/Polyline 10M fresh-open 正确性与性能失败档 |
 
-`03`–`17` 的已完成阶段计划、空间查询 Phase A–H、Writer macOS 生产化阶段、旧 v3 计划和阶段性曲线分析属于历史背景；从 [planning/archive/README.md](planning/archive/README.md) 或状态索引进入，不再作为当前完成度来源。
+历史阶段计划和归档文档不再作为本分支完成度来源。
 
-## 当前几何结论
+## 当前结论
 
-- 正式输出是 ISO WKB-first；
-- WKT 是兼容/调试接口；
-- Polygon WKB、WKT 和空间过滤共用一个拓扑模型；
-- CircularArc、Bezier、Ellipse 可由内置后端折线化；
-- 可选 Hybrid 只在曲线/拓扑失败时使用缓存式 GDAL 回退；
+- 既有正式输出仍为 ISO WKB-first；
+- `.spx` 和 `.atx` 都只提供候选；
+- `SpatialWhere` 在当前分支组合精确 bbox 与现有 WHERE 子集；
+- 所有 `.atx` 快速路径都执行最终 WHERE 复核；
+- 损坏索引必须 fail closed；
+- 当前可以进行代码审核，但构建、CTest、consumer 和性能证据未完成；
 - MultiPatch 仍为 degraded；
-- 合成自动化与 ArcGIS Pro 真实曲线验收分开记录。
+- 合成自动化、真实数据和正式 artifact 必须分开记录。
