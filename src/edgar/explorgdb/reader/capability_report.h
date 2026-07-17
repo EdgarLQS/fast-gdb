@@ -27,10 +27,14 @@ struct CapabilityReport {
                                     const CatalogResolver& resolver,
                                     uint32_t table_id,
                                     const GdbTableParser& table);
+    static CapabilityReport inspect(const GdbCatalog& catalog,
+                                    bool has_spatial_refs,
+                                    uint32_t table_id,
+                                    const GdbTableParser& table);
 };
 
 const char* capability_state_name(CapabilityState state);
 
 } // namespace explorgdb
 
-#endif
+#endif // EXPLORGDB_CAPABILITY_REPORT_H
