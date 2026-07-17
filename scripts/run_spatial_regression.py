@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
-"""Compare the current 10M spatial benchmark with main on POSIX runners."""
+"""Compare current and baseline spatial benchmarks across one or more datasets."""
 
 from __future__ import annotations
 
 import argparse
 import csv
+import json
 import os
+import platform
 import re
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 COVERAGES = (
@@ -28,11 +30,20 @@ FUNNEL_RE = re.compile(
     r"^\s+funnel:.*invalid=([0-9]+) result=([0-9]+)",
     re.MULTILINE,
 )
+FID_RE = re.compile(r"^\s+fids(?:_sha256)?:\s*(.+)$", re.MULTILINE)
+
+
+@dataclass(frozen=True)
+class Dataset:
+    label: str
+    path: Path
 
 
 @dataclass(frozen=True)
 class Sample:
+    dataset: str
     reference: str
+    mode: str
     coverage: str
     fast_median_ms: float
     gdal_median_ms: float
@@ -41,7 +52,19 @@ class Sample:
     fast_gdal_ratio: float
     invalid_geometries: int
     result_count: int
+    fid_signature: str
     log: str
+
+
+def parse_dataset(value: str) -> Dataset:
+    if "=" not in value:
+        raise argparse.ArgumentTypeError("--dataset must use LABEL=PATH")
+    label, raw_path = value.split("=", 1)
+    label = label.strip()
+    if not label:
+        raise argparse.ArgumentTypeError("dataset label must not be empty")
+    path = Path(raw_path).expanduser()
+    return Dataset(label=label, path=path)
 
 
 def resolve_runner(build_dir: Path) -> Path:
@@ -57,11 +80,16 @@ def resolve_runner(build_dir: Path) -> Path:
     raise FileNotFoundError(f"cannot find gdb_tutorial_test_runner under {build_dir}")
 
 
+def safe_name(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_.-]+", "-", value).strip("-") or "dataset"
+
+
 def run_case(
     runner: Path,
-    gdb_path: Path,
+    dataset: Dataset,
     coverage: str,
     reference: str,
+    mode: str,
     trials: int,
     output_dir: Path,
 ) -> Sample:
@@ -69,14 +97,17 @@ def run_case(
     env.update(
         {
             "FAST_GDB_RUN_SPATIAL_BENCHMARKS": "1",
-            "FAST_GDB_BENCHMARK_PATH": str(gdb_path.resolve()),
-            "FAST_GDB_BENCHMARK_LABEL": f"{reference} / 10m / warm / {coverage}",
+            "FAST_GDB_BENCHMARK_PATH": str(dataset.path.resolve()),
+            "FAST_GDB_BENCHMARK_LABEL": (
+                f"{reference} / {dataset.label} / 10m / {mode} / {coverage}"
+            ),
             "FAST_GDB_BENCHMARK_CASE": coverage,
             "FAST_GDB_BENCHMARK_TRIALS": str(trials),
+            "FAST_GDB_BENCHMARK_MODE": mode,
         }
     )
+    # This script supports fresh-open but does not claim strict-cold execution.
     for name in (
-        "FAST_GDB_BENCHMARK_MODE",
         "FAST_GDB_BENCHMARK_STRICT_COLD",
         "FAST_GDB_BENCHMARK_CACHE_CLEAR_COMMAND",
     ):
@@ -91,41 +122,51 @@ def run_case(
         check=False,
     )
     output_dir.mkdir(parents=True, exist_ok=True)
-    log_path = output_dir / f"{reference}-10m-warm-{coverage}.log"
+    log_path = output_dir / (
+        f"{safe_name(dataset.label)}-{reference}-10m-{mode}-{coverage}.log"
+    )
     log_path.write_text(completed.stdout, encoding="utf-8")
     sys.stdout.write(completed.stdout)
     if completed.returncode != 0:
         raise RuntimeError(
-            f"{reference}/{coverage} benchmark failed with exit code "
+            f"{dataset.label}/{reference}/{coverage} failed with exit code "
             f"{completed.returncode}; see {log_path}"
         )
 
     matches = list(SUMMARY_RE.finditer(completed.stdout))
     if len(matches) != 1:
         raise RuntimeError(
-            f"expected one summary row for {reference}/{coverage}, found {len(matches)}"
+            f"expected one summary row for {dataset.label}/{reference}/{coverage}, "
+            f"found {len(matches)}"
         )
     summary = matches[0]
     if summary.group(1) != coverage:
         raise RuntimeError(
-            f"expected {coverage}, parsed {summary.group(1)} for {reference}"
+            f"expected {coverage}, parsed {summary.group(1)} for "
+            f"{dataset.label}/{reference}"
         )
 
     funnel_matches = list(FUNNEL_RE.finditer(completed.stdout))
     if len(funnel_matches) != 1:
         raise RuntimeError(
-            f"expected one funnel row for {reference}/{coverage}, "
+            f"expected one funnel row for {dataset.label}/{reference}/{coverage}, "
             f"found {len(funnel_matches)}"
         )
     invalid = int(funnel_matches[0].group(1))
     result_count = int(funnel_matches[0].group(2))
     if invalid != 0:
         raise RuntimeError(
-            f"invalid geometries observed for {reference}/{coverage}: {invalid}"
+            f"invalid geometries observed for {dataset.label}/{reference}/{coverage}: "
+            f"{invalid}"
         )
 
+    fid_matches = list(FID_RE.finditer(completed.stdout))
+    fid_signature = fid_matches[-1].group(1).strip() if fid_matches else "unavailable"
+
     return Sample(
+        dataset=dataset.label,
         reference=reference,
+        mode=mode,
         coverage=coverage,
         fast_median_ms=float(summary.group(2)),
         gdal_median_ms=float(summary.group(3)),
@@ -134,7 +175,30 @@ def run_case(
         fast_gdal_ratio=float(summary.group(6)),
         invalid_geometries=invalid,
         result_count=result_count,
+        fid_signature=fid_signature,
         log=str(log_path),
+    )
+
+
+def write_environment(output: Path, args: argparse.Namespace, datasets: list[Dataset]) -> None:
+    environment = {
+        "platform": platform.platform(),
+        "machine": platform.machine(),
+        "python": sys.version,
+        "mode": args.mode,
+        "strict_cold": False,
+        "trials": args.trials,
+        "max_regression": args.max_regression,
+        "current_build": str(args.current_build.resolve()),
+        "baseline_build": str(args.baseline_build.resolve()),
+        "datasets": [
+            {"label": dataset.label, "path": str(dataset.path.resolve())}
+            for dataset in datasets
+        ],
+    }
+    (output / "environment.json").write_text(
+        json.dumps(environment, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
     )
 
 
@@ -142,8 +206,16 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--current-build", required=True, type=Path)
     parser.add_argument("--baseline-build", required=True, type=Path)
-    parser.add_argument("--gdb", required=True, type=Path)
+    parser.add_argument(
+        "--dataset",
+        action="append",
+        type=parse_dataset,
+        help="repeatable LABEL=PATH dataset specification",
+    )
+    # Backward-compatible single-dataset argument.
+    parser.add_argument("--gdb", type=Path)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--mode", choices=("steady-state", "fresh-open"), default="steady-state")
     parser.add_argument("--trials", type=int, default=20)
     parser.add_argument("--max-regression", type=float, default=0.05)
     args = parser.parse_args()
@@ -152,62 +224,106 @@ def main() -> int:
         parser.error("--trials must be between 1 and 100")
     if args.max_regression < 0:
         parser.error("--max-regression must be non-negative")
-    if not args.gdb.is_dir():
-        parser.error(f"GDB directory does not exist: {args.gdb}")
+    if args.dataset and args.gdb:
+        parser.error("use either --dataset or --gdb, not both")
+    datasets = list(args.dataset or [])
+    if args.gdb:
+        datasets.append(Dataset(label="default", path=args.gdb))
+    if not datasets:
+        parser.error("at least one --dataset LABEL=PATH or --gdb is required")
+    labels = [dataset.label for dataset in datasets]
+    if len(labels) != len(set(labels)):
+        parser.error("dataset labels must be unique")
+    for dataset in datasets:
+        if not dataset.path.is_dir():
+            parser.error(f"GDB directory does not exist: {dataset.path}")
 
     current_runner = resolve_runner(args.current_build)
     baseline_runner = resolve_runner(args.baseline_build)
     samples: list[Sample] = []
-    current_by_coverage: dict[str, Sample] = {}
-    baseline_by_coverage: dict[str, Sample] = {}
-
-    # Alternate execution order to reduce monotonic thermal/cache bias.
-    for index, coverage in enumerate(COVERAGES):
-        order = (
-            (("current", current_runner), ("main", baseline_runner))
-            if index % 2 == 0
-            else (("main", baseline_runner), ("current", current_runner))
-        )
-        for reference, runner in order:
-            sample = run_case(
-                runner,
-                args.gdb,
-                coverage,
-                reference,
-                args.trials,
-                args.output,
-            )
-            samples.append(sample)
-            if reference == "current":
-                current_by_coverage[coverage] = sample
-            else:
-                baseline_by_coverage[coverage] = sample
-
     failures: list[str] = []
-    for coverage in COVERAGES:
-        current = current_by_coverage[coverage]
-        baseline = baseline_by_coverage[coverage]
-        limit = baseline.fast_median_ms * (1.0 + args.max_regression)
-        if current.fast_median_ms > limit:
-            failures.append(
-                f"{coverage}: current={current.fast_median_ms:.1f}ms, "
-                f"main={baseline.fast_median_ms:.1f}ms, limit={limit:.1f}ms"
-            )
-
     args.output.mkdir(parents=True, exist_ok=True)
-    csv_path = args.output / "posix-10m-main-regression.csv"
+    write_environment(args.output, args, datasets)
+
+    for dataset_index, dataset in enumerate(datasets):
+        current_by_coverage: dict[str, Sample] = {}
+        baseline_by_coverage: dict[str, Sample] = {}
+        for coverage_index, coverage in enumerate(COVERAGES):
+            # Alternate both within and across datasets to reduce one-way bias.
+            current_first = (dataset_index + coverage_index) % 2 == 0
+            order = (
+                (("current", current_runner), ("main", baseline_runner))
+                if current_first
+                else (("main", baseline_runner), ("current", current_runner))
+            )
+            for reference, runner in order:
+                sample = run_case(
+                    runner,
+                    dataset,
+                    coverage,
+                    reference,
+                    args.mode,
+                    args.trials,
+                    args.output,
+                )
+                samples.append(sample)
+                if reference == "current":
+                    current_by_coverage[coverage] = sample
+                else:
+                    baseline_by_coverage[coverage] = sample
+
+        for coverage in COVERAGES:
+            current = current_by_coverage[coverage]
+            baseline = baseline_by_coverage[coverage]
+            limit = baseline.fast_median_ms * (1.0 + args.max_regression)
+            if current.fast_median_ms > limit:
+                failures.append(
+                    f"{dataset.label}/{coverage}: current={current.fast_median_ms:.1f}ms, "
+                    f"main={baseline.fast_median_ms:.1f}ms, limit={limit:.1f}ms"
+                )
+            if current.result_count != baseline.result_count:
+                failures.append(
+                    f"{dataset.label}/{coverage}: result count differs "
+                    f"current={current.result_count}, main={baseline.result_count}"
+                )
+            if (
+                current.fid_signature != "unavailable"
+                and baseline.fid_signature != "unavailable"
+                and current.fid_signature != baseline.fid_signature
+            ):
+                failures.append(
+                    f"{dataset.label}/{coverage}: FID signature differs between current and main"
+                )
+
+    csv_path = args.output / f"posix-10m-{args.mode}-main-regression.csv"
     with csv_path.open("w", newline="", encoding="utf-8") as stream:
         writer = csv.DictWriter(stream, fieldnames=Sample.__dataclass_fields__.keys())
         writer.writeheader()
         for sample in samples:
-            writer.writerow(sample.__dict__)
+            writer.writerow(asdict(sample))
+
+    json_path = args.output / f"posix-10m-{args.mode}-main-regression.json"
+    json_path.write_text(
+        json.dumps(
+            {
+                "status": "fail" if failures else "pass",
+                "mode": args.mode,
+                "strict_cold": False,
+                "samples": [asdict(sample) for sample in samples],
+                "failures": failures,
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
     if failures:
         raise RuntimeError(
-            "10M spatial regression exceeded the allowed threshold:\n" +
-            "\n".join(failures)
+            "10M spatial regression gate failed:\n" + "\n".join(failures)
         )
-    print(f"POSIX 10M main regression gate passed: {csv_path}")
+    print(f"POSIX 10M {args.mode} main regression gate passed: {csv_path}")
     return 0
 
 
