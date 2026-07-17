@@ -3,6 +3,7 @@
 #include "gdb_geometry.h"
 #include "query_where_internal.h"
 
+#include <limits>
 #include <utility>
 
 namespace explorgdb {
@@ -12,6 +13,7 @@ QueryEngine::QueryEngine(const GdbCatalog& catalog,
     : catalog_(catalog), resolved_(table) {}
 
 bool QueryEngine::open() {
+    if (feature_cursor_active()) return false;
     if (resolved_.table_path.empty() || resolved_.tablx_path.empty())
         return false;
     parser_ = std::make_unique<GdbTableParser>(resolved_.table_path);
@@ -28,6 +30,13 @@ bool QueryEngine::open() {
 }
 
 QueryResult QueryEngine::query(const QueryRequest& request) {
+    if (feature_cursor_active()) {
+        QueryResult result;
+        result.execution_path = "query:blocked";
+        result.fallback_reason = "feature cursor is active";
+        return result;
+    }
+
     switch (request.kind) {
     case QueryKind::ReadByFid: {
         QueryResult result;
@@ -60,11 +69,27 @@ QueryResult QueryEngine::query(const QueryRequest& request) {
 }
 
 bool QueryEngine::read_by_fid(uint32_t fid, FeatureRecord& record) {
+    if (feature_cursor_active()) return false;
     return parser_ && parser_->read_record_by_fid(fid, record);
 }
 
 uint64_t QueryEngine::scan(GdbTableParser::ScanCallback callback) {
+    if (feature_cursor_active()) return 0;
     return parser_ ? parser_->sequential_scan(std::move(callback)) : 0;
+}
+
+uint64_t QueryEngine::register_feature_cursor() noexcept {
+    if (feature_cursor_active()) return 0;
+    ++next_cursor_generation_;
+    if (next_cursor_generation_ == 0)
+        ++next_cursor_generation_;
+    active_cursor_generation_ = next_cursor_generation_;
+    return active_cursor_generation_;
+}
+
+void QueryEngine::release_feature_cursor(uint64_t generation) noexcept {
+    if (generation != 0 && active_cursor_generation_ == generation)
+        active_cursor_generation_ = 0;
 }
 
 QueryResult QueryEngine::query_sequential_scan() const {
@@ -124,6 +149,7 @@ std::vector<uint32_t> QueryEngine::query_bbox(
     double xmin, double ymin,
     double xmax, double ymax,
     bool* skipped_unsupported_curve) {
+    if (feature_cursor_active()) return {};
     if (skipped_unsupported_curve != nullptr)
         *skipped_unsupported_curve = false;
     return query_bbox_unified(
@@ -145,6 +171,7 @@ std::vector<uint32_t> QueryEngine::query_attribute_double(
     const std::string& index_name,
     double value,
     AttrOp op) {
+    if (feature_cursor_active()) return {};
     const auto* atx = catalog_.find_atx(resolved_.id, index_name);
     if (!atx) return {};
     GdbAttributeIndexParser index(
@@ -158,6 +185,7 @@ std::vector<uint32_t> QueryEngine::query_attribute_string(
     const std::string& index_name,
     const std::string& value,
     AttrOp op) {
+    if (feature_cursor_active()) return {};
     const auto* atx = catalog_.find_atx(resolved_.id, index_name);
     if (!atx) return {};
     GdbAttributeIndexParser index(
@@ -197,6 +225,7 @@ QueryResult QueryEngine::query_where(const QueryRequest& request) {
     QueryResult result;
     result.execution_path = "where:sequential";
     if (!parser_) {
+        result.execution_path = "where:invalid";
         result.fallback_reason = "table not open";
         return result;
     }
@@ -204,6 +233,7 @@ QueryResult QueryEngine::query_where(const QueryRequest& request) {
     const CompiledWhere expression = compile_where(
         request.where_clause, parser_->fields());
     if (!expression.valid()) {
+        result.execution_path = "where:invalid";
         result.fallback_reason = expression.error();
         return result;
     }
@@ -221,6 +251,7 @@ bool QueryEngine::peek_bbox_source(
     uint32_t fid,
     const uint8_t*& blob,
     size_t& size) {
+    if (feature_cursor_active()) return false;
     return parser_ && parser_->peek_geometry_blob(fid, blob, size);
 }
 
