@@ -36,6 +36,9 @@ struct QueryRequest {
     std::string string_value;
     std::string where_clause;
     AttrOp attr_op = AttrOp::Eq;
+    // Opt-in cursor stage timings. Default false keeps normal reads free of
+    // steady_clock calls and avoids process-global profiling state.
+    bool profile_feature_reads = false;
 };
 
 struct SpatialQueryMetrics {
@@ -71,8 +74,7 @@ struct CombinedQueryMetrics {
     bool used_attribute_index = false;
 };
 
-// Aggregated only when FAST_GDB_FEATURE_CURSOR_PROFILE=1. Normal cursor reads
-// do not call the clock and leave this structure at zero.
+// Aggregated only when QueryRequest::profile_feature_reads is true.
 struct FeatureCursorMetrics {
     size_t feature_count = 0;
     double row_lookup_ms = 0.0;
