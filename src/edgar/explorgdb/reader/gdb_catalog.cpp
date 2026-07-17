@@ -3,11 +3,13 @@
 
 #include "gdb_catalog.h"
 #include "binary_reader.h"
+#include "gdb_indexes.h"
 #include <algorithm>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <mutex>
 #include <regex>
 #include <utility>
 
@@ -16,8 +18,10 @@ namespace fs = std::filesystem;
 namespace explorgdb {
 
 bool GdbCatalog::scan(const std::string& gdb_path) {
+    std::unique_lock<std::shared_mutex> lock(mutex_);
     gdb_path_ = gdb_path;
     entries_.clear();
+    index_metadata_cache_.clear();
     has_magic_ = false;
     has_timestamps_ = false;
 
@@ -131,6 +135,48 @@ const CatalogEntry* GdbCatalog::find_indexes(uint32_t id) const {
             return &entry;
     }
     return nullptr;
+}
+
+bool GdbCatalog::read_index_metadata(
+    uint32_t id,
+    std::vector<IndexEntry>& output) const {
+    output.clear();
+    std::string filename;
+    {
+        std::shared_lock<std::shared_mutex> lock(mutex_);
+        const auto cached = index_metadata_cache_.find(id);
+        if (cached != index_metadata_cache_.end()) {
+            if (cached->second.parsed)
+                output = cached->second.entries;
+            return cached->second.parsed;
+        }
+
+        for (const auto& entry : entries_) {
+            if (entry.numeric_id == id &&
+                entry.extension == ".gdbindexes") {
+                filename = entry.filename;
+                break;
+            }
+        }
+    }
+
+    IndexMetadataCacheEntry parsed;
+    if (!filename.empty()) {
+        try {
+            GdbIndexesParser parser(gdb_path_ + "/" + filename);
+            parsed.parsed = parser.parse();
+            if (parsed.parsed) parsed.entries = parser.entries();
+        } catch (...) {
+            parsed.parsed = false;
+            parsed.entries.clear();
+        }
+    }
+
+    std::unique_lock<std::shared_mutex> lock(mutex_);
+    const auto inserted = index_metadata_cache_.emplace(id, std::move(parsed));
+    const IndexMetadataCacheEntry& cached = inserted.first->second;
+    if (cached.parsed) output = cached.entries;
+    return cached.parsed;
 }
 
 const CatalogEntry* GdbCatalog::find_atx(
