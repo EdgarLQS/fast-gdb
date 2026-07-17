@@ -104,7 +104,10 @@ TEST_F(SpatialWhereNullTest, NullComparisonIsFalseAndMatchesGdal) {
     request.where_clause = "value != 5";
     const QueryResult fast = engine.query(request);
 
-    EXPECT_EQ(fast.execution_path, "spatial-where:spx+atx");
+    EXPECT_EQ(fast.execution_path,
+              "spatial-where:spatial-candidates");
+    EXPECT_FALSE(fast.combined_metrics.used_attribute_index);
+    EXPECT_NE(fast.fallback_reason.find("not-equal"), std::string::npos);
     EXPECT_EQ(fast.matched_fids, (std::vector<uint32_t>{1, 3}));
 
     dataset = static_cast<GDALDataset*>(GDALOpenEx(
