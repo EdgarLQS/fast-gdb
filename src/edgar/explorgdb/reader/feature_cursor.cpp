@@ -17,6 +17,29 @@ bool has_invalid_execution_path(const QueryResult& result) {
                suffix.size(), suffix) == 0;
 }
 
+bool query_result_is_error(const QueryRequest& request,
+                           const QueryResult& result) {
+    if (has_invalid_execution_path(result) ||
+        result.execution_path == "query:blocked" ||
+        result.fallback_reason == "unsupported query kind") {
+        return true;
+    }
+    if (request.kind == QueryKind::WhereClause &&
+        !result.fallback_reason.empty()) {
+        return true;
+    }
+    if (request.kind == QueryKind::SpatialBbox &&
+        (result.execution_path == "bbox:unavailable" ||
+         result.execution_path == "bbox:model:unavailable")) {
+        return true;
+    }
+    if (result.execution_path.empty() &&
+        !result.fallback_reason.empty()) {
+        return true;
+    }
+    return false;
+}
+
 std::string fid_error(const char* prefix, uint32_t fid) {
     std::ostringstream stream;
     stream << prefix << " " << fid;
@@ -367,9 +390,7 @@ FeatureCursor QueryEngine::open_cursor(const QueryRequest& request) {
     }
 
     result = query(request);
-    if (has_invalid_execution_path(result) ||
-        result.fallback_reason == "unsupported query kind" ||
-        result.execution_path == "query:blocked") {
+    if (query_result_is_error(request, result)) {
         std::string error = result.fallback_reason.empty()
             ? "invalid query request"
             : result.fallback_reason;
