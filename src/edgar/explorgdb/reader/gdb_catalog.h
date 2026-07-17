@@ -14,9 +14,10 @@
 #define EXPLORGDB_GDB_CATALOG_H
 
 #include "explorgdb_types.h"
-#include <string>
-#include <vector>
 #include <shared_mutex>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 namespace explorgdb {
 
@@ -56,6 +57,11 @@ public:
     // 按 ID 查找该表的 .gdbindexes 元数据文件
     const CatalogEntry* find_indexes(uint32_t id) const;
 
+    // 解析并缓存某张表的 .gdbindexes 条目。缓存绑定到本次 scan()
+    // 快照；再次 scan() 会清空成功和失败结果。
+    bool read_index_metadata(uint32_t id,
+                             std::vector<IndexEntry>& entries) const;
+
     // 按 ID + 索引名查找 .atx 属性索引文件
     // index_name 来自 .gdbindexes 中的名称（如 "MyIndex"）
     const CatalogEntry* find_atx(uint32_t id, const std::string& index_name) const;
@@ -64,6 +70,11 @@ public:
     std::vector<const CatalogEntry*> find_all_atx(uint32_t id) const;
 
 private:
+    struct IndexMetadataCacheEntry {
+        bool parsed = false;
+        std::vector<IndexEntry> entries;
+    };
+
     std::string gdb_path_;
     std::vector<CatalogEntry> entries_;      // 所有 aXXXXXXXX.* 文件
     GdbDirectoryHeader magic_;               // gdb 文件头部
@@ -71,7 +82,9 @@ private:
     bool has_magic_ = false;
     bool has_timestamps_ = false;
 
-    mutable std::shared_mutex mutex_;  // 保护 scan 操作的线程安全
+    mutable std::shared_mutex mutex_;  // 保护 scan 和 metadata cache
+    mutable std::unordered_map<uint32_t, IndexMetadataCacheEntry>
+        index_metadata_cache_;
 };
 
 } // namespace explorgdb
