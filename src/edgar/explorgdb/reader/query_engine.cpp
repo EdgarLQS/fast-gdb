@@ -16,6 +16,7 @@ bool QueryEngine::open() {
 
     ++open_generation_;
     if (open_generation_ == 0) ++open_generation_;
+    opened_ = false;
     parser_.reset();
     spatial_index_.reset();
     spatial_index_initialized_ = false;
@@ -34,7 +35,8 @@ bool QueryEngine::open() {
     resolver.load();
     capabilities_ = CapabilityReport::inspect(
         catalog_, resolver, resolved_.id, *parser_);
-    return capabilities_.can_read_layer();
+    opened_ = capabilities_.can_read_layer();
+    return opened_;
 }
 
 QueryResult QueryEngine::query(const QueryRequest& request) {
