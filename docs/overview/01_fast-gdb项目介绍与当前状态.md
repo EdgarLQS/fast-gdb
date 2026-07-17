@@ -2,9 +2,11 @@
 
 **面向读者**：需要理解项目目标、代码结构、性能依据和验收边界的开发人员
 
-**最后更新**：2026-07-13
+**最后更新**：2026-07-17
 
-**当前结论**：fast-gdb 已在声明的支持范围内完成纯 C++ Reader、Hybrid、统一几何模型、索引查询和发布验收；MultiPatch 完整表面拓扑、原生 curve WKB、未知/未来编码和完整编辑写入仍明确不在当前支持范围。
+**当前实现基线**：`main@42d8f76620a8c39eeb8523a0f84fcde0eb719f01`
+
+**当前结论**：fast-gdb 已在声明的支持范围内完成纯 C++ Reader、Hybrid、统一几何模型、索引查询和既有发布验收；M18 Writer 的 Append、Update、Delete、Transaction 和 Recovery 已进入 `main`，但缺少当前 macOS GitHub Actions artifacts，正式判定保持 **Code accepted / Formal acceptance blocked**。MultiPatch 完整表面拓扑、原生 curve WKB/写入、未知未来编码和跨平台 Writer 仍不在当前正式支持范围。
 
 > 本文是项目总入口。详细实现、实验数据和验收证据保留在专题文档中，本文通过链接组织它们，不重复维护同一份细节。
 
@@ -30,16 +32,17 @@ fast-gdb 是一个围绕 ESRI File Geodatabase（`.gdb`）的 C++ 项目，目�
 | `fast_gdb_hybrid` | GDAL | fast-gdb 主路径 + 曲线/复杂拓扑回退 | 支持范围内已完成发布验收 |
 | `usegdal` | GDAL | Datasource/Dataset/Recordset 高层 API 和教程组件 | 已完成既定 Phase 1A-3 |
 | `explorgdb reader` | C++17 | FileGDB 二进制解析、索引、查询和几何输出 | 支持范围内已完成验收；新增类型需单独补证据 |
-| `explorgdb writer` | C++17；索引助手可选依赖 GDAL | GDAL 空 schema 的二进制批量直写 | 实验性；非空追加、完整编辑和系统表同步未完成 |
+| `explorgdb writer` | C++17；高级编辑/索引助手依赖 GDAL | 空 schema、Append、Update、Delete、Transaction/Recovery | 实现已进入 `main`；仅单 Writer、单源 GDB、单图层事务，正式 macOS artifact 仍阻塞 |
 
 ### 能力状态说明
 
 - **已完成**：已有实现和对应自动化/本地证据支持。
 - **支持范围内已完成**：最终验收报告已覆盖该能力声明的范围。
+- **代码完成/正式阻塞**：实现和本地专项结论成立，但正式 CI artifact 尚未闭环。
 - **待验收**：需要真实数据、跨平台环境或专项性能数据，不能用合成断言替代。
 - **暂不支持**：当前明确不提供，调用方应使用其他路径或调整范围。
 
-当前详细能力矩阵见：[项目状态与规划](../planning/01_项目状态与规划.md) 和 [GDAL 功能对比矩阵](../planning/02_GDAL功能对比矩阵.md)。
+当前详细能力矩阵见：[项目状态与规划](../planning/01_项目状态与规划.md)、[M18 Writer main 验收记录](../evidence/M18-writer-main-acceptance-2026-07-17.md) 和 [GDAL 功能对比矩阵](../planning/02_GDAL功能对比矩阵.md)。
 
 ## 3. 总体架构
 
@@ -70,7 +73,7 @@ flowchart TB
 - `src/edgar/explorgdb/common/`：二进制读取、VarInt、UTF-16、公共类型。
 - `src/edgar/explorgdb/reader/`：Catalog、Table、Tablx、空间/属性索引、几何和 QueryEngine。
 - `src/edgar/explorgdb/curve_gdal/`：可选 GDAL 曲线和拓扑回退。
-- `src/edgar/explorgdb/writer/`：表写入器、几何序列化和索引创建。
+- `src/edgar/explorgdb/writer/`：表写入器、几何序列化、Append/Update/Delete、事务和恢复。
 - `src/edgar/usegdal/`：GDAL 高层组件库。
 
 ### 3.2 FileGDB 查询链路
@@ -113,8 +116,10 @@ FileGDB Geometry Blob
 - ISO WKB-first API；原有 WKT API 作为兼容/调试接口保留。
 - CircularArc、Cubic Bezier、EllipticArc、完整圆/椭圆和混合 part 的内置折线化。
 - GDAL Hybrid 的缓存式回退和可观测的后端、状态、诊断信息。
+- Writer 空 schema、Append、Update、Delete、Transaction 和显式 Recovery 实现。
+- Writer 稳定/legacy 安装面和结构化 `WriterErrorCode`。
 
-相关 API 和迁移方式见：[组件库设计与使用](../usage/01_组件库设计与使用.md) 和 [几何 WKB/曲线迁移指南](../usage/02_几何WKB曲线支持与迁移.md)。
+相关 API 和迁移方式见：[组件库设计与使用](../usage/01_组件库设计与使用.md)、[几何 WKB/曲线迁移指南](../usage/02_几何WKB曲线支持与迁移.md) 和 [Writer 稳定 API 与迁移](../usage/06_Writer稳定API与迁移.md)。
 
 ## 5. 当前性能基线
 
@@ -200,16 +205,18 @@ FAST_GDB_RUN_10M_BENCHMARKS=1 ./build-linear/bin/gdb_tutorial_test_runner \
 | ArcGIS/GDAL 全量未知类型等价性 | 不适用 | 当前发布只声明最终报告列出的支持范围 |
 | 非空 MultiPatch | 降级支持 | 完整 part type 和表面拓扑不在当前范围 |
 | 真实大规模性能基线 | 未完成 | 现有数据为受控基准，35GB/5 亿级场景需单独实测 |
-| Writer 系统表同步 | 待完成 | 主数据直写完成，生产级完整写入仍需继续完善 |
+| M18 Writer 代码与本地专项 | 代码完成 | Append、Update、Delete、Transaction 和 Recovery 已进入 `main` |
+| M18 Writer 正式 macOS 验收 | Blocked | 缺 GDAL ON/OFF、完整 CTest、合同/consumer 当前证据和六个绑定当前 SHA 的 artifacts；Issue #12 保持 Open |
 
-当前版本在声明范围内可以发布；权威证据见 [最终等价与发布验收报告](../evidence/13_fast-gdb最终等价与发布验收报告.md) 和 [Curve_Polyline_M_FC 真实验收证据](../evidence/curve-polyline-m-real-acceptance-2026-07-13.md)，后续新增能力的数据要求见 [真实数据验收资料清单](../usage/05_fast-gdb真实数据验收资料清单.md)。
+既有 Reader/Hybrid 版本在声明范围内可以发布；M18 Writer 的正式结论以 [M18 Writer main 验收记录](../evidence/M18-writer-main-acceptance-2026-07-17.md) 为准，不得由代码合入自动推导为正式全面验收完成。
 
 ## 8. 后续路线
 
-1. **短期**：维护现有支持范围，新增 ArcGIS 原生曲线、复杂 Polygon、FID 映射、Z/M/ZM 能力时同步补充证据。
-2. **中期**：按 [Writer 跨平台测试统一与后续编辑计划](../planning/18_writer跨平台测试统一与后续编辑计划.md) 在 macOS 冻结 Writer 测试契约、收窄 API/安装面、优化已证明瓶颈，并按独立契约推进高级编辑；Linux/Windows 和 50M 阶梯暂缓。
-3. **专项能力**：在批量写闭环后单独推进非空追加、Update/Delete、MultiPatch 和原生曲线写入。
-4. **长期**：根据实际使用需求评估 SQL、Raster 或其他 OGR 兼容能力，不在当前 Reader 范围内提前承诺。
+1. **M18 正式收口**：补齐 GDAL ON/OFF Release、完整 CTest、五套功能合同各三次、性能合同、三类 package consumer、六个 macOS artifacts 和故障注入证据；证据齐全才标记 `Accepted`。
+2. **Reader 性能专项**：M18 收口独立完成后，在后续分支处理 Point、MultiPoint、Polyline 10M fresh-open 性能失败档。
+3. **跨平台与规模**：Linux/Windows Writer、50M、35GB/5 亿级生产数据继续 Deferred。
+4. **专项能力**：MultiPatch 完整拓扑、原生曲线写入、并发 Writer、跨 GDB、嵌套事务和 savepoint 需独立立项。
+5. **长期**：根据实际使用需求评估 SQL、Raster 或其他 OGR 兼容能力，不在当前 Reader 范围内提前承诺。
 
 ## 9. 文档维护规则
 
@@ -217,13 +224,16 @@ FAST_GDB_RUN_10M_BENCHMARKS=1 ./build-linear/bin/gdb_tutorial_test_runner \
 - 新增性能数字必须记录数据集、机器/依赖版本、命令、原始结果和适用限制。
 - 新增验收结论必须记录数据来源、预期行为、通过证据和未覆盖范围。
 - `SKIPPED`、推算值和合成数据必须与真实数据 `PASSED` 分开表述。
+- 本地门禁和 GitHub Actions 正式 artifact 必须分别表述。
 - 本文只保留当前有效结论；详细过程、失败实验和历史状态放在专题或 `planning/archive/`。
-- 若本文与其他文档冲突，以 [规划文档状态索引](../planning/00_规划文档状态索引.md) 和 [最终等价与发布验收报告](../evidence/13_fast-gdb最终等价与发布验收报告.md) 为准。
+- 若本文与其他文档冲突，以 [规划文档状态索引](../planning/00_规划文档状态索引.md)、[M18 Writer main 验收记录](../evidence/M18-writer-main-acceptance-2026-07-17.md) 和对应最终验收报告为准。
 
 ## 10. 继续阅读
 
 - [项目全景与架构概览](00_项目全景与架构概览.md)
 - [项目状态与规划](../planning/01_项目状态与规划.md)
+- [M18 Writer main 验收记录](../evidence/M18-writer-main-acceptance-2026-07-17.md)
+- [M18 正式收口与 Reader 性能优化计划](../planning/19_M18正式收口与Reader性能优化计划.md)
 - [组件库设计与使用](../usage/01_组件库设计与使用.md)
 - [几何 WKB/曲线支持与迁移](../usage/02_几何WKB曲线支持与迁移.md)
 - [性能基准与优化](../technical/01_性能基准与优化.md)
