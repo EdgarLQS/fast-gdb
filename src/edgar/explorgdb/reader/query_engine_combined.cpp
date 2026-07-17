@@ -425,13 +425,17 @@ QueryResult QueryEngine::query_spatial_where(const QueryRequest& request) {
                 }
 
                 if (spatial_index_ != nullptr) {
+                    const bool merge_x_ranges =
+                        request.ymin <= geom_field->ymin &&
+                        request.ymax >= geom_field->ymax;
                     std::vector<uint32_t> candidates =
                         spatial_index_->query_bbox(
                             request.xmin, request.ymin,
                             request.xmax, request.ymax,
                             geom_field->xorig, geom_field->yorig,
                             geom_field->xyscale, geom_field->grid_sizes,
-                            static_cast<uint32_t>(fid_slot_count - 1U));
+                            static_cast<uint32_t>(fid_slot_count - 1U),
+                            merge_x_ranges);
                     const double candidate_lookup_ms =
                         elapsed_ms(candidate_start);
 
