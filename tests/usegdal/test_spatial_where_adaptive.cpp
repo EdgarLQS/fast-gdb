@@ -162,7 +162,7 @@ protected:
 };
 
 TEST_F(SpatialWhereAdaptiveTest,
-       SelectiveSpatialCandidatesBypassAttributeIndex) {
+       SelectiveSpatialCandidatesUseFusedSingleRowScan) {
     const std::string path = create_fixture(
         "fast_gdb_spatial_where_adaptive_bypass");
     ASSERT_FALSE(path.empty());
@@ -172,8 +172,12 @@ TEST_F(SpatialWhereAdaptiveTest,
     EXPECT_TRUE(result.combined_metrics.used_spatial_index);
     EXPECT_FALSE(result.combined_metrics.used_attribute_index);
     EXPECT_TRUE(result.combined_metrics.attribute_index_bypassed);
+    EXPECT_TRUE(result.combined_metrics.fused_spatial_attribute_scan);
+    EXPECT_EQ(result.combined_metrics.fused_candidate_count, 10U);
+    EXPECT_EQ(result.combined_metrics.spatial_candidate_count, 10U);
     EXPECT_EQ(result.combined_metrics.spatial_match_count, 10U);
     EXPECT_EQ(result.combined_metrics.attribute_tested, 10U);
+    EXPECT_GE(result.combined_metrics.fused_candidate_scan_ms, 0.0);
     EXPECT_EQ(result.matched_fids,
               (std::vector<uint32_t>{5, 6, 7, 8, 9}));
     EXPECT_EQ(result.matched_fids,
@@ -191,6 +195,8 @@ TEST_F(SpatialWhereAdaptiveTest,
     EXPECT_TRUE(result.combined_metrics.used_spatial_index);
     EXPECT_TRUE(result.combined_metrics.used_attribute_index);
     EXPECT_FALSE(result.combined_metrics.attribute_index_bypassed);
+    EXPECT_FALSE(result.combined_metrics.fused_spatial_attribute_scan);
+    EXPECT_EQ(result.combined_metrics.fused_candidate_count, 0U);
     EXPECT_EQ(result.combined_metrics.attribute_candidate_count, 10U);
     EXPECT_EQ(result.combined_metrics.attribute_tested, 10U);
     EXPECT_EQ(result.combined_metrics.attribute_index_entries_scanned, 100U);
