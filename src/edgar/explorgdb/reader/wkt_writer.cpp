@@ -2,10 +2,39 @@
 
 #include <cmath>
 #include <iomanip>
-#include <sstream>
+#include <ostream>
+#include <streambuf>
+#include <string>
 
 namespace explorgdb {
 namespace {
+
+class StringWriterBuffer final : public std::streambuf {
+public:
+    explicit StringWriterBuffer(size_t reserve_bytes) {
+        value_.reserve(reserve_bytes);
+    }
+
+    std::string take() { return std::move(value_); }
+
+protected:
+    int_type overflow(int_type character) override {
+        if (traits_type::eq_int_type(character, traits_type::eof()))
+            return traits_type::not_eof(character);
+        value_.push_back(traits_type::to_char_type(character));
+        return character;
+    }
+
+    std::streamsize xsputn(const char* data,
+                           std::streamsize count) override {
+        if (count > 0)
+            value_.append(data, static_cast<size_t>(count));
+        return count;
+    }
+
+private:
+    std::string value_;
+};
 
 std::string dimension_suffix(bool has_z, bool has_m) {
     if (has_z && has_m) return " ZM";
@@ -14,12 +43,12 @@ std::string dimension_suffix(bool has_z, bool has_m) {
     return "";
 }
 
-void number(std::ostringstream& out, double value) {
+void number(std::ostream& out, double value) {
     if (std::isnan(value)) out << "NaN";
     else out << std::setprecision(15) << value;
 }
 
-void position(std::ostringstream& out,
+void position(std::ostream& out,
               const GeometryModel& model,
               const GridPoint& point) {
     number(out, model.transform.decode_x(point.x));
@@ -35,7 +64,7 @@ void position(std::ostringstream& out,
     }
 }
 
-void sequence(std::ostringstream& out,
+void sequence(std::ostream& out,
               const GeometryModel& model,
               const PointSequence& points,
               bool close_ring) {
@@ -44,12 +73,12 @@ void sequence(std::ostringstream& out,
         position(out, model, points[i]);
     }
     if (close_ring && !points.empty()) {
-        if (!points.empty()) out << ", ";
+        out << ", ";
         position(out, model, points.front());
     }
 }
 
-void polygon_body(std::ostringstream& out,
+void polygon_body(std::ostream& out,
                   const GeometryModel& model,
                   const PolygonModel& polygon) {
     out << '(';
@@ -72,7 +101,8 @@ void polygon_body(std::ostringstream& out,
 } // namespace
 
 std::string WktWriter::write(const GeometryModel& model) {
-    std::ostringstream out;
+    StringWriterBuffer buffer(64U);
+    std::ostream out(&buffer);
     const std::string suffix =
         dimension_suffix(model.has_z, model.has_m);
     switch (model.kind) {
@@ -153,7 +183,8 @@ std::string WktWriter::write(const GeometryModel& model) {
         default:
             return "GEOMETRYCOLLECTION EMPTY";
     }
-    return out.str();
+    out.flush();
+    return buffer.take();
 }
 
 } // namespace explorgdb
