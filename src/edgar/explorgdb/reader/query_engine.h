@@ -80,12 +80,42 @@ struct QueryResult {
     CombinedQueryMetrics combined_metrics;
 };
 
+struct QueryFeature {
+    uint32_t fid = 0;
+    FeatureRecord record;
+    GeometryValue geometry;
+};
+
+class QueryEngine;
+
+class FeatureCursor {
+public:
+    FeatureCursor(FeatureCursor&& other) noexcept;
+    FeatureCursor& operator=(FeatureCursor&& other) noexcept;
+    FeatureCursor(const FeatureCursor&) = delete;
+    FeatureCursor& operator=(const FeatureCursor&) = delete;
+    ~FeatureCursor();
+
+    bool next(QueryFeature& feature);
+    bool done() const noexcept;
+    const QueryResult& query_result() const noexcept;
+    const std::string& error() const noexcept;
+
+private:
+    class Impl;
+    explicit FeatureCursor(std::unique_ptr<Impl> impl);
+    std::unique_ptr<Impl> impl_;
+
+    friend class QueryEngine;
+};
+
 class QueryEngine {
 public:
     QueryEngine(const GdbCatalog& catalog, const ResolvedTable& table);
 
     bool open();
     QueryResult query(const QueryRequest& request);
+    FeatureCursor open_cursor(const QueryRequest& request);
     bool read_by_fid(uint32_t fid, FeatureRecord& record);
     uint64_t scan(GdbTableParser::ScanCallback callback);
 
@@ -126,6 +156,12 @@ private:
     QueryResult query_where(const QueryRequest& request);
     QueryResult query_spatial_where(const QueryRequest& request);
 
+    uint64_t register_feature_cursor() noexcept;
+    void release_feature_cursor(uint64_t generation) noexcept;
+    bool feature_cursor_active() const noexcept {
+        return active_cursor_generation_ != 0;
+    }
+
     const GdbCatalog& catalog_;
     ResolvedTable resolved_;
     std::unique_ptr<GdbTableParser> parser_;
@@ -133,6 +169,8 @@ private:
     bool spatial_index_initialized_ = false;
     bool spatial_index_present_ = false;
     CapabilityReport capabilities_;
+    uint64_t next_cursor_generation_ = 0;
+    uint64_t active_cursor_generation_ = 0;
 };
 
 } // namespace explorgdb
