@@ -191,7 +191,7 @@ flowchart TD
 | `.spx + .atx` | `SpatialWhereIntegrationTest.IndexedSingleComparisonMatchesGdalFullFidVector` |
 | 复合 WHERE 回退 | `CompoundWhereEvaluatesOnlyExactSpatialMatches` |
 | 几何组合 | `SpatialWhereGeometryTest.*` |
-| Z/M/ZM | `SpatialWhereDimensionsTest.*` |
+| Z/M/ZM | `SpatialWhereDimensionTest.*` |
 | NULL / `!=` | `SpatialWhereNullTest.*` |
 | Unicode | `SpatialWhereUnicodeTest.*` |
 | 函数索引 | `SpatialWhereFunctionalIndexTest.*` |
