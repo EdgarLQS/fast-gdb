@@ -139,6 +139,7 @@
 - `gtest_discover_tests` 下的 `ctest -j` 行为；
 - 多个 TEST 是否共享固定临时 `.gdb`；
 - benchmark JSON 是否记录观测值；
+- 测试辅助代码是否依赖特定 GTest 版本；
 - 安装包是否暴露内部实现；
 - 分支差异是否包含数据、构建目录或 benchmark 输出。
 
@@ -151,8 +152,8 @@
 修复：
 
 - 新增 `spatial_where_test_utils.h`；
-- 使用当前 test suite 和 test name 生成隔离路径；
-- 对路径组件做字符清理；
+- 使用当前 test name 生成隔离路径；
+- 每个测试文件使用独立前缀，路径组件做字符清理；
 - 集成、Unicode、索引故障测试全部改为每 TEST 独立目录。
 
 提交：
@@ -161,6 +162,18 @@
 - `c440b765cd69681b06030428e3111d65d7b643f0`
 - `9cb5f7588ce389565d32d6338c42163d3d499831`
 - `cf7908964d3d9e94811a782b33c63f7bfa0ae79b`
+
+#### P1：测试辅助头依赖较新 GTest API
+
+初版隔离辅助函数使用 `TestInfo::test_suite_name()`。项目会优先采用系统 GTest，旧版本可能缺少该接口，造成测试目标编译失败。
+
+修复：
+
+- 移除 suite-name API；
+- 使用所有支持版本均存在的 `TestInfo::name()`；
+- 依靠每个测试文件的独立前缀保持全局路径唯一。
+
+提交：`1412a2775a3c376ecb1ad151573ae27709641907`
 
 #### P1：benchmark 证据硬编码执行路径和正确性
 
@@ -178,6 +191,7 @@ JSON 原先固定写入 `spatial-where:spx+atx` 和 `correct: true`。即使测�
 ### 第三轮结论
 
 - 新增测试不再因并行 CTest 共享目录而互相破坏；
+- 测试辅助代码不再要求较新 GTest suite API；
 - benchmark evidence 不再硬编码关键结论；
 - 内部 WHERE 头仍未进入安装面；
 - `main...HEAD` 差异未包含 fixture、构建目录或 benchmark 原始输出。
@@ -187,7 +201,7 @@ JSON 原先固定写入 `spatial-where:spx+atx` 和 `correct: true`。即使测�
 | 级别 | 数量 | 状态 |
 |---|---:|---|
 | P0 | 2 | 已修复并增加回归测试代码 |
-| P1 | 5 | 已修复并增加契约/隔离/证据校验 |
+| P1 | 6 | 已修复并增加契约/隔离/证据校验 |
 | P2 | 0 | 未发现需要阻断本轮的新增问题 |
 
 ## 尚未形成的实际证据
