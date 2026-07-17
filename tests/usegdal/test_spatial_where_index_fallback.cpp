@@ -1,0 +1,138 @@
+#include <gtest/gtest.h>
+#include <filesystem>
+#include <fstream>
+#include <string>
+#include <vector>
+#include "cpl_error.h"
+#include "gdal_priv.h"
+#include "ogrsf_frmts.h"
+#include "catalog_resolver.h"
+#include "gdb_catalog.h"
+#include "query_engine.h"
+#include "test_fixture.h"
+
+using namespace explorgdb;
+
+namespace {
+constexpr const char* kLayer = "index_fallback_points";
+
+bool sql(GDALDataset* ds, const std::string& text) {
+    CPLErrorReset();
+    OGRLayer* result = ds->ExecuteSQL(text.c_str(), nullptr, nullptr);
+    if (result) ds->ReleaseResultSet(result);
+    return CPLGetLastErrorType() < CE_Failure;
+}
+
+bool resolve(const std::string& path, GdbCatalog& catalog,
+             ResolvedTable& table) {
+    if (!catalog.scan(path)) return false;
+    CatalogResolver resolver(catalog);
+    if (!resolver.load()) return false;
+    const auto found = resolver.resolve(kLayer);
+    if (!found) return false;
+    table = *found;
+    return true;
+}
+
+QueryResult query(const GdbCatalog& catalog, const ResolvedTable& table) {
+    QueryEngine engine(catalog, table);
+    if (!engine.open()) return {};
+    QueryRequest request;
+    request.kind = QueryKind::SpatialWhere;
+    request.xmin = 0;
+    request.ymin = 0;
+    request.xmax = 10;
+    request.ymax = 10;
+    request.where_clause = "value >= 10";
+    return engine.query(request);
+}
+} // namespace
+
+class SpatialWhereIndexFallbackTest : public GdbTutorialFixture {
+protected:
+    std::string createFixture() {
+        const std::string path =
+            (std::filesystem::temp_directory_path() /
+             "fast_gdb_spatial_where_index_fallback.gdb").string();
+        GDALDataset* ds = createGdb(path.c_str());
+        EXPECT_NE(ds, nullptr);
+        if (!ds) return {};
+        OGRLayer* layer = ds->CreateLayer(kLayer, nullptr, wkbPoint, nullptr);
+        EXPECT_NE(layer, nullptr);
+        if (!layer) { GDALClose(ds); return {}; }
+        OGRFieldDefn value("value", OFTInteger);
+        EXPECT_EQ(layer->CreateField(&value), OGRERR_NONE);
+        const int values[] = {5, 10, 15};
+        for (int i = 0; i < 3; ++i) {
+            OGRFeature* feature = OGRFeature::CreateFeature(layer->GetLayerDefn());
+            feature->SetField("value", values[i]);
+            OGRPoint point(i + 1.0, i + 1.0);
+            EXPECT_EQ(feature->SetGeometry(&point), OGRERR_NONE);
+            EXPECT_EQ(layer->CreateFeature(feature), OGRERR_NONE);
+            OGRFeature::DestroyFeature(feature);
+        }
+        GDALClose(ds);
+        ds = static_cast<GDALDataset*>(GDALOpenEx(
+            path.c_str(), GDAL_OF_VECTOR | GDAL_OF_UPDATE,
+            nullptr, nullptr, nullptr));
+        EXPECT_NE(ds, nullptr);
+        if (!ds) return {};
+        layer = ds->GetLayerByName(kLayer);
+        layer->ResetReading();
+        while (OGRFeature* feature = layer->GetNextFeature()) {
+            EXPECT_EQ(layer->SetFeature(feature), OGRERR_NONE);
+            OGRFeature::DestroyFeature(feature);
+        }
+        EXPECT_TRUE(sql(ds, std::string("RECOMPUTE EXTENT ON ") + kLayer));
+        EXPECT_TRUE(sql(ds, std::string("CREATE INDEX value_idx ON ") +
+                            kLayer + "(value)"));
+        GDALClose(ds);
+        return path;
+    }
+};
+
+TEST_F(SpatialWhereIndexFallbackTest, MissingAtxKeepsCorrectResults) {
+    const std::string path = createFixture();
+    ASSERT_FALSE(path.empty());
+    GdbCatalog before;
+    ResolvedTable table_before;
+    ASSERT_TRUE(resolve(path, before, table_before));
+    const CatalogEntry* atx = before.find_atx(table_before.id, "value_idx");
+    ASSERT_NE(atx, nullptr);
+    const std::filesystem::path source =
+        std::filesystem::path(path) / atx->filename;
+    std::filesystem::rename(source, source.string() + ".missing");
+
+    GdbCatalog catalog;
+    ResolvedTable table;
+    ASSERT_TRUE(resolve(path, catalog, table));
+    const QueryResult result = query(catalog, table);
+    EXPECT_EQ(result.execution_path, "spatial-where:spatial-candidates");
+    EXPECT_FALSE(result.combined_metrics.used_attribute_index);
+    EXPECT_NE(result.fallback_reason.find("index file missing"),
+              std::string::npos);
+    EXPECT_EQ(result.matched_fids, (std::vector<uint32_t>{1, 2}));
+}
+
+TEST_F(SpatialWhereIndexFallbackTest, DamagedAtxKeepsCorrectResults) {
+    const std::string path = createFixture();
+    ASSERT_FALSE(path.empty());
+    GdbCatalog catalog;
+    ResolvedTable table;
+    ASSERT_TRUE(resolve(path, catalog, table));
+    const CatalogEntry* atx = catalog.find_atx(table.id, "value_idx");
+    ASSERT_NE(atx, nullptr);
+    const std::filesystem::path atx_path =
+        std::filesystem::path(path) / atx->filename;
+    std::ofstream output(atx_path, std::ios::binary | std::ios::trunc);
+    ASSERT_TRUE(output.is_open());
+    output.write("bad", 3);
+    output.close();
+
+    const QueryResult result = query(catalog, table);
+    EXPECT_EQ(result.execution_path, "spatial-where:spatial-candidates");
+    EXPECT_FALSE(result.combined_metrics.used_attribute_index);
+    EXPECT_NE(result.fallback_reason.find("could not be parsed"),
+              std::string::npos);
+    EXPECT_EQ(result.matched_fids, (std::vector<uint32_t>{1, 2}));
+}
