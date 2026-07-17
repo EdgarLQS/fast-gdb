@@ -75,7 +75,8 @@ install(DIRECTORY src/edgar/explorgdb/common/
     FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp")
 install(DIRECTORY src/edgar/explorgdb/reader/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/reader
-    FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp")
+    FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp"
+    PATTERN "query_where_internal.h" EXCLUDE)
 
 install(FILES
     src/edgar/explorgdb/writer/writer_session.h
