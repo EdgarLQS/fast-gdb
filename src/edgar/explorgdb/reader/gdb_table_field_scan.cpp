@@ -62,9 +62,12 @@ bool parse_row_refs(const std::vector<FieldDescriptor>& fields,
                     uint32_t fid,
                     const uint8_t* row_begin,
                     size_t row_size,
-                    std::vector<FieldRef>& output) {
+                    std::vector<FieldRef>& output,
+                    std::vector<FieldRef>& scratch) {
     const int field_count = static_cast<int>(fields.size());
-    output.assign(fields.size(), FieldRef{});
+    if (output.size() != fields.size()) output.resize(fields.size());
+    if (scratch.size() != fields.size()) scratch.resize(fields.size());
+
     if (row_size == 0) {
         for (int index = 0; index < field_count; ++index) {
             output[static_cast<size_t>(index)] = FieldRef{
@@ -81,8 +84,6 @@ bool parse_row_refs(const std::vector<FieldDescriptor>& fields,
     const uint8_t* row_end = row_begin + row_size;
     const size_t max_bitmap_bytes = bitmap_bytes_for(nullable_count);
     size_t best_padding = row_size + 1U;
-    std::vector<FieldRef> refs(fields.size());
-    std::vector<FieldRef> best(fields.size());
     bool accepted = false;
 
     for (size_t bitmap_bytes = max_bitmap_bytes;; --bitmap_bytes) {
@@ -101,7 +102,7 @@ bool parse_row_refs(const std::vector<FieldDescriptor>& fields,
                 for (int index = 0; index < field_count; ++index) {
                     const FieldDescriptor& field =
                         fields[static_cast<size_t>(index)];
-                    FieldRef& ref = refs[static_cast<size_t>(index)];
+                    FieldRef& ref = scratch[static_cast<size_t>(index)];
                     ref = FieldRef{};
                     ref.type = field.type;
                     ref.implicit_value = static_cast<int32_t>(fid + 1);
@@ -165,7 +166,7 @@ bool parse_row_refs(const std::vector<FieldDescriptor>& fields,
                 if (!all_zero(cursor, row_end) || padding >= best_padding)
                     continue;
                 best_padding = padding;
-                best = refs;
+                std::copy(scratch.begin(), scratch.end(), output.begin());
                 accepted = true;
                 if (padding == 0) break;
             }
@@ -174,9 +175,7 @@ bool parse_row_refs(const std::vector<FieldDescriptor>& fields,
         if (bitmap_bytes == 0) break;
     }
 
-    if (!accepted) return false;
-    output = std::move(best);
-    return true;
+    return accepted;
 }
 
 } // namespace
@@ -190,8 +189,28 @@ uint64_t GdbTableParser::scan_field_candidates(
     }
 
     const uint64_t file_size64 = static_cast<uint64_t>(file_size_);
-    std::vector<CandidateRow> physical;
-    physical.reserve(candidates.size());
+    const int field_count = static_cast<int>(fields_.size());
+    const int nullable_count = nullable_field_count();
+    std::vector<FieldRef> refs(fields_.size());
+    std::vector<FieldRef> scratch(fields_.size());
+    std::vector<uint8_t> row_bytes;
+    uint64_t scanned = 0;
+
+    auto emit_candidate = [&](uint32_t fid,
+                              const uint8_t* row_begin,
+                              size_t row_size) -> bool {
+        if (!parse_row_refs(fields_, nullable_count, fid,
+                            row_begin, row_size, refs, scratch)) {
+            return false;
+        }
+        if (!callback(fid, refs.data(), field_count)) return false;
+        ++scanned;
+        return true;
+    };
+
+    bool physical_offsets_monotonic = true;
+    uint64_t previous_offset = 0;
+    bool have_previous_offset = false;
     for (uint32_t fid : candidates) {
         if (fid >= feature_offsets_.size()) return 0;
         const uint64_t offset = feature_offsets_[fid];
@@ -199,20 +218,42 @@ uint64_t GdbTableParser::scan_field_candidates(
             file_size64 - offset < 4U) {
             return 0;
         }
-        physical.push_back(CandidateRow{fid, offset});
+        if (have_previous_offset && offset < previous_offset)
+            physical_offsets_monotonic = false;
+        previous_offset = offset;
+        have_previous_offset = true;
     }
+
+    // The common Linux/macOS path has a full mmap and candidates already sorted
+    // by FID. When their physical offsets are also monotonic, scanning them
+    // directly avoids allocating and sorting a second candidate vector.
+    if (mapped_data_ != nullptr && physical_offsets_monotonic) {
+        for (uint32_t fid : candidates) {
+            const uint64_t offset = feature_offsets_[fid];
+            uint32_t row_size = 0;
+            std::memcpy(&row_size, mapped_data_ + offset, sizeof(row_size));
+            if (static_cast<uint64_t>(row_size) >
+                file_size64 - offset - 4U) {
+                return 0;
+            }
+            const uint8_t* row_begin = row_size == 0
+                ? nullptr
+                : mapped_data_ + offset + 4U;
+            if (!emit_candidate(fid, row_begin, row_size)) break;
+        }
+        return scanned;
+    }
+
+    std::vector<CandidateRow> physical;
+    physical.reserve(candidates.size());
+    for (uint32_t fid : candidates)
+        physical.push_back(CandidateRow{fid, feature_offsets_[fid]});
     std::sort(physical.begin(), physical.end(),
               [](const CandidateRow& left, const CandidateRow& right) {
                   if (left.offset != right.offset)
                       return left.offset < right.offset;
                   return left.fid < right.fid;
               });
-
-    const int field_count = static_cast<int>(fields_.size());
-    const int nullable_count = nullable_field_count();
-    std::vector<FieldRef> refs;
-    std::vector<uint8_t> row_bytes;
-    uint64_t scanned = 0;
 
     for (const CandidateRow& candidate : physical) {
         uint32_t row_size = 0;
@@ -226,7 +267,9 @@ uint64_t GdbTableParser::scan_field_candidates(
                 file_size64 - candidate.offset - 4U) {
                 return 0;
             }
-            row_begin = mapped_data_ + candidate.offset + 4U;
+            row_begin = row_size == 0
+                ? nullptr
+                : mapped_data_ + candidate.offset + 4U;
         } else {
             uint8_t prefix[4];
             if (!read_at(candidate.offset, prefix, sizeof(prefix))) return 0;
@@ -244,12 +287,7 @@ uint64_t GdbTableParser::scan_field_candidates(
             row_begin = row_size == 0 ? nullptr : row_bytes.data();
         }
 
-        if (!parse_row_refs(fields_, nullable_count, candidate.fid,
-                            row_begin, row_size, refs)) {
-            return 0;
-        }
-        if (!callback(candidate.fid, refs.data(), field_count)) break;
-        ++scanned;
+        if (!emit_candidate(candidate.fid, row_begin, row_size)) break;
     }
     return scanned;
 }
