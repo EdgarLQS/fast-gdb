@@ -6,13 +6,31 @@ All notable changes to fast-gdb are documented in this file.
 
 ### Added
 
+- Branch-only `QueryKind::SpatialWhere` entry that combines an exact bbox query with the existing WHERE subset.
+- `CombinedQueryMetrics` diagnostics for spatial candidates, attribute candidates, WHERE rechecks, final matches and stage timings.
+- Internal WHERE tokenizer/parser/evaluator module shared by standalone and combined query paths.
+- Field-to-attribute-index resolution through `.gdbindexes`, including direct-field versus functional-index classification.
+- Sparse candidate-field scanning for mmap and fd reader paths.
+- GDAL equivalence tests for Point, Polyline, Polygon with holes, MultiPoint, Z/M/ZM, NULL, Unicode, functional indexes and missing/damaged indexes.
+- GDAL-OFF synthetic `.atx` safety tests and an opt-in 100K schema-v2 combined-query benchmark.
 - Installed `fast_gdb::writer` target for the supported empty-schema bulk-write workflow.
 - Writer benchmark JSON/CSV evidence with correctness, median/p95, throughput, peak RSS and disk metrics.
 
 ### Changed
 
+- `.atx` parsing now fails closed on invalid file size, page bounds, page capacity, cyclic leaf chains, trailer count mismatches and zero FIDs.
+- Attribute-index candidates are sorted and deduplicated before intersection and are always followed by a complete WHERE recheck in `SpatialWhere`.
+- Unsafe candidate cases, including non-BMP strings, `!=`, functional indexes and ambiguous physical numeric encodings, fall back to exact spatial matches plus full WHERE evaluation.
+- GDAL integration tests use per-test temporary FileGDB directories to support parallel CTest execution.
+- Combined-query benchmark evidence records the observed execution path and correctness result rather than hard-coded values.
 - Writer now rejects unsafe non-empty mutation, validates field/geometry/time values, supports atomic directory publication, and rebuilds spatial/attribute indexes after writing.
 - DateTimeWithOffset exposes the date value and offset independently.
+
+### Review status
+
+- The spatial-and-attribute combined-query work exists only on `codex/spatial-attribute-query`; it has not entered `main` or a released version.
+- Three static code-review rounds and a documentation consistency audit are complete.
+- The feature is **Code review ready / Formal acceptance blocked** pending GDAL ON/OFF Release builds, full and parallel CTest, package consumer validation, 100K/10M performance matrices and the 5% regression gate.
 
 ## [0.1.0] - 2026-07-13
 
