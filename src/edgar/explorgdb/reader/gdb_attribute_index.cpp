@@ -11,13 +11,33 @@
 #include <fstream>
 #include <limits>
 #include <stdexcept>
+#include <utility>
 
 namespace explorgdb {
+namespace {
 
-static inline int max_per_page(uint8_t value_size) {
+int max_per_page(uint8_t value_size) {
     return static_cast<int>(
         (GdbAttributeIndexParser::kPageSize - 12) / (4 + value_size));
 }
+
+bool page_offset_for(uint32_t page_id,
+                     size_t file_size,
+                     size_t& page_offset) {
+    if (page_id == 0) return false;
+    const uint64_t raw_offset =
+        static_cast<uint64_t>(page_id - 1U) *
+        static_cast<uint64_t>(GdbAttributeIndexParser::kPageSize);
+    if (raw_offset >
+        static_cast<uint64_t>(std::numeric_limits<size_t>::max())) {
+        return false;
+    }
+    page_offset = static_cast<size_t>(raw_offset);
+    return page_offset <= file_size &&
+           file_size - page_offset >= GdbAttributeIndexParser::kPageSize;
+}
+
+} // namespace
 
 GdbAttributeIndexParser::GdbAttributeIndexParser(
     const std::string& file_path)
@@ -183,12 +203,9 @@ bool GdbAttributeIndexParser::traverse_tree(
     }
     --remaining_page_visits;
 
-    const size_t page_offset =
-        static_cast<size_t>(page_id - 1U) * kPageSize;
-    if (page_offset > file_data_.size() ||
-        file_data_.size() - page_offset < kPageSize) {
+    size_t page_offset = 0;
+    if (!page_offset_for(page_id, file_data_.size(), page_offset))
         return false;
-    }
 
     if (depth_remaining == 1) {
         uint32_t current = page_id;
@@ -200,12 +217,9 @@ bool GdbAttributeIndexParser::traverse_tree(
             }
             first_page = false;
 
-            const size_t offset =
-                static_cast<size_t>(current - 1U) * kPageSize;
-            if (offset > file_data_.size() ||
-                file_data_.size() - offset < kPageSize) {
+            size_t offset = 0;
+            if (!page_offset_for(current, file_data_.size(), offset))
                 return false;
-            }
 
             BinaryReader reader(file_data_.data() + offset, kPageSize);
             const uint32_t next_page_id = reader.read_u32();
