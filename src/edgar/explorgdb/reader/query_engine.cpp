@@ -3,7 +3,6 @@
 #include "gdb_geometry.h"
 #include "query_where_internal.h"
 
-#include <limits>
 #include <utility>
 
 namespace explorgdb {
@@ -225,7 +224,6 @@ QueryResult QueryEngine::query_where(const QueryRequest& request) {
     QueryResult result;
     result.execution_path = "where:sequential";
     if (!parser_) {
-        result.execution_path = "where:invalid";
         result.fallback_reason = "table not open";
         return result;
     }
@@ -233,7 +231,6 @@ QueryResult QueryEngine::query_where(const QueryRequest& request) {
     const CompiledWhere expression = compile_where(
         request.where_clause, parser_->fields());
     if (!expression.valid()) {
-        result.execution_path = "where:invalid";
         result.fallback_reason = expression.error();
         return result;
     }
