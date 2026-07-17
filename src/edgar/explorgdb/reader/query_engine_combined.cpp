@@ -252,36 +252,30 @@ AttributeCandidatePlan resolve_attribute_index(
             "numeric field encoding is not safely indexable; spatial candidates evaluated");
     }
 
-    const CatalogEntry* metadata = catalog.find_indexes(table_id);
-    if (metadata == nullptr) {
+    if (catalog.find_indexes(table_id) == nullptr) {
         return fail(
             "attribute index metadata missing; spatial candidates evaluated");
     }
 
-    std::string index_name;
-    bool functional_index_found = false;
-    try {
-        GdbIndexesParser parser(catalog.path() + "/" + metadata->filename);
-        if (!parser.parse()) {
-            return fail(
-                "attribute index metadata could not be parsed; spatial candidates evaluated");
-        }
-        const std::string target = lower_copy(predicate.field_name);
-        for (const IndexEntry& entry : parser.entries()) {
-            const std::string indexed_field =
-                GdbIndexesParser::field_name_from_expression(
-                    entry.column_name);
-            if (lower_copy(indexed_field) != target) continue;
-            if (GdbIndexesParser::is_direct_field_expression(
-                    entry.column_name)) {
-                index_name = entry.name;
-                break;
-            }
-            functional_index_found = true;
-        }
-    } catch (...) {
+    std::vector<IndexEntry> metadata_entries;
+    if (!catalog.read_index_metadata(table_id, metadata_entries)) {
         return fail(
             "attribute index metadata could not be parsed; spatial candidates evaluated");
+    }
+
+    std::string index_name;
+    bool functional_index_found = false;
+    const std::string target = lower_copy(predicate.field_name);
+    for (const IndexEntry& entry : metadata_entries) {
+        const std::string indexed_field =
+            GdbIndexesParser::field_name_from_expression(entry.column_name);
+        if (lower_copy(indexed_field) != target) continue;
+        if (GdbIndexesParser::is_direct_field_expression(
+                entry.column_name)) {
+            index_name = entry.name;
+            break;
+        }
+        functional_index_found = true;
     }
 
     if (index_name.empty()) {
