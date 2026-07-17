@@ -70,6 +70,9 @@ jobs:
           gdal = float(data['gdal_median_ms'])
           assert data.get('correct') is True, data
           assert int(data.get('result_count', -1)) == 1000, data
+          assert data.get('profile_fused_spatial_attribute_scan') is True, data
+          assert int(data.get('profile_spatial_match_count', -1)) == 10000, data
+          assert int(data.get('profile_attribute_tested', -1)) == 10000, data
           assert cursor < gdal, (
               f'fast-gdb has not overtaken GDAL: cursor={cursor:.3f} ms, '
               f'gdal={gdal:.3f} ms')
