@@ -82,25 +82,27 @@ bool string_index_key_supported(const std::string& value) {
 }
 
 bool should_bypass_attribute_index(size_t spatial_matches,
-                                   size_t feature_slots) {
-    if (spatial_matches == 0 || feature_slots == 0) return false;
+                                   size_t active_features) {
+    if (spatial_matches == 0 || active_features == 0) return false;
     return spatial_matches <= kAtxBypassMaxCandidates &&
-           spatial_matches <= feature_slots / kAtxBypassRatioDenominator;
+           spatial_matches <=
+               active_features / kAtxBypassRatioDenominator;
 }
 
 struct AttributeCandidatePlan {
+    bool available = false;
     bool used = false;
+    std::string atx_path;
     std::vector<uint32_t> fids;
     std::string reason;
     double metadata_ms = 0.0;
     AttributeIndexQueryMetrics index_metrics;
 };
 
-AttributeCandidatePlan build_attribute_candidates(
+AttributeCandidatePlan resolve_attribute_index(
     const GdbCatalog& catalog,
     uint32_t table_id,
     const std::vector<FieldDescriptor>& fields,
-    size_t max_fid_count,
     const IndexableWherePredicate& predicate) {
     AttributeCandidatePlan plan;
     const auto metadata_start = CombinedClock::now();
@@ -186,9 +188,18 @@ AttributeCandidatePlan build_attribute_candidates(
             "attribute index file missing; spatial candidates evaluated");
     }
 
+    plan.available = true;
+    plan.atx_path = catalog.path() + "/" + atx->filename;
     plan.metadata_ms = elapsed_ms(metadata_start);
+    return plan;
+}
+
+bool query_attribute_candidates(
+    AttributeCandidatePlan& plan,
+    size_t max_fid_count,
+    const IndexableWherePredicate& predicate) {
     try {
-        GdbAttributeIndexParser index(catalog.path() + "/" + atx->filename);
+        GdbAttributeIndexParser index(plan.atx_path);
         const bool ok = predicate.is_string
             ? index.query_string_direct(
                   predicate.string_value, predicate.op,
@@ -200,15 +211,15 @@ AttributeCandidatePlan build_attribute_candidates(
             plan.reason =
                 "attribute index could not be parsed; spatial candidates evaluated";
             plan.fids.clear();
-            return plan;
+            return false;
         }
         plan.used = true;
-        return plan;
+        return true;
     } catch (...) {
         plan.reason =
             "attribute index could not be parsed; spatial candidates evaluated";
         plan.fids.clear();
-        return plan;
+        return false;
     }
 }
 
@@ -290,17 +301,25 @@ QueryResult QueryEngine::query_spatial_where(const QueryRequest& request) {
     bool attribute_index_used = false;
     const auto predicate = expression.indexable_predicate();
     if (!evaluation_candidates.empty() && predicate.has_value()) {
-        if (should_bypass_attribute_index(
-                evaluation_candidates.size(), parser_->feature_count())) {
+        AttributeCandidatePlan attribute = resolve_attribute_index(
+            catalog_, resolved_.id, parser_->fields(), *predicate);
+        result.combined_metrics.attribute_metadata_ms =
+            attribute.metadata_ms;
+        result.combined_metrics.attribute_ms += attribute.metadata_ms;
+
+        if (!attribute.available) {
+            append_reason(result.fallback_reason, attribute.reason);
+        } else if (should_bypass_attribute_index(
+                       evaluation_candidates.size(),
+                       parser_->active_feature_count())) {
             result.combined_metrics.attribute_index_bypassed = true;
         } else {
-            AttributeCandidatePlan attribute = build_attribute_candidates(
-                catalog_, resolved_.id, parser_->fields(),
-                parser_->feature_count(), *predicate);
+            (void)query_attribute_candidates(
+                attribute, parser_->feature_count(), *predicate);
             record_attribute_index_metrics(
                 attribute, result.combined_metrics);
             result.combined_metrics.attribute_ms +=
-                attribute.metadata_ms + attribute.index_metrics.total_ms;
+                attribute.index_metrics.total_ms;
             if (attribute.used) {
                 attribute_index_used = true;
                 result.combined_metrics.used_attribute_index = true;
