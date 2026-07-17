@@ -125,244 +125,291 @@ QueryResult QueryEngine::query_bbox_unified(
         return result;
     }
 
-    const size_t feature_count = parser_->feature_count();
+    const size_t fid_slot_count = parser_->feature_count();
+    const size_t feature_count = parser_->active_feature_count();
     result.spatial_metrics.feature_count = feature_count;
     if (feature_count == 0) {
-        result.execution_path = "bbox:model:sequential";
+        result.execution_path = "bbox:model:empty";
         result.spatial_metrics.total_ms = elapsed_ms(total_start);
         return result;
     }
 
-    const double estimated_coverage = query_coverage_ratio(
-        *geom_field, xmin, ymin, xmax, ymax);
-    result.spatial_metrics.estimated_coverage = estimated_coverage;
-
-    const bool force_sequential =
-        env_flag_enabled("FAST_GDB_SPATIAL_FORCE_SEQUENTIAL");
-    const bool force_index =
-        env_flag_enabled("FAST_GDB_SPATIAL_FORCE_INDEX");
-    const bool direct_scan =
-        force_sequential ||
-        (!force_index && feature_count >= kMinimumAdaptiveFeatureCount &&
-         estimated_coverage >= direct_scan_coverage_threshold());
-
-    if (direct_scan) {
-        result.execution_path = "bbox:model:sequential";
-        result.spatial_metrics.spx_bypassed = true;
-        result.spatial_metrics.geometry_only_scan = true;
-        const auto scan_start = SpatialClock::now();
-        parser_->scan_geometry_blobs(
-            [&](uint32_t fid, const uint8_t* blob,
-                size_t blob_size, bool is_null) {
-                if (is_null) return true;
-                ++result.spatial_metrics.candidate_count;
-                const auto predicate = evaluate_geometry_blob(
-                    parser_->header(), *geom_field,
-                    blob, blob_size, xmin, ymin, xmax, ymax);
-                if (predicate.invalid) {
-                    ++result.spatial_metrics.invalid_geometries;
-                    return true;
-                }
-                if (predicate.bbox_rejected) {
-                    ++result.spatial_metrics.bbox_rejected;
-                    return true;
-                }
-                if (predicate.bbox_contained) {
-                    ++result.spatial_metrics.bbox_contained;
-                    result.matched_fids.push_back(fid);
-                    return true;
-                }
-                ++result.spatial_metrics.exact_tested;
-                if (predicate.intersects)
-                    result.matched_fids.push_back(fid);
-                return true;
-            });
-        result.spatial_metrics.geometry_scan_ms = elapsed_ms(scan_start);
-        result.spatial_metrics.total_ms = elapsed_ms(total_start);
-        result.spatial_metrics.candidate_ratio = feature_count == 0 ? 0.0 :
-            static_cast<double>(result.spatial_metrics.candidate_count) /
-            static_cast<double>(feature_count);
-        return result;
-    }
-
-    if (!spatial_index_initialized_) {
-        spatial_index_initialized_ = true;
-        const auto* spx = catalog_.find_spx(resolved_.id);
-        spatial_index_present_ = spx != nullptr;
-        if (spx != nullptr) {
-            spatial_index_ = std::make_unique<GdbSpatialIndexParser>(
-                catalog_.path() + "/" + spx->filename);
-            if (!spatial_index_->parse()) spatial_index_.reset();
+    size_t geometry_field_index = parser_->fields().size();
+    for (size_t index = 0; index < parser_->fields().size(); ++index) {
+        if (parser_->fields()[index].type == FieldType::Geometry) {
+            geometry_field_index = index;
+            break;
         }
     }
 
-    if (!spatial_index_) {
-        result.execution_path = "bbox:model:sequential";
-        result.spatial_metrics.spx_bypassed = true;
-        result.spatial_metrics.geometry_only_scan = true;
-        const auto scan_start = SpatialClock::now();
-        parser_->scan_geometry_blobs(
-            [&](uint32_t fid, const uint8_t* blob,
-                size_t blob_size, bool is_null) {
-                if (is_null) return true;
-                ++result.spatial_metrics.candidate_count;
-                const auto predicate = evaluate_geometry_blob(
-                    parser_->header(), *geom_field,
-                    blob, blob_size, xmin, ymin, xmax, ymax);
-                if (predicate.invalid) {
-                    ++result.spatial_metrics.invalid_geometries;
-                    return true;
+    result.spatial_metrics.estimated_coverage = query_coverage_ratio(
+        *geom_field, xmin, ymin, xmax, ymax);
+    const bool planner_direct_scan =
+        feature_count >= kMinimumAdaptiveFeatureCount &&
+        result.spatial_metrics.estimated_coverage >=
+            direct_scan_coverage_threshold();
+    result.spatial_metrics.spx_bypassed = planner_direct_scan;
+
+    std::vector<uint32_t> candidates;
+    const auto candidate_start = SpatialClock::now();
+
+    if (!planner_direct_scan) {
+        if (!spatial_index_initialized_) {
+            spatial_index_initialized_ = true;
+            const auto* spx = catalog_.find_spx(resolved_.id);
+            spatial_index_present_ = spx != nullptr;
+            if (spx != nullptr) {
+                auto index = std::make_unique<GdbSpatialIndexParser>(
+                    catalog_.path() + "/" + spx->filename);
+                if (index->parse()) {
+                    spatial_index_ = std::move(index);
+                } else {
+                    capabilities_.spatial_index = {
+                        CapabilityState::Degraded,
+                        ".spx exists but could not be parsed; "
+                        "falling back to sequential model filtering"};
                 }
-                if (predicate.bbox_rejected) {
-                    ++result.spatial_metrics.bbox_rejected;
-                    return true;
-                }
-                if (predicate.bbox_contained) {
-                    ++result.spatial_metrics.bbox_contained;
-                    result.matched_fids.push_back(fid);
-                    return true;
-                }
-                ++result.spatial_metrics.exact_tested;
-                if (predicate.intersects)
-                    result.matched_fids.push_back(fid);
-                return true;
-            });
-        result.spatial_metrics.geometry_scan_ms = elapsed_ms(scan_start);
-        result.spatial_metrics.total_ms = elapsed_ms(total_start);
-        result.spatial_metrics.candidate_ratio = feature_count == 0 ? 0.0 :
-            static_cast<double>(result.spatial_metrics.candidate_count) /
-            static_cast<double>(feature_count);
-        return result;
+            }
+        }
     }
 
-    result.execution_path = "bbox:model:spx";
-    const auto lookup_start = SpatialClock::now();
-    std::vector<uint32_t> candidates = spatial_index_->query_bbox(
-        xmin, ymin, xmax, ymax,
-        geom_field->xorig, geom_field->yorig,
-        geom_field->xyscale, geom_field->grid_sizes);
-    result.spatial_metrics.candidate_lookup_ms = elapsed_ms(lookup_start);
-    result.spatial_metrics.candidate_count = candidates.size();
-    result.spatial_metrics.candidate_ratio = feature_count == 0 ? 0.0 :
-        static_cast<double>(candidates.size()) /
-        static_cast<double>(feature_count);
+    const bool spx_parse_ok = spatial_index_ != nullptr;
+    const bool sequential_fallback =
+        !planner_direct_scan &&
+        (!spatial_index_present_ || !spx_parse_ok);
+    if (!planner_direct_scan && spx_parse_ok) {
+        candidates = spatial_index_->query_bbox(
+            xmin, ymin, xmax, ymax,
+            geom_field->xorig, geom_field->yorig,
+            geom_field->xyscale, geom_field->grid_sizes,
+            static_cast<uint32_t>(fid_slot_count - 1));
+    }
 
-    const bool dense_candidates =
+    if (planner_direct_scan) {
+        result.execution_path = "bbox:model:sequential-planned";
+        result.spatial_metrics.candidate_count = feature_count;
+        result.spatial_metrics.candidate_ratio = 1.0;
+    } else if (sequential_fallback) {
+        result.execution_path = "bbox:model:sequential-fallback";
+        result.fallback_reason = !spatial_index_present_
+            ? "spatial index missing; sequential model filtering used"
+            : capabilities_.spatial_index.reason;
+        result.spatial_metrics.candidate_count = feature_count;
+        result.spatial_metrics.candidate_ratio = 1.0;
+    } else {
+        result.spatial_metrics.candidate_count = candidates.size();
+        result.spatial_metrics.candidate_ratio =
+            static_cast<double>(candidates.size()) /
+            static_cast<double>(feature_count);
+    }
+    result.spatial_metrics.candidate_lookup_ms =
+        elapsed_ms(candidate_start);
+
+    const bool use_adaptive_sequential_scan =
+        !planner_direct_scan && spx_parse_ok &&
         feature_count >= kMinimumAdaptiveFeatureCount &&
         result.spatial_metrics.candidate_ratio >=
             sequential_density_threshold();
-    if (dense_candidates && !force_index) {
-        result.execution_path = "bbox:model:sequential";
-        result.spatial_metrics.spx_bypassed = true;
-        result.spatial_metrics.geometry_only_scan = true;
-        result.spatial_metrics.candidate_count = 0;
-        result.spatial_metrics.candidate_ratio = 0.0;
-        const auto scan_start = SpatialClock::now();
-        parser_->scan_geometry_blobs(
-            [&](uint32_t fid, const uint8_t* blob,
-                size_t blob_size, bool is_null) {
-                if (is_null) return true;
-                ++result.spatial_metrics.candidate_count;
-                const auto predicate = evaluate_geometry_blob(
-                    parser_->header(), *geom_field,
-                    blob, blob_size, xmin, ymin, xmax, ymax);
-                if (predicate.invalid) {
-                    ++result.spatial_metrics.invalid_geometries;
-                    return true;
-                }
-                if (predicate.bbox_rejected) {
-                    ++result.spatial_metrics.bbox_rejected;
-                    return true;
-                }
-                if (predicate.bbox_contained) {
-                    ++result.spatial_metrics.bbox_contained;
-                    result.matched_fids.push_back(fid);
-                    return true;
-                }
-                ++result.spatial_metrics.exact_tested;
-                if (predicate.intersects)
-                    result.matched_fids.push_back(fid);
-                return true;
-            });
-        result.spatial_metrics.geometry_scan_ms = elapsed_ms(scan_start);
-        result.spatial_metrics.total_ms = elapsed_ms(total_start);
-        result.spatial_metrics.candidate_ratio = feature_count == 0 ? 0.0 :
-            static_cast<double>(result.spatial_metrics.candidate_count) /
-            static_cast<double>(feature_count);
-        return result;
-    }
+    const bool use_sequential_scan =
+        geometry_field_index < parser_->fields().size() &&
+        (planner_direct_scan || sequential_fallback ||
+         use_adaptive_sequential_scan);
 
-    std::sort(candidates.begin(), candidates.end());
-    candidates.erase(std::unique(candidates.begin(), candidates.end()),
-                     candidates.end());
+    result.matched_fids.reserve(
+        std::min(result.spatial_metrics.candidate_count, feature_count));
 
-    const auto scan_start = SpatialClock::now();
-    const uint64_t scanned = parser_->scan_geometry_candidates(
-        candidates,
-        [&](uint32_t fid, const uint8_t* blob,
-            size_t blob_size, bool is_null) {
-            if (is_null) return true;
-            const auto predicate = evaluate_geometry_blob(
-                parser_->header(), *geom_field,
-                blob, blob_size, xmin, ymin, xmax, ymax);
-            if (predicate.invalid) {
-                ++result.spatial_metrics.invalid_geometries;
-                return true;
-            }
-            if (predicate.bbox_rejected) {
+    const bool has_z =
+        ((parser_->header().geom_type_full >> 24U) & (1U << 7U)) != 0;
+    const bool has_m =
+        ((parser_->header().geom_type_full >> 24U) & (1U << 6U)) != 0;
+    GdbGeomDecoder decoder(
+        geom_field->xorig, geom_field->yorig, geom_field->xyscale,
+        geom_field->zorig, geom_field->zscale,
+        geom_field->morig, geom_field->mscale,
+        has_z, has_m);
+
+    auto evaluate_blob = [&](uint32_t fid,
+                             const uint8_t* blob,
+                             size_t blob_size) {
+        if (blob == nullptr || blob_size == 0) {
+            ++result.spatial_metrics.invalid_geometries;
+            return;
+        }
+
+        std::optional<GdbBbox> bounds;
+        if (profile_stages) {
+            const auto bbox_start = SpatialClock::now();
+            bounds = decoder.peek_bbox(blob, blob_size);
+            result.spatial_metrics.bbox_filter_ms += elapsed_ms(bbox_start);
+        } else {
+            bounds = decoder.peek_bbox(blob, blob_size);
+        }
+        if (bounds.has_value()) {
+            if (bbox_disjoint(*bounds, xmin, ymin, xmax, ymax)) {
                 ++result.spatial_metrics.bbox_rejected;
-                return true;
+                return;
             }
-            if (predicate.bbox_contained) {
+            if (bbox_contained_by_query(*bounds, xmin, ymin, xmax, ymax)) {
                 ++result.spatial_metrics.bbox_contained;
                 result.matched_fids.push_back(fid);
-                return true;
+                return;
             }
-            ++result.spatial_metrics.exact_tested;
-            if (predicate.intersects)
-                result.matched_fids.push_back(fid);
-            return true;
-        });
-    result.spatial_metrics.geometry_scan_ms = elapsed_ms(scan_start);
+        }
 
-    if (scanned == 0 && !candidates.empty()) {
-        const auto fallback_start = SpatialClock::now();
+        ++result.spatial_metrics.exact_tested;
+        const auto exact_start = profile_stages
+            ? SpatialClock::now()
+            : SpatialClock::time_point{};
+        GeometryModel model = decoder.decode_model(blob, blob_size);
+        if (!model.valid()) {
+            if (profile_stages)
+                result.spatial_metrics.exact_filter_ms +=
+                    elapsed_ms(exact_start);
+            ++result.spatial_metrics.invalid_geometries;
+            return;
+        }
+
+        const long double scale = model.transform.xy_scale;
+        if (scale == 0.0L) {
+            if (profile_stages)
+                result.spatial_metrics.exact_filter_ms +=
+                    elapsed_ms(exact_start);
+            ++result.spatial_metrics.invalid_geometries;
+            return;
+        }
+        QueryGridBbox query{
+            (static_cast<long double>(xmin) -
+             model.transform.x_origin) * scale,
+            (static_cast<long double>(ymin) -
+             model.transform.y_origin) * scale,
+            (static_cast<long double>(xmax) -
+             model.transform.x_origin) * scale,
+            (static_cast<long double>(ymax) -
+             model.transform.y_origin) * scale};
+        if (!std::isfinite(static_cast<double>(query.xmin)) ||
+            !std::isfinite(static_cast<double>(query.ymin)) ||
+            !std::isfinite(static_cast<double>(query.xmax)) ||
+            !std::isfinite(static_cast<double>(query.ymax))) {
+            if (profile_stages)
+                result.spatial_metrics.exact_filter_ms +=
+                    elapsed_ms(exact_start);
+            ++result.spatial_metrics.invalid_geometries;
+            return;
+        }
+        const bool intersects = SpatialPredicate::intersects_bbox(model, query);
+        if (profile_stages)
+            result.spatial_metrics.exact_filter_ms += elapsed_ms(exact_start);
+        if (intersects)
+            result.matched_fids.push_back(fid);
+    };
+
+    auto ensure_all_candidates = [&]() {
+        if (!candidates.empty()) return;
+        candidates.reserve(feature_count);
+        for (uint32_t fid = 0; fid < fid_slot_count; ++fid) {
+            if (parser_->has_feature(fid)) candidates.push_back(fid);
+        }
+    };
+
+    auto evaluate_candidates = [&]() {
+        // P2 first attempts a transactional physical-range batch. If any batch
+        // cannot be read or parsed, restore metrics/results and use the canonical
+        // per-FID locator so an optimization failure cannot change semantics.
+        if (!candidates.empty()) {
+            const SpatialQueryMetrics metrics_before = result.spatial_metrics;
+            const size_t matched_before = result.matched_fids.size();
+            const uint64_t scanned = parser_->scan_geometry_candidates(
+                candidates,
+                [&](uint32_t fid, const uint8_t* geometry,
+                    size_t geometry_size, bool is_null) {
+                    if (is_null || geometry == nullptr || geometry_size == 0) {
+                        ++result.spatial_metrics.invalid_geometries;
+                        return true;
+                    }
+                    evaluate_blob(fid, geometry, geometry_size);
+                    return true;
+                });
+            if (scanned == candidates.size()) {
+                std::sort(result.matched_fids.begin(),
+                          result.matched_fids.end());
+                result.execution_path = spx_parse_ok
+                    ? "bbox:model:spx-candidates-batched"
+                    : "bbox:model:candidate-fallback-batched";
+                return;
+            }
+            result.matched_fids.resize(matched_before);
+            result.spatial_metrics = metrics_before;
+        }
+
         for (uint32_t fid : candidates) {
             const uint8_t* blob = nullptr;
             size_t blob_size = 0;
-            if (!parser_->peek_geometry_blob(fid, blob, blob_size)) continue;
-            const auto predicate = evaluate_geometry_blob(
-                parser_->header(), *geom_field,
-                blob, blob_size, xmin, ymin, xmax, ymax);
-            if (predicate.invalid) {
+            bool located = false;
+            if (profile_stages) {
+                const auto blob_start = SpatialClock::now();
+                located = parser_->peek_geometry_blob(fid, blob, blob_size);
+                result.spatial_metrics.blob_lookup_ms +=
+                    elapsed_ms(blob_start);
+            } else {
+                located = parser_->peek_geometry_blob(fid, blob, blob_size);
+            }
+            if (!located) {
                 ++result.spatial_metrics.invalid_geometries;
                 continue;
             }
-            if (predicate.bbox_rejected) {
-                ++result.spatial_metrics.bbox_rejected;
-                continue;
-            }
-            if (predicate.bbox_contained) {
-                ++result.spatial_metrics.bbox_contained;
-                result.matched_fids.push_back(fid);
-                continue;
-            }
-            ++result.spatial_metrics.exact_tested;
-            if (predicate.intersects)
-                result.matched_fids.push_back(fid);
+            evaluate_blob(fid, blob, blob_size);
         }
-        result.spatial_metrics.blob_lookup_ms = elapsed_ms(fallback_start);
+        std::sort(result.matched_fids.begin(), result.matched_fids.end());
+    };
+
+    if (use_sequential_scan) {
+        if (!planner_direct_scan && !sequential_fallback)
+            result.execution_path = "bbox:model:sequential-adaptive";
+        const auto scan_start = SpatialClock::now();
+        const uint64_t scanned = parser_->scan_geometry_blobs(
+            [&](uint32_t fid, const uint8_t* geometry,
+                size_t geometry_size, bool is_null) {
+                if (is_null || geometry == nullptr || geometry_size == 0) {
+                    ++result.spatial_metrics.invalid_geometries;
+                    return true;
+                }
+                evaluate_blob(fid, geometry, geometry_size);
+                return true;
+            });
+        result.spatial_metrics.geometry_scan_ms = elapsed_ms(scan_start);
+        result.spatial_metrics.geometry_only_scan = scanned != 0;
+
+        if (scanned == 0 && feature_count != 0) {
+            result.execution_path = spx_parse_ok
+                ? "bbox:model:spx-candidates"
+                : "bbox:model:candidate-fallback";
+            result.matched_fids.clear();
+            result.spatial_metrics.bbox_rejected = 0;
+            result.spatial_metrics.bbox_contained = 0;
+            result.spatial_metrics.exact_tested = 0;
+            result.spatial_metrics.invalid_geometries = 0;
+            result.spatial_metrics.bbox_filter_ms = 0.0;
+            result.spatial_metrics.exact_filter_ms = 0.0;
+            result.spatial_metrics.geometry_scan_ms = 0.0;
+            result.spatial_metrics.geometry_only_scan = false;
+            result.spatial_metrics.spx_bypassed = false;
+            ensure_all_candidates();
+            evaluate_candidates();
+        }
+    } else {
+        if (spx_parse_ok)
+            result.execution_path = "bbox:model:spx-candidates";
+        evaluate_candidates();
     }
 
-    std::sort(result.matched_fids.begin(), result.matched_fids.end());
-    result.matched_fids.erase(
-        std::unique(result.matched_fids.begin(), result.matched_fids.end()),
-        result.matched_fids.end());
-    result.spatial_metrics.total_ms = elapsed_ms(total_start);
-    if (!profile_stages) {
-        result.spatial_metrics.bbox_filter_ms = 0.0;
-        result.spatial_metrics.exact_filter_ms = 0.0;
+    if (result.spatial_metrics.invalid_geometries != 0) {
+        if (!result.fallback_reason.empty())
+            result.fallback_reason += "; ";
+        result.fallback_reason +=
+            std::to_string(result.spatial_metrics.invalid_geometries) +
+            " candidate geometries had explicit decode/topology errors";
     }
+    result.spatial_metrics.total_ms = elapsed_ms(total_start);
     return result;
 }
 
