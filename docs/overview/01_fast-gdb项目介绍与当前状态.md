@@ -1,8 +1,8 @@
 # fast-gdb 项目介绍与当前状态
 
-**面向读者**：需要理解项目目标、代码结构、性能依据和验收边界的开发人员  
-**最后更新**：2026-07-17  
-**当前分支**：`codex/spatial-attribute-query`  
+**面向读者**：需要理解项目目标、代码结构、性能依据和验收边界的开发人员
+**最后更新**：2026-07-17
+**当前分支**：`codex/spatial-attribute-query`
 **分支基线**：`main@d8784e7`
 
 **当前结论**：既有 fast-gdb Reader/Hybrid 发布范围保持不变。当前分支新增空间与属性联合查询，已完成实现、测试代码、三轮静态自审和文档一致性自检，状态为 **Code review ready / Formal acceptance blocked**。该能力尚未进入 `main`，也没有 GDAL ON/OFF、完整 CTest、consumer 或性能门禁的实际证据，不能作为正式发布能力声明。

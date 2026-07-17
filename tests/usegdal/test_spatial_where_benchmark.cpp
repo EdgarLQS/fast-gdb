@@ -86,6 +86,11 @@ void write_evidence(const Samples& samples) {
     const fs::path output =
         output_dir / "spatial-where-100k-schema-v2.json";
     std::ofstream json(output);
+    const double combined_median = percentile(samples.combined_ms, 0.5);
+    const double legacy_median = percentile(samples.legacy_ms, 0.5);
+    const double legacy_regression_percent = legacy_median > 0.0
+        ? (combined_median / legacy_median - 1.0) * 100.0
+        : 0.0;
     json << std::fixed << std::setprecision(3)
          << "{\n"
          << "  \"evidence_schema_version\": 2,\n"
@@ -95,11 +100,11 @@ void write_evidence(const Samples& samples) {
          << "  \"result_count\": " << samples.expected.size() << ",\n"
          << "  \"sample_count\": " << kSamples << ",\n"
          << "  \"combined_median_ms\": "
-         << percentile(samples.combined_ms, 0.5) << ",\n"
+         << combined_median << ",\n"
          << "  \"combined_p95_ms\": "
          << percentile(samples.combined_ms, 0.95) << ",\n"
          << "  \"legacy_median_ms\": "
-         << percentile(samples.legacy_ms, 0.5) << ",\n"
+         << legacy_median << ",\n"
          << "  \"legacy_p95_ms\": "
          << percentile(samples.legacy_ms, 0.95) << ",\n"
          << "  \"gdal_median_ms\": "
@@ -118,6 +123,9 @@ void write_evidence(const Samples& samples) {
          << samples.metrics.attribute_tested << ",\n"
          << "  \"final_match_count\": "
          << samples.metrics.final_match_count << ",\n"
+         << "  \"legacy_regression_percent\": "
+         << legacy_regression_percent << ",\n"
+         << "  \"performance_gate_status\": \"not_run\",\n"
          << "  \"correct\": " << (samples.correct ? "true" : "false")
          << "\n"
          << "}\n";

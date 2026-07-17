@@ -45,7 +45,7 @@ std::vector<uint32_t> collect_gdal(OGRLayer* layer,
 
 class SpatialWhereNullTest : public GdbTutorialFixture {};
 
-TEST_F(SpatialWhereNullTest, NullComparisonIsFalseAndMatchesGdal) {
+TEST_F(SpatialWhereNullTest, NullNotEqualMatchesGdal) {
     const std::string path =
         (std::filesystem::temp_directory_path() /
          "fast_gdb_spatial_where_null.gdb").string();
@@ -108,7 +108,7 @@ TEST_F(SpatialWhereNullTest, NullComparisonIsFalseAndMatchesGdal) {
               "spatial-where:spatial-candidates");
     EXPECT_FALSE(fast.combined_metrics.used_attribute_index);
     EXPECT_NE(fast.fallback_reason.find("not-equal"), std::string::npos);
-    EXPECT_EQ(fast.matched_fids, (std::vector<uint32_t>{1, 3}));
+    EXPECT_EQ(fast.matched_fids, (std::vector<uint32_t>{1, 2, 3}));
 
     dataset = static_cast<GDALDataset*>(GDALOpenEx(
         path.c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY,

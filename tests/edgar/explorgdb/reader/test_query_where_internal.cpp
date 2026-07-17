@@ -97,6 +97,11 @@ TEST(QueryWhereInternalTest, PreservesNullAndEscapedStringSemantics) {
 
     ref.is_null = true;
     EXPECT_FALSE(evaluate_where(expression, &ref, 1));
+
+    const CompiledWhere not_equal = compile_where(
+        "name != 'O''Brien'", descriptors);
+    ASSERT_TRUE(not_equal.valid()) << not_equal.error();
+    EXPECT_TRUE(evaluate_where(not_equal, &ref, 1));
 }
 
 TEST(QueryWhereInternalTest, NotEqualTreatsNaNAsDifferent) {

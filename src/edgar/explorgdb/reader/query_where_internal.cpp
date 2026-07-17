@@ -454,6 +454,7 @@ bool field_value_as_string(const FieldValue& value, std::string_view& output) {
 bool evaluate_literal(const FieldRef& value,
                       const Literal& literal,
                       AttrOp op) {
+    if (value.is_null) return op == AttrOp::Ne;
     if (literal.is_string) {
         std::string_view actual;
         return field_ref_as_string(value, actual) &&
@@ -467,7 +468,8 @@ bool evaluate_literal(const FieldRef& value,
 bool evaluate_literal(const FieldValue& value,
                       const Literal& literal,
                       AttrOp op) {
-    if (std::holds_alternative<std::nullptr_t>(value)) return false;
+    if (std::holds_alternative<std::nullptr_t>(value))
+        return op == AttrOp::Ne;
     if (literal.is_string) {
         std::string_view actual;
         return field_value_as_string(value, actual) &&
