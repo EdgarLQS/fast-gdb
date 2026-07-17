@@ -9,6 +9,7 @@
 #include "binary_reader.h"
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <cstring>
 #include <fstream>
 #include <limits>
@@ -58,16 +59,16 @@ bool GdbIndexesParser::parse() {
     std::ifstream input(file_path_, std::ios::binary | std::ios::ate);
     if (!input.is_open()) return false;
 
-    const std::streampos end_position = input.tellg();
-    if (end_position < 0 ||
-        static_cast<uint64_t>(end_position) >
-            static_cast<uint64_t>(std::numeric_limits<size_t>::max()) ||
-        static_cast<uint64_t>(end_position) >
-            static_cast<uint64_t>(
-                std::numeric_limits<std::streamsize>::max())) {
+    const std::streamoff end_offset = input.tellg();
+    if (end_offset < 0) return false;
+    const uintmax_t unsigned_size = static_cast<uintmax_t>(end_offset);
+    if (unsigned_size >
+            static_cast<uintmax_t>(std::numeric_limits<size_t>::max()) ||
+        unsigned_size > static_cast<uintmax_t>(
+            std::numeric_limits<std::streamsize>::max())) {
         return false;
     }
-    const size_t byte_count = static_cast<size_t>(end_position);
+    const size_t byte_count = static_cast<size_t>(unsigned_size);
     input.seekg(0, std::ios::beg);
     file_data_.resize(byte_count);
     input.read(reinterpret_cast<char*>(file_data_.data()),
