@@ -15,6 +15,9 @@ namespace {
 
 using CombinedClock = std::chrono::steady_clock;
 
+constexpr size_t kAtxBypassMaxCandidates = 65536U;
+constexpr size_t kAtxBypassRatioDenominator = 8U;
+
 double elapsed_ms(CombinedClock::time_point start) {
     return std::chrono::duration<double, std::milli>(
         CombinedClock::now() - start).count();
@@ -78,50 +81,72 @@ bool string_index_key_supported(const std::string& value) {
     return true;
 }
 
-std::string truncate_index_string(const std::string& value,
-                                  size_t max_utf16_units) {
-    std::string result;
-    size_t units = 0;
-    for (size_t index = 0; index < value.size() && units < max_utf16_units;) {
-        if (value[index] == ' ') break;
-        const size_t bytes = utf8_sequence_bytes(
-            static_cast<unsigned char>(value[index]));
-        if (bytes == 0 || index + bytes > value.size()) break;
-        result.append(value, index, bytes);
-        index += bytes;
-        ++units;
-    }
-    return result;
+bool should_bypass_attribute_index(size_t spatial_matches,
+                                   size_t feature_slots) {
+    if (spatial_matches == 0 || feature_slots == 0) return false;
+    return spatial_matches <= kAtxBypassMaxCandidates &&
+           spatial_matches <= feature_slots / kAtxBypassRatioDenominator;
 }
 
 struct AttributeCandidatePlan {
     bool used = false;
     std::vector<uint32_t> fids;
     std::string reason;
+    double metadata_ms = 0.0;
+    AttributeIndexQueryMetrics index_metrics;
 };
 
 AttributeCandidatePlan build_attribute_candidates(
     const GdbCatalog& catalog,
     uint32_t table_id,
     const std::vector<FieldDescriptor>& fields,
+    size_t max_fid_count,
     const IndexableWherePredicate& predicate) {
     AttributeCandidatePlan plan;
-    if (predicate.field_index >= fields.size()) {
-        plan.reason = "attribute field metadata unavailable";
+    const auto metadata_start = CombinedClock::now();
+    auto fail = [&](std::string reason) {
+        plan.reason = std::move(reason);
+        plan.metadata_ms = elapsed_ms(metadata_start);
         return plan;
+    };
+
+    if (predicate.field_index >= fields.size()) {
+        return fail("attribute field metadata unavailable");
     }
     // The current numeric comparator maps NaN to equality, so indexed !=
     // could exclude a row accepted by the canonical WHERE evaluator. String
     // != is also unsafe with padded/truncated index keys.
     if (predicate.op == AttrOp::Ne) {
-        plan.reason = "not-equal is not safely indexable; spatial candidates evaluated";
-        return plan;
+        return fail(
+            "not-equal is not safely indexable; spatial candidates evaluated");
+    }
+
+    const FieldType field_type = fields[predicate.field_index].type;
+    if (predicate.is_string) {
+        if (field_type != FieldType::String) {
+            return fail(
+                "attribute index type mismatch; spatial candidates evaluated");
+        }
+        // OpenFileGDB only treats equality and GE string iterators as safe
+        // candidate supersets. Padding/truncation means both still require a
+        // final expression recheck.
+        if (predicate.op != AttrOp::Eq && predicate.op != AttrOp::Ge) {
+            return fail(
+                "string operator is not safely indexable; spatial candidates evaluated");
+        }
+        if (!string_index_key_supported(predicate.string_value)) {
+            return fail(
+                "string key is not safely representable by the current .atx decoder; spatial candidates evaluated");
+        }
+    } else if (!numeric_atx_supported(field_type)) {
+        return fail(
+            "numeric field encoding is not safely indexable; spatial candidates evaluated");
     }
 
     const CatalogEntry* metadata = catalog.find_indexes(table_id);
     if (metadata == nullptr) {
-        plan.reason = "attribute index metadata missing; spatial candidates evaluated";
-        return plan;
+        return fail(
+            "attribute index metadata missing; spatial candidates evaluated");
     }
 
     std::string index_name;
@@ -129,8 +154,8 @@ AttributeCandidatePlan build_attribute_candidates(
     try {
         GdbIndexesParser parser(catalog.path() + "/" + metadata->filename);
         if (!parser.parse()) {
-            plan.reason = "attribute index metadata could not be parsed; spatial candidates evaluated";
-            return plan;
+            return fail(
+                "attribute index metadata could not be parsed; spatial candidates evaluated");
         }
         const std::string target = lower_copy(predicate.field_name);
         for (const IndexEntry& entry : parser.entries()) {
@@ -146,73 +171,62 @@ AttributeCandidatePlan build_attribute_candidates(
             functional_index_found = true;
         }
     } catch (...) {
-        plan.reason = "attribute index metadata could not be parsed; spatial candidates evaluated";
-        return plan;
+        return fail(
+            "attribute index metadata could not be parsed; spatial candidates evaluated");
     }
 
     if (index_name.empty()) {
-        plan.reason = functional_index_found
+        return fail(functional_index_found
             ? "functional attribute index is not semantically equivalent to the direct WHERE comparison; spatial candidates evaluated"
-            : "attribute field has no .atx index; spatial candidates evaluated";
-        return plan;
+            : "attribute field has no .atx index; spatial candidates evaluated");
     }
     const CatalogEntry* atx = catalog.find_atx(table_id, index_name);
     if (atx == nullptr) {
-        plan.reason = "attribute index file missing; spatial candidates evaluated";
-        return plan;
+        return fail(
+            "attribute index file missing; spatial candidates evaluated");
     }
 
+    plan.metadata_ms = elapsed_ms(metadata_start);
     try {
         GdbAttributeIndexParser index(catalog.path() + "/" + atx->filename);
-        if (!index.parse()) {
-            plan.reason = "attribute index could not be parsed; spatial candidates evaluated";
+        const bool ok = predicate.is_string
+            ? index.query_string_direct(
+                  predicate.string_value, predicate.op,
+                  max_fid_count, plan.fids, &plan.index_metrics)
+            : index.query_double_direct(
+                  predicate.numeric_value, predicate.op,
+                  max_fid_count, plan.fids, &plan.index_metrics);
+        if (!ok) {
+            plan.reason =
+                "attribute index could not be parsed; spatial candidates evaluated";
+            plan.fids.clear();
             return plan;
         }
-
-        const FieldType field_type = fields[predicate.field_index].type;
-        if (predicate.is_string) {
-            if (field_type != FieldType::String ||
-                !index.trailer().is_string) {
-                plan.reason = "attribute index type mismatch; spatial candidates evaluated";
-                return plan;
-            }
-            // OpenFileGDB only treats equality and GE string iterators as safe
-            // candidate supersets. Padding/truncation means both still require
-            // a final expression recheck.
-            if (predicate.op != AttrOp::Eq && predicate.op != AttrOp::Ge) {
-                plan.reason = "string operator is not safely indexable; spatial candidates evaluated";
-                return plan;
-            }
-            if (!string_index_key_supported(predicate.string_value)) {
-                plan.reason = "string key is not safely representable by the current .atx decoder; spatial candidates evaluated";
-                return plan;
-            }
-            const size_t max_units = index.trailer().value_size / 2U;
-            const std::string key = truncate_index_string(
-                predicate.string_value, max_units);
-            plan.fids = index.query_string(key, predicate.op);
-        } else {
-            if (!index.trailer().is_numeric ||
-                !numeric_atx_supported(field_type)) {
-                plan.reason = "numeric field encoding is not safely indexable; spatial candidates evaluated";
-                return plan;
-            }
-            plan.fids = index.query_double(
-                predicate.numeric_value, predicate.op);
-        }
-
-        // .atx traversal order is index-key order, not a public guarantee of
-        // FID order. The linear intersection requires ascending unique FIDs.
-        std::sort(plan.fids.begin(), plan.fids.end());
-        plan.fids.erase(
-            std::unique(plan.fids.begin(), plan.fids.end()),
-            plan.fids.end());
         plan.used = true;
         return plan;
     } catch (...) {
-        plan.reason = "attribute index could not be parsed; spatial candidates evaluated";
+        plan.reason =
+            "attribute index could not be parsed; spatial candidates evaluated";
+        plan.fids.clear();
         return plan;
     }
+}
+
+void record_attribute_index_metrics(
+    const AttributeCandidatePlan& plan,
+    CombinedQueryMetrics& metrics) {
+    metrics.attribute_metadata_ms = plan.metadata_ms;
+    metrics.attribute_index_page_count = plan.index_metrics.page_count;
+    metrics.attribute_index_pages_visited = plan.index_metrics.pages_visited;
+    metrics.attribute_index_entries_scanned =
+        plan.index_metrics.entries_scanned;
+    metrics.attribute_index_file_load_ms =
+        plan.index_metrics.file_load_ms;
+    metrics.attribute_index_navigation_ms =
+        plan.index_metrics.tree_navigation_ms;
+    metrics.attribute_index_scan_ms = plan.index_metrics.leaf_scan_ms;
+    metrics.attribute_candidate_order_ms =
+        plan.index_metrics.candidate_order_ms;
 }
 
 } // namespace
@@ -276,23 +290,30 @@ QueryResult QueryEngine::query_spatial_where(const QueryRequest& request) {
     bool attribute_index_used = false;
     const auto predicate = expression.indexable_predicate();
     if (!evaluation_candidates.empty() && predicate.has_value()) {
-        const auto attribute_index_start = CombinedClock::now();
-        AttributeCandidatePlan attribute = build_attribute_candidates(
-            catalog_, resolved_.id, parser_->fields(), *predicate);
-        result.combined_metrics.attribute_ms +=
-            elapsed_ms(attribute_index_start);
-        if (attribute.used) {
-            attribute_index_used = true;
-            result.combined_metrics.used_attribute_index = true;
-            result.combined_metrics.attribute_candidate_count =
-                attribute.fids.size();
-            const auto intersection_start = CombinedClock::now();
-            evaluation_candidates = intersect_sorted_fids(
-                evaluation_candidates, attribute.fids);
-            result.combined_metrics.intersection_ms =
-                elapsed_ms(intersection_start);
+        if (should_bypass_attribute_index(
+                evaluation_candidates.size(), parser_->feature_count())) {
+            result.combined_metrics.attribute_index_bypassed = true;
         } else {
-            append_reason(result.fallback_reason, attribute.reason);
+            AttributeCandidatePlan attribute = build_attribute_candidates(
+                catalog_, resolved_.id, parser_->fields(),
+                parser_->feature_count(), *predicate);
+            record_attribute_index_metrics(
+                attribute, result.combined_metrics);
+            result.combined_metrics.attribute_ms +=
+                attribute.metadata_ms + attribute.index_metrics.total_ms;
+            if (attribute.used) {
+                attribute_index_used = true;
+                result.combined_metrics.used_attribute_index = true;
+                result.combined_metrics.attribute_candidate_count =
+                    attribute.fids.size();
+                const auto intersection_start = CombinedClock::now();
+                evaluation_candidates = intersect_sorted_fids(
+                    evaluation_candidates, attribute.fids);
+                result.combined_metrics.intersection_ms =
+                    elapsed_ms(intersection_start);
+            } else {
+                append_reason(result.fallback_reason, attribute.reason);
+            }
         }
     }
 
@@ -335,12 +356,15 @@ QueryResult QueryEngine::query_spatial_where(const QueryRequest& request) {
                 result.matched_fids.push_back(fid);
         }
     }
-    result.combined_metrics.attribute_ms += elapsed_ms(attribute_eval_start);
 
     std::sort(result.matched_fids.begin(), result.matched_fids.end());
     result.matched_fids.erase(
         std::unique(result.matched_fids.begin(), result.matched_fids.end()),
         result.matched_fids.end());
+    result.combined_metrics.attribute_recheck_ms =
+        elapsed_ms(attribute_eval_start);
+    result.combined_metrics.attribute_ms +=
+        result.combined_metrics.attribute_recheck_ms;
     result.combined_metrics.final_match_count = result.matched_fids.size();
     result.combined_metrics.total_ms = elapsed_ms(total_start);
     return result;
