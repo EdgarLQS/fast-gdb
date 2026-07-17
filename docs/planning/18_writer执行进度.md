@@ -1,12 +1,13 @@
 # M18 Writer 执行进度
 
 - 更新日期：2026-07-17
-- 收口分支：`codex/m18-main-closeout`
+- 统一开发分支：`codex/m18-main-closeout`
 - 实现基线：`main@9dd7edf73763b56d84677c8a246bc85f80a1a0c1`
-- 当前 main：`42d8f76620a8c39eeb8523a0f84fcde0eb719f01`
-- 原功能 PR：#11（已关闭；由 squash 提交替代）
+- 收口基线：`main@42d8f76620a8c39eeb8523a0f84fcde0eb719f01`
+- 原功能 PR：#11（Closed，已注明由 squash 提交替代）
+- 当前统一 PR：#13（Draft）
 - 外部阻塞：Issue #12（Open）
-- 当前结论：**M18 计划内实现已 squash 合入 main；正式验收仍因缺少当前 main 的 GitHub Actions steps、logs 与 artifacts 而阻塞。**
+- 当前结论：**M18 计划内实现已 squash 合入 main；可在无 runner 条件下完成的状态同步和静态收口已完成；正式验收仍因缺少当前分支的 GitHub Actions steps、logs 与 artifacts 而阻塞。**
 
 ## 阶段状态
 
@@ -28,23 +29,25 @@
 - 合同：基础 Writer、Append、Update、Delete、Transaction/Recovery schema-v2 manifests。
 - macOS workflows：基础合同、Append、Update、Delete、Transaction/Recovery、性能。
 - 自审入口：`docs/reviews/M18-final-writer-self-review.md`。
+- 正式收口记录：`docs/evidence/M18-writer-main-acceptance-2026-07-17.md`。
 
 ## 安全边界与 Deferred
 
-- 单 Writer、单源 GDB、单图层事务；不支持嵌套事务、savepoint、跨 GDB 或分布式事务。
+- 单 Writer、单源 GDB；不支持嵌套事务、savepoint、跨 GDB 或分布式事务。
 - 编辑先作用于 sibling staging/working GDB；真实 source 仅在验证和冲突检查后发布。
 - Recovery 在候选不唯一或组合不明确时返回 Ambiguous，不自动覆盖健康 source。
 - 发布窗口不承诺并发 Reader 连续性。
 - Linux、Windows、50M、35GB/5 亿、原生曲线与 MultiPatch 继续 Deferred。
-- Reader 10M fresh-open 性能属于后续独立分支，不属于本分支。
+- Reader 10M fresh-open 后续与 Writer 分开判定，但按用户要求在同一开发分支完成并最终统一合并。
 
 ## 2026-07-17 GitHub 状态核实
 
-- PR #11：已关闭，未标记 merged；正文已更新为“由 `main` 上的 squash 提交 `9dd7edf` 替代”，并明确区分实现状态和正式验收状态。
-- 原远端分支：按分支名搜索未返回。PR 仍保留历史 head SHA `6b8d3d5565246be5cf306b4d95a4759455bdcbbe`，不再需要把该分支作为当前交付入口。
-- Issue #12：Open，继续跟踪 Actions checkout 前失败/无 steps、logs、artifacts 的阻塞。
-- `main@42d8f76`：未查询到关联 workflow runs。
-- 当前没有可证明 checkout、steps、logs 或六个 macOS artifact 的正式证据。
+- PR #11：Closed，正文已注明由 `main@9dd7edf` 的 squash 提交替代。
+- 当前统一 PR #13：Draft，head=`codex/m18-main-closeout`，base=`main`。
+- 原远端 M18 分支：按名称搜索未返回；保留历史 head SHA，未把搜索为空外推为 tree-to-tree 证明。
+- Issue #12：Open。
+- PR #13 Actions：Writer、Reader、release 和 geometry workflows 已触发，但 job 在 checkout 前失败，`steps=None`、无日志、无 artifact。
+- 当前没有可证明 checkout、Release 构建、合同执行或六个 macOS artifact 的正式证据。
 
 ## 正式验收待补证据
 
@@ -53,10 +56,10 @@
 3. 无 GDAL、legacy、GDAL 三类 package consumer。
 4. 六个 macOS workflows 的 checkout、steps、logs 与绑定当前 SHA 的 artifacts。
 5. publish/rollback/cleanup 故障注入、Recovery 边界与 raw profile。
-6. Issue #12 仅在 Actions 恢复并产出上述正式证据后关闭。
+6. Actions 恢复并形成证据后再决定 Issue #12 是否关闭。
 
 ## 判定
 
 `Code accepted / Formal acceptance blocked`
 
-不得在上述证据齐全前标记 `Accepted`。
+不得在上述证据齐全前标记 `Accepted`，PR #13 保持 Draft，不提前合并。
