@@ -285,7 +285,8 @@ std::vector<uint32_t> GdbSpatialIndexParser::query_bbox(
     double xmin, double ymin, double xmax, double ymax,
     double /*xorig*/, double /*yorig*/, double /*xyscale*/,
     const std::vector<double>& grid_resolutions,
-    uint32_t max_fid) const {
+    uint32_t max_fid,
+    bool merge_x_ranges) const {
 
     clear_cache();
 
@@ -336,6 +337,20 @@ std::vector<uint32_t> GdbSpatialIndexParser::query_bbox(
         int64_t cell_max_x = cell_for_max(xmax);
         int64_t cell_min_y = cell_for_min(ymin);
         int64_t cell_max_y = cell_for_max(ymax);
+
+        if (merge_x_ranges) {
+            const uint64_t start_raw =
+                (static_cast<uint64_t>(level) << 62) |
+                (static_cast<uint64_t>(cell_min_x) << 31) |
+                static_cast<uint64_t>(cell_min_y);
+            const uint64_t end_raw =
+                (static_cast<uint64_t>(level) << 62) |
+                (static_cast<uint64_t>(cell_max_x) << 31) |
+                static_cast<uint64_t>(cell_max_y);
+            collect_fids_btree(
+                1, trailer_.tree_depth, start_raw, end_raw, result_fids);
+            continue;
+        }
 
         for (int64_t cx = cell_min_x; cx <= cell_max_x; cx++) {
             uint64_t start_raw = (static_cast<uint64_t>(level) << 62)
