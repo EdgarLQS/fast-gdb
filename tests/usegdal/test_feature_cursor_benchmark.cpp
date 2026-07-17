@@ -334,6 +334,19 @@ void write_evidence(const Samples& samples) {
          << samples.query_profile.attribute_ms << ",\n"
          << "  \"profile_query_intersection_ms\": "
          << samples.query_profile.intersection_ms << ",\n"
+         << "  \"profile_fused_candidate_count\": "
+         << samples.query_profile.fused_candidate_count << ",\n"
+         << "  \"profile_spatial_match_count\": "
+         << samples.query_profile.spatial_match_count << ",\n"
+         << "  \"profile_attribute_tested\": "
+         << samples.query_profile.attribute_tested << ",\n"
+         << "  \"profile_fused_candidate_scan_ms\": "
+         << samples.query_profile.fused_candidate_scan_ms << ",\n"
+         << "  \"profile_attribute_metadata_ms\": "
+         << samples.query_profile.attribute_metadata_ms << ",\n"
+         << "  \"profile_fused_spatial_attribute_scan\": "
+         << (samples.query_profile.fused_spatial_attribute_scan
+                 ? "true" : "false") << ",\n"
          << "  \"profile_feature_count\": "
          << samples.feature_profile.feature_count << ",\n"
          << "  \"profile_row_lookup_ms\": "
@@ -499,6 +512,10 @@ TEST_F(FeatureCursorBenchmarkTest, Point100KFullFeatureEvidence) {
     const auto profile = run_cursor(catalog, *resolved, request, true);
     ASSERT_TRUE(profile.has_value());
     ASSERT_TRUE(profile->digest == samples.digest);
+    ASSERT_TRUE(profile->query_profile.fused_spatial_attribute_scan);
+    ASSERT_GT(profile->query_profile.fused_candidate_count, 0U);
+    ASSERT_EQ(profile->query_profile.spatial_match_count, 10000U);
+    ASSERT_EQ(profile->query_profile.attribute_tested, 10000U);
     ASSERT_EQ(profile->feature_profile.feature_count,
               samples.digest.feature_count);
     samples.query_profile = profile->query_profile;
