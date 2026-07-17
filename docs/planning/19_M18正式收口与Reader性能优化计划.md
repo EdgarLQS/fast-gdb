@@ -1,11 +1,11 @@
 # 19 — M18 正式收口与 Reader 10M fresh-open 性能优化计划
 
 - **更新日期**：2026-07-17
-- **状态**：执行中
+- **状态**：执行中，运行验收阻塞
 - **当前基线**：`main@42d8f76620a8c39eeb8523a0f84fcde0eb719f01`
 - **执行分支**：`codex/m18-main-closeout`
 - **执行顺序**：M18 收口 → Reader 10M 性能 → 统一审核 → 最终合并
-- **当前操作**：阶段一文档收口已完成；阶段二工具扩展已开始
+- **当前操作**：无 runner 条件下可完成的文档、工具、静态审查和测试代码已完成；等待真实构建、profile 与 artifact
 
 ## 1. 目标与原则
 
@@ -61,12 +61,22 @@ codex/m18-main-closeout
 
 ### 3.2 当前进度
 
-- M18 当前状态文档已同步；
-- PR #11 已关闭，Issue #12 保持 Open；
-- M18 正式验收记录已建立，判定为 `Code accepted / Formal acceptance blocked`；
-- `scripts/run_spatial_regression.py` 已扩展多数据集、fresh-open、交替执行、JSON/CSV/环境摘要及正确性检查；
-- 已增加回归工具参数辅助函数测试；
-- Reader 算法优化尚未在没有真实 profile 的情况下实施。
+已完成：
+
+- M18 当前状态文档同步；
+- PR #11 关闭，Issue #12 保持 Open；
+- M18 正式验收记录建立，判定为 `Code accepted / Formal acceptance blocked`；
+- `scripts/run_spatial_regression.py` 多数据集、fresh-open、交替执行、JSON/CSV/环境摘要及正确性检查扩展；
+- 保留原 `--gdb` 调用兼容；
+- 参数验证、动态模块加载、性能回退、result count 和 FID 签名比较的纯 Python 测试代码；
+- Reader 后续静态证据与可复现命令；
+- 无真实 profile 时不实施 Reader 算法优化的准入控制。
+
+运行阻塞：
+
+- PR #13 已触发 Actions，但 job 仍在 checkout 前失败，`steps=None`、无日志、无 artifact；
+- 当前执行环境没有仓库 checkout，不能本地执行 macOS Release、CTest、10M profile 或 benchmark；
+- 因此 Writer 正式验收和 Reader 性能验收均不能标记 Accepted。
 
 ## 4. 阶段一：M18 正式收口
 
@@ -167,6 +177,8 @@ Point、MultiPoint、Polyline 各覆盖 1%、10%、30%、80%、100%，每档保�
 ```
 
 已实现重复 `--dataset`、current/main 交替执行、CSV/JSON/环境摘要、非 strict-cold 标记、`invalid_geometries` 失败、result count 对照、可用时 FID 签名对照、5% 回退门禁，并兼容原 `--gdb` 调用。
+
+静态门禁已经覆盖空 label/path、空格规范化、稳定覆盖率集合、回退阈值、数量漂移和 FID 签名漂移。真实 runner 执行仍待环境恢复。
 
 ### 5.4 Profile 与优化准入
 
