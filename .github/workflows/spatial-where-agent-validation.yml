@@ -1,0 +1,93 @@
+name: spatial-where-agent-validation
+
+on:
+  push:
+    branches:
+      - agent/spatial-where-ci
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/spatial-where-ci
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libgdal-dev
+      - name: Run GDAL ON and OFF Release validation
+        id: validate
+        shell: bash
+        run: |
+          set +e
+
+          run_variant() {
+            local mode="$1"
+            local dir="build-${mode,,}"
+            local log="validation-${mode,,}.log"
+            local rc=0
+            {
+              echo "== Configure FAST_GDB_WITH_GDAL=${mode} =="
+              cmake -S . -B "${dir}" -G Ninja \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DFAST_GDB_WITH_GDAL="${mode}" \
+                -DFAST_GDB_CURVE_BACKEND=BUILTIN \
+                -DFAST_GDB_GEOMETRY_OUTPUT=STANDARD_WKB \
+                -DFAST_GDB_BUILD_TOOLS=OFF \
+                -DFAST_GDB_BUILD_FULL_TESTS=ON \
+                -DBUILD_TESTING=ON || rc=$?
+              if [ "${rc}" -eq 0 ]; then
+                echo "== Build ${mode} =="
+                cmake --build "${dir}" --parallel || rc=$?
+              fi
+              if [ "${rc}" -eq 0 ]; then
+                echo "== Complete CTest ${mode} =="
+                ctest --test-dir "${dir}" --output-on-failure || rc=$?
+              fi
+              echo "RESULT_RC=${rc}"
+            } >"${log}" 2>&1
+            echo "${rc}" >"validation-${mode,,}.rc"
+          }
+
+          run_variant ON
+          run_variant OFF
+
+          on_rc=$(cat validation-on.rc)
+          off_rc=$(cat validation-off.rc)
+          mkdir -p docs/evidence
+          {
+            echo "# SpatialWhere temporary CI validation"
+            echo
+            echo "- source commit: ${GITHUB_SHA}"
+            echo "- GDAL ON Release + complete CTest: $([ "${on_rc}" -eq 0 ] && echo PASS || echo FAIL) (rc=${on_rc})"
+            echo "- GDAL OFF Release + complete CTest: $([ "${off_rc}" -eq 0 ] && echo PASS || echo FAIL) (rc=${off_rc})"
+            echo
+            echo "## GDAL ON tail"
+            echo '```text'
+            tail -n 160 validation-on.log
+            echo '```'
+            echo
+            echo "## GDAL OFF tail"
+            echo '```text'
+            tail -n 160 validation-off.log
+            echo '```'
+          } > docs/evidence/spatial-where-agent-validation.md
+
+          if [ "${on_rc}" -eq 0 ] && [ "${off_rc}" -eq 0 ]; then
+            echo "overall_rc=0" >> "$GITHUB_OUTPUT"
+          else
+            echo "overall_rc=1" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Commit validation evidence
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/evidence/spatial-where-agent-validation.md
+          git commit -m "ci: record spatial-where validation" || exit 0
+          git push origin HEAD:agent/spatial-where-ci
+      - name: Fail when validation failed
+        if: steps.validate.outputs.overall_rc != '0'
+        run: exit 1
