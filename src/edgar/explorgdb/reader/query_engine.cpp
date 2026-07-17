@@ -36,6 +36,7 @@ bool QueryEngine::open() {
     capabilities_ = CapabilityReport::inspect(
         catalog_, resolver, resolved_.id, *parser_);
     opened_ = capabilities_.can_read_layer();
+    if (!opened_) parser_.reset();
     return opened_;
 }
 
