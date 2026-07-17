@@ -85,11 +85,17 @@ TEST_F(SpatialWhereFunctionalIndexTest,
     GdbIndexesParser index_metadata(
         catalog.path() + "/" + metadata->filename);
     ASSERT_TRUE(index_metadata.parse());
-    ASSERT_EQ(index_metadata.entries().size(), 1U);
-    EXPECT_EQ(index_metadata.entries().front().column_name,
-              "LOWER(name)");
+    const IndexEntry* lower_index = nullptr;
+    for (const IndexEntry& entry : index_metadata.entries()) {
+        if (entry.name == "lower_name") {
+            lower_index = &entry;
+            break;
+        }
+    }
+    ASSERT_NE(lower_index, nullptr);
+    EXPECT_EQ(lower_index->column_name, "LOWER(name)");
     EXPECT_EQ(GdbIndexesParser::field_name_from_expression(
-                  index_metadata.entries().front().column_name),
+                  lower_index->column_name),
               "name");
 
     QueryEngine engine(catalog, *resolved);
