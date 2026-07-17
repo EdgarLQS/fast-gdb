@@ -56,6 +56,16 @@ int main() {
 #include <geometry_model.h>
 #include <query_engine.h>
 
+#include <cstdint>
+#include <type_traits>
+#include <utility>
+
+static_assert(!std::is_copy_constructible<explorgdb::FeatureCursor>::value,
+              "installed FeatureCursor must be move-only");
+static_assert(std::is_nothrow_move_constructible<
+                  explorgdb::FeatureCursor>::value,
+              "installed FeatureCursor move must be noexcept");
+
 int main() {
     explorgdb::GeometryModel geometry;
     if (!geometry.is_empty()) return 1;
@@ -69,9 +79,18 @@ int main() {
     request.where_clause = "population >= 1000";
 
     explorgdb::QueryResult result;
+    explorgdb::QueryFeature feature;
+    auto open_cursor = &explorgdb::QueryEngine::open_cursor;
+    auto next = &explorgdb::FeatureCursor::next;
+    auto move_to = &explorgdb::FeatureCursor::move_to;
+    auto done = &explorgdb::FeatureCursor::done;
+    auto error = &explorgdb::FeatureCursor::error;
+
     if (request.kind != explorgdb::QueryKind::SpatialWhere ||
         !result.matched_fids.empty() ||
-        result.combined_metrics.final_match_count != 0) {
+        result.combined_metrics.final_match_count != 0 ||
+        feature.fid != 0 || open_cursor == nullptr || next == nullptr ||
+        move_to == nullptr || done == nullptr || error == nullptr) {
         return 1;
     }
     return 0;
