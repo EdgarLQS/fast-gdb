@@ -47,7 +47,9 @@ std::string GdbIndexesParser::field_name_from_expression(
 
 bool GdbIndexesParser::is_direct_field_expression(
     const std::string& expression) {
-    return field_name_from_expression(expression) == expression;
+    return !expression.empty() &&
+           expression.find('(') == std::string::npos &&
+           expression.find(')') == std::string::npos;
 }
 
 bool GdbIndexesParser::parse() {
