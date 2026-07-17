@@ -17,12 +17,22 @@ bool CapabilityReport::can_read_layer() const {
            multipatch.state != CapabilityState::Unsupported;
 }
 
-CapabilityReport CapabilityReport::inspect(const GdbCatalog& catalog,
-                                            const CatalogResolver& resolver,
-                                            uint32_t table_id,
-                                            const GdbTableParser& table) {
+CapabilityReport CapabilityReport::inspect(
+    const GdbCatalog& catalog,
+    const CatalogResolver& resolver,
+    uint32_t table_id,
+    const GdbTableParser& table) {
+    return inspect(
+        catalog, resolver.contains("GDB_SpatialRefs"), table_id, table);
+}
+
+CapabilityReport CapabilityReport::inspect(
+    const GdbCatalog& catalog,
+    bool has_spatial_refs,
+    uint32_t table_id,
+    const GdbTableParser& table) {
     CapabilityReport report;
-    report.srs = resolver.contains("GDB_SpatialRefs")
+    report.srs = has_spatial_refs
         ? CapabilityItem{CapabilityState::Supported, "GDB_SpatialRefs resolved by name"}
         : CapabilityItem{CapabilityState::Degraded, "GDB_SpatialRefs not found; geometry remains readable without SRS metadata"};
 
