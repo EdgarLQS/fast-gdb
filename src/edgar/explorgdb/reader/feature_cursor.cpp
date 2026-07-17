@@ -1,6 +1,7 @@
 #include "query_engine.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <functional>
 #include <limits>
 #include <sstream>
@@ -46,42 +47,12 @@ std::string fid_error(const char* prefix, uint32_t fid) {
     return stream.str();
 }
 
-bool materialize_zero_length_record(
-    FeatureRecord& record,
-    const std::vector<FieldDescriptor>& fields) {
-    if (record.blob_len != 0 || !record.field_values.empty()) return false;
-
-    size_t nullable_count = 0;
-    for (const FieldDescriptor& field : fields) {
-        if ((field.flag & 1U) != 0) ++nullable_count;
-    }
-    record.nullable_flags.assign((nullable_count + 7U) / 8U, 0U);
-    record.field_values.reserve(fields.size());
-
-    size_t nullable_bit = 0;
-    for (const FieldDescriptor& field : fields) {
-        const bool nullable = (field.flag & 1U) != 0;
-        const size_t current_nullable_bit = nullable_bit;
-        if (nullable) ++nullable_bit;
-
-        if (field.type == FieldType::ObjectId) {
-            record.field_values.push_back(
-                static_cast<int32_t>(record.fid + 1U));
-            continue;
-        }
-        if (!nullable) {
-            record.field_values.clear();
-            record.nullable_flags.clear();
-            return false;
-        }
-
-        const size_t byte_index = current_nullable_bit / 8U;
-        const size_t bit_index = current_nullable_bit % 8U;
-        record.nullable_flags[byte_index] |=
-            static_cast<uint8_t>(1U << bit_index);
-        record.field_values.push_back(nullptr);
-    }
-    return true;
+bool feature_cursor_profile_enabled() {
+    const char* value = std::getenv("FAST_GDB_FEATURE_CURSOR_PROFILE");
+    if (value == nullptr) return false;
+    const std::string normalized(value);
+    return normalized == "1" || normalized == "true" ||
+           normalized == "TRUE";
 }
 
 } // namespace
@@ -126,8 +97,8 @@ public:
           engine_valid_(std::move(engine_valid)),
           query_result_(std::move(query_result)),
           fids_(std::move(fids)),
+          profile_enabled_(feature_cursor_profile_enabled()),
           mode_(Mode::CandidateFids) {
-        initialize_geometry_field();
         if (fids_.empty()) {
             state_ = State::Exhausted;
             release_lease();
@@ -148,8 +119,8 @@ public:
           engine_valid_(std::move(engine_valid)),
           query_result_(std::move(query_result)),
           feature_limit_(feature_limit),
+          profile_enabled_(feature_cursor_profile_enabled()),
           mode_(Mode::Sequential) {
-        initialize_geometry_field();
         if (feature_limit_ == 0) {
             state_ = State::Exhausted;
             release_lease();
@@ -170,57 +141,35 @@ public:
             return false;
         }
 
-        QueryFeature candidate;
-        candidate.fid = fid;
         GdbTableParser* parser = engine_ != nullptr ? engine_->table() : nullptr;
         if (parser == nullptr) {
             fail("query engine table is unavailable");
             return false;
         }
 
-        if (!parser->read_record_by_fid(fid, candidate.record)) {
-            fail(fid_error("failed to read feature record for fid", fid));
+        QueryFeature candidate;
+        candidate.fid = fid;
+        FeatureReadMetrics metrics;
+        FeatureReadMetrics* metrics_ptr = profile_enabled_ ? &metrics : nullptr;
+        if (!parser->read_feature_by_fid(
+                fid, candidate.record, candidate.geometry, metrics_ptr)) {
+            std::string message = candidate.geometry.diagnostic.empty()
+                ? fid_error("failed to read full feature for fid", fid)
+                : fid_error("failed to decode geometry for fid", fid) +
+                    ": " + candidate.geometry.diagnostic;
+            fail(std::move(message));
             return false;
         }
         if (candidate.record.fid != fid) {
             fail(fid_error("feature record fid mismatch for fid", fid));
             return false;
         }
-        if (candidate.record.field_values.size() != parser->fields().size() &&
-            !materialize_zero_length_record(
-                candidate.record, parser->fields())) {
+        if (candidate.record.field_values.size() != parser->fields().size()) {
             fail(fid_error("feature field count mismatch for fid", fid));
             return false;
         }
 
-        if (geometry_field_index_ < 0) {
-            candidate.geometry = GeometryValue{};
-            candidate.geometry.status = GeometryStatus::UnsupportedType;
-            candidate.geometry.diagnostic = "table has no geometry field";
-        } else {
-            const size_t index = static_cast<size_t>(geometry_field_index_);
-            if (index >= candidate.record.field_values.size()) {
-                fail(fid_error("geometry field is missing for fid", fid));
-                return false;
-            }
-
-            if (std::holds_alternative<std::nullptr_t>(
-                    candidate.record.field_values[index])) {
-                candidate.geometry = GeometryValue{};
-                candidate.geometry.status = GeometryStatus::Empty;
-                candidate.geometry.diagnostic = "geometry is null";
-            } else if (!parser->read_geometry_value(fid, candidate.geometry)) {
-                std::string message =
-                    fid_error("failed to decode geometry for fid", fid);
-                if (!candidate.geometry.diagnostic.empty()) {
-                    message += ": ";
-                    message += candidate.geometry.diagnostic;
-                }
-                fail(std::move(message));
-                return false;
-            }
-        }
-
+        if (profile_enabled_) add_metrics(metrics);
         output = std::move(candidate);
         return true;
     }
@@ -278,15 +227,14 @@ public:
     }
 
 private:
-    void initialize_geometry_field() {
-        if (engine_ == nullptr || engine_->table() == nullptr) return;
-        const auto& fields = engine_->table()->fields();
-        for (size_t index = 0; index < fields.size(); ++index) {
-            if (fields[index].type == FieldType::Geometry) {
-                geometry_field_index_ = static_cast<int>(index);
-                break;
-            }
-        }
+    void add_metrics(const FeatureReadMetrics& metrics) {
+        FeatureCursorMetrics& total = query_result_.feature_cursor_metrics;
+        ++total.feature_count;
+        total.row_lookup_ms += metrics.row_lookup_ms;
+        total.field_materialization_ms += metrics.field_materialization_ms;
+        total.geometry_decode_ms += metrics.geometry_decode_ms;
+        total.wkt_write_ms += metrics.wkt_write_ms;
+        total.wkb_write_ms += metrics.wkb_write_ms;
     }
 
     bool engine_is_current() {
@@ -369,7 +317,7 @@ private:
     size_t fid_index_ = 0;
     size_t next_sequential_fid_ = 0;
     size_t feature_limit_ = 0;
-    int geometry_field_index_ = -1;
+    bool profile_enabled_ = false;
     Mode mode_ = Mode::CandidateFids;
 };
 
