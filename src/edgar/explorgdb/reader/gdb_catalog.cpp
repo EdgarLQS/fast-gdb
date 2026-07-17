@@ -18,10 +18,9 @@ namespace fs = std::filesystem;
 namespace explorgdb {
 
 bool GdbCatalog::scan(const std::string& gdb_path) {
-    std::unique_lock<std::shared_mutex> lock(mutex_);
     gdb_path_ = gdb_path;
     entries_.clear();
-    index_metadata_cache_.clear();
+    index_metadata_cache_ = std::make_shared<IndexMetadataCacheState>();
     has_magic_ = false;
     has_timestamps_ = false;
 
@@ -141,14 +140,25 @@ bool GdbCatalog::read_index_metadata(
     uint32_t id,
     std::vector<IndexEntry>& output) const {
     output.clear();
-    // Parsing is small compared with .atx data and happens once per catalog
-    // snapshot. Holding the exclusive lock keeps scan() invalidation atomic and
-    // prevents stale metadata from being published into a newer directory view.
-    std::unique_lock<std::shared_mutex> lock(mutex_);
-    const auto cached = index_metadata_cache_.find(id);
-    if (cached != index_metadata_cache_.end()) {
-        if (cached->second.parsed) output = cached->second.entries;
-        return cached->second.parsed;
+    const std::shared_ptr<IndexMetadataCacheState> cache =
+        index_metadata_cache_;
+    {
+        std::shared_lock<std::shared_mutex> lock(cache->mutex);
+        const auto found = cache->entries.find(id);
+        if (found != cache->entries.end()) {
+            if (found->second.parsed) output = found->second.entries;
+            return found->second.parsed;
+        }
+    }
+
+    // Metadata files are small. Serialize the first parse per catalog snapshot
+    // so concurrent QueryEngine instances cannot duplicate UTF-16 decoding or
+    // publish conflicting success/failure entries.
+    std::unique_lock<std::shared_mutex> lock(cache->mutex);
+    const auto existing = cache->entries.find(id);
+    if (existing != cache->entries.end()) {
+        if (existing->second.parsed) output = existing->second.entries;
+        return existing->second.parsed;
     }
 
     std::string filename;
@@ -171,7 +181,7 @@ bool GdbCatalog::read_index_metadata(
         }
     }
 
-    const auto inserted = index_metadata_cache_.emplace(id, std::move(parsed));
+    const auto inserted = cache->entries.emplace(id, std::move(parsed));
     const IndexMetadataCacheEntry& stored = inserted.first->second;
     if (stored.parsed) output = stored.entries;
     return stored.parsed;
