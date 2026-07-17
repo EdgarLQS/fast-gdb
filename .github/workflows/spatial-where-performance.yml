@@ -46,7 +46,7 @@ jobs:
       - name: Run optimization correctness tests
         run: >-
           ctest --test-dir build-perf --output-on-failure
-          -R 'AttributeIndexSafety|SpatialWhereAdaptive|SpatialWhereIndexFallback|FeatureCursorOnePass'
+          -R 'AttributeIndexSafety|SpatialWhereAdaptive|SpatialWhereFusedGeometry|SpatialWhereIndexFallback|FeatureCursorOnePass'
 
       - name: Run 100K full-feature benchmark
         env:
