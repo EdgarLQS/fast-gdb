@@ -118,6 +118,7 @@ AttributeCandidatePlan build_attribute_candidates(
     }
 
     std::string index_name;
+    bool functional_index_found = false;
     try {
         GdbIndexesParser parser(catalog.path() + "/" + metadata->filename);
         if (!parser.parse()) {
@@ -126,10 +127,16 @@ AttributeCandidatePlan build_attribute_candidates(
         }
         const std::string target = lower_copy(predicate.field_name);
         for (const IndexEntry& entry : parser.entries()) {
-            if (lower_copy(entry.column_name) == target) {
+            const std::string indexed_field =
+                GdbIndexesParser::field_name_from_expression(
+                    entry.column_name);
+            if (lower_copy(indexed_field) != target) continue;
+            if (GdbIndexesParser::is_direct_field_expression(
+                    entry.column_name)) {
                 index_name = entry.name;
                 break;
             }
+            functional_index_found = true;
         }
     } catch (...) {
         plan.reason = "attribute index metadata could not be parsed; spatial candidates evaluated";
@@ -137,7 +144,9 @@ AttributeCandidatePlan build_attribute_candidates(
     }
 
     if (index_name.empty()) {
-        plan.reason = "attribute field has no .atx index; spatial candidates evaluated";
+        plan.reason = functional_index_found
+            ? "functional attribute index is not semantically equivalent to the direct WHERE comparison; spatial candidates evaluated"
+            : "attribute field has no .atx index; spatial candidates evaluated";
         return plan;
     }
     const CatalogEntry* atx = catalog.find_atx(table_id, index_name);
