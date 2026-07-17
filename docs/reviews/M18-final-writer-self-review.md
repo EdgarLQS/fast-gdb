@@ -1,9 +1,11 @@
 # M18 Writer 最终自审
 
+> **历史快照**：本文记录 2026-07-16 原功能分支自审结论。M18 随后由 squash 提交 `9dd7edf73763b56d84677c8a246bc85f80a1a0c1` 进入 `main`，PR #11 已作为 superseded 关闭。当前正式状态以 `docs/evidence/M18-writer-main-acceptance-2026-07-17.md` 为准。
+
 - 日期：2026-07-16
-- 分支：`codex/m18-1-macos-test-contract-ci`
-- PR：#11
-- 结论：**代码与合同实现完成；正式验收仍被 GitHub Actions 外部故障阻塞。**
+- 历史分支：`codex/m18-1-macos-test-contract-ci`
+- 历史 PR：#11（现已关闭）
+- 当时结论：**代码与合同实现完成；正式验收仍被 GitHub Actions 外部故障阻塞。**
 
 ## 1. 已完成范围
 
@@ -53,23 +55,23 @@
 
 ## 5. 验证证据边界
 
-本地 Unix Makefiles 已取得以下等价验证结果：
+历史本地 Unix Makefiles 记录了以下等价验证结果：
 
 - macOS GDAL ON/OFF Release 编译和链接通过；
 - required contract 连续三次 PASS；
 - 无 GDAL、GDAL 和 legacy package consumer 编译、链接和运行通过。
 
-以下不是代码缺项，而是尚未取得的正式 GitHub Actions 验收证据：
+以下不是代码缺项，而是当时及当前仍未闭环的正式 GitHub Actions 验收证据：
 
 - Ninja workflow 和 GitHub runner artifact；
 - current/main/GDAL 真实性能 artifact；
 - raw `sample(1)` profile；
 - 故障注入下的 publish/rollback/cleanup artifact。
 
-GitHub Actions 仍在首个 step 前失败，详见 Issue #12。因此 PR 必须保持 Draft，不得标记正式 Accepted 或合并。
+GitHub Actions 当时在首个 step 前失败，详见 Issue #12。该历史结论解释了原 PR 的 Draft / Request Changes 状态，但不再要求已关闭的 PR #11 保持 Draft，也不改变当前 `Code accepted / Formal acceptance blocked` 判定。
 
-## 6. 合并建议
+## 6. 历史合并建议与当前处置
 
-当前建议：**Request Changes（仅因缺少当前 CI 证据）**。
+当时建议：**Request Changes（仅因缺少当前 CI 证据）**。
 
-当 Actions 恢复后，按顺序执行 Writer contract、Append、Update、Delete、Transaction/Recovery、性能 profile；全部 required 场景通过后，复核 artifact 并将 PR 转为 Ready for Review。
+当前处置：M18 已由 squash 提交进入 `main`，原 PR #11 已关闭；Actions 恢复后应在当前 main/收口分支重新运行 Writer contract、Append、Update、Delete、Transaction/Recovery、性能 profile，复核 artifacts 后再决定是否把正式判定改为 `Accepted`。

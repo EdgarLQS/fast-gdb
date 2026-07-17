@@ -194,7 +194,7 @@ jobs:
             --interval-ms 1 -- \
             build-writer-profile/writer_profile_driver \
               --workload point-xyzm \
-              --rows 2000000 \
+              --rows 20000000 \
               --output "$GITHUB_WORKSPACE/writer-performance/profile/P0-POINT-XYZM-PROFILE.phases.json"
 
       - name: Observe Reader 10M fresh-open matrix

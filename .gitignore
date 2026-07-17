@@ -7,3 +7,12 @@ test_data/
 /build_win
 /stderr.txt
 /stdout.txt
+/local-acceptance
+/install-accept-nogdal
+/install-accept-gdal
+/install-perf-current
+/baseline-main
+/local-acceptance-*.log
+/local-acceptance-*.txt
+__pycache__/
+*.py[cod]
