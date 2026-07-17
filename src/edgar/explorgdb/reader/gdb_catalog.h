@@ -14,6 +14,7 @@
 #define EXPLORGDB_GDB_CATALOG_H
 
 #include "explorgdb_types.h"
+#include <memory>
 #include <shared_mutex>
 #include <string>
 #include <unordered_map>
@@ -58,7 +59,8 @@ public:
     const CatalogEntry* find_indexes(uint32_t id) const;
 
     // 解析并缓存某张表的 .gdbindexes 条目。缓存绑定到本次 scan()
-    // 快照；再次 scan() 会清空成功和失败结果。
+    // 快照；再次 scan() 会为当前对象创建新的 cache state。复制 catalog
+    // 会共享不可变快照的缓存，但任一副本重新 scan() 不影响其他副本。
     bool read_index_metadata(uint32_t id,
                              std::vector<IndexEntry>& entries) const;
 
@@ -75,6 +77,11 @@ private:
         std::vector<IndexEntry> entries;
     };
 
+    struct IndexMetadataCacheState {
+        mutable std::shared_mutex mutex;
+        std::unordered_map<uint32_t, IndexMetadataCacheEntry> entries;
+    };
+
     std::string gdb_path_;
     std::vector<CatalogEntry> entries_;      // 所有 aXXXXXXXX.* 文件
     GdbDirectoryHeader magic_;               // gdb 文件头部
@@ -82,9 +89,8 @@ private:
     bool has_magic_ = false;
     bool has_timestamps_ = false;
 
-    mutable std::shared_mutex mutex_;  // 保护 scan 和 metadata cache
-    mutable std::unordered_map<uint32_t, IndexMetadataCacheEntry>
-        index_metadata_cache_;
+    mutable std::shared_ptr<IndexMetadataCacheState> index_metadata_cache_ =
+        std::make_shared<IndexMetadataCacheState>();
 };
 
 } // namespace explorgdb
