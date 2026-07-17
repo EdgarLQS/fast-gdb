@@ -68,6 +68,54 @@ bool comparison_matches(int comparison, AttrOp op) {
     return false;
 }
 
+bool decode_numeric(const uint8_t* bytes,
+                    uint8_t value_size,
+                    double& value) {
+    switch (value_size) {
+        case 2: {
+            const uint16_t raw = static_cast<uint16_t>(bytes[0]) |
+                (static_cast<uint16_t>(bytes[1]) << 8U);
+            value = static_cast<double>(raw);
+            return true;
+        }
+        case 4: {
+            int32_t raw = 0;
+            std::memcpy(&raw, bytes, sizeof(raw));
+            value = static_cast<double>(raw);
+            return true;
+        }
+        case 8:
+            std::memcpy(&value, bytes, sizeof(value));
+            return true;
+        default:
+            return false;
+    }
+}
+
+size_t utf8_sequence_bytes(unsigned char lead) {
+    if ((lead & 0x80U) == 0) return 1;
+    if ((lead & 0xe0U) == 0xc0U) return 2;
+    if ((lead & 0xf0U) == 0xe0U) return 3;
+    if ((lead & 0xf8U) == 0xf0U) return 4;
+    return 0;
+}
+
+std::string truncate_index_string(const std::string& value,
+                                  size_t max_utf16_units) {
+    std::string result;
+    size_t units = 0;
+    for (size_t index = 0; index < value.size() && units < max_utf16_units;) {
+        if (value[index] == ' ') break;
+        const size_t bytes = utf8_sequence_bytes(
+            static_cast<unsigned char>(value[index]));
+        if (bytes == 0 || index + bytes > value.size()) break;
+        result.append(value, index, bytes);
+        index += bytes;
+        ++units;
+    }
+    return result;
+}
+
 } // namespace
 
 bool GdbAttributeIndexParser::query_double_direct(
@@ -165,6 +213,10 @@ bool GdbAttributeIndexParser::query_direct(
         return false;
     }
 
+    const std::string effective_string = is_string
+        ? truncate_index_string(string_value, trailer_.value_size / 2U)
+        : std::string{};
+
     std::vector<uint8_t> visited(page_count + 1U, 0U);
     uint32_t leaf_page_id = 1U;
     const auto navigation_start = metric_start(metrics);
@@ -228,11 +280,20 @@ bool GdbAttributeIndexParser::query_direct(
             const uint8_t* value_bytes =
                 page + values_offset +
                 static_cast<size_t>(index) * trailer_.value_size;
-            const AttributeIndexEntry entry = decode_value(
-                value_bytes, trailer_.value_size,
-                is_string, stored_fid);
-            const int comparison = compare_value(
-                entry, numeric_value, string_value, is_string);
+            int comparison = 0;
+            if (is_string) {
+                const AttributeIndexEntry entry = decode_value(
+                    value_bytes, trailer_.value_size, true, stored_fid);
+                comparison = entry.string_value.compare(effective_string);
+            } else {
+                double indexed_value = 0.0;
+                if (!decode_numeric(
+                        value_bytes, trailer_.value_size, indexed_value)) {
+                    return false;
+                }
+                if (indexed_value < numeric_value) comparison = -1;
+                else if (indexed_value > numeric_value) comparison = 1;
+            }
             if (comparison_matches(comparison, op))
                 candidates.push_back(stored_fid - 1U);
         }
