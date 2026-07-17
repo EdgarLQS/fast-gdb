@@ -51,6 +51,48 @@ std::filesystem::path entry_path(const std::string& gdb,
                                  const CatalogEntry* entry) {
     return std::filesystem::path(gdb) / entry->filename;
 }
+
+bool write_u32_le(std::fstream& stream, uint32_t value) {
+    const char bytes[4] = {
+        static_cast<char>(value & 0xffU),
+        static_cast<char>((value >> 8U) & 0xffU),
+        static_cast<char>((value >> 16U) & 0xffU),
+        static_cast<char>((value >> 24U) & 0xffU)};
+    stream.write(bytes, sizeof(bytes));
+    return stream.good();
+}
+
+bool increment_trailer_value_count(const std::filesystem::path& path) {
+    std::fstream stream(path, std::ios::binary | std::ios::in | std::ios::out);
+    if (!stream.is_open()) return false;
+    stream.seekg(-12, std::ios::end);
+    char bytes[4] = {};
+    stream.read(bytes, sizeof(bytes));
+    if (!stream) return false;
+    const uint32_t count =
+        static_cast<uint32_t>(static_cast<unsigned char>(bytes[0])) |
+        (static_cast<uint32_t>(static_cast<unsigned char>(bytes[1])) << 8U) |
+        (static_cast<uint32_t>(static_cast<unsigned char>(bytes[2])) << 16U) |
+        (static_cast<uint32_t>(static_cast<unsigned char>(bytes[3])) << 24U);
+    stream.clear();
+    stream.seekp(-12, std::ios::end);
+    return write_u32_le(stream, count + 1U);
+}
+
+bool make_first_leaf_self_referential(const std::filesystem::path& path) {
+    std::fstream stream(path, std::ios::binary | std::ios::in | std::ios::out);
+    if (!stream.is_open()) return false;
+    stream.seekp(0, std::ios::beg);
+    return write_u32_le(stream, 1U);
+}
+
+void expect_safe_attribute_fallback(const QueryResult& result) {
+    EXPECT_EQ(result.execution_path, "spatial-where:spatial-candidates");
+    EXPECT_FALSE(result.combined_metrics.used_attribute_index);
+    EXPECT_NE(result.fallback_reason.find("could not be parsed"),
+              std::string::npos);
+    EXPECT_EQ(result.matched_fids, (std::vector<uint32_t>{1, 2}));
+}
 } // namespace
 
 class SpatialWhereIndexFallbackTest : public GdbTutorialFixture {
@@ -132,12 +174,35 @@ TEST_F(SpatialWhereIndexFallbackTest, DamagedAtxKeepsCorrectResults) {
     output.write("bad", 3);
     output.close();
 
-    const QueryResult result = query(catalog, table);
-    EXPECT_EQ(result.execution_path, "spatial-where:spatial-candidates");
-    EXPECT_FALSE(result.combined_metrics.used_attribute_index);
-    EXPECT_NE(result.fallback_reason.find("could not be parsed"),
-              std::string::npos);
-    EXPECT_EQ(result.matched_fids, (std::vector<uint32_t>{1, 2}));
+    expect_safe_attribute_fallback(query(catalog, table));
+}
+
+TEST_F(SpatialWhereIndexFallbackTest,
+       InconsistentAtxTrailerCountKeepsCorrectResults) {
+    const std::string path = createFixture();
+    ASSERT_FALSE(path.empty());
+    GdbCatalog catalog;
+    ResolvedTable table;
+    ASSERT_TRUE(resolve(path, catalog, table));
+    const CatalogEntry* atx = catalog.find_atx(table.id, "value_idx");
+    ASSERT_NE(atx, nullptr);
+    ASSERT_TRUE(increment_trailer_value_count(entry_path(path, atx)));
+
+    expect_safe_attribute_fallback(query(catalog, table));
+}
+
+TEST_F(SpatialWhereIndexFallbackTest,
+       CyclicAtxLeafChainKeepsCorrectResults) {
+    const std::string path = createFixture();
+    ASSERT_FALSE(path.empty());
+    GdbCatalog catalog;
+    ResolvedTable table;
+    ASSERT_TRUE(resolve(path, catalog, table));
+    const CatalogEntry* atx = catalog.find_atx(table.id, "value_idx");
+    ASSERT_NE(atx, nullptr);
+    ASSERT_TRUE(make_first_leaf_self_referential(entry_path(path, atx)));
+
+    expect_safe_attribute_fallback(query(catalog, table));
 }
 
 TEST_F(SpatialWhereIndexFallbackTest, MissingSpxStillUsesAtxCandidates) {
