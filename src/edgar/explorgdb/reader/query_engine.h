@@ -19,7 +19,8 @@ enum class QueryKind {
     SpatialBbox,
     AttributeDouble,
     AttributeString,
-    WhereClause
+    WhereClause,
+    SpatialWhere
 };
 
 struct QueryRequest {
@@ -55,12 +56,27 @@ struct SpatialQueryMetrics {
     double total_ms = 0.0;
 };
 
+struct CombinedQueryMetrics {
+    size_t spatial_candidate_count = 0;
+    size_t spatial_match_count = 0;
+    size_t attribute_candidate_count = 0;
+    size_t attribute_tested = 0;
+    size_t final_match_count = 0;
+    double spatial_ms = 0.0;
+    double attribute_ms = 0.0;
+    double intersection_ms = 0.0;
+    double total_ms = 0.0;
+    bool used_spatial_index = false;
+    bool used_attribute_index = false;
+};
+
 struct QueryResult {
     std::vector<uint32_t> matched_fids;
     std::optional<FeatureRecord> record;
     std::string execution_path;
     std::string fallback_reason;
     SpatialQueryMetrics spatial_metrics;
+    CombinedQueryMetrics combined_metrics;
 };
 
 class QueryEngine {
@@ -107,6 +123,7 @@ private:
     QueryResult query_spatial(const QueryRequest& request);
     QueryResult query_attribute(const QueryRequest& request);
     QueryResult query_where(const QueryRequest& request);
+    QueryResult query_spatial_where(const QueryRequest& request);
 
     const GdbCatalog& catalog_;
     ResolvedTable resolved_;
