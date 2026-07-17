@@ -1,12 +1,14 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -29,6 +31,20 @@ namespace {
 constexpr const char* kLayer = "feature_cursor_benchmark";
 constexpr int kFeatureCount = 100000;
 constexpr int kSamples = 5;
+
+enum class PathKind {
+    Cursor,
+    Legacy,
+    Gdal
+};
+
+constexpr std::array<std::array<PathKind, 3>, kSamples> kExecutionOrders{{
+    {{PathKind::Cursor, PathKind::Legacy, PathKind::Gdal}},
+    {{PathKind::Legacy, PathKind::Gdal, PathKind::Cursor}},
+    {{PathKind::Gdal, PathKind::Cursor, PathKind::Legacy}},
+    {{PathKind::Cursor, PathKind::Gdal, PathKind::Legacy}},
+    {{PathKind::Legacy, PathKind::Cursor, PathKind::Gdal}},
+}};
 
 bool enabled() {
     const char* value = std::getenv(
@@ -75,6 +91,45 @@ struct Digest {
                feature_count == other.feature_count &&
                output_bytes == other.output_bytes;
     }
+};
+
+struct RunResult {
+    double milliseconds = 0.0;
+    Digest digest;
+    std::string execution_path;
+    FeatureCursorMetrics profile;
+};
+
+class ScopedProfileEnvironment {
+public:
+    explicit ScopedProfileEnvironment(bool enabled) {
+        const char* current = std::getenv("FAST_GDB_FEATURE_CURSOR_PROFILE");
+        if (current != nullptr) {
+            had_previous_ = true;
+            previous_ = current;
+        }
+#ifdef _WIN32
+        _putenv_s("FAST_GDB_FEATURE_CURSOR_PROFILE", enabled ? "1" : "0");
+#else
+        setenv("FAST_GDB_FEATURE_CURSOR_PROFILE", enabled ? "1" : "0", 1);
+#endif
+    }
+
+    ~ScopedProfileEnvironment() {
+#ifdef _WIN32
+        _putenv_s("FAST_GDB_FEATURE_CURSOR_PROFILE",
+                  had_previous_ ? previous_.c_str() : "");
+#else
+        if (had_previous_)
+            setenv("FAST_GDB_FEATURE_CURSOR_PROFILE", previous_.c_str(), 1);
+        else
+            unsetenv("FAST_GDB_FEATURE_CURSOR_PROFILE");
+#endif
+    }
+
+private:
+    std::string previous_;
+    bool had_previous_ = false;
 };
 
 int fast_field_index(const GdbTableParser* table, const std::string& name) {
@@ -140,27 +195,136 @@ Digest consume_gdal(OGRLayer* layer) {
     return digest;
 }
 
+std::optional<RunResult> run_cursor(
+    const GdbCatalog& catalog,
+    const ResolvedTable& resolved,
+    const QueryRequest& request,
+    bool profile_enabled) {
+    ScopedProfileEnvironment profile_environment(profile_enabled);
+    const auto start = BenchmarkClock::now();
+    QueryEngine engine(catalog, resolved);
+    if (!engine.open()) return std::nullopt;
+    const int value_index = fast_field_index(engine.table(), "value");
+    const int payload_index = fast_field_index(engine.table(), "payload");
+    if (value_index < 0 || payload_index < 0) return std::nullopt;
+
+    FeatureCursor cursor = engine.open_cursor(request);
+    if (!cursor.error().empty()) return std::nullopt;
+    Digest digest;
+    QueryFeature feature;
+    while (cursor.next(feature))
+        add_fast_feature(digest, feature, value_index, payload_index);
+    if (!cursor.done() || !cursor.error().empty()) return std::nullopt;
+
+    RunResult result;
+    result.milliseconds =
+        std::chrono::duration<double, std::milli>(
+            BenchmarkClock::now() - start).count();
+    result.digest = digest;
+    result.execution_path = cursor.query_result().execution_path;
+    result.profile = cursor.query_result().feature_cursor_metrics;
+    return result;
+}
+
+std::optional<RunResult> run_legacy(
+    const GdbCatalog& catalog,
+    const ResolvedTable& resolved,
+    const QueryRequest& request) {
+    const auto start = BenchmarkClock::now();
+    QueryEngine engine(catalog, resolved);
+    if (!engine.open()) return std::nullopt;
+    const int value_index = fast_field_index(engine.table(), "value");
+    const int payload_index = fast_field_index(engine.table(), "payload");
+    if (value_index < 0 || payload_index < 0) return std::nullopt;
+
+    const QueryResult query = engine.query(request);
+    Digest digest;
+    for (uint32_t fid : query.matched_fids) {
+        QueryFeature feature;
+        feature.fid = fid;
+        if (!engine.read_by_fid(fid, feature.record) ||
+            !engine.table()->read_geometry_value(fid, feature.geometry)) {
+            return std::nullopt;
+        }
+        add_fast_feature(digest, feature, value_index, payload_index);
+    }
+
+    RunResult result;
+    result.milliseconds =
+        std::chrono::duration<double, std::milli>(
+            BenchmarkClock::now() - start).count();
+    result.digest = digest;
+    result.execution_path = query.execution_path;
+    return result;
+}
+
+std::optional<RunResult> run_gdal(
+    const std::string& path) {
+    const auto start = BenchmarkClock::now();
+    GDALDataset* dataset = static_cast<GDALDataset*>(GDALOpenEx(
+        path.c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY,
+        nullptr, nullptr, nullptr));
+    if (dataset == nullptr) return std::nullopt;
+    OGRLayer* layer = dataset->GetLayerByName(kLayer);
+    if (layer == nullptr) {
+        GDALClose(dataset);
+        return std::nullopt;
+    }
+    const Digest digest = consume_gdal(layer);
+    GDALClose(dataset);
+
+    RunResult result;
+    result.milliseconds =
+        std::chrono::duration<double, std::milli>(
+            BenchmarkClock::now() - start).count();
+    result.digest = digest;
+    result.execution_path = "gdal:GetNextFeature";
+    return result;
+}
+
 struct Samples {
     std::vector<double> cursor_ms;
     std::vector<double> legacy_ms;
     std::vector<double> gdal_ms;
     Digest digest;
     std::string execution_path;
+    FeatureCursorMetrics profile;
     bool correct = false;
 };
+
+void append_sample(Samples& samples,
+                   PathKind path,
+                   const RunResult& result) {
+    switch (path) {
+        case PathKind::Cursor:
+            samples.cursor_ms.push_back(result.milliseconds);
+            if (samples.execution_path.empty())
+                samples.execution_path = result.execution_path;
+            break;
+        case PathKind::Legacy:
+            samples.legacy_ms.push_back(result.milliseconds);
+            break;
+        case PathKind::Gdal:
+            samples.gdal_ms.push_back(result.milliseconds);
+            break;
+    }
+}
 
 void write_evidence(const Samples& samples) {
     const char* configured = std::getenv("FAST_GDB_BENCHMARK_OUTPUT_DIR");
     const fs::path output_dir = configured ? configured : "benchmark_results";
     fs::create_directories(output_dir);
     const fs::path output =
-        output_dir / "feature-cursor-100k-schema-v1.json";
+        output_dir / "feature-cursor-100k-schema-v2.json";
     std::ofstream json(output);
     json << std::fixed << std::setprecision(3)
          << "{\n"
-         << "  \"evidence_schema_version\": 1,\n"
+         << "  \"evidence_schema_version\": 2,\n"
          << "  \"scenario\": \"full-feature-spatial-where-100k\",\n"
          << "  \"timing_scope\": \"engine-or-dataset-open-through-last-feature\",\n"
+         << "  \"cache_semantics\": \"fresh-open-not-strict-cold\",\n"
+         << "  \"execution_order\": \"rotated-five-sample-schedule\",\n"
+         << "  \"profile_sample_in_timing\": false,\n"
          << "  \"feature_count\": " << kFeatureCount << ",\n"
          << "  \"result_count\": " << samples.digest.feature_count << ",\n"
          << "  \"output_bytes\": " << samples.digest.output_bytes << ",\n"
@@ -178,6 +342,18 @@ void write_evidence(const Samples& samples) {
          << percentile(samples.gdal_ms, 0.5) << ",\n"
          << "  \"gdal_p95_ms\": "
          << percentile(samples.gdal_ms, 0.95) << ",\n"
+         << "  \"profile_feature_count\": "
+         << samples.profile.feature_count << ",\n"
+         << "  \"profile_row_lookup_ms\": "
+         << samples.profile.row_lookup_ms << ",\n"
+         << "  \"profile_field_materialization_ms\": "
+         << samples.profile.field_materialization_ms << ",\n"
+         << "  \"profile_geometry_decode_ms\": "
+         << samples.profile.geometry_decode_ms << ",\n"
+         << "  \"profile_wkt_write_ms\": "
+         << samples.profile.wkt_write_ms << ",\n"
+         << "  \"profile_wkb_write_ms\": "
+         << samples.profile.wkb_write_ms << ",\n"
          << "  \"execution_path\": \"" << samples.execution_path
          << "\",\n"
          << "  \"correct\": " << (samples.correct ? "true" : "false")
@@ -295,76 +471,47 @@ TEST_F(FeatureCursorBenchmarkTest, Point100KFullFeatureEvidence) {
 
     Samples samples;
     for (int sample = 0; sample < kSamples; ++sample) {
-        auto start = BenchmarkClock::now();
-        QueryEngine cursor_engine(catalog, *resolved);
-        ASSERT_TRUE(cursor_engine.open());
-        const int cursor_value_index =
-            fast_field_index(cursor_engine.table(), "value");
-        const int cursor_payload_index =
-            fast_field_index(cursor_engine.table(), "payload");
-        ASSERT_GE(cursor_value_index, 0);
-        ASSERT_GE(cursor_payload_index, 0);
-        FeatureCursor cursor = cursor_engine.open_cursor(request);
-        ASSERT_TRUE(cursor.error().empty()) << cursor.error();
-        Digest cursor_digest;
-        QueryFeature feature;
-        while (cursor.next(feature)) {
-            add_fast_feature(cursor_digest, feature,
-                             cursor_value_index, cursor_payload_index);
+        std::optional<RunResult> cursor;
+        std::optional<RunResult> legacy;
+        std::optional<RunResult> gdal;
+        for (PathKind path_kind : kExecutionOrders[static_cast<size_t>(sample)]) {
+            std::optional<RunResult> result;
+            switch (path_kind) {
+                case PathKind::Cursor:
+                    result = run_cursor(catalog, *resolved, request, false);
+                    cursor = result;
+                    break;
+                case PathKind::Legacy:
+                    result = run_legacy(catalog, *resolved, request);
+                    legacy = result;
+                    break;
+                case PathKind::Gdal:
+                    result = run_gdal(path);
+                    gdal = result;
+                    break;
+            }
+            ASSERT_TRUE(result.has_value());
+            append_sample(samples, path_kind, *result);
         }
-        ASSERT_TRUE(cursor.done());
-        ASSERT_TRUE(cursor.error().empty());
-        samples.cursor_ms.push_back(
-            std::chrono::duration<double, std::milli>(
-                BenchmarkClock::now() - start).count());
-        if (samples.execution_path.empty())
-            samples.execution_path = cursor.query_result().execution_path;
-        ASSERT_EQ(cursor.query_result().execution_path,
-                  samples.execution_path);
-
-        start = BenchmarkClock::now();
-        QueryEngine legacy_engine(catalog, *resolved);
-        ASSERT_TRUE(legacy_engine.open());
-        const int legacy_value_index =
-            fast_field_index(legacy_engine.table(), "value");
-        const int legacy_payload_index =
-            fast_field_index(legacy_engine.table(), "payload");
-        ASSERT_GE(legacy_value_index, 0);
-        ASSERT_GE(legacy_payload_index, 0);
-        const QueryResult query = legacy_engine.query(request);
-        Digest legacy_digest;
-        for (uint32_t fid : query.matched_fids) {
-            QueryFeature legacy;
-            legacy.fid = fid;
-            ASSERT_TRUE(legacy_engine.read_by_fid(fid, legacy.record));
-            ASSERT_TRUE(legacy_engine.table()->read_geometry_value(
-                fid, legacy.geometry));
-            add_fast_feature(legacy_digest, legacy,
-                             legacy_value_index, legacy_payload_index);
-        }
-        samples.legacy_ms.push_back(
-            std::chrono::duration<double, std::milli>(
-                BenchmarkClock::now() - start).count());
-
-        start = BenchmarkClock::now();
-        GDALDataset* dataset = static_cast<GDALDataset*>(GDALOpenEx(
-            path.c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY,
-            nullptr, nullptr, nullptr));
-        ASSERT_NE(dataset, nullptr);
-        OGRLayer* layer = dataset->GetLayerByName(kLayer);
-        ASSERT_NE(layer, nullptr);
-        const Digest gdal_digest = consume_gdal(layer);
-        GDALClose(dataset);
-        samples.gdal_ms.push_back(
-            std::chrono::duration<double, std::milli>(
-                BenchmarkClock::now() - start).count());
-
-        ASSERT_TRUE(cursor_digest == legacy_digest);
-        ASSERT_TRUE(cursor_digest == gdal_digest);
-        samples.digest = cursor_digest;
+        ASSERT_TRUE(cursor.has_value());
+        ASSERT_TRUE(legacy.has_value());
+        ASSERT_TRUE(gdal.has_value());
+        ASSERT_TRUE(cursor->digest == legacy->digest);
+        ASSERT_TRUE(cursor->digest == gdal->digest);
+        ASSERT_EQ(cursor->execution_path, samples.execution_path);
+        samples.digest = cursor->digest;
     }
 
+    const auto profile = run_cursor(catalog, *resolved, request, true);
+    ASSERT_TRUE(profile.has_value());
+    ASSERT_TRUE(profile->digest == samples.digest);
+    ASSERT_EQ(profile->profile.feature_count, samples.digest.feature_count);
+    samples.profile = profile->profile;
+
     ASSERT_GT(samples.digest.feature_count, 0U);
+    ASSERT_EQ(samples.cursor_ms.size(), static_cast<size_t>(kSamples));
+    ASSERT_EQ(samples.legacy_ms.size(), static_cast<size_t>(kSamples));
+    ASSERT_EQ(samples.gdal_ms.size(), static_cast<size_t>(kSamples));
     samples.correct = true;
     write_evidence(samples);
 }
