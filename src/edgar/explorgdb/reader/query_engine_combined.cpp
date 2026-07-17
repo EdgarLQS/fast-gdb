@@ -110,6 +110,13 @@ AttributeCandidatePlan build_attribute_candidates(
         plan.reason = "attribute field metadata unavailable";
         return plan;
     }
+    // The current numeric comparator maps NaN to equality, so indexed !=
+    // could exclude a row accepted by the canonical WHERE evaluator. String
+    // != is also unsafe with padded/truncated index keys.
+    if (predicate.op == AttrOp::Ne) {
+        plan.reason = "not-equal is not safely indexable; spatial candidates evaluated";
+        return plan;
+    }
 
     const CatalogEntry* metadata = catalog.find_indexes(table_id);
     if (metadata == nullptr) {
