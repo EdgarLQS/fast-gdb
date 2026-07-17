@@ -66,12 +66,26 @@ struct CombinedQueryMetrics {
     size_t attribute_candidate_count = 0;
     size_t attribute_tested = 0;
     size_t final_match_count = 0;
+
+    size_t attribute_index_page_count = 0;
+    size_t attribute_index_pages_visited = 0;
+    size_t attribute_index_entries_scanned = 0;
+
     double spatial_ms = 0.0;
     double attribute_ms = 0.0;
     double intersection_ms = 0.0;
     double total_ms = 0.0;
+
+    double attribute_metadata_ms = 0.0;
+    double attribute_index_file_load_ms = 0.0;
+    double attribute_index_navigation_ms = 0.0;
+    double attribute_index_scan_ms = 0.0;
+    double attribute_candidate_order_ms = 0.0;
+    double attribute_recheck_ms = 0.0;
+
     bool used_spatial_index = false;
     bool used_attribute_index = false;
+    bool attribute_index_bypassed = false;
 };
 
 // Aggregated only when QueryRequest::profile_feature_reads is true.
