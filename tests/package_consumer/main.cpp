@@ -54,9 +54,26 @@ int main() {
 }
 #else
 #include <geometry_model.h>
+#include <query_engine.h>
 
 int main() {
     explorgdb::GeometryModel geometry;
-    return geometry.is_empty() ? 0 : 1;
+    if (!geometry.is_empty()) return 1;
+
+    explorgdb::QueryRequest request;
+    request.kind = explorgdb::QueryKind::SpatialWhere;
+    request.xmin = 0.0;
+    request.ymin = 0.0;
+    request.xmax = 10.0;
+    request.ymax = 10.0;
+    request.where_clause = "population >= 1000";
+
+    explorgdb::QueryResult result;
+    if (request.kind != explorgdb::QueryKind::SpatialWhere ||
+        !result.matched_fids.empty() ||
+        result.combined_metrics.final_match_count != 0) {
+        return 1;
+    }
+    return 0;
 }
 #endif
