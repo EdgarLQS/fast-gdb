@@ -9,6 +9,9 @@ namespace {
 
 class BufferWriter {
 public:
+    explicit BufferWriter(size_t reserve_bytes) {
+        data_.reserve(reserve_bytes);
+    }
     void byte(uint8_t value) { data_.push_back(value); }
     void u32(uint32_t value) {
         data_.push_back(static_cast<uint8_t>(value & 0xff));
@@ -34,6 +37,95 @@ uint32_t checked_count(size_t count, const char* label) {
         throw std::length_error(std::string(label) +
                                 " exceeds ISO WKB uint32 count range");
     return static_cast<uint32_t>(count);
+}
+
+size_t saturating_add(size_t left, size_t right) {
+    return right > std::numeric_limits<size_t>::max() - left
+        ? std::numeric_limits<size_t>::max()
+        : left + right;
+}
+
+size_t saturating_multiply(size_t left, size_t right) {
+    if (left == 0 || right == 0) return 0;
+    return right > std::numeric_limits<size_t>::max() / left
+        ? std::numeric_limits<size_t>::max()
+        : left * right;
+}
+
+size_t coordinate_bytes(const GeometryModel& model) {
+    return 16U + (model.has_z ? 8U : 0U) +
+           (model.has_m ? 8U : 0U);
+}
+
+size_t line_bytes(const GeometryModel& model,
+                  const PointSequence& line) {
+    return saturating_add(
+        9U, saturating_multiply(line.size(), coordinate_bytes(model)));
+}
+
+size_t ring_bytes(const GeometryModel& model,
+                  const RingModel& ring) {
+    const size_t point_count = ring.points.empty()
+        ? 0U : saturating_add(ring.points.size(), 1U);
+    return saturating_add(
+        4U, saturating_multiply(point_count, coordinate_bytes(model)));
+}
+
+size_t polygon_body_bytes(const GeometryModel& model,
+                          const PolygonModel& polygon) {
+    size_t total = 4U;
+    const auto& rings = model.multipolygon.rings;
+    if (polygon.exterior_ring < rings.size()) {
+        total = saturating_add(
+            total, ring_bytes(model, rings[polygon.exterior_ring]));
+    }
+    for (size_t ring_index : polygon.interior_rings) {
+        if (ring_index < rings.size()) {
+            total = saturating_add(
+                total, ring_bytes(model, rings[ring_index]));
+        }
+    }
+    return total;
+}
+
+size_t estimated_wkb_bytes(const GeometryModel& model) {
+    const size_t position = coordinate_bytes(model);
+    switch (model.kind) {
+        case GeometryKind::Point:
+            return saturating_add(5U, position);
+        case GeometryKind::MultiPoint:
+            return saturating_add(
+                9U,
+                saturating_multiply(
+                    model.points.size(), saturating_add(5U, position)));
+        case GeometryKind::LineString:
+            return model.lines.empty()
+                ? 9U : line_bytes(model, model.lines.front());
+        case GeometryKind::MultiLineString: {
+            size_t total = 9U;
+            for (const auto& line : model.lines)
+                total = saturating_add(total, line_bytes(model, line));
+            return total;
+        }
+        case GeometryKind::Polygon:
+            return model.multipolygon.polygons.empty()
+                ? 9U
+                : saturating_add(
+                      5U,
+                      polygon_body_bytes(
+                          model, model.multipolygon.polygons.front()));
+        case GeometryKind::MultiPolygon: {
+            size_t total = 9U;
+            for (const auto& polygon : model.multipolygon.polygons) {
+                total = saturating_add(
+                    total,
+                    saturating_add(5U, polygon_body_bytes(model, polygon)));
+            }
+            return total;
+        }
+        default:
+            return 0U;
+    }
 }
 
 void write_header(BufferWriter& output, GeometryKind kind,
@@ -206,7 +298,7 @@ GeometryValue WkbWriter::write(const GeometryModel& model) {
     value.diagnostic = model.diagnostic;
     if (!model.valid()) return value;
     try {
-        BufferWriter output;
+        BufferWriter output(estimated_wkb_bytes(model));
         write_geometry(output, model);
         value.wkb = output.take();
     } catch (const std::exception& error) {
