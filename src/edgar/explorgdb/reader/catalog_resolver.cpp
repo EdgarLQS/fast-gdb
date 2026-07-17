@@ -59,9 +59,16 @@ std::optional<ResolvedTable> CatalogResolver::resolve(const std::string& table_n
     const CatalogEntry* table = catalog_.find_table(it->second.id);
     if (!table) return std::nullopt;
     const CatalogEntry* tablx = catalog_.find_tablx(it->second.id);
-    return ResolvedTable{it->second.id, it->second.name,
-                         catalog_.path() + "/" + table->filename,
-                         tablx ? catalog_.path() + "/" + tablx->filename : std::string{}};
+
+    ResolvedTable resolved;
+    resolved.id = it->second.id;
+    resolved.name = it->second.name;
+    resolved.table_path = catalog_.path() + "/" + table->filename;
+    resolved.tablx_path = tablx
+        ? catalog_.path() + "/" + tablx->filename
+        : std::string{};
+    resolved.has_spatial_refs = contains("GDB_SpatialRefs");
+    return resolved;
 }
 
 bool CatalogResolver::contains(const std::string& table_name) const {
