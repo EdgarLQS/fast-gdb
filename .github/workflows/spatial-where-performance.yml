@@ -14,6 +14,7 @@ on:
       - 'tests/edgar/explorgdb/reader/test_gdb_spatial_index_merge.cpp'
       - 'tests/edgar/explorgdb/reader/test_catalog_resolver.cpp'
       - 'tests/edgar/explorgdb/reader/test_geometry_contracts.cpp'
+      - 'tests/edgar/explorgdb/reader/test_geometry_writer_exact.cpp'
   workflow_dispatch:
 
 concurrency:
@@ -50,7 +51,7 @@ jobs:
       - name: Run optimization correctness tests
         run: >-
           ctest --test-dir build-perf --output-on-failure
-          -R 'AttributeIndexSafety|CatalogResolverTest|GdbCatalogIndexMetadataCache|GeometryOutputContract|GeometryCurveDecoder|SpatialIndexMerge|SpatialWhereAdaptive|SpatialWhereFusedGeometry|SpatialWhereIndexFallback|FeatureCursorOnePass'
+          -R 'AttributeIndexSafety|CatalogResolverTest|GdbCatalogIndexMetadataCache|GeometryOutputContract|GeometryCurveDecoder|GeometryWriterExactTest|SpatialIndexMerge|SpatialWhereAdaptive|SpatialWhereFusedGeometry|SpatialWhereIndexFallback|FeatureCursorOnePass'
 
       - name: Run 100K full-feature benchmark
         env:
