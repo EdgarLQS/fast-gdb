@@ -9,6 +9,7 @@
 #include "catalog_resolver.h"
 #include "gdb_catalog.h"
 #include "query_engine.h"
+#include "spatial_where_test_utils.h"
 #include "test_fixture.h"
 
 using namespace explorgdb;
@@ -99,8 +100,8 @@ class SpatialWhereIndexFallbackTest : public GdbTutorialFixture {
 protected:
     std::string createFixture() {
         const std::string path =
-            (std::filesystem::temp_directory_path() /
-             "fast_gdb_spatial_where_index_fallback.gdb").string();
+            spatial_where_test_utils::fixture_path(
+                "fast_gdb_spatial_where_index_fallback").string();
         GDALDataset* ds = createGdb(path.c_str());
         EXPECT_NE(ds, nullptr);
         if (!ds) return {};
