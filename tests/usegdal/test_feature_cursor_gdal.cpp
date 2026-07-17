@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <filesystem>
 #include <string>
 #include <utility>
 #include <vector>
@@ -21,7 +20,8 @@ using namespace explorgdb;
 
 namespace {
 
-constexpr const char* kLayer = "feature_cursor_points";
+constexpr const char* kPointLayer = "feature_cursor_points";
+constexpr const char* kAttributeLayer = "feature_cursor_attributes";
 
 bool execute_sql(GDALDataset* dataset, const std::string& sql) {
     CPLErrorReset();
@@ -43,7 +43,7 @@ bool resolve_table(const std::string& path,
     return true;
 }
 
-int field_index(const GdbTableParser* table, const std::string& name) {
+int fast_field_index(const GdbTableParser* table, const std::string& name) {
     if (table == nullptr) return -1;
     const auto& fields = table->fields();
     for (size_t index = 0; index < fields.size(); ++index) {
@@ -83,7 +83,7 @@ protected:
         if (dataset == nullptr) return {};
 
         OGRLayer* layer = dataset->CreateLayer(
-            kLayer, nullptr, wkbPoint, nullptr);
+            kPointLayer, nullptr, wkbPoint, nullptr);
         if (layer == nullptr) {
             GDALClose(dataset);
             return {};
@@ -145,7 +145,7 @@ protected:
             path.c_str(), GDAL_OF_VECTOR | GDAL_OF_UPDATE,
             nullptr, nullptr, nullptr));
         if (dataset == nullptr) return {};
-        layer = dataset->GetLayerByName(kLayer);
+        layer = dataset->GetLayerByName(kPointLayer);
         if (layer == nullptr ||
             layer->DeleteFeature(created_fids[2]) != OGRERR_NONE) {
             GDALClose(dataset);
@@ -161,19 +161,16 @@ protected:
                 return {};
             }
         }
-        if (!execute_sql(
-                dataset, std::string("RECOMPUTE EXTENT ON ") + kLayer) ||
-            !execute_sql(
+        const bool prepared = execute_sql(
+            dataset, std::string("RECOMPUTE EXTENT ON ") + kPointLayer) &&
+            execute_sql(
                 dataset, std::string("CREATE INDEX value_idx ON ") +
-                             kLayer + "(value)") ||
-            !execute_sql(
+                             kPointLayer + "(value)") &&
+            execute_sql(
                 dataset, std::string("CREATE INDEX name_idx ON ") +
-                             kLayer + "(name)")) {
-            GDALClose(dataset);
-            return {};
-        }
+                             kPointLayer + "(name)");
         GDALClose(dataset);
-        return path;
+        return prepared ? path : std::string{};
     }
 
     std::string create_attribute_fixture() {
@@ -183,7 +180,7 @@ protected:
         GDALDataset* dataset = createGdb(path.c_str());
         if (dataset == nullptr) return {};
         OGRLayer* layer = dataset->CreateLayer(
-            "attribute_rows", nullptr, wkbNone, nullptr);
+            kAttributeLayer, nullptr, wkbNone, nullptr);
         if (layer == nullptr) {
             GDALClose(dataset);
             return {};
@@ -214,7 +211,7 @@ TEST_F(FeatureCursorGdalTest,
 
     GdbCatalog catalog;
     ResolvedTable resolved;
-    ASSERT_TRUE(resolve_table(path, kLayer, catalog, resolved));
+    ASSERT_TRUE(resolve_table(path, kPointLayer, catalog, resolved));
     QueryEngine engine(catalog, resolved);
     ASSERT_TRUE(engine.open());
 
@@ -229,7 +226,7 @@ TEST_F(FeatureCursorGdalTest,
     EXPECT_FALSE(rejected.done());
     EXPECT_EQ(rejected.error(), "another feature cursor is active");
 
-    QueryResult blocked = engine.query(request);
+    const QueryResult blocked = engine.query(request);
     EXPECT_EQ(blocked.execution_path, "query:blocked");
     EXPECT_EQ(blocked.fallback_reason, "feature cursor is active");
     FeatureRecord blocked_record;
@@ -256,8 +253,8 @@ TEST_F(FeatureCursorGdalTest,
     ASSERT_TRUE(cursor.move_to(1));
     ASSERT_TRUE(cursor.next(feature));
     EXPECT_EQ(feature.fid, 1U);
-    const int name_index = field_index(engine.table(), "name");
-    const int payload_index = field_index(engine.table(), "payload");
+    const int name_index = fast_field_index(engine.table(), "name");
+    const int payload_index = fast_field_index(engine.table(), "payload");
     ASSERT_GE(name_index, 0);
     ASSERT_GE(payload_index, 0);
     EXPECT_TRUE(std::holds_alternative<std::nullptr_t>(
@@ -287,13 +284,13 @@ TEST_F(FeatureCursorGdalTest,
 }
 
 TEST_F(FeatureCursorGdalTest,
-       AllCandidateQueryKindsMatchLegacyQueryFids) {
+       CandidateQueryKindsMatchLegacyQueryFids) {
     const std::string path = create_point_fixture();
     ASSERT_FALSE(path.empty());
 
     GdbCatalog catalog;
     ResolvedTable resolved;
-    ASSERT_TRUE(resolve_table(path, kLayer, catalog, resolved));
+    ASSERT_TRUE(resolve_table(path, kPointLayer, catalog, resolved));
     QueryEngine engine(catalog, resolved);
     ASSERT_TRUE(engine.open());
 
@@ -353,7 +350,7 @@ TEST_F(FeatureCursorGdalTest,
 
     GdbCatalog catalog;
     ResolvedTable resolved;
-    ASSERT_TRUE(resolve_table(path, kLayer, catalog, resolved));
+    ASSERT_TRUE(resolve_table(path, kPointLayer, catalog, resolved));
     QueryEngine engine(catalog, resolved);
     ASSERT_TRUE(engine.open());
 
@@ -371,15 +368,15 @@ TEST_F(FeatureCursorGdalTest,
         path.c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY,
         nullptr, nullptr, nullptr));
     ASSERT_NE(dataset, nullptr);
-    OGRLayer* layer = dataset->GetLayerByName(kLayer);
+    OGRLayer* layer = dataset->GetLayerByName(kPointLayer);
     ASSERT_NE(layer, nullptr);
     layer->SetSpatialFilterRect(0, 0, 10, 10);
     ASSERT_EQ(layer->SetAttributeFilter("value >= 30"), OGRERR_NONE);
     layer->ResetReading();
 
-    const int value_index = field_index(engine.table(), "value");
-    const int name_index = field_index(engine.table(), "name");
-    const int payload_index = field_index(engine.table(), "payload");
+    const int value_index = fast_field_index(engine.table(), "value");
+    const int name_index = fast_field_index(engine.table(), "name");
+    const int payload_index = fast_field_index(engine.table(), "payload");
     ASSERT_GE(value_index, 0);
     ASSERT_GE(name_index, 0);
     ASSERT_GE(payload_index, 0);
@@ -395,18 +392,22 @@ TEST_F(FeatureCursorGdalTest,
                       static_cast<size_t>(value_index)]),
                   gdal->GetFieldAsInteger("value"));
 
-        if (gdal->IsFieldSetAndNotNull("name")) {
+        const int gdal_name_index = gdal->GetFieldIndex("name");
+        ASSERT_GE(gdal_name_index, 0);
+        if (gdal->IsFieldSetAndNotNull(gdal_name_index)) {
             EXPECT_EQ(std::get<std::string>(fast.record.field_values[
                           static_cast<size_t>(name_index)]),
-                      gdal->GetFieldAsString("name"));
+                      gdal->GetFieldAsString(gdal_name_index));
         } else {
             EXPECT_TRUE(std::holds_alternative<std::nullptr_t>(
                 fast.record.field_values[static_cast<size_t>(name_index)]));
         }
 
+        const int gdal_payload_index = gdal->GetFieldIndex("payload");
+        ASSERT_GE(gdal_payload_index, 0);
         int byte_count = 0;
         const GByte* bytes = gdal->GetFieldAsBinary(
-            gdal->GetFieldIndex("payload"), &byte_count);
+            gdal_payload_index, &byte_count);
         const auto& fast_bytes = std::get<std::vector<uint8_t>>(
             fast.record.field_values[static_cast<size_t>(payload_index)]);
         ASSERT_EQ(fast_bytes.size(), static_cast<size_t>(byte_count));
@@ -418,18 +419,20 @@ TEST_F(FeatureCursorGdalTest,
     }
     EXPECT_TRUE(cursor.done());
     EXPECT_TRUE(cursor.error().empty());
-    EXPECT_EQ(layer->GetNextFeature(), nullptr);
+    OGRFeature* extra = layer->GetNextFeature();
+    EXPECT_EQ(extra, nullptr);
+    if (extra != nullptr) OGRFeature::DestroyFeature(extra);
     GDALClose(dataset);
 }
 
 TEST_F(FeatureCursorGdalTest,
-       MoveConstructionAndAssignmentTransferOnlyOneEngineLease) {
+       MoveConstructionAndAssignmentTransferEngineLease) {
     const std::string path = create_point_fixture();
     ASSERT_FALSE(path.empty());
 
     GdbCatalog catalog;
     ResolvedTable resolved;
-    ASSERT_TRUE(resolve_table(path, kLayer, catalog, resolved));
+    ASSERT_TRUE(resolve_table(path, kPointLayer, catalog, resolved));
     QueryEngine first_engine(catalog, resolved);
     QueryEngine second_engine(catalog, resolved);
     ASSERT_TRUE(first_engine.open());
@@ -442,9 +445,9 @@ TEST_F(FeatureCursorGdalTest,
     target = std::move(source);
     EXPECT_TRUE(source.done());
 
-    FeatureCursor second_engine_reopened = second_engine.open_cursor(request);
-    EXPECT_TRUE(second_engine_reopened.error().empty());
-    EXPECT_FALSE(second_engine_reopened.move_to(1000));
+    FeatureCursor second_reopened = second_engine.open_cursor(request);
+    EXPECT_TRUE(second_reopened.error().empty());
+    EXPECT_FALSE(second_reopened.move_to(1000));
 
     QueryFeature feature;
     ASSERT_TRUE(target.next(feature));
@@ -458,13 +461,13 @@ TEST_F(FeatureCursorGdalTest,
 }
 
 TEST_F(FeatureCursorGdalTest,
-       InvalidRequestsDoNotMasqueradeAsEofOrModifyOutput) {
+       InvalidRequestIsFailureAndDoesNotModifyOutput) {
     const std::string path = create_point_fixture();
     ASSERT_FALSE(path.empty());
 
     GdbCatalog catalog;
     ResolvedTable resolved;
-    ASSERT_TRUE(resolve_table(path, kLayer, catalog, resolved));
+    ASSERT_TRUE(resolve_table(path, kPointLayer, catalog, resolved));
     QueryEngine engine(catalog, resolved);
     ASSERT_TRUE(engine.open());
 
@@ -483,7 +486,7 @@ TEST_F(FeatureCursorGdalTest,
     EXPECT_EQ(output.fid, 999U);
     EXPECT_EQ(output.record.fid, 999U);
 
-    QueryResult usable = engine.query(QueryRequest{});
+    const QueryResult usable = engine.query(QueryRequest{});
     EXPECT_NE(usable.execution_path, "query:blocked");
 
     QueryEngine unopened(catalog, resolved);
@@ -493,13 +496,13 @@ TEST_F(FeatureCursorGdalTest,
 }
 
 TEST_F(FeatureCursorGdalTest,
-       AttributeOnlyTableReturnsSuccessfulFeatureWithoutGeometry) {
+       AttributeOnlyTableReturnsFeatureWithoutGeometry) {
     const std::string path = create_attribute_fixture();
     ASSERT_FALSE(path.empty());
 
     GdbCatalog catalog;
     ResolvedTable resolved;
-    ASSERT_TRUE(resolve_table(path, "attribute_rows", catalog, resolved));
+    ASSERT_TRUE(resolve_table(path, kAttributeLayer, catalog, resolved));
     QueryEngine engine(catalog, resolved);
     ASSERT_TRUE(engine.open());
 
