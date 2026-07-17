@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <filesystem>
 #include <limits>
 #include <string>
@@ -44,8 +45,13 @@ std::vector<uint32_t> collect_gdal_fids(
     double xmin, double ymin, double xmax, double ymax,
     const std::string& where,
     bool attribute_first) {
+    if (layer == nullptr) {
+        ADD_FAILURE() << "GDAL layer is null";
+        return {};
+    }
+
     layer->SetSpatialFilter(nullptr);
-    ASSERT_EQ(layer->SetAttributeFilter(nullptr), OGRERR_NONE);
+    EXPECT_EQ(layer->SetAttributeFilter(nullptr), OGRERR_NONE);
 
     if (attribute_first) {
         EXPECT_EQ(layer->SetAttributeFilter(where.c_str()), OGRERR_NONE);
@@ -58,8 +64,11 @@ std::vector<uint32_t> collect_gdal_fids(
     std::vector<uint32_t> result;
     layer->ResetReading();
     while (OGRFeature* feature = layer->GetNextFeature()) {
-        ASSERT_GT(feature->GetFID(), 0);
-        result.push_back(static_cast<uint32_t>(feature->GetFID() - 1));
+        if (feature->GetFID() <= 0) {
+            ADD_FAILURE() << "OpenFileGDB returned a non-positive FID";
+        } else {
+            result.push_back(static_cast<uint32_t>(feature->GetFID() - 1));
+        }
         OGRFeature::DestroyFeature(feature);
     }
     std::sort(result.begin(), result.end());
@@ -69,18 +78,16 @@ std::vector<uint32_t> collect_gdal_fids(
     return result;
 }
 
-struct OpenedFixture {
-    GdbCatalog catalog;
-    std::optional<ResolvedTable> resolved;
-};
-
-OpenedFixture open_fast_fixture(const std::string& path) {
-    OpenedFixture fixture;
-    if (!fixture.catalog.scan(path)) return fixture;
-    CatalogResolver resolver(fixture.catalog);
-    if (!resolver.load()) return fixture;
-    fixture.resolved = resolver.resolve(kLayerName);
-    return fixture;
+bool open_fast_fixture(const std::string& path,
+                       GdbCatalog& catalog,
+                       ResolvedTable& resolved) {
+    if (!catalog.scan(path)) return false;
+    CatalogResolver resolver(catalog);
+    if (!resolver.load()) return false;
+    const auto table = resolver.resolve(kLayerName);
+    if (!table.has_value()) return false;
+    resolved = *table;
+    return true;
 }
 
 } // namespace
@@ -169,13 +176,14 @@ TEST_F(SpatialWhereIntegrationTest,
     const std::string path = createIndexedFixture();
     ASSERT_FALSE(path.empty());
 
-    OpenedFixture fixture = open_fast_fixture(path);
-    ASSERT_TRUE(fixture.resolved.has_value());
-    ASSERT_NE(fixture.catalog.find_spx(fixture.resolved->id), nullptr);
-    ASSERT_NE(fixture.catalog.find_indexes(fixture.resolved->id), nullptr);
-    ASSERT_NE(fixture.catalog.find_atx(fixture.resolved->id, "value_idx"), nullptr);
+    GdbCatalog catalog;
+    ResolvedTable resolved;
+    ASSERT_TRUE(open_fast_fixture(path, catalog, resolved));
+    ASSERT_NE(catalog.find_spx(resolved.id), nullptr);
+    ASSERT_NE(catalog.find_indexes(resolved.id), nullptr);
+    ASSERT_NE(catalog.find_atx(resolved.id, "value_idx"), nullptr);
 
-    QueryEngine engine(fixture.catalog, *fixture.resolved);
+    QueryEngine engine(catalog, resolved);
     ASSERT_TRUE(engine.open());
 
     QueryRequest request;
@@ -214,10 +222,11 @@ TEST_F(SpatialWhereIntegrationTest,
        CompoundWhereEvaluatesOnlyExactSpatialMatches) {
     const std::string path = createIndexedFixture();
     ASSERT_FALSE(path.empty());
-    OpenedFixture fixture = open_fast_fixture(path);
-    ASSERT_TRUE(fixture.resolved.has_value());
+    GdbCatalog catalog;
+    ResolvedTable resolved;
+    ASSERT_TRUE(open_fast_fixture(path, catalog, resolved));
 
-    QueryEngine engine(fixture.catalog, *fixture.resolved);
+    QueryEngine engine(catalog, resolved);
     ASSERT_TRUE(engine.open());
 
     QueryRequest request;
@@ -255,10 +264,11 @@ TEST_F(SpatialWhereIntegrationTest,
        StringIndexCandidatesAreRecheckedAgainstFullWhere) {
     const std::string path = createIndexedFixture();
     ASSERT_FALSE(path.empty());
-    OpenedFixture fixture = open_fast_fixture(path);
-    ASSERT_TRUE(fixture.resolved.has_value());
+    GdbCatalog catalog;
+    ResolvedTable resolved;
+    ASSERT_TRUE(open_fast_fixture(path, catalog, resolved));
 
-    QueryEngine engine(fixture.catalog, *fixture.resolved);
+    QueryEngine engine(catalog, resolved);
     ASSERT_TRUE(engine.open());
 
     QueryRequest request;
@@ -280,10 +290,11 @@ TEST_F(SpatialWhereIntegrationTest,
        EmptySetsShortCircuitAndInvalidRequestsAreDiagnosed) {
     const std::string path = createIndexedFixture();
     ASSERT_FALSE(path.empty());
-    OpenedFixture fixture = open_fast_fixture(path);
-    ASSERT_TRUE(fixture.resolved.has_value());
+    GdbCatalog catalog;
+    ResolvedTable resolved;
+    ASSERT_TRUE(open_fast_fixture(path, catalog, resolved));
 
-    QueryEngine engine(fixture.catalog, *fixture.resolved);
+    QueryEngine engine(catalog, resolved);
     ASSERT_TRUE(engine.open());
 
     QueryRequest spatial_empty;
