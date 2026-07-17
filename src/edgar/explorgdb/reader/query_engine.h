@@ -5,6 +5,7 @@
 #include "gdb_attribute_index.h"
 #include "gdb_spatial_index.h"
 #include "gdb_table.h"
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
