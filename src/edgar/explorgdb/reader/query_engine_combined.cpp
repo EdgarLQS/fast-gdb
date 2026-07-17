@@ -39,9 +39,6 @@ bool used_spx_path(const std::string& path) {
 }
 
 bool numeric_atx_supported(FieldType type) {
-    // The current .atx decoder is exact for signed Int32 and double-backed
-    // fields. Other physical encodings remain on the candidate row evaluator
-    // until the index decoder has explicit type metadata.
     switch (type) {
         case FieldType::Int32:
         case FieldType::Float64:
@@ -187,6 +184,13 @@ AttributeCandidatePlan build_attribute_candidates(
             plan.fids = index.query_double(
                 predicate.numeric_value, predicate.op);
         }
+
+        // .atx traversal order is index-key order, not a public guarantee of
+        // FID order. The linear intersection requires ascending unique FIDs.
+        std::sort(plan.fids.begin(), plan.fids.end());
+        plan.fids.erase(
+            std::unique(plan.fids.begin(), plan.fids.end()),
+            plan.fids.end());
         plan.used = true;
         return plan;
     } catch (...) {
