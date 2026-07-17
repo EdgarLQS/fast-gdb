@@ -1,7 +1,8 @@
 # GDB 教程与回归测试总览
 
-当前分支 `codex/spatial-attribute-query` 新增空间属性联合查询和完整 Feature 流式
-迭代测试。测试代码与静态自检完成，但尚未实际运行完整 CTest；文件存在不代表通过。
+当前分支 `codex/spatial-attribute-query` 新增空间属性联合查询、完整 Feature 流式
+迭代和 one-pass 完整对象读取优化测试。测试代码与静态自检完成，但尚未实际运行完整
+CTest；文件存在不代表通过。
 
 功能矩阵见 [`docs/usage/04_功能与基准测试覆盖矩阵.md`](../docs/usage/04_功能与基准测试覆盖矩阵.md)。
 
@@ -56,7 +57,9 @@ tests/
 | `usegdal/test_feature_cursor_empty_geometry.cpp` | NULL geometry 成功返回 Empty |
 | `usegdal/test_feature_cursor_zero_length.cpp` | ObjectID-only 零长度行 |
 | `usegdal/test_feature_cursor_reopen.cpp` | open generation、EOF reacquire、其他活动 cursor |
-| `usegdal/test_feature_cursor_benchmark.cpp` | 100K full-feature runner，默认跳过 |
+| `usegdal/test_feature_cursor_one_pass.cpp` | one-pass 与 legacy 的字段、Binary、兼容 WKT、ISO WKB 对照；NULL geometry；请求级 profile 开关 |
+| `usegdal/test_feature_cursor_one_pass_geometry.cpp` | MultiPoint、Polyline、Polygon 含洞的旧/新完整对象对照 |
+| `usegdal/test_feature_cursor_benchmark.cpp` | 100K full-feature schema-v2 runner；五样本轮换顺序；独立 profile 样本，默认跳过 |
 | `usegdal/spatial_where_test_utils.h` | 按 TEST 名隔离临时 GDB |
 
 ## Package consumer
@@ -68,6 +71,8 @@ Reader consumer 编译：
 - `QueryFeature`；
 - `QueryEngine::open_cursor`；
 - `FeatureCursor::next/move_to/done/error`；
+- `QueryRequest::profile_feature_reads`；
+- `FeatureCursorMetrics` 和 `QueryResult::feature_cursor_metrics`；
 - move-only cursor 合同；
 - 不包含内部 WHERE 头。
 
@@ -139,17 +144,28 @@ ctest --test-dir build-on --output-on-failure \
   -R 'FeatureCursorBenchmarkTest.Point100KFullFeatureEvidence'
 ```
 
+Full-feature schema-v2 evidence 记录：
+
+- Cursor、legacy、GDAL 五样本轮换执行顺序；
+- fresh-open、非 strict-cold 语义；
+- 查询规划、row lookup、字段物化、GeometryModel、WKT、WKB 和 checksum sink；
+- profile 样本不进入 median/p95；
+- 未指定 evidence 目录时写系统临时目录，不写仓库。
+
 ## 审核注意事项
 
 - `next()==false` 后必须检查 `done()`；
 - `move_to` 按零基 FID 定位，不按结果序号；
 - 顺序 cursor 不得先物化全表 FID；
 - EOF cursor reacquire 前必须先取得 engine lease；
+- one-pass 必须保持完整字段、Binary、兼容 WKT 和 ISO WKB 与 legacy 一致；
+- profile 必须通过请求显式开启，普通路径不得调用 clock；
 - 测试临时目录必须隔离，可安全 `ctest -j`；
 - GDAL 对照必须保留顺序，不能通过排序掩盖 cursor 顺序错误；
 - `SKIPPED` 不计通过；
 - benchmark 默认跳过；
 - 原始结果和生成 `.gdb` 不提交仓库；
+- `721f186` 的 3.869 ms 是优化前基线，新性能必须复测后才能更新结论；
 - 当前正式状态仍为 `Code review ready / Formal acceptance blocked`。
 
 代码审核顺序见 [`docs/usage/10_空间属性联合查询代码审核指南.md`](../docs/usage/10_空间属性联合查询代码审核指南.md)。
