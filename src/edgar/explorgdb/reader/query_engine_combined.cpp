@@ -59,7 +59,26 @@ size_t utf8_sequence_bytes(unsigned char lead) {
     if ((lead & 0xe0U) == 0xc0U) return 2;
     if ((lead & 0xf0U) == 0xe0U) return 3;
     if ((lead & 0xf8U) == 0xf0U) return 4;
-    return 1;
+    return 0;
+}
+
+bool string_index_key_supported(const std::string& value) {
+    for (size_t index = 0; index < value.size();) {
+        const size_t bytes = utf8_sequence_bytes(
+            static_cast<unsigned char>(value[index]));
+        // The current .atx UTF-16 decoder handles one code unit at a time and
+        // cannot safely reproduce surrogate pairs. Falling back avoids false
+        // negatives for non-BMP text.
+        if (bytes == 0 || bytes == 4 || index + bytes > value.size())
+            return false;
+        for (size_t continuation = 1; continuation < bytes; ++continuation) {
+            const unsigned char byte = static_cast<unsigned char>(
+                value[index + continuation]);
+            if ((byte & 0xc0U) != 0x80U) return false;
+        }
+        index += bytes;
+    }
+    return true;
 }
 
 std::string truncate_index_string(const std::string& value,
@@ -68,14 +87,12 @@ std::string truncate_index_string(const std::string& value,
     size_t units = 0;
     for (size_t index = 0; index < value.size() && units < max_utf16_units;) {
         if (value[index] == ' ') break;
-        const size_t bytes = std::min(
-            utf8_sequence_bytes(static_cast<unsigned char>(value[index])),
-            value.size() - index);
-        const size_t required_units = bytes == 4 ? 2U : 1U;
-        if (units + required_units > max_utf16_units) break;
+        const size_t bytes = utf8_sequence_bytes(
+            static_cast<unsigned char>(value[index]));
+        if (bytes == 0 || index + bytes > value.size()) break;
         result.append(value, index, bytes);
         index += bytes;
-        units += required_units;
+        ++units;
     }
     return result;
 }
@@ -141,7 +158,8 @@ AttributeCandidatePlan build_attribute_candidates(
 
         const FieldType field_type = fields[predicate.field_index].type;
         if (predicate.is_string) {
-            if (!index.trailer().is_string) {
+            if (field_type != FieldType::String ||
+                !index.trailer().is_string) {
                 plan.reason = "attribute index type mismatch; spatial candidates evaluated";
                 return plan;
             }
@@ -150,6 +168,10 @@ AttributeCandidatePlan build_attribute_candidates(
             // a final expression recheck.
             if (predicate.op != AttrOp::Eq && predicate.op != AttrOp::Ge) {
                 plan.reason = "string operator is not safely indexable; spatial candidates evaluated";
+                return plan;
+            }
+            if (!string_index_key_supported(predicate.string_value)) {
+                plan.reason = "string key is not safely representable by the current .atx decoder; spatial candidates evaluated";
                 return plan;
             }
             const size_t max_units = index.trailer().value_size / 2U;
