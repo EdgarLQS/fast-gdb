@@ -1,11 +1,13 @@
 #include "query_engine.h"
 #include "gdb_indexes.h"
 #include "query_where_internal.h"
+#include "spatial_predicate.h"
 
 #include <algorithm>
 #include <chrono>
 #include <cctype>
 #include <cmath>
+#include <limits>
 #include <optional>
 #include <string>
 #include <utility>
@@ -17,6 +19,7 @@ using CombinedClock = std::chrono::steady_clock;
 
 constexpr size_t kAtxBypassMaxCandidates = 65536U;
 constexpr size_t kAtxBypassRatioDenominator = 8U;
+constexpr double kFusedCoverageThreshold = 0.125;
 
 double elapsed_ms(CombinedClock::time_point start) {
     return std::chrono::duration<double, std::milli>(
@@ -87,6 +90,110 @@ bool should_bypass_attribute_index(size_t spatial_matches,
     return spatial_matches <= kAtxBypassMaxCandidates &&
            spatial_matches <=
                active_features / kAtxBypassRatioDenominator;
+}
+
+bool bbox_disjoint(const GdbBbox& bounds,
+                   double xmin, double ymin,
+                   double xmax, double ymax) {
+    return bounds.xmax < xmin || bounds.xmin > xmax ||
+           bounds.ymax < ymin || bounds.ymin > ymax;
+}
+
+bool bbox_contained_by_query(const GdbBbox& bounds,
+                             double xmin, double ymin,
+                             double xmax, double ymax) {
+    return bounds.xmin >= xmin && bounds.ymin >= ymin &&
+           bounds.xmax <= xmax && bounds.ymax <= ymax;
+}
+
+double query_coverage_ratio(const FieldDescriptor& field,
+                            double xmin, double ymin,
+                            double xmax, double ymax) {
+    const double width = field.xmax - field.xmin;
+    const double height = field.ymax - field.ymin;
+    if (!std::isfinite(width) || !std::isfinite(height) ||
+        width <= 0.0 || height <= 0.0) {
+        return 0.0;
+    }
+
+    const double overlap_xmin = std::max(xmin, field.xmin);
+    const double overlap_ymin = std::max(ymin, field.ymin);
+    const double overlap_xmax = std::min(xmax, field.xmax);
+    const double overlap_ymax = std::min(ymax, field.ymax);
+    if (overlap_xmax <= overlap_xmin || overlap_ymax <= overlap_ymin)
+        return 0.0;
+
+    const long double layer_area =
+        static_cast<long double>(width) * static_cast<long double>(height);
+    const long double overlap_area =
+        static_cast<long double>(overlap_xmax - overlap_xmin) *
+        static_cast<long double>(overlap_ymax - overlap_ymin);
+    const long double ratio = overlap_area / layer_area;
+    if (!std::isfinite(static_cast<double>(ratio))) return 0.0;
+    return std::clamp(static_cast<double>(ratio), 0.0, 1.0);
+}
+
+enum class SpatialRefDecision {
+    Reject,
+    Match,
+    Invalid
+};
+
+SpatialRefDecision evaluate_spatial_ref(
+    const FieldRef& geometry,
+    GdbGeomDecoder& decoder,
+    double xmin, double ymin,
+    double xmax, double ymax,
+    SpatialQueryMetrics& metrics) {
+    if (geometry.is_null || geometry.data == nullptr ||
+        geometry.byte_len == 0) {
+        ++metrics.invalid_geometries;
+        return SpatialRefDecision::Invalid;
+    }
+
+    const std::optional<GdbBbox> bounds = decoder.peek_bbox(
+        geometry.data, geometry.byte_len);
+    if (bounds.has_value()) {
+        if (bbox_disjoint(*bounds, xmin, ymin, xmax, ymax)) {
+            ++metrics.bbox_rejected;
+            return SpatialRefDecision::Reject;
+        }
+        if (bbox_contained_by_query(*bounds, xmin, ymin, xmax, ymax)) {
+            ++metrics.bbox_contained;
+            return SpatialRefDecision::Match;
+        }
+    }
+
+    ++metrics.exact_tested;
+    GeometryModel model = decoder.decode_model(
+        geometry.data, geometry.byte_len);
+    if (!model.valid()) {
+        ++metrics.invalid_geometries;
+        return SpatialRefDecision::Invalid;
+    }
+
+    const long double scale = model.transform.xy_scale;
+    if (scale == 0.0L) {
+        ++metrics.invalid_geometries;
+        return SpatialRefDecision::Invalid;
+    }
+
+    QueryGridBbox query{
+        (static_cast<long double>(xmin) - model.transform.x_origin) * scale,
+        (static_cast<long double>(ymin) - model.transform.y_origin) * scale,
+        (static_cast<long double>(xmax) - model.transform.x_origin) * scale,
+        (static_cast<long double>(ymax) - model.transform.y_origin) * scale};
+    if (!std::isfinite(static_cast<double>(query.xmin)) ||
+        !std::isfinite(static_cast<double>(query.ymin)) ||
+        !std::isfinite(static_cast<double>(query.xmax)) ||
+        !std::isfinite(static_cast<double>(query.ymax))) {
+        ++metrics.invalid_geometries;
+        return SpatialRefDecision::Invalid;
+    }
+
+    return SpatialPredicate::intersects_bbox(model, query)
+        ? SpatialRefDecision::Match
+        : SpatialRefDecision::Reject;
 }
 
 struct AttributeCandidatePlan {
@@ -268,6 +375,183 @@ QueryResult QueryEngine::query_spatial_where(const QueryRequest& request) {
         return result;
     }
 
+    const auto predicate = expression.indexable_predicate();
+
+    // Selective SPX candidates can be spatially checked and WHERE-rechecked
+    // from one parsed row. This removes the old geometry pass followed by a
+    // second nullable/layout/field pass. All output remains local until the
+    // complete candidate scan succeeds; any failure falls through unchanged.
+    if (predicate.has_value()) {
+        const FieldDescriptor* geom_field = geometry_field();
+        const size_t feature_count = parser_->active_feature_count();
+        const size_t fid_slot_count = parser_->feature_count();
+        size_t geometry_field_index = parser_->fields().size();
+        for (size_t index = 0; index < parser_->fields().size(); ++index) {
+            if (parser_->fields()[index].type == FieldType::Geometry) {
+                geometry_field_index = index;
+                break;
+            }
+        }
+
+        const double estimated_coverage = geom_field == nullptr
+            ? 1.0
+            : query_coverage_ratio(
+                  *geom_field,
+                  request.xmin, request.ymin,
+                  request.xmax, request.ymax);
+        const bool fused_shape_supported =
+            geom_field != nullptr && feature_count != 0 &&
+            fid_slot_count != 0 &&
+            fid_slot_count - 1U <=
+                static_cast<size_t>(std::numeric_limits<uint32_t>::max()) &&
+            geometry_field_index < parser_->fields().size() &&
+            estimated_coverage <= kFusedCoverageThreshold;
+
+        if (fused_shape_supported) {
+            AttributeCandidatePlan attribute = resolve_attribute_index(
+                catalog_, resolved_.id, parser_->fields(), *predicate);
+            if (attribute.available) {
+                const auto candidate_start = CombinedClock::now();
+                if (!spatial_index_initialized_) {
+                    spatial_index_initialized_ = true;
+                    const CatalogEntry* spx = catalog_.find_spx(resolved_.id);
+                    spatial_index_present_ = spx != nullptr;
+                    if (spx != nullptr) {
+                        auto index = std::make_unique<GdbSpatialIndexParser>(
+                            catalog_.path() + "/" + spx->filename);
+                        if (index->parse()) {
+                            spatial_index_ = std::move(index);
+                        } else {
+                            capabilities_.spatial_index = {
+                                CapabilityState::Degraded,
+                                ".spx exists but could not be parsed; "
+                                "falling back to sequential model filtering"};
+                        }
+                    }
+                }
+
+                if (spatial_index_ != nullptr) {
+                    std::vector<uint32_t> candidates =
+                        spatial_index_->query_bbox(
+                            request.xmin, request.ymin,
+                            request.xmax, request.ymax,
+                            geom_field->xorig, geom_field->yorig,
+                            geom_field->xyscale, geom_field->grid_sizes,
+                            static_cast<uint32_t>(fid_slot_count - 1U));
+                    const double candidate_lookup_ms =
+                        elapsed_ms(candidate_start);
+
+                    if (!candidates.empty() &&
+                        should_bypass_attribute_index(
+                            candidates.size(), feature_count)) {
+                        QueryResult fused;
+                        fused.execution_path =
+                            "spatial-where:spatial-candidates";
+                        fused.combined_metrics.used_spatial_index = true;
+                        fused.combined_metrics.attribute_index_bypassed = true;
+                        fused.combined_metrics.fused_spatial_attribute_scan =
+                            true;
+                        fused.combined_metrics.spatial_candidate_count =
+                            candidates.size();
+                        fused.combined_metrics.fused_candidate_count =
+                            candidates.size();
+                        fused.combined_metrics.attribute_metadata_ms =
+                            attribute.metadata_ms;
+                        fused.combined_metrics.attribute_ms =
+                            attribute.metadata_ms;
+
+                        fused.spatial_metrics.feature_count = feature_count;
+                        fused.spatial_metrics.candidate_count =
+                            candidates.size();
+                        fused.spatial_metrics.candidate_ratio =
+                            static_cast<double>(candidates.size()) /
+                            static_cast<double>(feature_count);
+                        fused.spatial_metrics.estimated_coverage =
+                            estimated_coverage;
+                        fused.spatial_metrics.candidate_lookup_ms =
+                            candidate_lookup_ms;
+
+                        const bool has_z =
+                            ((parser_->header().geom_type_full >> 24U) &
+                             (1U << 7U)) != 0;
+                        const bool has_m =
+                            ((parser_->header().geom_type_full >> 24U) &
+                             (1U << 6U)) != 0;
+                        GdbGeomDecoder decoder(
+                            geom_field->xorig, geom_field->yorig,
+                            geom_field->xyscale,
+                            geom_field->zorig, geom_field->zscale,
+                            geom_field->morig, geom_field->mscale,
+                            has_z, has_m);
+
+                        const auto scan_start = CombinedClock::now();
+                        fused.matched_fids.reserve(candidates.size());
+                        const uint64_t scanned =
+                            parser_->scan_field_candidates(
+                                candidates,
+                                [&](uint32_t fid,
+                                    const FieldRef* fields,
+                                    int field_count) {
+                                    if (fields == nullptr ||
+                                        geometry_field_index >=
+                                            static_cast<size_t>(field_count)) {
+                                        return false;
+                                    }
+                                    const SpatialRefDecision decision =
+                                        evaluate_spatial_ref(
+                                            fields[geometry_field_index],
+                                            decoder,
+                                            request.xmin, request.ymin,
+                                            request.xmax, request.ymax,
+                                            fused.spatial_metrics);
+                                    if (decision != SpatialRefDecision::Match)
+                                        return true;
+
+                                    ++fused.combined_metrics.spatial_match_count;
+                                    ++fused.combined_metrics.attribute_tested;
+                                    if (evaluate_where(
+                                            expression, fields, field_count)) {
+                                        fused.matched_fids.push_back(fid);
+                                    }
+                                    return true;
+                                });
+                        const double fused_scan_ms = elapsed_ms(scan_start);
+
+                        if (scanned == candidates.size()) {
+                            std::sort(fused.matched_fids.begin(),
+                                      fused.matched_fids.end());
+                            fused.matched_fids.erase(
+                                std::unique(fused.matched_fids.begin(),
+                                            fused.matched_fids.end()),
+                                fused.matched_fids.end());
+                            fused.combined_metrics.final_match_count =
+                                fused.matched_fids.size();
+                            fused.combined_metrics.fused_candidate_scan_ms =
+                                fused_scan_ms;
+                            fused.combined_metrics.spatial_ms =
+                                candidate_lookup_ms + fused_scan_ms;
+                            fused.spatial_metrics.geometry_scan_ms =
+                                fused_scan_ms;
+                            fused.spatial_metrics.total_ms =
+                                candidate_lookup_ms + fused_scan_ms;
+                            fused.combined_metrics.total_ms =
+                                elapsed_ms(total_start);
+
+                            if (fused.spatial_metrics.invalid_geometries != 0) {
+                                fused.fallback_reason =
+                                    std::to_string(
+                                        fused.spatial_metrics.invalid_geometries) +
+                                    " candidate geometries had explicit "
+                                    "decode/topology errors";
+                            }
+                            return fused;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     const auto spatial_start = CombinedClock::now();
     QueryResult spatial = query_bbox_unified(
         request.xmin, request.ymin, request.xmax, request.ymax);
@@ -299,7 +583,6 @@ QueryResult QueryEngine::query_spatial_where(const QueryRequest& request) {
         evaluation_candidates.end());
 
     bool attribute_index_used = false;
-    const auto predicate = expression.indexable_predicate();
     if (!evaluation_candidates.empty() && predicate.has_value()) {
         AttributeCandidatePlan attribute = resolve_attribute_index(
             catalog_, resolved_.id, parser_->fields(), *predicate);
