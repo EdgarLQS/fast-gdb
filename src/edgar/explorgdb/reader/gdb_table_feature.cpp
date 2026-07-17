@@ -37,7 +37,7 @@ FeatureReadClock::time_point metric_start(FeatureReadMetrics* metrics) {
 void metric_add(FeatureReadMetrics* metrics,
                 double FeatureReadMetrics::*member,
                 FeatureReadClock::time_point start) {
-    if (metrics != nullptr) metrics->*member += elapsed_ms(start);
+    if (metrics != nullptr) (metrics->*member) += elapsed_ms(start);
 }
 
 size_t nullable_bitmap_bytes_for(int nullable_count) {
@@ -173,25 +173,23 @@ bool GdbTableParser::read_feature_by_fid(
         if (offset > file_size_ || file_size_ - offset < sizeof(blob_length))
             return false;
         std::memcpy(&blob_length, mapped_data_ + offset, sizeof(blob_length));
-        if (static_cast<size_t>(blob_length) >
-            file_size_ - offset - sizeof(blob_length)) {
+        const size_t payload_offset = offset + sizeof(blob_length);
+        if (static_cast<size_t>(blob_length) > file_size_ - payload_offset)
             return false;
-        }
-        row_data = mapped_data_ + offset + sizeof(blob_length);
+        row_data = mapped_data_ + payload_offset;
     } else if (fd_ >= 0) {
+        if (offset > file_size_ || file_size_ - offset < sizeof(blob_length))
+            return false;
         uint8_t length_buffer[sizeof(blob_length)];
-        if (!read_at(raw_offset, length_buffer, sizeof(length_buffer))) return false;
+        if (!read_at(offset, length_buffer, sizeof(length_buffer))) return false;
         BinaryReader length_reader(length_buffer, sizeof(length_buffer));
         blob_length = length_reader.read_u32();
-        if (raw_offset + sizeof(blob_length) > file_size_ ||
-            static_cast<uint64_t>(blob_length) >
-                file_size_ - static_cast<size_t>(raw_offset + sizeof(blob_length))) {
+        const size_t payload_offset = offset + sizeof(blob_length);
+        if (static_cast<size_t>(blob_length) > file_size_ - payload_offset)
             return false;
-        }
         if (row_buffer_.size() < blob_length) row_buffer_.resize(blob_length);
         if (blob_length != 0 &&
-            !read_at(raw_offset + sizeof(blob_length),
-                     row_buffer_.data(), blob_length)) {
+            !read_at(payload_offset, row_buffer_.data(), blob_length)) {
             return false;
         }
         row_data = row_buffer_.data();
@@ -203,11 +201,12 @@ bool GdbTableParser::read_feature_by_fid(
         BinaryReader length_reader(file_data_.data() + offset,
                                    file_data_.size() - offset);
         blob_length = length_reader.read_u32();
+        const size_t payload_offset = offset + sizeof(blob_length);
         if (static_cast<size_t>(blob_length) >
-            file_data_.size() - offset - sizeof(blob_length)) {
+            file_data_.size() - payload_offset) {
             return false;
         }
-        row_data = file_data_.data() + offset + sizeof(blob_length);
+        row_data = file_data_.data() + payload_offset;
     }
     metric_add(metrics, &FeatureReadMetrics::row_lookup_ms, lookup_start);
 
@@ -240,7 +239,7 @@ bool GdbTableParser::read_feature_by_fid(
         nullable_bitmap_bytes_for(nullable_count);
     FeatureRecord best_record;
     GeometrySlice best_geometry;
-    size_t best_padding = static_cast<size_t>(blob_length) + 1U;
+    size_t best_padding = std::numeric_limits<size_t>::max();
     bool found = false;
 
     for (size_t bitmap_bytes = max_bitmap_bytes;; --bitmap_bytes) {
@@ -389,7 +388,8 @@ bool GdbTableParser::read_feature_by_fid(
         geometry = std::move(output_geometry);
         return true;
     }
-    if (!best_geometry.present || best_geometry.is_null) {
+    if (!best_geometry.present) return false;
+    if (best_geometry.is_null) {
         output_geometry.status = GeometryStatus::Empty;
         output_geometry.diagnostic = "geometry is null";
         record = std::move(best_record);
@@ -411,7 +411,9 @@ bool GdbTableParser::read_feature_by_fid(
                decode_start);
 
     if (!model.valid()) {
+        const auto wkb_start = metric_start(metrics);
         output_geometry = WkbWriter::write(model);
+        metric_add(metrics, &FeatureReadMetrics::wkb_write_ms, wkb_start);
         geometry = std::move(output_geometry);
         return false;
     }
