@@ -80,6 +80,7 @@ TEST(GdbCatalogTest, FindNonExistent) {
 
     EXPECT_EQ(catalog.find_table(999), nullptr);
     EXPECT_EQ(catalog.find_tablx(999), nullptr);
+    EXPECT_EQ(catalog.find_indexes(999), nullptr);
 }
 
 // 测试 find_spx 按 ID 查找空间索引
@@ -99,6 +100,20 @@ TEST(GdbCatalogTest, FindSpx) {
 
     // 不存在的 ID
     EXPECT_EQ(catalog.find_spx(999), nullptr);
+}
+
+// 测试 find_indexes 按 ID 查找索引元数据文件
+TEST(GdbCatalogTest, FindIndexes) {
+    GdbCatalog catalog;
+    ASSERT_TRUE(catalog.scan(SPX_GDB_PATH.string()));
+
+    auto index_files = catalog.find_by_extension(".gdbindexes");
+    ASSERT_FALSE(index_files.empty());
+    const uint32_t table_id = index_files.front()->numeric_id;
+    const auto* indexes = catalog.find_indexes(table_id);
+    ASSERT_NE(indexes, nullptr);
+    EXPECT_EQ(indexes->numeric_id, table_id);
+    EXPECT_EQ(indexes->extension, ".gdbindexes");
 }
 
 // 测试 find_atx 按 ID + 索引名查找属性索引
