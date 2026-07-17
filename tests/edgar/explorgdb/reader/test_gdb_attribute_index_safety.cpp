@@ -72,12 +72,42 @@ TEST(AttributeIndexSafetyTest, ValidSingleLeafStillParses) {
     fs::remove(path);
 }
 
+TEST(AttributeIndexSafetyTest, DirectNumericQueryMatchesMaterializedQuery) {
+    const std::string path =
+        build_single_value_atx("direct_valid", 0U, 1U, 1U);
+
+    GdbAttributeIndexParser materialized(path);
+    ASSERT_TRUE(materialized.parse());
+    const std::vector<uint32_t> expected =
+        materialized.query_double(42.0, AttrOp::Eq);
+
+    GdbAttributeIndexParser direct(path);
+    AttributeIndexQueryMetrics metrics;
+    std::vector<uint32_t> actual;
+    ASSERT_TRUE(direct.query_double_direct(
+        42.0, AttrOp::Eq, 1U, actual, &metrics));
+    EXPECT_EQ(actual, expected);
+    EXPECT_EQ(metrics.page_count, 1U);
+    EXPECT_EQ(metrics.pages_visited, 1U);
+    EXPECT_EQ(metrics.entries_scanned, 1U);
+    EXPECT_EQ(metrics.candidate_count, 1U);
+    EXPECT_GE(metrics.file_load_ms, 0.0);
+    EXPECT_GE(metrics.leaf_scan_ms, 0.0);
+    EXPECT_GE(metrics.total_ms, 0.0);
+    fs::remove(path);
+}
+
 TEST(AttributeIndexSafetyTest, TrailerCountMismatchFailsClosed) {
     const std::string path =
         build_single_value_atx("count_mismatch", 0U, 1U, 2U);
     GdbAttributeIndexParser parser(path);
     EXPECT_FALSE(parser.parse());
     EXPECT_TRUE(parser.all_entries().empty());
+
+    std::vector<uint32_t> direct_result{99U};
+    EXPECT_FALSE(parser.query_double_direct(
+        42.0, AttrOp::Eq, 1U, direct_result));
+    EXPECT_EQ(direct_result, (std::vector<uint32_t>{99U}));
     fs::remove(path);
 }
 
@@ -86,6 +116,11 @@ TEST(AttributeIndexSafetyTest, CyclicLeafChainFailsClosed) {
     GdbAttributeIndexParser parser(path);
     EXPECT_FALSE(parser.parse());
     EXPECT_TRUE(parser.all_entries().empty());
+
+    std::vector<uint32_t> direct_result{77U};
+    EXPECT_FALSE(parser.query_double_direct(
+        42.0, AttrOp::Eq, 1U, direct_result));
+    EXPECT_EQ(direct_result, (std::vector<uint32_t>{77U}));
     fs::remove(path);
 }
 
@@ -94,5 +129,10 @@ TEST(AttributeIndexSafetyTest, ZeroFidFailsClosed) {
     GdbAttributeIndexParser parser(path);
     EXPECT_FALSE(parser.parse());
     EXPECT_TRUE(parser.all_entries().empty());
+
+    std::vector<uint32_t> direct_result{55U};
+    EXPECT_FALSE(parser.query_double_direct(
+        42.0, AttrOp::Eq, 1U, direct_result));
+    EXPECT_EQ(direct_result, (std::vector<uint32_t>{55U}));
     fs::remove(path);
 }
