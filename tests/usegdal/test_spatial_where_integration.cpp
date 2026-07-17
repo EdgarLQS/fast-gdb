@@ -14,6 +14,7 @@
 #include "catalog_resolver.h"
 #include "gdb_catalog.h"
 #include "query_engine.h"
+#include "spatial_where_test_utils.h"
 #include "test_fixture.h"
 
 using namespace explorgdb;
@@ -96,8 +97,8 @@ class SpatialWhereIntegrationTest : public GdbTutorialFixture {
 protected:
     std::string createIndexedFixture() {
         const std::string path =
-            (std::filesystem::temp_directory_path() /
-             "fast_gdb_spatial_where_integration.gdb").string();
+            spatial_where_test_utils::fixture_path(
+                "fast_gdb_spatial_where_integration").string();
         GDALDataset* dataset = createGdb(path.c_str());
         EXPECT_NE(dataset, nullptr);
         if (dataset == nullptr) return {};
