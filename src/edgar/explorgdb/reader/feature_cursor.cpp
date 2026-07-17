@@ -1,7 +1,6 @@
 #include "query_engine.h"
 
 #include <algorithm>
-#include <cstdlib>
 #include <functional>
 #include <limits>
 #include <sstream>
@@ -47,14 +46,6 @@ std::string fid_error(const char* prefix, uint32_t fid) {
     return stream.str();
 }
 
-bool feature_cursor_profile_enabled() {
-    const char* value = std::getenv("FAST_GDB_FEATURE_CURSOR_PROFILE");
-    if (value == nullptr) return false;
-    const std::string normalized(value);
-    return normalized == "1" || normalized == "true" ||
-           normalized == "TRUE";
-}
-
 } // namespace
 
 class FeatureCursor::Impl {
@@ -89,6 +80,7 @@ public:
          ReleaseCallback release,
          EngineValidCallback engine_valid,
          QueryResult query_result,
+         bool profile_enabled,
          std::vector<uint32_t> fids)
         : engine_(engine),
           generation_(generation),
@@ -97,7 +89,7 @@ public:
           engine_valid_(std::move(engine_valid)),
           query_result_(std::move(query_result)),
           fids_(std::move(fids)),
-          profile_enabled_(feature_cursor_profile_enabled()),
+          profile_enabled_(profile_enabled),
           mode_(Mode::CandidateFids) {
         if (fids_.empty()) {
             state_ = State::Exhausted;
@@ -111,6 +103,7 @@ public:
          ReleaseCallback release,
          EngineValidCallback engine_valid,
          QueryResult query_result,
+         bool profile_enabled,
          size_t feature_limit)
         : engine_(engine),
           generation_(generation),
@@ -119,7 +112,7 @@ public:
           engine_valid_(std::move(engine_valid)),
           query_result_(std::move(query_result)),
           feature_limit_(feature_limit),
-          profile_enabled_(feature_cursor_profile_enabled()),
+          profile_enabled_(profile_enabled),
           mode_(Mode::Sequential) {
         if (feature_limit_ == 0) {
             state_ = State::Exhausted;
@@ -392,7 +385,8 @@ FeatureCursor QueryEngine::open_cursor(const QueryRequest& request) {
         }
         return FeatureCursor(std::make_unique<FeatureCursor::Impl>(
             this, generation, std::move(acquire), std::move(release),
-            std::move(engine_valid), std::move(result), feature_limit));
+            std::move(engine_valid), std::move(result),
+            request.profile_feature_reads, feature_limit));
     }
 
     result = query(request);
@@ -424,7 +418,8 @@ FeatureCursor QueryEngine::open_cursor(const QueryRequest& request) {
     std::vector<uint32_t> fids = result.matched_fids;
     return FeatureCursor(std::make_unique<FeatureCursor::Impl>(
         this, generation, std::move(acquire), std::move(release),
-        std::move(engine_valid), std::move(result), std::move(fids)));
+        std::move(engine_valid), std::move(result),
+        request.profile_feature_reads, std::move(fids)));
 }
 
 } // namespace explorgdb
