@@ -10,6 +10,8 @@ on:
       - 'tests/usegdal/test_feature_cursor_benchmark.cpp'
       - 'tests/usegdal/test_spatial_where_*.cpp'
       - 'tests/edgar/explorgdb/reader/test_gdb_attribute_index_safety.cpp'
+      - 'tests/edgar/explorgdb/reader/test_catalog_index_metadata_cache.cpp'
+      - 'tests/edgar/explorgdb/reader/test_gdb_spatial_index_merge.cpp'
   workflow_dispatch:
 
 concurrency:
@@ -46,7 +48,7 @@ jobs:
       - name: Run optimization correctness tests
         run: >-
           ctest --test-dir build-perf --output-on-failure
-          -R 'AttributeIndexSafety|SpatialWhereAdaptive|SpatialWhereFusedGeometry|SpatialWhereIndexFallback|FeatureCursorOnePass'
+          -R 'AttributeIndexSafety|GdbCatalogIndexMetadataCache|SpatialIndexMerge|SpatialWhereAdaptive|SpatialWhereFusedGeometry|SpatialWhereIndexFallback|FeatureCursorOnePass'
 
       - name: Run 100K full-feature benchmark
         env:
