@@ -13,60 +13,124 @@
 
 using namespace explorgdb;
 
-class FeatureCursorReopenTest : public GdbTutorialFixture {};
+class FeatureCursorReopenTest : public GdbTutorialFixture {
+protected:
+    std::string create_fixture(const std::string& prefix) {
+        const std::string path =
+            spatial_where_test_utils::fixture_path(prefix).string();
+        GDALDataset* dataset = createGdb(path.c_str());
+        if (dataset == nullptr) return {};
+        OGRLayer* layer = dataset->CreateLayer(
+            "cursor_reopen_points", nullptr, wkbPoint, nullptr);
+        if (layer == nullptr) {
+            GDALClose(dataset);
+            return {};
+        }
+        OGRFieldDefn value_field("value", OFTInteger);
+        if (layer->CreateField(&value_field) != OGRERR_NONE) {
+            GDALClose(dataset);
+            return {};
+        }
+        OGRFeature* feature = OGRFeature::CreateFeature(
+            layer->GetLayerDefn());
+        if (feature == nullptr) {
+            GDALClose(dataset);
+            return {};
+        }
+        feature->SetField("value", 1);
+        OGRPoint point(1.0, 1.0);
+        const OGRErr geometry_error = feature->SetGeometry(&point);
+        const OGRErr create_error = geometry_error == OGRERR_NONE
+            ? layer->CreateFeature(feature)
+            : geometry_error;
+        OGRFeature::DestroyFeature(feature);
+        GDALClose(dataset);
+        return create_error == OGRERR_NONE ? path : std::string{};
+    }
+
+    bool open_engine(const std::string& path,
+                     GdbCatalog& catalog,
+                     ResolvedTable& resolved,
+                     QueryEngine*& engine) {
+        if (!catalog.scan(path)) return false;
+        CatalogResolver resolver(catalog);
+        if (!resolver.load()) return false;
+        const auto table = resolver.resolve("cursor_reopen_points");
+        if (!table.has_value()) return false;
+        resolved = *table;
+        engine = new QueryEngine(catalog, resolved);
+        if (!engine->open()) {
+            delete engine;
+            engine = nullptr;
+            return false;
+        }
+        return true;
+    }
+};
 
 TEST_F(FeatureCursorReopenTest,
        ExhaustedCursorCannotReacquireAfterEngineReopen) {
-    const std::string path =
-        spatial_where_test_utils::fixture_path(
-            "fast_gdb_feature_cursor_reopen").string();
-    GDALDataset* dataset = createGdb(path.c_str());
-    ASSERT_NE(dataset, nullptr);
-    OGRLayer* layer = dataset->CreateLayer(
-        "cursor_reopen_points", nullptr, wkbPoint, nullptr);
-    ASSERT_NE(layer, nullptr);
-    OGRFieldDefn value_field("value", OFTInteger);
-    ASSERT_EQ(layer->CreateField(&value_field), OGRERR_NONE);
-
-    OGRFeature* feature = OGRFeature::CreateFeature(
-        layer->GetLayerDefn());
-    ASSERT_NE(feature, nullptr);
-    feature->SetField("value", 1);
-    OGRPoint point(1.0, 1.0);
-    ASSERT_EQ(feature->SetGeometry(&point), OGRERR_NONE);
-    ASSERT_EQ(layer->CreateFeature(feature), OGRERR_NONE);
-    OGRFeature::DestroyFeature(feature);
-    GDALClose(dataset);
+    const std::string path = create_fixture(
+        "fast_gdb_feature_cursor_reopen");
+    ASSERT_FALSE(path.empty());
 
     GdbCatalog catalog;
-    ASSERT_TRUE(catalog.scan(path));
-    CatalogResolver resolver(catalog);
-    ASSERT_TRUE(resolver.load());
-    const auto resolved = resolver.resolve("cursor_reopen_points");
-    ASSERT_TRUE(resolved.has_value());
-
-    QueryEngine engine(catalog, *resolved);
-    ASSERT_TRUE(engine.open());
+    ResolvedTable resolved;
+    QueryEngine* raw_engine = nullptr;
+    ASSERT_TRUE(open_engine(path, catalog, resolved, raw_engine));
+    std::unique_ptr<QueryEngine> engine(raw_engine);
 
     QueryRequest request;
     request.kind = QueryKind::SequentialScan;
-    FeatureCursor old_cursor = engine.open_cursor(request);
+    FeatureCursor old_cursor = engine->open_cursor(request);
     QueryFeature output;
     ASSERT_TRUE(old_cursor.next(output));
     EXPECT_FALSE(old_cursor.next(output));
     ASSERT_TRUE(old_cursor.done());
     ASSERT_TRUE(old_cursor.error().empty());
 
-    ASSERT_TRUE(engine.open());
+    ASSERT_TRUE(engine->open());
     EXPECT_FALSE(old_cursor.move_to(0));
     EXPECT_FALSE(old_cursor.done());
     EXPECT_EQ(old_cursor.error(),
               "query engine was reopened while cursor existed");
 
-    FeatureCursor current_cursor = engine.open_cursor(request);
+    FeatureCursor current_cursor = engine->open_cursor(request);
     ASSERT_TRUE(current_cursor.error().empty()) << current_cursor.error();
     ASSERT_TRUE(current_cursor.next(output));
     EXPECT_EQ(output.fid, 0U);
     EXPECT_FALSE(current_cursor.next(output));
     EXPECT_TRUE(current_cursor.done());
+}
+
+TEST_F(FeatureCursorReopenTest,
+       ExhaustedCursorCannotRepositionWhileAnotherCursorIsActive) {
+    const std::string path = create_fixture(
+        "fast_gdb_feature_cursor_reacquire");
+    ASSERT_FALSE(path.empty());
+
+    GdbCatalog catalog;
+    ResolvedTable resolved;
+    QueryEngine* raw_engine = nullptr;
+    ASSERT_TRUE(open_engine(path, catalog, resolved, raw_engine));
+    std::unique_ptr<QueryEngine> engine(raw_engine);
+
+    QueryRequest request;
+    request.kind = QueryKind::SequentialScan;
+    FeatureCursor old_cursor = engine->open_cursor(request);
+    QueryFeature output;
+    ASSERT_TRUE(old_cursor.next(output));
+    EXPECT_FALSE(old_cursor.next(output));
+    ASSERT_TRUE(old_cursor.done());
+
+    FeatureCursor active_cursor = engine->open_cursor(request);
+    ASSERT_TRUE(active_cursor.error().empty()) << active_cursor.error();
+    EXPECT_FALSE(old_cursor.move_to(0));
+    EXPECT_FALSE(old_cursor.done());
+    EXPECT_EQ(old_cursor.error(), "another feature cursor is active");
+
+    ASSERT_TRUE(active_cursor.next(output));
+    EXPECT_EQ(output.fid, 0U);
+    EXPECT_FALSE(active_cursor.next(output));
+    EXPECT_TRUE(active_cursor.done());
 }
