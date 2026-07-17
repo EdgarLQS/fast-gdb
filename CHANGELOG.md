@@ -17,7 +17,10 @@ All notable changes to fast-gdb are documented in this file.
 - `FeatureCursor::move_to(fid)` for forward, backward, rewind and arbitrary zero-based FID jumps.
 - Cursor EOF/error diagnostics through `done()`, `query_result()` and `error()`.
 - Cursor and engine generations for single-active-cursor ownership and reopen invalidation.
+- One-pass `GdbTableParser::read_feature_by_fid()` that locates a row once, materializes fields once, decodes one `GeometryModel`, and writes compatibility WKT plus ISO WKB from that model.
+- Request-scoped `profile_feature_reads` and `FeatureCursorMetrics` for row lookup, field materialization, geometry decode, WKT and WKB stages.
 - Full-object GDAL tests for fields, NULL, Binary and ISO WKB.
+- One-pass parity tests against the retained legacy path for Point, MultiPoint, Polyline and Polygon with a hole.
 - Tests for deleted slots, no-geometry tables, NULL geometry and ObjectID-only zero-length rows.
 - Opt-in 100K full-feature cursor/legacy/GDAL checksum benchmark.
 - GDAL-OFF cursor public API and ownership contract tests.
@@ -29,19 +32,23 @@ All notable changes to fast-gdb are documented in this file.
 - Attribute candidates are sorted/deduplicated and always receive a complete WHERE recheck.
 - Non-BMP strings, `!=`, functional indexes and ambiguous numeric encodings fall back safely.
 - GDAL integration tests use per-test temporary FileGDB directories for parallel CTest.
-- Combined-query and full-feature benchmark evidence records observed paths and correctness.
 - Active FeatureCursor instances block QueryEngine read entry points.
 - QueryEngine is non-copyable and non-movable so cursor-held engine addresses remain stable.
 - Reopening QueryEngine invalidates exhausted cursors and resets cached spatial-index state.
-- Zero-length legal rows are normalized by the cursor into ObjectID and nullable NULL values.
+- Zero-length legal rows are normalized into ObjectID and nullable NULL values.
+- FeatureCursor now uses the one-pass full-object reader instead of `read_record_by_fid()` followed by `read_geometry_value()`.
+- Full-feature benchmark schema v2 rotates Cursor/legacy/GDAL order across five samples, keeps profile outside median/p95, records query/row/field/model/WKT/WKB/checksum stages, and writes default evidence to the system temporary directory.
+- Feature profiling is bound to each `QueryRequest`; normal reads do not call the profile clock or depend on process-global state.
+- Combined-query and full-feature evidence records observed paths and computed correctness rather than hard-coded claims.
 - Writer safety, validation, atomic publication and index rebuild behavior remains as documented by its own workstream.
 - DateTimeWithOffset exposes the date and offset independently.
 
 ### Review status
 
-- Combined-query and FeatureCursor work exists only on `codex/spatial-attribute-query`; it has not entered `main` or a release.
-- Combined-query static review, FeatureCursor three-round static review and documentation synchronization are complete.
-- Status is **Code review ready / Formal acceptance blocked** pending GDAL ON/OFF Release, full and parallel CTest, package consumers, full-object GDAL parity, 100K/10M performance, peak RSS and the 5% gate.
+- Combined-query, FeatureCursor and one-pass optimization work exists only on `codex/spatial-attribute-query`; it has not entered `main` or a release.
+- Combined-query static review, FeatureCursor three-round static review, one-pass optimization three-round static review and documentation synchronization are complete.
+- The 3.869 ms FeatureCursor number remains the pre-optimization `721f186` baseline; no post-optimization performance result is claimed yet.
+- Status is **Code review ready / Formal acceptance blocked** pending GDAL ON/OFF Release, full and parallel CTest, package consumers, one-pass and GDAL parity, schema-v2 100K/10M performance, strict-cold, peak RSS and the 5% gate.
 
 ## [0.1.0] - 2026-07-13
 
