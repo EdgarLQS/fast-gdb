@@ -63,6 +63,7 @@ public:
 
     using AcquireCallback = std::function<uint64_t()>;
     using ReleaseCallback = std::function<void(uint64_t)>;
+    using EngineValidCallback = std::function<bool()>;
 
     Impl(QueryResult query_result, std::string error)
         : state_(State::Failed),
@@ -77,12 +78,14 @@ public:
          uint64_t generation,
          AcquireCallback acquire,
          ReleaseCallback release,
+         EngineValidCallback engine_valid,
          QueryResult query_result,
          std::vector<uint32_t> fids)
         : engine_(engine),
           generation_(generation),
           acquire_(std::move(acquire)),
           release_(std::move(release)),
+          engine_valid_(std::move(engine_valid)),
           query_result_(std::move(query_result)),
           fids_(std::move(fids)),
           mode_(Mode::CandidateFids) {
@@ -97,12 +100,14 @@ public:
          uint64_t generation,
          AcquireCallback acquire,
          ReleaseCallback release,
+         EngineValidCallback engine_valid,
          QueryResult query_result,
          size_t feature_limit)
         : engine_(engine),
           generation_(generation),
           acquire_(std::move(acquire)),
           release_(std::move(release)),
+          engine_valid_(std::move(engine_valid)),
           query_result_(std::move(query_result)),
           feature_limit_(feature_limit),
           mode_(Mode::Sequential) {
@@ -119,6 +124,7 @@ public:
 
     bool next(QueryFeature& output) {
         if (state_ != State::Ready) return false;
+        if (!engine_is_current()) return false;
 
         uint32_t fid = 0;
         if (!next_fid(fid)) {
@@ -181,6 +187,7 @@ public:
 
     bool move_to(uint32_t fid) {
         if (state_ == State::Failed) return false;
+        if (!engine_is_current()) return false;
 
         if (mode_ == Mode::CandidateFids) {
             const auto iterator = std::lower_bound(fids_.begin(), fids_.end(), fid);
@@ -243,7 +250,14 @@ private:
         }
     }
 
+    bool engine_is_current() {
+        if (!engine_valid_ || engine_valid_()) return true;
+        fail("query engine was reopened while cursor existed");
+        return false;
+    }
+
     bool ensure_lease() {
+        if (!engine_is_current()) return false;
         if (generation_ != 0) return true;
         if (!acquire_) {
             fail("feature cursor cannot reacquire query engine");
@@ -308,6 +322,7 @@ private:
     uint64_t generation_ = 0;
     AcquireCallback acquire_;
     ReleaseCallback release_;
+    EngineValidCallback engine_valid_;
     State state_ = State::Ready;
     QueryResult query_result_;
     std::string error_;
@@ -363,11 +378,15 @@ FeatureCursor QueryEngine::open_cursor(const QueryRequest& request) {
             std::move(result), "another feature cursor is active"));
     }
 
+    const uint64_t planned_open_generation = open_generation_;
     auto acquire = [this]() noexcept {
         return register_feature_cursor();
     };
     auto release = [this](uint64_t generation) noexcept {
         release_feature_cursor(generation);
+    };
+    auto engine_valid = [this, planned_open_generation]() noexcept {
+        return open_generation_ == planned_open_generation;
     };
 
     if (request.kind == QueryKind::SequentialScan) {
@@ -386,7 +405,7 @@ FeatureCursor QueryEngine::open_cursor(const QueryRequest& request) {
         }
         return FeatureCursor(std::make_unique<FeatureCursor::Impl>(
             this, generation, std::move(acquire), std::move(release),
-            std::move(result), feature_limit));
+            std::move(engine_valid), std::move(result), feature_limit));
     }
 
     result = query(request);
@@ -417,7 +436,7 @@ FeatureCursor QueryEngine::open_cursor(const QueryRequest& request) {
     std::vector<uint32_t> fids = result.matched_fids;
     return FeatureCursor(std::make_unique<FeatureCursor::Impl>(
         this, generation, std::move(acquire), std::move(release),
-        std::move(result), std::move(fids)));
+        std::move(engine_valid), std::move(result), std::move(fids)));
 }
 
 } // namespace explorgdb
