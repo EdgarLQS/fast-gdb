@@ -173,6 +173,7 @@ private:
     bool spatial_index_initialized_ = false;
     bool spatial_index_present_ = false;
     CapabilityReport capabilities_;
+    uint64_t open_generation_ = 0;
     uint64_t next_cursor_generation_ = 0;
     uint64_t active_cursor_generation_ = 0;
 };
