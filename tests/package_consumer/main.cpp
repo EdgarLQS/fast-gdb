@@ -77,9 +77,11 @@ int main() {
     request.xmax = 10.0;
     request.ymax = 10.0;
     request.where_clause = "population >= 1000";
+    request.profile_feature_reads = true;
 
     explorgdb::QueryResult result;
     explorgdb::QueryFeature feature;
+    explorgdb::FeatureCursorMetrics profile;
     auto open_cursor = &explorgdb::QueryEngine::open_cursor;
     auto next = &explorgdb::FeatureCursor::next;
     auto move_to = &explorgdb::FeatureCursor::move_to;
@@ -87,10 +89,13 @@ int main() {
     auto error = &explorgdb::FeatureCursor::error;
 
     if (request.kind != explorgdb::QueryKind::SpatialWhere ||
+        !request.profile_feature_reads ||
         !result.matched_fids.empty() ||
         result.combined_metrics.final_match_count != 0 ||
-        feature.fid != 0 || open_cursor == nullptr || next == nullptr ||
-        move_to == nullptr || done == nullptr || error == nullptr) {
+        result.feature_cursor_metrics.feature_count != 0 ||
+        profile.feature_count != 0 || feature.fid != 0 ||
+        open_cursor == nullptr || next == nullptr || move_to == nullptr ||
+        done == nullptr || error == nullptr) {
         return 1;
     }
     return 0;
