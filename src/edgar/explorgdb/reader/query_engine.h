@@ -97,6 +97,10 @@ public:
     ~FeatureCursor();
 
     bool next(QueryFeature& feature);
+    // Reposition by zero-based FID. The next successful next() returns the
+    // first result whose FID is greater than or equal to the requested value.
+    // This supports forward, backward and arbitrary jumps; move_to(0) rewinds.
+    bool move_to(uint32_t fid);
     bool done() const noexcept;
     const QueryResult& query_result() const noexcept;
     const std::string& error() const noexcept;
