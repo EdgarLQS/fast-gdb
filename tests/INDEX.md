@@ -1,8 +1,8 @@
 # GDB 教程与回归测试总览
 
 当前分支 `codex/spatial-attribute-query` 新增空间属性联合查询、完整 Feature 流式
-迭代和 one-pass 完整对象读取优化测试。测试代码与静态自检完成，但尚未实际运行完整
-CTest；文件存在不代表通过。
+迭代、one-pass 完整对象读取，以及 `.atx` direct 查询和自适应联合规划测试。
+测试代码与静态自检完成，但尚未实际运行完整 CTest；文件存在不代表通过。
 
 功能矩阵见 [`docs/usage/04_功能与基准测试覆盖矩阵.md`](../docs/usage/04_功能与基准测试覆盖矩阵.md)。
 
@@ -30,7 +30,7 @@ tests/
 |---|---|
 | `edgar/explorgdb/reader/test_query_where_internal.cpp` | WHERE、NULL、NaN、字段绑定、FID 交集 |
 | `edgar/explorgdb/reader/test_gdbindexes_expression.cpp` | 裸字段、函数索引表达式分类 |
-| `edgar/explorgdb/reader/test_gdb_attribute_index_safety.cpp` | `.atx` fail-closed |
+| `edgar/explorgdb/reader/test_gdb_attribute_index_safety.cpp` | `.atx` fail-closed；direct 查询与旧物化结果等价；失败不发布半结果；page/entry/candidate 指标 |
 | `edgar/explorgdb/reader/test_feature_cursor.cpp` | cursor move-only、engine 可移动构造但不可复制/移动赋值、方法签名 |
 | `edgar/explorgdb/reader/test_catalog.cpp` | `.gdbindexes` Catalog 查找 |
 
@@ -41,13 +41,14 @@ tests/
 | 文件 | 主要覆盖 |
 |---|---|
 | `usegdal/test_spatial_where_integration.cpp` | `.spx + .atx`、复合 WHERE、空集、非法请求 |
+| `usegdal/test_spatial_where_adaptive.cpp` | 低覆盖绕过 `.atx`、高覆盖 direct `.atx`、详细指标、GDAL 等价 |
 | `usegdal/test_spatial_where_geometry.cpp` | Polyline、Polygon 含洞、MultiPoint |
 | `usegdal/test_spatial_where_dimensions.cpp` | Point Z/M/ZM |
 | `usegdal/test_spatial_where_null.cpp` | NULL 与 `!=` |
 | `usegdal/test_spatial_where_unicode.cpp` | BMP/非 BMP |
 | `usegdal/test_spatial_where_functional_index.cpp` | `LOWER(field)` 回退 |
-| `usegdal/test_spatial_where_index_fallback.cpp` | `.spx/.atx` 缺失和损坏 |
-| `usegdal/test_spatial_where_benchmark.cpp` | 100K FID-only runner，默认跳过 |
+| `usegdal/test_spatial_where_index_fallback.cpp` | `.spx/.atx` 缺失和损坏；高覆盖夹具继续实际读取并验证损坏 `.atx` |
+| `usegdal/test_spatial_where_benchmark.cpp` | 100K FID-only runner；自适应路径和 `.atx` 分段指标；默认跳过 |
 
 ### FeatureCursor
 
@@ -135,6 +136,16 @@ ctest --test-dir build-on --output-on-failure \
   -R 'SpatialWhereBenchmarkTest.Point100KSchemaV2Evidence'
 ```
 
+FID-only schema-v2 evidence 记录：
+
+- 自适应执行路径和 `attribute_index_bypassed`；
+- `.gdbindexes` metadata；
+- `.atx` file load、navigation、leaf scan、candidate order；
+- final WHERE recheck；
+- page count、pages visited、entries scanned；
+- combined、legacy、GDAL 的结果一致性；
+- benchmark 默认写外部目录或系统临时目录。
+
 ### Full-feature benchmark
 
 ```bash
@@ -160,12 +171,16 @@ Full-feature schema-v2 evidence 记录：
 - EOF cursor reacquire 前必须先取得 engine lease；
 - one-pass 必须保持完整字段、Binary、兼容 WKT 和 ISO WKB 与 legacy 一致；
 - profile 必须通过请求显式开启，普通路径不得调用 clock；
+- `.atx` direct 查询只有完整结构验证成功后才能发布 FID；
+- adaptive bypass 只允许在候选不超过 65,536 且不超过活动对象数 12.5% 时发生；
+- bypass 路径不读取未使用 `.atx` 的数据页，结果正确性不得依赖索引健康；
+- 高覆盖和损坏索引专项必须继续实际进入 `.atx`；
 - 测试临时目录必须隔离，可安全 `ctest -j`；
 - GDAL 对照必须保留顺序，不能通过排序掩盖 cursor 顺序错误；
 - `SKIPPED` 不计通过；
 - benchmark 默认跳过；
 - 原始结果和生成 `.gdb` 不提交仓库；
-- `721f186` 的 3.869 ms 是优化前基线，新性能必须复测后才能更新结论；
+- `8f23001` 的 3.852 ms 是本轮 planner 优化前对照，新性能必须复测后才能更新结论；
 - 当前正式状态仍为 `Code review ready / Formal acceptance blocked`。
 
 代码审核顺序见 [`docs/usage/10_空间属性联合查询代码审核指南.md`](../docs/usage/10_空间属性联合查询代码审核指南.md)。
