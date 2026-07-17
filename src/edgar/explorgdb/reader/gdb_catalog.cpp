@@ -60,9 +60,6 @@ bool GdbCatalog::scan(const std::string& gdb_path) {
 }
 
 bool GdbCatalog::read_magic() {
-    // std::filesystem::path::value_type is wchar_t on Windows, so make the
-    // conversion explicit instead of relying on an unavailable implicit
-    // path -> std::string conversion.
     const std::string magic_file =
         (fs::path(gdb_path_) / "gdb").string();
     std::ifstream input(magic_file, std::ios::binary);
@@ -122,6 +119,14 @@ const CatalogEntry* GdbCatalog::find_tablx(uint32_t id) const {
 const CatalogEntry* GdbCatalog::find_spx(uint32_t id) const {
     for (const auto& entry : entries_) {
         if (entry.numeric_id == id && entry.extension == ".spx")
+            return &entry;
+    }
+    return nullptr;
+}
+
+const CatalogEntry* GdbCatalog::find_indexes(uint32_t id) const {
+    for (const auto& entry : entries_) {
+        if (entry.numeric_id == id && entry.extension == ".gdbindexes")
             return &entry;
     }
     return nullptr;
