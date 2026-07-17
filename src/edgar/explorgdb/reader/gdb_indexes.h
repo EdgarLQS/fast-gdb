@@ -25,6 +25,8 @@
 #define EXPLORGDB_GDB_INDEXES_H
 
 #include "explorgdb_types.h"
+#include <cstddef>
+#include <cstdint>
 #include <string>
 #include <vector>
 
