@@ -100,38 +100,6 @@ struct RunResult {
     FeatureCursorMetrics profile;
 };
 
-class ScopedProfileEnvironment {
-public:
-    explicit ScopedProfileEnvironment(bool enabled) {
-        const char* current = std::getenv("FAST_GDB_FEATURE_CURSOR_PROFILE");
-        if (current != nullptr) {
-            had_previous_ = true;
-            previous_ = current;
-        }
-#ifdef _WIN32
-        _putenv_s("FAST_GDB_FEATURE_CURSOR_PROFILE", enabled ? "1" : "0");
-#else
-        setenv("FAST_GDB_FEATURE_CURSOR_PROFILE", enabled ? "1" : "0", 1);
-#endif
-    }
-
-    ~ScopedProfileEnvironment() {
-#ifdef _WIN32
-        _putenv_s("FAST_GDB_FEATURE_CURSOR_PROFILE",
-                  had_previous_ ? previous_.c_str() : "");
-#else
-        if (had_previous_)
-            setenv("FAST_GDB_FEATURE_CURSOR_PROFILE", previous_.c_str(), 1);
-        else
-            unsetenv("FAST_GDB_FEATURE_CURSOR_PROFILE");
-#endif
-    }
-
-private:
-    std::string previous_;
-    bool had_previous_ = false;
-};
-
 int fast_field_index(const GdbTableParser* table, const std::string& name) {
     if (table == nullptr) return -1;
     const auto& fields = table->fields();
@@ -200,7 +168,9 @@ std::optional<RunResult> run_cursor(
     const ResolvedTable& resolved,
     const QueryRequest& request,
     bool profile_enabled) {
-    ScopedProfileEnvironment profile_environment(profile_enabled);
+    QueryRequest cursor_request = request;
+    cursor_request.profile_feature_reads = profile_enabled;
+
     const auto start = BenchmarkClock::now();
     QueryEngine engine(catalog, resolved);
     if (!engine.open()) return std::nullopt;
@@ -208,7 +178,7 @@ std::optional<RunResult> run_cursor(
     const int payload_index = fast_field_index(engine.table(), "payload");
     if (value_index < 0 || payload_index < 0) return std::nullopt;
 
-    FeatureCursor cursor = engine.open_cursor(request);
+    FeatureCursor cursor = engine.open_cursor(cursor_request);
     if (!cursor.error().empty()) return std::nullopt;
     Digest digest;
     QueryFeature feature;
@@ -258,8 +228,7 @@ std::optional<RunResult> run_legacy(
     return result;
 }
 
-std::optional<RunResult> run_gdal(
-    const std::string& path) {
+std::optional<RunResult> run_gdal(const std::string& path) {
     const auto start = BenchmarkClock::now();
     GDALDataset* dataset = static_cast<GDALDataset*>(GDALOpenEx(
         path.c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY,
