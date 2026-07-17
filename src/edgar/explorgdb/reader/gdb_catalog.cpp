@@ -141,22 +141,21 @@ bool GdbCatalog::read_index_metadata(
     uint32_t id,
     std::vector<IndexEntry>& output) const {
     output.clear();
-    std::string filename;
-    {
-        std::shared_lock<std::shared_mutex> lock(mutex_);
-        const auto cached = index_metadata_cache_.find(id);
-        if (cached != index_metadata_cache_.end()) {
-            if (cached->second.parsed)
-                output = cached->second.entries;
-            return cached->second.parsed;
-        }
+    // Parsing is small compared with .atx data and happens once per catalog
+    // snapshot. Holding the exclusive lock keeps scan() invalidation atomic and
+    // prevents stale metadata from being published into a newer directory view.
+    std::unique_lock<std::shared_mutex> lock(mutex_);
+    const auto cached = index_metadata_cache_.find(id);
+    if (cached != index_metadata_cache_.end()) {
+        if (cached->second.parsed) output = cached->second.entries;
+        return cached->second.parsed;
+    }
 
-        for (const auto& entry : entries_) {
-            if (entry.numeric_id == id &&
-                entry.extension == ".gdbindexes") {
-                filename = entry.filename;
-                break;
-            }
+    std::string filename;
+    for (const auto& entry : entries_) {
+        if (entry.numeric_id == id && entry.extension == ".gdbindexes") {
+            filename = entry.filename;
+            break;
         }
     }
 
@@ -172,11 +171,10 @@ bool GdbCatalog::read_index_metadata(
         }
     }
 
-    std::unique_lock<std::shared_mutex> lock(mutex_);
     const auto inserted = index_metadata_cache_.emplace(id, std::move(parsed));
-    const IndexMetadataCacheEntry& cached = inserted.first->second;
-    if (cached.parsed) output = cached.entries;
-    return cached.parsed;
+    const IndexMetadataCacheEntry& stored = inserted.first->second;
+    if (stored.parsed) output = stored.entries;
+    return stored.parsed;
 }
 
 const CatalogEntry* GdbCatalog::find_atx(
