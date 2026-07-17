@@ -8,6 +8,7 @@ All notable changes to fast-gdb are documented in this file.
 
 - Branch-only `QueryKind::SpatialWhere` entry that combines exact bbox filtering with the existing WHERE subset.
 - `CombinedQueryMetrics` diagnostics for candidates, rechecks, final matches and stage timings.
+- Detailed attribute-planning metrics for `.gdbindexes` metadata, `.atx` file load, tree navigation, leaf scan, candidate ordering, final WHERE recheck, page counts and scanned entries.
 - Internal WHERE tokenizer/parser/evaluator shared by standalone and combined paths.
 - Field-to-index resolution through `.gdbindexes`, including functional-index classification.
 - Sparse candidate-field scanning for mmap and fd paths.
@@ -19,8 +20,10 @@ All notable changes to fast-gdb are documented in this file.
 - Cursor and engine generations for single-active-cursor ownership and reopen invalidation.
 - One-pass `GdbTableParser::read_feature_by_fid()` that locates a row once, materializes fields once, decodes one `GeometryModel`, and writes compatibility WKT plus ISO WKB from that model.
 - Request-scoped `profile_feature_reads` and `FeatureCursorMetrics` for row lookup, field materialization, geometry decode, WKT and WKB stages.
+- Direct `.atx` query APIs that validate the complete leaf chain but materialize only matching FIDs instead of all index entries.
 - Full-object GDAL tests for fields, NULL, Binary and ISO WKB.
 - One-pass parity tests against the retained legacy path for Point, MultiPoint, Polyline and Polygon with a hole.
+- Adaptive SpatialWhere tests for low-coverage `.atx` bypass and high-coverage direct-index execution.
 - Tests for deleted slots, no-geometry tables, NULL geometry and ObjectID-only zero-length rows.
 - Opt-in 100K full-feature cursor/legacy/GDAL checksum benchmark.
 - GDAL-OFF cursor public API and ownership contract tests.
@@ -29,6 +32,9 @@ All notable changes to fast-gdb are documented in this file.
 ### Changed
 
 - `.atx` parsing fails closed on invalid sizes, page bounds/capacity, cyclic leaf chains, count mismatches and zero FIDs.
+- SpatialWhere bypasses `.atx` data-page reads when exact spatial matches are no more than 65,536 and no more than 12.5% of active features; the full WHERE is evaluated directly on those candidates.
+- High-coverage SpatialWhere queries use the direct `.atx` leaf path rather than constructing `all_entries_`.
+- Numeric direct-index comparisons operate on leaf-page bytes without a temporary `AttributeIndexEntry` per row.
 - Attribute candidates are sorted/deduplicated and always receive a complete WHERE recheck.
 - Non-BMP strings, `!=`, functional indexes and ambiguous numeric encodings fall back safely.
 - GDAL integration tests use per-test temporary FileGDB directories for parallel CTest.
@@ -38,6 +44,7 @@ All notable changes to fast-gdb are documented in this file.
 - Zero-length legal rows are normalized into ObjectID and nullable NULL values.
 - FeatureCursor now uses the one-pass full-object reader instead of `read_record_by_fid()` followed by `read_geometry_value()`.
 - Full-feature benchmark schema v2 rotates Cursor/legacy/GDAL order across five samples, keeps profile outside median/p95, records query/row/field/model/WKT/WKB/checksum stages, and writes default evidence to the system temporary directory.
+- FID-only benchmark records the adaptive execution path and detailed attribute-planning stages; default evidence is written outside the repository.
 - Feature profiling is bound to each `QueryRequest`; normal reads do not call the profile clock or depend on process-global state.
 - Combined-query and full-feature evidence records observed paths and computed correctness rather than hard-coded claims.
 - Writer safety, validation, atomic publication and index rebuild behavior remains as documented by its own workstream.
@@ -45,10 +52,10 @@ All notable changes to fast-gdb are documented in this file.
 
 ### Review status
 
-- Combined-query, FeatureCursor and one-pass optimization work exists only on `codex/spatial-attribute-query`; it has not entered `main` or a release.
-- Combined-query static review, FeatureCursor three-round static review, one-pass optimization three-round static review and documentation synchronization are complete.
-- The 3.869 ms FeatureCursor number remains the pre-optimization `721f186` baseline; no post-optimization performance result is claimed yet.
-- Status is **Code review ready / Formal acceptance blocked** pending GDAL ON/OFF Release, full and parallel CTest, package consumers, one-pass and GDAL parity, schema-v2 100K/10M performance, strict-cold, peak RSS and the 5% gate.
+- Combined-query, FeatureCursor, one-pass and attribute-planner optimization work exists only on `codex/spatial-attribute-query`; it has not entered `main` or a release.
+- Combined-query static review, FeatureCursor three-round static review, one-pass static review and `.atx` planner three-round static review are complete.
+- `8f23001` measured FeatureCursor at 3.852 ms, legacy at 3.857 ms and GDAL at 1.306 ms before the current `.atx` planner optimization; no performance number is claimed for the current head until the same benchmark is rerun.
+- Status is **Code review ready / Formal acceptance blocked** pending GDAL ON/OFF Release, full and parallel CTest, package consumers, direct-index/adaptive-planner tests, one-pass and GDAL parity, schema-v2 100K/10M performance, strict-cold, peak RSS and the 5% gate.
 
 ## [0.1.0] - 2026-07-13
 
