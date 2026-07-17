@@ -66,6 +66,7 @@ struct CombinedQueryMetrics {
     size_t attribute_candidate_count = 0;
     size_t attribute_tested = 0;
     size_t final_match_count = 0;
+    size_t fused_candidate_count = 0;
 
     size_t attribute_index_page_count = 0;
     size_t attribute_index_pages_visited = 0;
@@ -75,6 +76,7 @@ struct CombinedQueryMetrics {
     double attribute_ms = 0.0;
     double intersection_ms = 0.0;
     double total_ms = 0.0;
+    double fused_candidate_scan_ms = 0.0;
 
     double attribute_metadata_ms = 0.0;
     double attribute_index_file_load_ms = 0.0;
@@ -86,6 +88,7 @@ struct CombinedQueryMetrics {
     bool used_spatial_index = false;
     bool used_attribute_index = false;
     bool attribute_index_bypassed = false;
+    bool fused_spatial_attribute_scan = false;
 };
 
 // Aggregated only when QueryRequest::profile_feature_reads is true.
@@ -219,4 +222,4 @@ private:
 
 } // namespace explorgdb
 
-#endif
+#endif // EXPLORGDB_QUERY_ENGINE_H
