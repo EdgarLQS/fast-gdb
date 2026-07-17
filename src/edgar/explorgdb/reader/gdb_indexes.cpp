@@ -1,83 +1,100 @@
 // src/edgar/explorgdb/gdb_indexes.cpp
 // .gdbindexes 索引元数据解析实现
 //
-// 解析逻辑:
-//
-// 1. 读取索引数量（int32）
-// 2. 对每个索引:
-//    a. 读取名称（int32 长度 + UTF-16 编码）
-//    b. 读取魔数三元组 (magic1, magic2, magic3)
-//    c. 判断是否为已知魔数元组:
-//       - 已知: (2,0), (4,0), (16,65535) → 有额外 magic4 字段
-//       - 未知: magic2 兼作列名长度，无 magic4
-//    d. 读取列名（int32 长度 + UTF-16 编码）
-//    e. 读取 magic5（末尾标记）
-//
-// 注意: magic2/magic3 的组合决定索引类型和后续结构，
-// 但具体含义尚未完全解析。当前解析器能安全读取所有已知和未知类型，
-// 不崩溃、不越界。
+// 文件中的字符串是索引表达式。常见值为裸字段名，也可能是
+// LOWER(field)。解析器保留原始表达式在 IndexEntry::column_name 中，
+// 并通过辅助函数提供字段关联和直接表达式判定。
 
 #include "gdb_indexes.h"
 #include "binary_reader.h"
+#include <algorithm>
+#include <cctype>
+#include <cstring>
 #include <fstream>
-#include <iostream>
 
 namespace explorgdb {
+namespace {
+
+bool starts_with_ci(const std::string& value, const char* prefix) {
+    const size_t prefix_size = std::strlen(prefix);
+    if (value.size() < prefix_size) return false;
+    for (size_t index = 0; index < prefix_size; ++index) {
+        if (std::tolower(static_cast<unsigned char>(value[index])) !=
+            std::tolower(static_cast<unsigned char>(prefix[index]))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+} // namespace
 
 GdbIndexesParser::GdbIndexesParser(const std::string& file_path)
     : file_path_(file_path) {}
 
-// ── 主解析入口 ──
+std::string GdbIndexesParser::field_name_from_expression(
+    const std::string& expression) {
+    constexpr const char* lower_prefix = "LOWER(";
+    if (starts_with_ci(expression, lower_prefix) &&
+        expression.size() > std::strlen(lower_prefix) &&
+        expression.back() == ')') {
+        return expression.substr(
+            std::strlen(lower_prefix),
+            expression.size() - std::strlen("LOWER()"));
+    }
+    return expression;
+}
+
+bool GdbIndexesParser::is_direct_field_expression(
+    const std::string& expression) {
+    return field_name_from_expression(expression) == expression;
+}
+
 bool GdbIndexesParser::parse() {
-    std::ifstream ifs(file_path_, std::ios::binary | std::ios::ate);
-    if (!ifs.is_open()) return false;
+    std::ifstream input(file_path_, std::ios::binary | std::ios::ate);
+    if (!input.is_open()) return false;
 
-    auto file_size = ifs.tellg();
-    ifs.seekg(0, std::ios::beg);
-    file_data_.resize(file_size);
-    ifs.read(reinterpret_cast<char*>(file_data_.data()), file_size);
+    const auto file_size = input.tellg();
+    if (file_size < 0) return false;
+    input.seekg(0, std::ios::beg);
+    file_data_.resize(static_cast<size_t>(file_size));
+    input.read(reinterpret_cast<char*>(file_data_.data()), file_size);
+    if (!input) return false;
 
-    BinaryReader br(file_data_);
-    int32_t nindexes = br.read_i32();
+    entries_.clear();
+    try {
+        BinaryReader reader(file_data_);
+        const int32_t index_count = reader.read_i32();
+        if (index_count < 0) return false;
 
-    for (int i = 0; i < nindexes; ++i) {
-        IndexEntry entry;
+        for (int32_t index = 0; index < index_count; ++index) {
+            IndexEntry entry;
 
-        // ── 索引名称 ──
-        int32_t name_len = br.read_i32();
-        entry.name = br.read_utf16(name_len);
+            const int32_t name_length = reader.read_i32();
+            if (name_length < 0) return false;
+            entry.name = reader.read_utf16(name_length);
 
-        // ── 魔数三元组 ──
-        entry.magic1 = br.read_u16();
-        entry.magic2 = br.read_i32();
-        entry.magic3 = br.read_u16();
+            entry.magic1 = reader.read_u16();
+            entry.magic2 = reader.read_i32();
+            entry.magic3 = reader.read_u16();
 
-        // ── 判断是否为已知魔数元组 ──
-        bool known_magic = false;
-        if (entry.magic2 == 2 && entry.magic3 == 0) known_magic = true;
-        else if (entry.magic2 == 4 && entry.magic3 == 0) known_magic = true;
-        else if (entry.magic2 == 16 && entry.magic3 == 65535) known_magic = true;
+            const bool known_magic =
+                (entry.magic2 == 2 && entry.magic3 == 0) ||
+                (entry.magic2 == 4 && entry.magic3 == 0) ||
+                (entry.magic2 == 16 && entry.magic3 == 65535);
+            if (known_magic) entry.magic4 = reader.read_i32();
 
-        // 已知魔数时有额外 magic4 字段
-        if (known_magic) {
-            entry.magic4 = br.read_i32();
+            const int32_t expression_length = known_magic
+                ? reader.read_i32()
+                : entry.magic2;
+            if (expression_length < 0) return false;
+            entry.column_name = reader.read_utf16(expression_length);
+            entry.magic5 = reader.read_u16();
+            entries_.push_back(std::move(entry));
         }
-
-        // ── 列名 ──
-        // 已知魔数: 需要额外读取 col_name_len (int32)
-        // 未知魔数: magic2 兼作 col_name_len
-        int32_t col_name_len;
-        if (known_magic) {
-            col_name_len = br.read_i32();
-        } else {
-            col_name_len = entry.magic2;  // 未知魔数时 magic2 = 列名长度
-        }
-        entry.column_name = br.read_utf16(col_name_len);
-
-        // ── 末尾标记 ──
-        entry.magic5 = br.read_u16();
-
-        entries_.push_back(entry);
+    } catch (...) {
+        entries_.clear();
+        return false;
     }
 
     return true;
