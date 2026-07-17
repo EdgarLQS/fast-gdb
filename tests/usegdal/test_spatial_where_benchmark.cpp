@@ -75,6 +75,8 @@ struct Samples {
     std::vector<double> gdal_ms;
     CombinedQueryMetrics metrics;
     std::vector<uint32_t> expected;
+    std::string execution_path;
+    bool correct = false;
 };
 
 void write_evidence(const Samples& samples) {
@@ -104,7 +106,8 @@ void write_evidence(const Samples& samples) {
          << percentile(samples.gdal_ms, 0.5) << ",\n"
          << "  \"gdal_p95_ms\": "
          << percentile(samples.gdal_ms, 0.95) << ",\n"
-         << "  \"execution_path\": \"spatial-where:spx+atx\",\n"
+         << "  \"execution_path\": \"" << samples.execution_path
+         << "\",\n"
          << "  \"spatial_candidate_count\": "
          << samples.metrics.spatial_candidate_count << ",\n"
          << "  \"spatial_match_count\": "
@@ -115,7 +118,8 @@ void write_evidence(const Samples& samples) {
          << samples.metrics.attribute_tested << ",\n"
          << "  \"final_match_count\": "
          << samples.metrics.final_match_count << ",\n"
-         << "  \"correct\": true\n"
+         << "  \"correct\": " << (samples.correct ? "true" : "false")
+         << "\n"
          << "}\n";
     EXPECT_TRUE(json.good()) << "failed to write " << output;
 }
@@ -211,6 +215,9 @@ TEST_F(SpatialWhereBenchmarkTest, Point100KSchemaV2Evidence) {
             std::chrono::duration<double, std::milli>(
                 BenchmarkClock::now() - start).count());
         ASSERT_EQ(combined.execution_path, "spatial-where:spx+atx");
+        if (samples.execution_path.empty())
+            samples.execution_path = combined.execution_path;
+        ASSERT_EQ(combined.execution_path, samples.execution_path);
         samples.metrics = combined.combined_metrics;
 
         start = BenchmarkClock::now();
@@ -243,5 +250,6 @@ TEST_F(SpatialWhereBenchmarkTest, Point100KSchemaV2Evidence) {
 
     ASSERT_FALSE(samples.expected.empty());
     ASSERT_EQ(samples.metrics.final_match_count, samples.expected.size());
+    samples.correct = true;
     write_evidence(samples);
 }
