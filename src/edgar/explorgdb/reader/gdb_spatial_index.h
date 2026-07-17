@@ -19,10 +19,10 @@
 #define EXPLORGDB_GDB_SPATIAL_INDEX_H
 
 #include "explorgdb_types.h"
-#include <string>
-#include <vector>
 #include <cstdint>
 #include <shared_mutex>
+#include <string>
+#include <vector>
 
 namespace explorgdb {
 
@@ -42,13 +42,16 @@ public:
 
     const BPlusTreeTrailer& trailer() const { return trailer_; }
 
-    // 空间查询：B+ 树按需导航，返回 bbox 范围内所有 feature 的 FID
-    // max_fid: 最大 FID 值（用于 bitset 去重优化，0 表示使用 sort+unique）
+    // 空间查询：B+ 树按需导航，返回 bbox 候选 feature 的 FID。
+    // max_fid: 最大 FID 值（用于 bitset 去重优化，0 表示 sort+unique）。
+    // merge_x_ranges: 仅当查询 Y 范围覆盖完整图层 Y 范围时开启；它把
+    // 每个 X cell 的独立树导航合并为每层一次连续 raw-key 查询。
     std::vector<uint32_t> query_bbox(
         double xmin, double ymin, double xmax, double ymax,
         double xorig, double yorig, double xyscale,
         const std::vector<double>& grid_resolutions,
-        uint32_t max_fid = 0) const;
+        uint32_t max_fid = 0,
+        bool merge_x_ranges = false) const;
 
 private:
     // 解析 22 字节 trailer
