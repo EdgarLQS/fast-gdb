@@ -13,7 +13,10 @@
 
 using namespace explorgdb;
 
-TEST_F(GdbTutorialFixture, FeatureCursorReturnsNullGeometryAsEmpty) {
+class FeatureCursorEmptyGeometryTest : public GdbTutorialFixture {};
+
+TEST_F(FeatureCursorEmptyGeometryTest,
+       NullGeometryIsReturnedAsAnEmptyFeature) {
     const std::string path =
         spatial_where_test_utils::fixture_path(
             "fast_gdb_feature_cursor_empty_geometry").string();
