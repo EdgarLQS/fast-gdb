@@ -81,7 +81,9 @@ struct Samples {
 
 void write_evidence(const Samples& samples) {
     const char* configured = std::getenv("FAST_GDB_BENCHMARK_OUTPUT_DIR");
-    const fs::path output_dir = configured ? configured : "benchmark_results";
+    const fs::path output_dir = configured != nullptr && *configured != '\0'
+        ? fs::path(configured)
+        : fs::temp_directory_path() / "fast-gdb-benchmark-results";
     fs::create_directories(output_dir);
     const fs::path output =
         output_dir / "spatial-where-100k-schema-v2.json";
@@ -96,6 +98,7 @@ void write_evidence(const Samples& samples) {
          << "  \"evidence_schema_version\": 2,\n"
          << "  \"scenario\": \"spatial-10pct-attribute-10pct\",\n"
          << "  \"manifest\": \"spatial_where_point_100k_seed_0\",\n"
+         << "  \"cache_semantics\": \"warm-engine-not-strict-cold\",\n"
          << "  \"feature_count\": " << kFeatureCount << ",\n"
          << "  \"result_count\": " << samples.expected.size() << ",\n"
          << "  \"sample_count\": " << kSamples << ",\n"
@@ -123,6 +126,27 @@ void write_evidence(const Samples& samples) {
          << samples.metrics.attribute_tested << ",\n"
          << "  \"final_match_count\": "
          << samples.metrics.final_match_count << ",\n"
+         << "  \"attribute_index_bypassed\": "
+         << (samples.metrics.attribute_index_bypassed ? "true" : "false")
+         << ",\n"
+         << "  \"attribute_metadata_ms\": "
+         << samples.metrics.attribute_metadata_ms << ",\n"
+         << "  \"attribute_index_file_load_ms\": "
+         << samples.metrics.attribute_index_file_load_ms << ",\n"
+         << "  \"attribute_index_navigation_ms\": "
+         << samples.metrics.attribute_index_navigation_ms << ",\n"
+         << "  \"attribute_index_scan_ms\": "
+         << samples.metrics.attribute_index_scan_ms << ",\n"
+         << "  \"attribute_candidate_order_ms\": "
+         << samples.metrics.attribute_candidate_order_ms << ",\n"
+         << "  \"attribute_recheck_ms\": "
+         << samples.metrics.attribute_recheck_ms << ",\n"
+         << "  \"attribute_index_page_count\": "
+         << samples.metrics.attribute_index_page_count << ",\n"
+         << "  \"attribute_index_pages_visited\": "
+         << samples.metrics.attribute_index_pages_visited << ",\n"
+         << "  \"attribute_index_entries_scanned\": "
+         << samples.metrics.attribute_index_entries_scanned << ",\n"
          << "  \"legacy_regression_percent\": "
          << legacy_regression_percent << ",\n"
          << "  \"performance_gate_status\": \"not_run\",\n"
@@ -222,7 +246,10 @@ TEST_F(SpatialWhereBenchmarkTest, Point100KSchemaV2Evidence) {
         samples.combined_ms.push_back(
             std::chrono::duration<double, std::milli>(
                 BenchmarkClock::now() - start).count());
-        ASSERT_EQ(combined.execution_path, "spatial-where:spx+atx");
+        ASSERT_EQ(combined.execution_path,
+                  "spatial-where:spatial-candidates");
+        ASSERT_TRUE(combined.combined_metrics.attribute_index_bypassed);
+        ASSERT_FALSE(combined.combined_metrics.used_attribute_index);
         if (samples.execution_path.empty())
             samples.execution_path = combined.execution_path;
         ASSERT_EQ(combined.execution_path, samples.execution_path);
@@ -258,6 +285,8 @@ TEST_F(SpatialWhereBenchmarkTest, Point100KSchemaV2Evidence) {
 
     ASSERT_FALSE(samples.expected.empty());
     ASSERT_EQ(samples.metrics.final_match_count, samples.expected.size());
+    ASSERT_EQ(samples.metrics.attribute_tested,
+              samples.metrics.spatial_match_count);
     samples.correct = true;
     write_evidence(samples);
 }
