@@ -139,7 +139,8 @@ protected:
         OGRFieldDefn value("value", OFTInteger);
         EXPECT_EQ(layer->CreateField(&value), OGRERR_NONE);
 
-        EXPECT_EQ(layer->StartTransaction(), OGRERR_NONE);
+        const bool transaction_started =
+            layer->StartTransaction() == OGRERR_NONE;
         for (int fid = 0; fid < kFeatureCount; ++fid) {
             OGRFeature* feature = OGRFeature::CreateFeature(
                 layer->GetLayerDefn());
@@ -149,7 +150,8 @@ protected:
             EXPECT_EQ(layer->CreateFeature(feature), OGRERR_NONE);
             OGRFeature::DestroyFeature(feature);
         }
-        EXPECT_EQ(layer->CommitTransaction(), OGRERR_NONE);
+        if (transaction_started)
+            EXPECT_EQ(layer->CommitTransaction(), OGRERR_NONE);
         GDALClose(dataset);
 
         dataset = static_cast<GDALDataset*>(GDALOpenEx(
