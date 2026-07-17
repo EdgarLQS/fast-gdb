@@ -164,6 +164,8 @@ target_include_directories(explorgdb_writer_lib PUBLIC
 target_link_libraries(explorgdb_writer_lib PUBLIC explorgdb_common_lib
                                            PRIVATE explorgdb_reader_lib)
 if(FAST_GDB_WITH_GDAL)
+    target_compile_definitions(explorgdb_writer_lib PRIVATE
+        FAST_GDB_WITH_GDAL_ENABLED)
     target_link_libraries(explorgdb_writer_lib PRIVATE ${FAST_GDB_GDAL_TARGET})
 endif()
 target_compile_features(explorgdb_writer_lib PUBLIC cxx_std_17)
@@ -286,6 +288,8 @@ if(BUILD_TESTING)
                  ".*test_real_data_release_contract\\.cpp$")
             list(FILTER EXPLORGDB_READER_TEST_SOURCES EXCLUDE REGEX
                  ".*test_spatial_benchmark\\.cpp$")
+            list(FILTER EXPLORGDB_READER_TEST_SOURCES EXCLUDE REGEX
+                 ".*test_spatial_query_adaptive\\.cpp$")
         endif()
 
         set(FULL_TEST_SOURCES

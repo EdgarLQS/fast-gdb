@@ -1,0 +1,230 @@
+name: writer-macos-performance
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/writer-macos-performance.yml'
+      - 'cmake/**'
+      - 'scripts/compare_writer_performance.py'
+      - 'scripts/run_macos_sample_profile.py'
+      - 'src/edgar/explorgdb/writer/**'
+      - 'tests/benchmark_full_performance.cpp'
+      - 'tests/contracts/writer-macos-performance-v1.json'
+      - 'tools/writer_profile/**'
+  workflow_dispatch:
+    inputs:
+      samples:
+        description: Repeated benchmark samples per W7/W8/W9 scenario
+        required: true
+        default: '3'
+        type: string
+      profile_duration_seconds:
+        description: sample(1) capture duration for each P0 profile
+        required: true
+        default: '5'
+        type: string
+      run_reader_10m:
+        description: Run the manual Reader 10M observation after Writer profiling
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: writer-macos-performance-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compare-and-profile:
+    name: writer-current-main-gdal-macos
+    runs-on: macos-latest
+    timeout-minutes: 120
+    env:
+      CMAKE_BUILD_PARALLEL_LEVEL: 4
+      FAST_GDB_PERF_SAMPLES: ${{ inputs.samples || '3' }}
+      FAST_GDB_PROFILE_DURATION: ${{ inputs.profile_duration_seconds || '5' }}
+      FAST_GDB_PERF_FILTER: >-
+        PerformanceBenchmarkFixture.W7_WideAttributes_*:
+        PerformanceBenchmarkFixture.W8_Geometry_*:
+        PerformanceBenchmarkFixture.W9_Dimension_*
+    steps:
+      - name: Checkout current
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout main baseline
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: baseline-main
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install macOS dependencies
+        run: brew install ninja gdal
+
+      - name: Verify environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p writer-performance
+          sw_vers | tee writer-performance/macos-version.log
+          uname -m | tee writer-performance/architecture.log
+          clang++ --version | tee writer-performance/compiler.log
+          gdalinfo --version | tee writer-performance/gdal-version.log
+          ogrinfo --formats | tee writer-performance-gdal-formats.log
+          grep -q 'OpenFileGDB' writer-performance-gdal-formats.log
+          test -x /usr/bin/sample
+
+      - name: Configure and build current benchmark
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S . -B build-perf-current -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DFAST_GDB_WITH_GDAL=ON \
+            -DFAST_GDB_CURVE_BACKEND=BUILTIN \
+            -DFAST_GDB_GEOMETRY_OUTPUT=STANDARD_WKB \
+            -DFAST_GDB_BUILD_TOOLS=OFF \
+            -DFAST_GDB_BUILD_FULL_TESTS=ON \
+            -DBUILD_TESTING=ON
+          cmake --build build-perf-current \
+            --target gdb_tutorial_test_runner --parallel
+
+      - name: Configure and build main benchmark
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S baseline-main -B build-perf-main -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DFAST_GDB_WITH_GDAL=ON \
+            -DFAST_GDB_CURVE_BACKEND=BUILTIN \
+            -DFAST_GDB_GEOMETRY_OUTPUT=STANDARD_WKB \
+            -DFAST_GDB_BUILD_TOOLS=OFF \
+            -DFAST_GDB_BUILD_FULL_TESTS=ON \
+            -DBUILD_TESTING=ON
+          cmake --build build-perf-main \
+            --target gdb_tutorial_test_runner --parallel
+
+      - name: Run current Writer and GDAL matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p writer-performance/current
+          cp tests/contracts/writer-macos-performance-v1.json \
+             writer-performance/manifest.snapshot.json
+          FAST_GDB_RUN_FULL_BENCHMARKS=1 \
+          FAST_GDB_BENCHMARK_SAMPLES="$FAST_GDB_PERF_SAMPLES" \
+          FAST_GDB_BENCHMARK_OUTPUT_DIR="$GITHUB_WORKSPACE/writer-performance/current" \
+          FAST_GDB_BENCHMARK_CODE_VERSION="$(git rev-parse HEAD)" \
+          FAST_GDB_BENCHMARK_CACHE_STATE=warm-recreate \
+          build-perf-current/bin/gdb_tutorial_test_runner \
+            --gtest_filter="${FAST_GDB_PERF_FILTER//[[:space:]]/}" \
+            --gtest_color=no \
+            --gtest_output=json:"$GITHUB_WORKSPACE/writer-performance/current/gtest.json" \
+            | tee writer-performance/current/benchmark.log
+
+      - name: Run main Writer and GDAL matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p writer-performance/main
+          FAST_GDB_RUN_FULL_BENCHMARKS=1 \
+          FAST_GDB_BENCHMARK_SAMPLES="$FAST_GDB_PERF_SAMPLES" \
+          FAST_GDB_BENCHMARK_OUTPUT_DIR="$GITHUB_WORKSPACE/writer-performance/main" \
+          FAST_GDB_BENCHMARK_CODE_VERSION="$(git -C baseline-main rev-parse HEAD)" \
+          FAST_GDB_BENCHMARK_CACHE_STATE=warm-recreate \
+          build-perf-main/bin/gdb_tutorial_test_runner \
+            --gtest_filter="${FAST_GDB_PERF_FILTER//[[:space:]]/}" \
+            --gtest_color=no \
+            --gtest_output=json:"$GITHUB_WORKSPACE/writer-performance/main/gtest.json" \
+            | tee writer-performance/main/benchmark.log
+
+      - name: Compare current, main and GDAL
+        id: comparison
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/compare_writer_performance.py \
+            --manifest tests/contracts/writer-macos-performance-v1.json \
+            --current writer-performance/current \
+            --main writer-performance/main \
+            --output-dir writer-performance/comparison
+
+      - name: Install current package and build profile driver
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --install build-perf-current \
+            --prefix "$GITHUB_WORKSPACE/install-perf-current"
+          cmake -S tools/writer_profile -B build-writer-profile -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/install-perf-current"
+          cmake --build build-writer-profile --parallel
+
+      - name: Profile P0 wide-field Writer path
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/run_macos_sample_profile.py \
+            --scenario-id P0-WIDE-100-PROFILE \
+            --output-dir writer-performance/profile \
+            --duration-seconds "$FAST_GDB_PROFILE_DURATION" \
+            --interval-ms 1 -- \
+            build-writer-profile/writer_profile_driver \
+              --workload wide-100 \
+              --rows 100000 \
+              --output "$GITHUB_WORKSPACE/writer-performance/profile/P0-WIDE-100-PROFILE.phases.json"
+
+      - name: Profile P0 XYZM Point Writer path
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/run_macos_sample_profile.py \
+            --scenario-id P0-POINT-XYZM-PROFILE \
+            --output-dir writer-performance/profile \
+            --duration-seconds "$FAST_GDB_PROFILE_DURATION" \
+            --interval-ms 1 -- \
+            build-writer-profile/writer_profile_driver \
+              --workload point-xyzm \
+              --rows 2000000 \
+              --output "$GITHUB_WORKSPACE/writer-performance/profile/P0-POINT-XYZM-PROFILE.phases.json"
+
+      - name: Observe Reader 10M fresh-open matrix
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_reader_10m }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p writer-performance/reader-10m
+          FAST_GDB_RUN_FULL_BENCHMARKS=1 \
+          FAST_GDB_RUN_10M_BENCHMARKS=1 \
+          FAST_GDB_BENCHMARK_OUTPUT_DIR="$GITHUB_WORKSPACE/writer-performance/reader-10m" \
+          FAST_GDB_BENCHMARK_CODE_VERSION="$(git rev-parse HEAD)" \
+          FAST_GDB_BENCHMARK_CACHE_STATE=fresh-open \
+          build-perf-current/bin/gdb_tutorial_test_runner \
+            --gtest_filter='PerformanceBenchmarkFixture.R1_GDAL_SequentialRead_10M:PerformanceBenchmarkFixture.R2_Explorgdb_SequentialRead_10M:PerformanceBenchmarkFixture.R2_ReadMethodComparison_10M' \
+            --gtest_color=no \
+            --gtest_output=json:"$GITHUB_WORKSPACE/writer-performance/reader-10m/gtest.json" \
+            | tee writer-performance/reader-10m/benchmark.log
+
+      - name: Upload M18.3 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: writer-macos-performance-${{ github.sha }}
+          path: |
+            writer-performance/
+            writer-performance-gdal-formats.log
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Enforce current-vs-main regression gate
+        if: ${{ always() && steps.comparison.outcome == 'failure' }}
+        run: exit 1

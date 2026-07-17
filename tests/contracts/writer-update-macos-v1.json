@@ -1,0 +1,93 @@
+{
+  "schema_version": 2,
+  "contract_id": "writer-update-macos-v1",
+  "title": "Writer staged Update macOS contract",
+  "platform": "macOS",
+  "random_seed": 42,
+  "allowed_results": ["PASS", "FAIL", "SKIP"],
+  "allowed_skip_reasons": [
+    "missing_gdal",
+    "missing_dataset",
+    "insufficient_disk",
+    "manual_gate_disabled",
+    "unsupported_platform"
+  ],
+  "scenarios": [
+    {
+      "id": "W-UPDATE-001",
+      "title": "Update preserves FID and row count while changing attributes and geometry",
+      "kind": "gtest",
+      "binary": "full",
+      "filter": "WriterUpdateSessionTest.UpdatesExistingFeatureWithoutChangingFidOrCount",
+      "gate": "required",
+      "data_scale": "small-generated",
+      "cache_state": "fresh-open",
+      "assertions": [
+        "same_fid",
+        "same_row_count",
+        "changed_attributes",
+        "unchanged_attributes",
+        "changed_geometry",
+        "gdal_reopen"
+      ]
+    },
+    {
+      "id": "W-UPDATE-002",
+      "title": "Abort, destructor and failed update preserve source",
+      "kind": "gtest",
+      "binary": "full",
+      "filter": "WriterUpdateSessionTest.AbortPreservesSource:WriterUpdateSessionTest.DestructorPreservesSource:WriterUpdateSessionTest.RejectsMissingFidWithoutPublishing",
+      "gate": "required",
+      "data_scale": "small-generated",
+      "cache_state": "fresh-open",
+      "assertions": ["source_unchanged", "staging_cleanup", "one_shot_lock"]
+    },
+    {
+      "id": "W-UPDATE-003",
+      "title": "Update rejects type coercion and invalid geometry before publish",
+      "kind": "gtest",
+      "binary": "full",
+      "filter": "WriterUpdateValidationTest.*",
+      "gate": "required",
+      "data_scale": "small-generated",
+      "cache_state": "fresh-open",
+      "assertions": [
+        "field_type",
+        "nullable",
+        "finite_numeric",
+        "geometry_family",
+        "geometry_dimensions",
+        "topology",
+        "source_unchanged"
+      ]
+    },
+    {
+      "id": "W-UPDATE-004",
+      "title": "Attribute and spatial indexes reflect updated values",
+      "kind": "gtest",
+      "binary": "full",
+      "filter": "WriterUpdateSessionTest.PreservesIndexesAndQueriesUpdatedFeature",
+      "gate": "required",
+      "data_scale": "small-generated-indexed",
+      "cache_state": "fresh-open",
+      "assertions": [
+        "index_definitions",
+        "attribute_new_value_hit",
+        "attribute_old_value_miss",
+        "spatial_new_extent_hit",
+        "same_fid"
+      ]
+    },
+    {
+      "id": "W-UPDATE-005",
+      "title": "Source mutation prevents staged update publish",
+      "kind": "gtest",
+      "binary": "full",
+      "filter": "WriterUpdateSessionTest.DetectsSourceMutationBeforePublish",
+      "gate": "required",
+      "data_scale": "small-generated",
+      "cache_state": "fresh-open",
+      "assertions": ["source_fingerprint", "no_publish", "rollback"]
+    }
+  ]
+}

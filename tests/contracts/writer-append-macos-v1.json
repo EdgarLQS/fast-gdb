@@ -1,0 +1,94 @@
+{
+  "schema_version": 2,
+  "contract_id": "writer-append-macos-v1",
+  "title": "Writer non-empty append macOS contract",
+  "platform": "macOS",
+  "random_seed": 42,
+  "allowed_results": ["PASS", "FAIL", "SKIP"],
+  "allowed_skip_reasons": [
+    "missing_gdal",
+    "missing_dataset",
+    "insufficient_disk",
+    "manual_gate_disabled",
+    "unsupported_platform"
+  ],
+  "scenarios": [
+    {
+      "id": "W-APPEND-001",
+      "title": "Staged non-empty append preserves original FIDs and expands extent",
+      "kind": "gtest",
+      "binary": "full",
+      "filter": "WriterAppendSessionTest.CommitsWithoutChangingOriginalFids",
+      "gate": "required",
+      "data_scale": "small-generated",
+      "cache_state": "fresh-open",
+      "assertions": [
+        "original_count",
+        "original_fids",
+        "monotonic_new_fid",
+        "attributes",
+        "geometry",
+        "extent",
+        "gdal_reopen"
+      ]
+    },
+    {
+      "id": "W-APPEND-002",
+      "title": "Append abort and destructor preserve source",
+      "kind": "gtest",
+      "binary": "full",
+      "filter": "WriterAppendSessionTest.AbortDeletesStagingAndPreservesSource:WriterAppendSessionTest.DestructorRemovesUncommittedStaging",
+      "gate": "required",
+      "data_scale": "small-generated",
+      "cache_state": "fresh-open",
+      "assertions": ["staging_cleanup", "source_unchanged", "original_fids"]
+    },
+    {
+      "id": "W-APPEND-003",
+      "title": "Append rejects unsupported source and concurrent source mutation",
+      "kind": "gtest",
+      "binary": "full",
+      "filter": "WriterAppendSessionTest.RejectsEmptyLayerWithoutPublishing:WriterAppendSessionTest.DetectsSourceMutationBeforePublish",
+      "gate": "required",
+      "data_scale": "small-generated",
+      "cache_state": "fresh-open",
+      "assertions": ["non_empty_only", "source_fingerprint", "no_publish", "rollback"]
+    },
+    {
+      "id": "W-APPEND-004",
+      "title": "Append validates field and geometry contracts before GDAL coercion",
+      "kind": "gtest",
+      "binary": "full",
+      "filter": "WriterAppendValidationTest.*",
+      "gate": "required",
+      "data_scale": "small-generated",
+      "cache_state": "fresh-open",
+      "assertions": [
+        "field_type",
+        "nullable",
+        "finite_numeric",
+        "geometry_family",
+        "geometry_dimensions",
+        "topology",
+        "source_unchanged"
+      ]
+    },
+    {
+      "id": "W-APPEND-005",
+      "title": "Append preserves spatial and attribute indexes",
+      "kind": "gtest",
+      "binary": "full",
+      "filter": "WriterAppendIndexTest.*",
+      "gate": "required",
+      "data_scale": "small-generated-indexed",
+      "cache_state": "fresh-open",
+      "assertions": [
+        "spatial_index_file",
+        "attribute_index_file",
+        "attribute_query_new_row",
+        "spatial_query_new_row",
+        "gdal_reopen"
+      ]
+    }
+  ]
+}

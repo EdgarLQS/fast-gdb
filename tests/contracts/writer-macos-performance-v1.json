@@ -1,0 +1,148 @@
+{
+  "schema_version": 1,
+  "contract_id": "writer-macos-performance-v1",
+  "title": "Writer macOS performance and profile contract",
+  "platform": "macOS",
+  "cache_state": "warm-recreate",
+  "default_samples": 3,
+  "current_vs_main_max_regression_percent": 5.0,
+  "benchmark_filter": "PerformanceBenchmarkFixture.W7_WideAttributes_*:PerformanceBenchmarkFixture.W8_Geometry_*:PerformanceBenchmarkFixture.W9_Dimension_*",
+  "profile": {
+    "tool": "/usr/bin/sample",
+    "duration_seconds": 5,
+    "interval_milliseconds": 1,
+    "scenarios": [
+      {
+        "id": "P0-WIDE-100-PROFILE",
+        "workload": "wide-100",
+        "rows": 100000,
+        "reason": "highest P0 field-count amplification"
+      },
+      {
+        "id": "P0-POINT-XYZM-PROFILE",
+        "workload": "point-xyzm",
+        "rows": 2000000,
+        "reason": "highest-dimensional P0 point path"
+      }
+    ]
+  },
+  "scenarios": [
+    {
+      "id": "P0-WIDE-010",
+      "priority": "P0",
+      "test_filter": "PerformanceBenchmarkFixture.W7_WideAttributes_10Fields_10K",
+      "benchmark_scenario": "write-wide-10-fields",
+      "manifest": "point_10_float64_fields_formula_v1",
+      "engines": ["fast-gdb-writer", "gdal-single"],
+      "correctness_required": true
+    },
+    {
+      "id": "P0-WIDE-050",
+      "priority": "P0",
+      "test_filter": "PerformanceBenchmarkFixture.W7_WideAttributes_50Fields_10K",
+      "benchmark_scenario": "write-wide-50-fields",
+      "manifest": "point_50_float64_fields_formula_v1",
+      "engines": ["fast-gdb-writer", "gdal-single"],
+      "correctness_required": true
+    },
+    {
+      "id": "P0-WIDE-100",
+      "priority": "P0",
+      "test_filter": "PerformanceBenchmarkFixture.W7_WideAttributes_100Fields_10K",
+      "benchmark_scenario": "write-wide-100-fields",
+      "manifest": "point_100_float64_fields_formula_v1",
+      "engines": ["fast-gdb-writer", "gdal-single"],
+      "correctness_required": true
+    },
+    {
+      "id": "P0-POINT-XY",
+      "priority": "P0",
+      "test_filter": "PerformanceBenchmarkFixture.W9_Dimension_XY_10K",
+      "benchmark_scenario": "write-dimension-xy",
+      "manifest": "point_xy_1_float64_field_formula_v1",
+      "engines": ["fast-gdb-writer", "gdal-single"],
+      "correctness_required": true
+    },
+    {
+      "id": "P0-POINT-XYZ",
+      "priority": "P0",
+      "test_filter": "PerformanceBenchmarkFixture.W9_Dimension_XYZ_10K",
+      "benchmark_scenario": "write-dimension-xyz",
+      "manifest": "point_xyz_1_float64_field_formula_v1",
+      "engines": ["fast-gdb-writer", "gdal-single"],
+      "correctness_required": true
+    },
+    {
+      "id": "P0-POINT-XYM",
+      "priority": "P0",
+      "test_filter": "PerformanceBenchmarkFixture.W9_Dimension_XYM_10K",
+      "benchmark_scenario": "write-dimension-xym",
+      "manifest": "point_xym_1_float64_field_formula_v1",
+      "engines": ["fast-gdb-writer", "gdal-single"],
+      "correctness_required": true
+    },
+    {
+      "id": "P0-POINT-XYZM",
+      "priority": "P0",
+      "test_filter": "PerformanceBenchmarkFixture.W9_Dimension_XYZM_10K",
+      "benchmark_scenario": "write-dimension-xyzm",
+      "manifest": "point_xyzm_1_float64_field_formula_v1",
+      "engines": ["fast-gdb-writer", "gdal-single"],
+      "correctness_required": true
+    },
+    {
+      "id": "P1-GEOMETRY-POINT",
+      "priority": "P1",
+      "test_filter": "PerformanceBenchmarkFixture.W8_Geometry_Point_10K",
+      "benchmark_scenario": "write-geometry-point",
+      "manifest": "point_1_float64_field_formula_v1",
+      "engines": ["fast-gdb-writer", "gdal-single"],
+      "correctness_required": true
+    },
+    {
+      "id": "P1-GEOMETRY-POLYLINE",
+      "priority": "P1",
+      "test_filter": "PerformanceBenchmarkFixture.W8_Geometry_Polyline10_10K",
+      "benchmark_scenario": "write-geometry-polyline-10",
+      "manifest": "polyline-10_1_float64_field_formula_v1",
+      "engines": ["fast-gdb-writer", "gdal-single"],
+      "correctness_required": true
+    },
+    {
+      "id": "P1-GEOMETRY-POLYGON",
+      "priority": "P1",
+      "test_filter": "PerformanceBenchmarkFixture.W8_Geometry_Polygon_10K",
+      "benchmark_scenario": "write-geometry-polygon",
+      "manifest": "polygon_1_float64_field_formula_v1",
+      "engines": ["fast-gdb-writer", "gdal-single"],
+      "correctness_required": true
+    },
+    {
+      "id": "P1-GEOMETRY-MULTIPART",
+      "priority": "P1",
+      "test_filter": "PerformanceBenchmarkFixture.W8_Geometry_MultipartLine_10K",
+      "benchmark_scenario": "write-geometry-multipart-line-3x10",
+      "manifest": "multipart-line-3x10_1_float64_field_formula_v1",
+      "engines": ["fast-gdb-writer", "gdal-single"],
+      "correctness_required": true
+    },
+    {
+      "id": "P1-GEOMETRY-HOLE",
+      "priority": "P1",
+      "test_filter": "PerformanceBenchmarkFixture.W8_Geometry_PolygonWithHole_10K",
+      "benchmark_scenario": "write-geometry-polygon-hole",
+      "manifest": "polygon-hole_1_float64_field_formula_v1",
+      "engines": ["fast-gdb-writer", "gdal-single"],
+      "correctness_required": true
+    },
+    {
+      "id": "P1-READER-10M-OBSERVE",
+      "priority": "P1",
+      "gate": "manual-observe",
+      "test_filter": "PerformanceBenchmarkFixture.R1_GDAL_SequentialRead_10M:PerformanceBenchmarkFixture.R2_Explorgdb_SequentialRead_10M:PerformanceBenchmarkFixture.R2_ReadMethodComparison_10M",
+      "environment": {"FAST_GDB_RUN_10M_BENCHMARKS": "1"},
+      "correctness_required": true,
+      "regression_gate": false
+    }
+  ]
+}

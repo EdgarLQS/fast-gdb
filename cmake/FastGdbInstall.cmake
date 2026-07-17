@@ -2,6 +2,9 @@ include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 include(${CMAKE_CURRENT_LIST_DIR}/FastGdbPlatform.cmake)
 
+option(FAST_GDB_INSTALL_LEGACY_WRITER_API
+       "Install the deprecated experimental Writer compatibility target" ON)
+
 set(FAST_GDB_PACKAGE_VARIANT "" CACHE STRING
     "Release package variant name; defaults to linear or hybrid")
 if(NOT FAST_GDB_PACKAGE_VARIANT)
@@ -12,9 +15,6 @@ if(NOT FAST_GDB_PACKAGE_VARIANT)
     endif()
 endif()
 
-# Make exported targets relocatable while keeping the existing in-tree include
-# layout. Public headers intentionally preserve reader/common/curve_gdal as
-# sibling directories because several headers use ../common includes.
 set_target_properties(fast_gdb_geometry_core PROPERTIES
     EXPORT_NAME geometry_core
     INTERFACE_INCLUDE_DIRECTORIES
@@ -40,6 +40,20 @@ set(FAST_GDB_INSTALL_TARGETS
     explorgdb_writer_lib
     fast_gdb_linear)
 
+if(FAST_GDB_INSTALL_LEGACY_WRITER_API)
+    add_library(fast_gdb_writer_legacy INTERFACE)
+    target_link_libraries(fast_gdb_writer_legacy INTERFACE
+                          explorgdb_writer_lib)
+    target_include_directories(fast_gdb_writer_legacy INTERFACE
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/writer>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/writer_legacy>)
+    set_target_properties(fast_gdb_writer_legacy PROPERTIES
+        EXPORT_NAME writer_legacy
+        DEPRECATION
+            "fast_gdb::writer_legacy is deprecated; migrate to fast_gdb::writer and <writer_session.h>")
+    list(APPEND FAST_GDB_INSTALL_TARGETS fast_gdb_writer_legacy)
+endif()
+
 if(FAST_GDB_WITH_GDAL)
     set_target_properties(fast_gdb_curve_gdal PROPERTIES
         EXPORT_NAME curve_gdal
@@ -62,13 +76,42 @@ install(DIRECTORY src/edgar/explorgdb/common/
 install(DIRECTORY src/edgar/explorgdb/reader/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/reader
     FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp")
-install(DIRECTORY src/edgar/explorgdb/writer/
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/writer
-    FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp"
-    PATTERN "gdb_index_creator.h" EXCLUDE)
+
+install(FILES
+    src/edgar/explorgdb/writer/writer_session.h
+    src/edgar/explorgdb/writer/writer_recovery.h
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/writer)
 if(FAST_GDB_WITH_GDAL)
-    install(FILES src/edgar/explorgdb/writer/gdb_index_creator.h
+    install(FILES
+        src/edgar/explorgdb/writer/writer_index.h
+        src/edgar/explorgdb/writer/writer_append.h
+        src/edgar/explorgdb/writer/writer_update.h
+        src/edgar/explorgdb/writer/writer_delete.h
+        src/edgar/explorgdb/writer/writer_transaction.h
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/writer)
+endif()
+
+if(FAST_GDB_INSTALL_LEGACY_WRITER_API)
+    install(DIRECTORY src/edgar/explorgdb/writer/
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/writer_legacy
+        FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp"
+        PATTERN "writer_session.h" EXCLUDE
+        PATTERN "writer_recovery.h" EXCLUDE
+        PATTERN "writer_index.h" EXCLUDE
+        PATTERN "writer_append.h" EXCLUDE
+        PATTERN "writer_update.h" EXCLUDE
+        PATTERN "writer_delete.h" EXCLUDE
+        PATTERN "writer_transaction.h" EXCLUDE
+        PATTERN "gdb_index_creator.h" EXCLUDE)
+    if(FAST_GDB_WITH_GDAL)
+        install(FILES
+            src/edgar/explorgdb/writer/gdb_index_creator.h
+            src/edgar/explorgdb/writer/writer_index.h
+            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/writer_legacy)
+    endif()
+endif()
+
+if(FAST_GDB_WITH_GDAL)
     install(DIRECTORY src/edgar/explorgdb/curve_gdal/
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/curve_gdal
         FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp")
@@ -107,7 +150,7 @@ set(CPACK_PACKAGE_NAME "fast-gdb")
 set(CPACK_PACKAGE_VENDOR "EdgarLQS")
 set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
-    "C++17 FileGDB reader, experimental bulk writer and geometry engine with optional GDAL hybrid fallback")
+    "C++17 FileGDB reader, staged Writer sessions and geometry engine with optional GDAL hybrid fallback")
 set(CPACK_PACKAGE_FILE_NAME
     "fast-gdb-${PROJECT_VERSION}-${FAST_GDB_PACKAGE_VARIANT}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
 set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY ON)

@@ -1,0 +1,83 @@
+{
+  "schema_version": 2,
+  "contract_id": "writer-transaction-macos-v1",
+  "title": "Writer unified transaction and recovery macOS contract",
+  "platform": "macOS",
+  "random_seed": 42,
+  "allowed_results": ["PASS", "FAIL", "SKIP"],
+  "allowed_skip_reasons": [
+    "missing_gdal",
+    "missing_dataset",
+    "insufficient_disk",
+    "manual_gate_disabled",
+    "unsupported_platform"
+  ],
+  "scenarios": [
+    {
+      "id": "W-TXN-001",
+      "title": "Append Update Delete publish as one source transaction",
+      "kind": "gtest",
+      "binary": "full",
+      "filter": "WriterTransactionTest.CommitsAppendUpdateDeleteWithOneSourcePublish",
+      "gate": "required",
+      "data_scale": "small-generated",
+      "cache_state": "fresh-open",
+      "assertions": ["single_source_publish", "append", "update", "delete", "row_count", "attributes", "gdal_reopen"]
+    },
+    {
+      "id": "W-TXN-002",
+      "title": "Transaction abort and destructor preserve source",
+      "kind": "gtest",
+      "binary": "full",
+      "filter": "WriterTransactionTest.AbortAndDestructorPreserveSource",
+      "gate": "required",
+      "data_scale": "small-generated",
+      "cache_state": "fresh-open",
+      "assertions": ["abort", "destructor_cleanup", "source_unchanged"]
+    },
+    {
+      "id": "W-TXN-003",
+      "title": "Transaction rejects empty commit and source mutation",
+      "kind": "gtest",
+      "binary": "full",
+      "filter": "WriterTransactionValidationTest.*",
+      "gate": "required",
+      "data_scale": "small-generated",
+      "cache_state": "fresh-open",
+      "assertions": ["empty_commit", "source_fingerprint", "no_publish", "structured_error"]
+    },
+    {
+      "id": "W-RECOVERY-001",
+      "title": "Explicit recovery handles unique working and backup states",
+      "kind": "gtest",
+      "binary": "full",
+      "filter": "WriterRecoveryTest.DiscardsWorkingOnlyWhenSourceIsHealthy:WriterRecoveryTest.RestoresUniqueBackupWhenSourceIsMissing",
+      "gate": "required",
+      "data_scale": "unit",
+      "cache_state": "not_applicable",
+      "assertions": ["discard_working", "restore_backup", "never_overwrite_healthy_source"]
+    },
+    {
+      "id": "W-RECOVERY-002",
+      "title": "Ambiguous recovery candidates require manual inspection",
+      "kind": "gtest",
+      "binary": "full",
+      "filter": "WriterRecoveryTest.RefusesAmbiguousCandidates",
+      "gate": "required",
+      "data_scale": "unit",
+      "cache_state": "not_applicable",
+      "assertions": ["ambiguous_state", "no_automatic_mutation", "structured_error"]
+    },
+    {
+      "id": "W-ERROR-001",
+      "title": "Writer error code names are stable",
+      "kind": "gtest",
+      "binary": "full",
+      "filter": "WriterErrorCodeTest.*",
+      "gate": "required",
+      "data_scale": "unit",
+      "cache_state": "not_applicable",
+      "assertions": ["machine_readable_code", "stable_name"]
+    }
+  ]
+}

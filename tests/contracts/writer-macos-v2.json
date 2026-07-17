@@ -1,0 +1,254 @@
+{
+  "schema_version": 2,
+  "contract_id": "writer-macos-v2",
+  "title": "Writer macOS release contract",
+  "platform": "macOS",
+  "random_seed": 42,
+  "allowed_results": ["PASS", "FAIL", "SKIP"],
+  "allowed_skip_reasons": [
+    "missing_gdal",
+    "missing_dataset",
+    "insufficient_disk",
+    "manual_gate_disabled",
+    "unsupported_platform"
+  ],
+  "scenarios": [
+    {
+      "id": "W-SCHEMA-001",
+      "title": "Open the requested layer by exact name",
+      "kind": "gtest",
+      "binary": "full",
+      "filter": "WriterTest.W1_OpenExistingTargetsRequestedLayer",
+      "gate": "required",
+      "data_scale": "small-generated",
+      "cache_state": "not_applicable",
+      "assertions": ["layer_selection", "row_count", "fid", "attributes", "geometry"]
+    },
+    {
+      "id": "W-SCHEMA-002",
+      "title": "Reject a non-empty layer without modification",
+      "kind": "gtest",
+      "binary": "full",
+      "filter": "WriterTest.W1_OpenExistingRejectsNonEmptyLayerWithoutModification",
+      "gate": "required",
+      "data_scale": "small-generated",
+      "cache_state": "not_applicable",
+      "assertions": ["non_empty_rejection", "original_dataset_unchanged", "structured_error"]
+    },
+    {
+      "id": "W-SCHEMA-003",
+      "title": "Stable WriterSession lifecycle, ownership and rollback",
+      "kind": "gtest",
+      "binary": "full",
+      "filter": "WriterSessionTest.*",
+      "gate": "required",
+      "data_scale": "small-generated",
+      "cache_state": "fresh-open",
+      "assertions": ["session_lifecycle", "explicit_values", "structured_error", "no_overwrite_publish", "abort_cleanup", "destructor_cleanup", "gdal_reopen"]
+    },
+    {
+      "id": "W-FIELD-001",
+      "title": "Writer field encoding and validation matrix",
+      "kind": "gtest",
+      "binary": "full",
+      "filter": "WriterTest.W2_*",
+      "gate": "required",
+      "data_scale": "small-generated",
+      "cache_state": "not_applicable",
+      "assertions": ["numeric", "utf8", "binary", "xml", "guid", "temporal", "null", "defaults", "type_errors"]
+    },
+    {
+      "id": "W-GEOM-001",
+      "title": "Basic polygon write, coordinate quantization and GDAL reopen",
+      "kind": "gtest",
+      "binary": "full",
+      "filter": "WriterTest.T_W01_BasicWriteAndRead:WriterTest.T_W02_CoordinateAccuracy:WriterTest.T_W04_GDALCompatibility",
+      "gate": "required",
+      "data_scale": "small-generated",
+      "cache_state": "fresh-open",
+      "assertions": ["row_count", "fid", "attributes", "geometry", "gdal_reopen"]
+    },
+    {
+      "id": "W-GEOM-002",
+      "title": "Point, Polyline and MultiPoint write matrix",
+      "kind": "gtest",
+      "binary": "full",
+      "filter": "WriterTest.T_W05_*:WriterTest.T_W06_*:WriterTest.T_W07_*",
+      "gate": "required",
+      "data_scale": "small-generated",
+      "cache_state": "fresh-open",
+      "assertions": ["geometry_family", "vertex_count", "row_count", "gdal_reopen"]
+    },
+    {
+      "id": "W-GEOM-003",
+      "title": "Z, M and ZM geometry encoding matrix",
+      "kind": "gtest",
+      "binary": "full",
+      "filter": "WriterTest.T_W08_*:WriterTest.T_W09_*:WriterTest.T_W10_*:WriterTest.T_W11_*:WriterTest.T_W12_*:WriterTest.T_W13_*:WriterTest.T_W14_*:WriterTest.T_W15_*:WriterTest.T_W16_*",
+      "gate": "required",
+      "data_scale": "small-generated",
+      "cache_state": "fresh-open",
+      "assertions": ["xy", "z", "m", "zm", "geometry_family", "gdal_reopen"]
+    },
+    {
+      "id": "W-FAIL-001",
+      "title": "Disk growth failure prevents atomic publish",
+      "kind": "gtest",
+      "binary": "full",
+      "filter": "WriterTest.W4_DiskLimitFailurePreventsAtomicPublish",
+      "gate": "required",
+      "data_scale": "small-generated",
+      "cache_state": "not_applicable",
+      "assertions": ["io_failure", "writer_error_state", "staging_preserved", "final_path_not_published"]
+    },
+    {
+      "id": "W-FAIL-002",
+      "title": "Writer row-state, safe-open and atomic-publish failures",
+      "kind": "gtest",
+      "binary": "full",
+      "filter": "WriterTest.W1_AtomicSession*:WriterTest.W1_RowValidation*:WriterTest.W1_OpenExistingRejects*-WriterTest.W1_LargeFileCrosses4GiBAndReopens",
+      "gate": "required",
+      "data_scale": "small-generated",
+      "cache_state": "not_applicable",
+      "assertions": ["row_state", "field_validation", "safe_open", "no_overwrite_publish", "staging_preserved"]
+    },
+    {
+      "id": "W-FAIL-003",
+      "title": "Writer flush, close and tablx failure paths",
+      "kind": "gtest",
+      "binary": "full",
+      "filter": "WriterTest.W1_CloseReportsTablxIoFailure:WriterTest.W4_*",
+      "gate": "required",
+      "data_scale": "small-generated",
+      "cache_state": "not_applicable",
+      "assertions": ["flush_failure", "close_failure", "tablx_failure", "structured_system_reason"]
+    },
+    {
+      "id": "W-INDEX-001",
+      "title": "Spatial, attribute and composite index creation",
+      "kind": "gtest",
+      "binary": "full",
+      "filter": "IndexCreatorTest.*",
+      "gate": "required",
+      "data_scale": "100-generated-points",
+      "cache_state": "fresh-open",
+      "assertions": ["spatial_index", "attribute_index", "composite_index", "index_files"]
+    },
+    {
+      "id": "W-PKG-001",
+      "title": "Installed stable Writer consumer without GDAL",
+      "kind": "command",
+      "command": ["{workspace}/build-consumer-nogdal/fast_gdb_package_consumer"],
+      "gate": "required",
+      "repeat": 1,
+      "data_scale": "compile-and-run",
+      "cache_state": "not_applicable",
+      "assertions": ["relocatable_install", "stable_writer_session_header", "no_gdal_dependency", "no_internal_header_dependency"]
+    },
+    {
+      "id": "W-PKG-002",
+      "title": "Installed stable Writer and index consumer with GDAL",
+      "kind": "command",
+      "command": ["{workspace}/build-consumer-gdal/fast_gdb_package_consumer"],
+      "gate": "required",
+      "repeat": 1,
+      "data_scale": "compile-and-run",
+      "cache_state": "not_applicable",
+      "assertions": ["relocatable_install", "stable_writer_session_header", "stable_writer_index_header", "gdal_package_configuration"]
+    },
+    {
+      "id": "W-PKG-003",
+      "title": "Deprecated legacy Writer consumer remains buildable",
+      "kind": "command",
+      "command": ["{workspace}/build-consumer-legacy/fast_gdb_package_consumer"],
+      "gate": "required",
+      "repeat": 1,
+      "data_scale": "compile-and-run",
+      "cache_state": "not_applicable",
+      "assertions": ["legacy_target", "source_compatibility", "isolated_legacy_include_surface"]
+    },
+    {
+      "id": "R-CONC-001",
+      "title": "Concurrent tablx cache access",
+      "kind": "gtest",
+      "binary": "full",
+      "filter": "TablxCacheTest.ConcurrentAccess",
+      "gate": "required",
+      "data_scale": "small-generated",
+      "cache_state": "warm",
+      "assertions": ["concurrent_access", "deterministic_offsets"]
+    },
+    {
+      "id": "R-CONC-002",
+      "title": "Independent QueryEngine readers are deterministic",
+      "kind": "gtest",
+      "binary": "full",
+      "filter": "QueryEngineIntegrationTest.ConcurrentIndependentReadersReturnDeterministicResults",
+      "gate": "required",
+      "data_scale": "small-generated",
+      "cache_state": "warm",
+      "assertions": ["independent_query_engines", "spatial_results", "fid_results", "full_scan_results"]
+    },
+    {
+      "id": "W-GEOM-090",
+      "title": "Writer 1K release evidence observation",
+      "kind": "gtest",
+      "binary": "full",
+      "filter": "PerformanceBenchmarkFixture.W0_ReleaseEvidence_1K",
+      "gate": "observe",
+      "repeat": 1,
+      "environment": {
+        "FAST_GDB_RUN_FULL_BENCHMARKS": "1",
+        "FAST_GDB_BENCHMARK_SAMPLES": "1"
+      },
+      "data_scale": "1K",
+      "cache_state": "warm",
+      "assertions": ["row_count", "fid", "attributes", "geometry", "throughput_observation"]
+    },
+    {
+      "id": "W-FAIL-090",
+      "title": "Writer 4 GiB boundary and reopen",
+      "kind": "gtest",
+      "binary": "full",
+      "filter": "WriterTest.W1_LargeFileCrosses4GiBAndReopens",
+      "gate": "manual",
+      "manual_environment": "FAST_GDB_RUN_WRITER_4GB_TEST",
+      "environment": {"FAST_GDB_RUN_WRITER_4GB_TEST": "1"},
+      "data_scale": ">4GiB",
+      "cache_state": "fresh-open",
+      "assertions": ["file_size", "64bit_tablx_offset", "header_count", "last_row_reopen"]
+    },
+    {
+      "id": "W-FAIL-091",
+      "title": "Writer 1800 second long-steady gate",
+      "kind": "gtest",
+      "binary": "full",
+      "filter": "PerformanceBenchmarkFixture.W10_WriterLongSteady_100KCycles",
+      "gate": "manual",
+      "manual_environment": "FAST_GDB_RUN_WRITER_LONG_STEADY",
+      "environment": {
+        "FAST_GDB_RUN_FULL_BENCHMARKS": "1",
+        "FAST_GDB_RUN_WRITER_LONG_STEADY": "1"
+      },
+      "data_scale": "100K-cycles/1800s",
+      "cache_state": "warm",
+      "assertions": ["gdal_reopen_each_cycle", "median", "p95", "rss_growth", "duration"]
+    },
+    {
+      "id": "R-STABLE-001",
+      "title": "Reader 1800 second long-steady gate",
+      "kind": "gtest",
+      "binary": "full",
+      "filter": "PerformanceBenchmarkFixture.R7_ReaderLongSteady_100KCycles",
+      "gate": "manual",
+      "manual_environment": "FAST_GDB_RUN_READER_LONG_STEADY",
+      "environment": {
+        "FAST_GDB_RUN_FULL_BENCHMARKS": "1",
+        "FAST_GDB_RUN_READER_LONG_STEADY": "1"
+      },
+      "data_scale": "100K-cycles/1800s",
+      "cache_state": "fresh-open",
+      "assertions": ["spatial_results", "fid_results", "full_scan_results", "median", "p95", "rss_growth", "duration"]
+    }
+  ]
+}
