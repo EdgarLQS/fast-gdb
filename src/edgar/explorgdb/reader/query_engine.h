@@ -116,6 +116,10 @@ private:
 class QueryEngine {
 public:
     QueryEngine(const GdbCatalog& catalog, const ResolvedTable& table);
+    QueryEngine(const QueryEngine&) = delete;
+    QueryEngine& operator=(const QueryEngine&) = delete;
+    QueryEngine(QueryEngine&&) = delete;
+    QueryEngine& operator=(QueryEngine&&) = delete;
 
     bool open();
     QueryResult query(const QueryRequest& request);
