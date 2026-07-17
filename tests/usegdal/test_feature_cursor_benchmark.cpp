@@ -22,7 +22,7 @@
 
 using namespace explorgdb;
 namespace fs = std::filesystem;
-using CursorBenchmarkClock = std::chrono::steady_clock;
+using BenchmarkClock = std::chrono::steady_clock;
 
 namespace {
 
@@ -43,12 +43,12 @@ bool execute_sql(GDALDataset* dataset, const std::string& sql) {
     return CPLGetLastErrorType() < CE_Failure;
 }
 
-double percentile(std::vector<double> samples, double fraction) {
-    if (samples.empty()) return 0.0;
-    std::sort(samples.begin(), samples.end());
+double percentile(std::vector<double> values, double fraction) {
+    if (values.empty()) return 0.0;
+    std::sort(values.begin(), values.end());
     const size_t index = static_cast<size_t>(
-        std::ceil(fraction * static_cast<double>(samples.size()))) - 1U;
-    return samples[std::min(index, samples.size() - 1U)];
+        std::ceil(fraction * static_cast<double>(values.size()))) - 1U;
+    return values[std::min(index, values.size() - 1U)];
 }
 
 struct Digest {
@@ -86,6 +86,16 @@ int fast_field_index(const GdbTableParser* table, const std::string& name) {
     return -1;
 }
 
+std::vector<uint8_t> export_iso_wkb(OGRGeometry* geometry) {
+    if (geometry == nullptr) return {};
+    std::vector<uint8_t> wkb(static_cast<size_t>(geometry->WkbSize()));
+    if (geometry->exportToWkb(
+            wkbNDR, wkb.data(), wkbVariantIso) != OGRERR_NONE) {
+        return {};
+    }
+    return wkb;
+}
+
 void add_fast_feature(Digest& digest,
                       const QueryFeature& feature,
                       int value_index,
@@ -101,16 +111,6 @@ void add_fast_feature(Digest& digest,
     ++digest.feature_count;
 }
 
-std::vector<uint8_t> export_iso_wkb(OGRGeometry* geometry) {
-    if (geometry == nullptr) return {};
-    std::vector<uint8_t> wkb(static_cast<size_t>(geometry->WkbSize()));
-    if (geometry->exportToWkb(
-            wkbNDR, wkb.data(), wkbVariantIso) != OGRERR_NONE) {
-        return {};
-    }
-    return wkb;
-}
-
 Digest consume_gdal(OGRLayer* layer) {
     Digest digest;
     layer->SetSpatialFilterRect(0, 0, 99, 99);
@@ -118,28 +118,25 @@ Digest consume_gdal(OGRLayer* layer) {
         return digest;
     layer->ResetReading();
     while (OGRFeature* feature = layer->GetNextFeature()) {
-        if (feature->GetFID() <= 0) {
-            OGRFeature::DestroyFeature(feature);
-            continue;
+        if (feature->GetFID() > 0) {
+            const uint32_t fid =
+                static_cast<uint32_t>(feature->GetFID() - 1);
+            digest.add_scalar(fid);
+            const int32_t value = feature->GetFieldAsInteger("value");
+            digest.add_scalar(value);
+            const int payload_index = feature->GetFieldIndex("payload");
+            int byte_count = 0;
+            const GByte* bytes = feature->GetFieldAsBinary(
+                payload_index, &byte_count);
+            if (bytes != nullptr && byte_count > 0)
+                digest.add_bytes(bytes, static_cast<size_t>(byte_count));
+            const std::vector<uint8_t> wkb =
+                export_iso_wkb(feature->GetGeometryRef());
+            digest.add_bytes(wkb.data(), wkb.size());
+            ++digest.feature_count;
         }
-        const uint32_t fid = static_cast<uint32_t>(feature->GetFID() - 1);
-        digest.add_scalar(fid);
-        const int32_t value = feature->GetFieldAsInteger("value");
-        digest.add_scalar(value);
-        const int payload_index = feature->GetFieldIndex("payload");
-        int byte_count = 0;
-        const GByte* bytes = feature->GetFieldAsBinary(
-            payload_index, &byte_count);
-        if (bytes != nullptr && byte_count > 0)
-            digest.add_bytes(bytes, static_cast<size_t>(byte_count));
-        const std::vector<uint8_t> wkb =
-            export_iso_wkb(feature->GetGeometryRef());
-        digest.add_bytes(wkb.data(), wkb.size());
-        ++digest.feature_count;
         OGRFeature::DestroyFeature(feature);
     }
-    layer->SetSpatialFilter(nullptr);
-    layer->SetAttributeFilter(nullptr);
     return digest;
 }
 
@@ -163,6 +160,7 @@ void write_evidence(const Samples& samples) {
          << "{\n"
          << "  \"evidence_schema_version\": 1,\n"
          << "  \"scenario\": \"full-feature-spatial-where-100k\",\n"
+         << "  \"timing_scope\": \"engine-or-dataset-open-through-last-feature\",\n"
          << "  \"feature_count\": " << kFeatureCount << ",\n"
          << "  \"result_count\": " << samples.digest.feature_count << ",\n"
          << "  \"output_bytes\": " << samples.digest.output_bytes << ",\n"
@@ -229,10 +227,12 @@ protected:
                 static_cast<GByte>(0x5a)};
             feature->SetField(payload_index, 3, payload);
             OGRPoint point(fid % 1000, fid / 1000);
-            feature->SetGeometry(&point);
-            const OGRErr error = layer->CreateFeature(feature);
+            const OGRErr geometry_error = feature->SetGeometry(&point);
+            const OGRErr create_error = geometry_error == OGRERR_NONE
+                ? layer->CreateFeature(feature)
+                : geometry_error;
             OGRFeature::DestroyFeature(feature);
-            if (error != OGRERR_NONE) {
+            if (create_error != OGRERR_NONE) {
                 GDALClose(dataset);
                 return {};
             }
@@ -284,20 +284,6 @@ TEST_F(FeatureCursorBenchmarkTest, Point100KFullFeatureEvidence) {
     ASSERT_TRUE(resolver.load());
     const auto resolved = resolver.resolve(kLayer);
     ASSERT_TRUE(resolved.has_value());
-    QueryEngine engine(catalog, *resolved);
-    ASSERT_TRUE(engine.open());
-
-    const int value_index = fast_field_index(engine.table(), "value");
-    const int payload_index = fast_field_index(engine.table(), "payload");
-    ASSERT_GE(value_index, 0);
-    ASSERT_GE(payload_index, 0);
-
-    GDALDataset* dataset = static_cast<GDALDataset*>(GDALOpenEx(
-        path.c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY,
-        nullptr, nullptr, nullptr));
-    ASSERT_NE(dataset, nullptr);
-    OGRLayer* layer = dataset->GetLayerByName(kLayer);
-    ASSERT_NE(layer, nullptr);
 
     QueryRequest request;
     request.kind = QueryKind::SpatialWhere;
@@ -309,56 +295,74 @@ TEST_F(FeatureCursorBenchmarkTest, Point100KFullFeatureEvidence) {
 
     Samples samples;
     for (int sample = 0; sample < kSamples; ++sample) {
-        auto start = CursorBenchmarkClock::now();
-        FeatureCursor cursor = engine.open_cursor(request);
+        auto start = BenchmarkClock::now();
+        QueryEngine cursor_engine(catalog, *resolved);
+        ASSERT_TRUE(cursor_engine.open());
+        const int cursor_value_index =
+            fast_field_index(cursor_engine.table(), "value");
+        const int cursor_payload_index =
+            fast_field_index(cursor_engine.table(), "payload");
+        ASSERT_GE(cursor_value_index, 0);
+        ASSERT_GE(cursor_payload_index, 0);
+        FeatureCursor cursor = cursor_engine.open_cursor(request);
         ASSERT_TRUE(cursor.error().empty()) << cursor.error();
         Digest cursor_digest;
         QueryFeature feature;
         while (cursor.next(feature)) {
-            add_fast_feature(
-                cursor_digest, feature, value_index, payload_index);
+            add_fast_feature(cursor_digest, feature,
+                             cursor_value_index, cursor_payload_index);
         }
         ASSERT_TRUE(cursor.done());
         ASSERT_TRUE(cursor.error().empty());
         samples.cursor_ms.push_back(
             std::chrono::duration<double, std::milli>(
-                CursorBenchmarkClock::now() - start).count());
+                BenchmarkClock::now() - start).count());
         if (samples.execution_path.empty())
             samples.execution_path = cursor.query_result().execution_path;
         ASSERT_EQ(cursor.query_result().execution_path,
                   samples.execution_path);
 
-        start = CursorBenchmarkClock::now();
-        const QueryResult query = engine.query(request);
+        start = BenchmarkClock::now();
+        QueryEngine legacy_engine(catalog, *resolved);
+        ASSERT_TRUE(legacy_engine.open());
+        const int legacy_value_index =
+            fast_field_index(legacy_engine.table(), "value");
+        const int legacy_payload_index =
+            fast_field_index(legacy_engine.table(), "payload");
+        ASSERT_GE(legacy_value_index, 0);
+        ASSERT_GE(legacy_payload_index, 0);
+        const QueryResult query = legacy_engine.query(request);
         Digest legacy_digest;
         for (uint32_t fid : query.matched_fids) {
             QueryFeature legacy;
             legacy.fid = fid;
-            ASSERT_TRUE(engine.read_by_fid(fid, legacy.record));
-            ASSERT_TRUE(engine.table()->read_geometry_value(
+            ASSERT_TRUE(legacy_engine.read_by_fid(fid, legacy.record));
+            ASSERT_TRUE(legacy_engine.table()->read_geometry_value(
                 fid, legacy.geometry));
-            add_fast_feature(
-                legacy_digest, legacy, value_index, payload_index);
+            add_fast_feature(legacy_digest, legacy,
+                             legacy_value_index, legacy_payload_index);
         }
         samples.legacy_ms.push_back(
             std::chrono::duration<double, std::milli>(
-                CursorBenchmarkClock::now() - start).count());
+                BenchmarkClock::now() - start).count());
 
-        start = CursorBenchmarkClock::now();
+        start = BenchmarkClock::now();
+        GDALDataset* dataset = static_cast<GDALDataset*>(GDALOpenEx(
+            path.c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY,
+            nullptr, nullptr, nullptr));
+        ASSERT_NE(dataset, nullptr);
+        OGRLayer* layer = dataset->GetLayerByName(kLayer);
+        ASSERT_NE(layer, nullptr);
         const Digest gdal_digest = consume_gdal(layer);
+        GDALClose(dataset);
         samples.gdal_ms.push_back(
             std::chrono::duration<double, std::milli>(
-                CursorBenchmarkClock::now() - start).count());
+                BenchmarkClock::now() - start).count());
 
-        ASSERT_EQ(cursor_digest.hash, legacy_digest.hash);
-        ASSERT_EQ(cursor_digest.feature_count, legacy_digest.feature_count);
-        ASSERT_EQ(cursor_digest.output_bytes, legacy_digest.output_bytes);
-        ASSERT_EQ(cursor_digest.hash, gdal_digest.hash);
-        ASSERT_EQ(cursor_digest.feature_count, gdal_digest.feature_count);
-        ASSERT_EQ(cursor_digest.output_bytes, gdal_digest.output_bytes);
+        ASSERT_TRUE(cursor_digest == legacy_digest);
+        ASSERT_TRUE(cursor_digest == gdal_digest);
         samples.digest = cursor_digest;
     }
-    GDALClose(dataset);
 
     ASSERT_GT(samples.digest.feature_count, 0U);
     samples.correct = true;
