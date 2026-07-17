@@ -426,4 +426,28 @@ FeatureCursor QueryEngine::open_cursor(const QueryRequest& request) {
         request.profile_feature_reads));
 }
 
+uint64_t QueryEngine::register_feature_cursor() noexcept {
+    return cursor_control_ != nullptr
+        ? cursor_control_->register_feature_cursor()
+        : 0;
+}
+
+void QueryEngine::release_feature_cursor(uint64_t generation) noexcept {
+    if (cursor_control_ != nullptr)
+        cursor_control_->release_feature_cursor(generation);
+}
+
+bool QueryEngine::feature_cursor_active() const noexcept {
+    return cursor_control_ != nullptr &&
+        cursor_control_->feature_cursor_active();
+}
+
+bool QueryEngine::peek_bbox_source(
+    uint32_t fid,
+    const uint8_t*& blob,
+    size_t& size) {
+    if (feature_cursor_active()) return false;
+    return parser_ && parser_->peek_geometry_blob(fid, blob, size);
+}
+
 } // namespace explorgdb
