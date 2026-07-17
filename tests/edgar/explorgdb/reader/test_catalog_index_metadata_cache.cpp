@@ -6,6 +6,8 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 using namespace explorgdb;
@@ -16,6 +18,11 @@ namespace {
 const fs::path kSourceGdb =
     explorgdb_test_paths::test_data_path(
         "test_data/gdb/test_spatial_gdb.gdb/test_spatial_gdb.gdb");
+
+static_assert(std::is_copy_constructible_v<GdbCatalog>);
+static_assert(std::is_copy_assignable_v<GdbCatalog>);
+static_assert(std::is_move_constructible_v<GdbCatalog>);
+static_assert(std::is_move_assignable_v<GdbCatalog>);
 
 } // namespace
 
@@ -41,7 +48,10 @@ TEST(GdbCatalogIndexMetadataCacheTest, CacheIsBoundToScanSnapshot) {
     ASSERT_TRUE(catalog.read_index_metadata(1U, first));
     ASSERT_FALSE(first.empty());
 
-    // Mutating the backing file does not change the current catalog snapshot.
+    // Copies preserve the current snapshot and share its immutable cache.
+    GdbCatalog snapshot_copy = catalog;
+
+    // Mutating the backing file does not change either existing snapshot.
     std::ofstream truncate(copied, std::ios::binary | std::ios::trunc);
     ASSERT_TRUE(truncate.is_open());
     truncate.close();
@@ -54,11 +64,25 @@ TEST(GdbCatalogIndexMetadataCacheTest, CacheIsBoundToScanSnapshot) {
         EXPECT_EQ(cached[index].column_name, first[index].column_name);
     }
 
-    // A new scan invalidates both successful and failed metadata cache entries.
+    std::vector<IndexEntry> copied_snapshot;
+    ASSERT_TRUE(snapshot_copy.read_index_metadata(1U, copied_snapshot));
+    EXPECT_EQ(copied_snapshot.size(), first.size());
+
+    // Rescanning one object creates a new cache state and does not invalidate
+    // the copied snapshot.
     ASSERT_TRUE(catalog.scan(directory.string()));
     std::vector<IndexEntry> after_rescan;
     EXPECT_FALSE(catalog.read_index_metadata(1U, after_rescan));
     EXPECT_TRUE(after_rescan.empty());
+
+    copied_snapshot.clear();
+    ASSERT_TRUE(snapshot_copy.read_index_metadata(1U, copied_snapshot));
+    EXPECT_EQ(copied_snapshot.size(), first.size());
+
+    GdbCatalog moved_snapshot = std::move(snapshot_copy);
+    copied_snapshot.clear();
+    ASSERT_TRUE(moved_snapshot.read_index_metadata(1U, copied_snapshot));
+    EXPECT_EQ(copied_snapshot.size(), first.size());
 
     fs::remove_all(directory);
 }
