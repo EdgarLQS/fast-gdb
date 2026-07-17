@@ -18,10 +18,10 @@ static_assert(std::is_nothrow_move_assignable<FeatureCursor>::value,
               "FeatureCursor move assignment must be noexcept");
 static_assert(!std::is_copy_constructible<QueryEngine>::value,
               "QueryEngine must not be copied while cursors reference it");
-static_assert(!std::is_move_constructible<QueryEngine>::value,
-              "QueryEngine address must remain stable for cursor lifetime");
+static_assert(std::is_nothrow_move_constructible<QueryEngine>::value,
+              "QueryEngine move construction must be noexcept");
 static_assert(!std::is_move_assignable<QueryEngine>::value,
-              "QueryEngine address must remain stable for cursor lifetime");
+              "QueryEngine move assignment prevented by reference member");
 static_assert(std::is_same<
                   decltype(std::declval<FeatureCursor&>().next(
                       std::declval<QueryFeature&>())),

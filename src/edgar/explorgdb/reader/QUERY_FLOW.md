@@ -146,7 +146,7 @@ flowchart TD
 规则：
 
 - FeatureCursor move-only；
-- QueryEngine non-movable，保持地址稳定；
+- QueryEngine 不可复制、可移动构造但不可移动赋值；cursor 依赖的控制块和 table 对象位于稳定堆地址，移动后的源 engine 安全不可用；
 - QueryEngine、Catalog、ResolvedTable 必须比 cursor 活得更久；
 - 同一 engine 同时一个活动 cursor；
 - cursor generation 防迟到析构；

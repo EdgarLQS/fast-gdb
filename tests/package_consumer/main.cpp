@@ -65,6 +65,13 @@ static_assert(!std::is_copy_constructible<explorgdb::FeatureCursor>::value,
 static_assert(std::is_nothrow_move_constructible<
                   explorgdb::FeatureCursor>::value,
               "installed FeatureCursor move must be noexcept");
+static_assert(!std::is_copy_constructible<explorgdb::QueryEngine>::value,
+              "installed QueryEngine must not be copyable");
+static_assert(std::is_nothrow_move_constructible<
+                  explorgdb::QueryEngine>::value,
+              "installed QueryEngine move construction must be noexcept");
+static_assert(!std::is_move_assignable<explorgdb::QueryEngine>::value,
+              "installed QueryEngine must not be move-assignable");
 
 int main() {
     explorgdb::GeometryModel geometry;

@@ -33,7 +33,7 @@ All notable changes to fast-gdb are documented in this file.
 - Non-BMP strings, `!=`, functional indexes and ambiguous numeric encodings fall back safely.
 - GDAL integration tests use per-test temporary FileGDB directories for parallel CTest.
 - Active FeatureCursor instances block QueryEngine read entry points.
-- QueryEngine is non-copyable and non-movable so cursor-held engine addresses remain stable.
+- QueryEngine is non-copyable, move-constructible, and not move-assignable. Cursor state uses stable heap-owned control and table objects across a move; the moved-from engine remains safely unavailable.
 - Reopening QueryEngine invalidates exhausted cursors and resets cached spatial-index state.
 - Zero-length legal rows are normalized into ObjectID and nullable NULL values.
 - FeatureCursor now uses the one-pass full-object reader instead of `read_record_by_fid()` followed by `read_geometry_value()`.

@@ -132,8 +132,8 @@ public:
     QueryEngine(const GdbCatalog& catalog, const ResolvedTable& table);
     QueryEngine(const QueryEngine&) = delete;
     QueryEngine& operator=(const QueryEngine&) = delete;
-    QueryEngine(QueryEngine&&) = delete;
-    QueryEngine& operator=(QueryEngine&&) = delete;
+    QueryEngine(QueryEngine&&) noexcept = default;
+    QueryEngine& operator=(QueryEngine&&) noexcept = delete;
 
     bool open();
     QueryResult query(const QueryRequest& request);
@@ -180,9 +180,18 @@ private:
 
     uint64_t register_feature_cursor() noexcept;
     void release_feature_cursor(uint64_t generation) noexcept;
-    bool feature_cursor_active() const noexcept {
-        return active_cursor_generation_ != 0;
-    }
+    bool feature_cursor_active() const noexcept;
+
+    struct CursorControl {
+        uint64_t open_generation = 0;
+        uint64_t next_cursor_generation = 0;
+        uint64_t active_cursor_generation = 0;
+
+        uint64_t register_feature_cursor() noexcept;
+        void release_feature_cursor(uint64_t generation) noexcept;
+        bool feature_cursor_active() const noexcept;
+    };
+    std::unique_ptr<CursorControl> cursor_control_;
 
     const GdbCatalog& catalog_;
     ResolvedTable resolved_;
@@ -192,9 +201,6 @@ private:
     bool spatial_index_initialized_ = false;
     bool spatial_index_present_ = false;
     CapabilityReport capabilities_;
-    uint64_t open_generation_ = 0;
-    uint64_t next_cursor_generation_ = 0;
-    uint64_t active_cursor_generation_ = 0;
 };
 
 } // namespace explorgdb

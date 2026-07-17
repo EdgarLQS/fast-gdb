@@ -74,30 +74,28 @@ public:
         : state_(State::Exhausted),
           query_result_(std::move(query_result)) {}
 
-    Impl(QueryEngine* engine,
+    Impl(GdbTableParser* table,
          uint64_t generation,
          AcquireCallback acquire,
          ReleaseCallback release,
          EngineValidCallback engine_valid,
          QueryResult query_result,
-         bool profile_enabled,
-         std::vector<uint32_t> fids)
-        : engine_(engine),
+         bool profile_enabled)
+        : table_(table),
           generation_(generation),
           acquire_(std::move(acquire)),
           release_(std::move(release)),
           engine_valid_(std::move(engine_valid)),
           query_result_(std::move(query_result)),
-          fids_(std::move(fids)),
           profile_enabled_(profile_enabled),
           mode_(Mode::CandidateFids) {
-        if (fids_.empty()) {
+        if (query_result_.matched_fids.empty()) {
             state_ = State::Exhausted;
             release_lease();
         }
     }
 
-    Impl(QueryEngine* engine,
+    Impl(GdbTableParser* table,
          uint64_t generation,
          AcquireCallback acquire,
          ReleaseCallback release,
@@ -105,7 +103,7 @@ public:
          QueryResult query_result,
          bool profile_enabled,
          size_t feature_limit)
-        : engine_(engine),
+        : table_(table),
           generation_(generation),
           acquire_(std::move(acquire)),
           release_(std::move(release)),
@@ -134,14 +132,14 @@ public:
             return false;
         }
 
-        GdbTableParser* parser = engine_ != nullptr ? engine_->table() : nullptr;
+        QueryFeature candidate;
+        candidate.fid = fid;
+        GdbTableParser* parser = table_;
         if (parser == nullptr) {
             fail("query engine table is unavailable");
             return false;
         }
 
-        QueryFeature candidate;
-        candidate.fid = fid;
         FeatureReadMetrics metrics;
         FeatureReadMetrics* metrics_ptr = profile_enabled_ ? &metrics : nullptr;
         if (!parser->read_feature_by_fid(
@@ -172,15 +170,15 @@ public:
         if (!engine_is_current() || !ensure_lease()) return false;
 
         if (mode_ == Mode::CandidateFids) {
-            const auto iterator = std::lower_bound(fids_.begin(), fids_.end(), fid);
-            fid_index_ = static_cast<size_t>(iterator - fids_.begin());
-            if (iterator == fids_.end()) {
+            const auto& fids = query_result_.matched_fids;
+            const auto iterator = std::lower_bound(fids.begin(), fids.end(), fid);
+            fid_index_ = static_cast<size_t>(iterator - fids.begin());
+            if (iterator == fids.end()) {
                 exhaust();
                 return false;
             }
         } else {
-            GdbTableParser* parser =
-                engine_ != nullptr ? engine_->table() : nullptr;
+            GdbTableParser* parser = table_;
             if (parser == nullptr) {
                 fail("query engine table is unavailable");
                 return false;
@@ -253,12 +251,13 @@ private:
 
     bool next_fid(uint32_t& fid) {
         if (mode_ == Mode::CandidateFids) {
-            if (fid_index_ >= fids_.size()) return false;
-            fid = fids_[fid_index_++];
+            const auto& fids = query_result_.matched_fids;
+            if (fid_index_ >= fids.size()) return false;
+            fid = fids[fid_index_++];
             return true;
         }
 
-        GdbTableParser* parser = engine_ != nullptr ? engine_->table() : nullptr;
+        GdbTableParser* parser = table_;
         if (parser == nullptr) {
             fail("query engine table is unavailable");
             return false;
@@ -298,7 +297,7 @@ private:
         if (release_) release_(generation);
     }
 
-    QueryEngine* engine_ = nullptr;
+    GdbTableParser* table_ = nullptr;
     uint64_t generation_ = 0;
     AcquireCallback acquire_;
     ReleaseCallback release_;
@@ -306,7 +305,6 @@ private:
     State state_ = State::Ready;
     QueryResult query_result_;
     std::string error_;
-    std::vector<uint32_t> fids_;
     size_t fid_index_ = 0;
     size_t next_sequential_fid_ = 0;
     size_t feature_limit_ = 0;
@@ -351,32 +349,36 @@ FeatureCursor QueryEngine::open_cursor(const QueryRequest& request) {
         return FeatureCursor(std::make_unique<FeatureCursor::Impl>(
             std::move(result), "table not open"));
     }
-    if (feature_cursor_active()) {
+    if (cursor_control_->feature_cursor_active()) {
         result.execution_path = "cursor:invalid";
         result.fallback_reason = "another feature cursor is active";
         return FeatureCursor(std::make_unique<FeatureCursor::Impl>(
             std::move(result), "another feature cursor is active"));
     }
 
-    const uint64_t planned_open_generation = open_generation_;
-    auto acquire = [this]() noexcept {
-        return register_feature_cursor();
+    const uint64_t planned_open_generation = cursor_control_->open_generation;
+    CursorControl* const control = cursor_control_.get();
+    auto acquire = [control]() noexcept {
+        return control->register_feature_cursor();
     };
-    auto release = [this](uint64_t generation) noexcept {
-        release_feature_cursor(generation);
+    auto release = [control](uint64_t generation) noexcept {
+        control->release_feature_cursor(generation);
     };
-    auto engine_valid = [this, planned_open_generation]() noexcept {
-        return open_generation_ == planned_open_generation;
+    auto engine_valid = [control, planned_open_generation]() noexcept {
+        return control->open_generation == planned_open_generation;
     };
 
     if (request.kind == QueryKind::SequentialScan) {
         result.execution_path = "cursor:sequential";
         const size_t feature_limit = parser_->feature_count();
-        if (parser_->active_feature_count() == 0)
+        if (parser_->active_feature_count() == 0) {
             return FeatureCursor(std::make_unique<FeatureCursor::Impl>(
-                std::move(result)));
+                parser_.get(), 0, std::move(acquire), std::move(release),
+                std::move(engine_valid), std::move(result),
+                request.profile_feature_reads, size_t(0)));
+        }
 
-        const uint64_t generation = register_feature_cursor();
+        const uint64_t generation = control->register_feature_cursor();
         if (generation == 0) {
             result.execution_path = "cursor:invalid";
             result.fallback_reason = "another feature cursor is active";
@@ -384,7 +386,7 @@ FeatureCursor QueryEngine::open_cursor(const QueryRequest& request) {
                 std::move(result), "another feature cursor is active"));
         }
         return FeatureCursor(std::make_unique<FeatureCursor::Impl>(
-            this, generation, std::move(acquire), std::move(release),
+            parser_.get(), generation, std::move(acquire), std::move(release),
             std::move(engine_valid), std::move(result),
             request.profile_feature_reads, feature_limit));
     }
@@ -403,11 +405,14 @@ FeatureCursor QueryEngine::open_cursor(const QueryRequest& request) {
         std::unique(result.matched_fids.begin(), result.matched_fids.end()),
         result.matched_fids.end());
     result.record.reset();
-    if (result.matched_fids.empty())
+    if (result.matched_fids.empty()) {
         return FeatureCursor(std::make_unique<FeatureCursor::Impl>(
-            std::move(result)));
+            parser_.get(), 0, std::move(acquire), std::move(release),
+            std::move(engine_valid), std::move(result),
+            request.profile_feature_reads));
+    }
 
-    const uint64_t generation = register_feature_cursor();
+    const uint64_t generation = control->register_feature_cursor();
     if (generation == 0) {
         result.execution_path = "cursor:invalid";
         result.fallback_reason = "another feature cursor is active";
@@ -415,11 +420,10 @@ FeatureCursor QueryEngine::open_cursor(const QueryRequest& request) {
             std::move(result), "another feature cursor is active"));
     }
 
-    std::vector<uint32_t> fids = result.matched_fids;
     return FeatureCursor(std::make_unique<FeatureCursor::Impl>(
-        this, generation, std::move(acquire), std::move(release),
+        parser_.get(), generation, std::move(acquire), std::move(release),
         std::move(engine_valid), std::move(result),
-        request.profile_feature_reads, std::move(fids)));
+        request.profile_feature_reads));
 }
 
 } // namespace explorgdb

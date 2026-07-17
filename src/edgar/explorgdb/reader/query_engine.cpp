@@ -9,13 +9,34 @@ namespace explorgdb {
 
 QueryEngine::QueryEngine(const GdbCatalog& catalog,
                          const ResolvedTable& table)
-    : catalog_(catalog), resolved_(table) {}
+    : catalog_(catalog), resolved_(table) {
+    cursor_control_ = std::make_unique<CursorControl>();
+}
+
+uint64_t QueryEngine::CursorControl::register_feature_cursor() noexcept {
+    if (active_cursor_generation != 0) return 0;
+    ++next_cursor_generation;
+    if (next_cursor_generation == 0) ++next_cursor_generation;
+    active_cursor_generation = next_cursor_generation;
+    return active_cursor_generation;
+}
+
+void QueryEngine::CursorControl::release_feature_cursor(
+    uint64_t generation) noexcept {
+    if (generation != 0 && active_cursor_generation == generation)
+        active_cursor_generation = 0;
+}
+
+bool QueryEngine::CursorControl::feature_cursor_active() const noexcept {
+    return active_cursor_generation != 0;
+}
 
 bool QueryEngine::open() {
-    if (feature_cursor_active()) return false;
+    if (cursor_control_ == nullptr || feature_cursor_active()) return false;
 
-    ++open_generation_;
-    if (open_generation_ == 0) ++open_generation_;
+    ++cursor_control_->open_generation;
+    if (cursor_control_->open_generation == 0)
+        ++cursor_control_->open_generation;
     opened_ = false;
     parser_.reset();
     spatial_index_.reset();
@@ -87,20 +108,6 @@ bool QueryEngine::read_by_fid(uint32_t fid, FeatureRecord& record) {
 uint64_t QueryEngine::scan(GdbTableParser::ScanCallback callback) {
     if (feature_cursor_active()) return 0;
     return parser_ ? parser_->sequential_scan(std::move(callback)) : 0;
-}
-
-uint64_t QueryEngine::register_feature_cursor() noexcept {
-    if (feature_cursor_active()) return 0;
-    ++next_cursor_generation_;
-    if (next_cursor_generation_ == 0)
-        ++next_cursor_generation_;
-    active_cursor_generation_ = next_cursor_generation_;
-    return active_cursor_generation_;
-}
-
-void QueryEngine::release_feature_cursor(uint64_t generation) noexcept {
-    if (generation != 0 && active_cursor_generation_ == generation)
-        active_cursor_generation_ = 0;
 }
 
 QueryResult QueryEngine::query_sequential_scan() const {
@@ -254,6 +261,22 @@ QueryResult QueryEngine::query_where(const QueryRequest& request) {
             return true;
         });
     return result;
+}
+
+uint64_t QueryEngine::register_feature_cursor() noexcept {
+    return cursor_control_ != nullptr
+        ? cursor_control_->register_feature_cursor()
+        : 0;
+}
+
+void QueryEngine::release_feature_cursor(uint64_t generation) noexcept {
+    if (cursor_control_ != nullptr)
+        cursor_control_->release_feature_cursor(generation);
+}
+
+bool QueryEngine::feature_cursor_active() const noexcept {
+    return cursor_control_ != nullptr &&
+        cursor_control_->feature_cursor_active();
 }
 
 bool QueryEngine::peek_bbox_source(

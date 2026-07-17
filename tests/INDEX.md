@@ -31,7 +31,7 @@ tests/
 | `edgar/explorgdb/reader/test_query_where_internal.cpp` | WHERE、NULL、NaN、字段绑定、FID 交集 |
 | `edgar/explorgdb/reader/test_gdbindexes_expression.cpp` | 裸字段、函数索引表达式分类 |
 | `edgar/explorgdb/reader/test_gdb_attribute_index_safety.cpp` | `.atx` fail-closed |
-| `edgar/explorgdb/reader/test_feature_cursor.cpp` | cursor move-only、engine non-movable、方法签名 |
+| `edgar/explorgdb/reader/test_feature_cursor.cpp` | cursor move-only、engine 可移动构造但不可复制/移动赋值、方法签名 |
 | `edgar/explorgdb/reader/test_catalog.cpp` | `.gdbindexes` Catalog 查找 |
 
 ## 当前分支新增的 GDAL ON 测试

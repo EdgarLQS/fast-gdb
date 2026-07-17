@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
@@ -458,6 +459,89 @@ TEST_F(FeatureCursorGdalTest,
     ASSERT_TRUE(moved.move_to(3));
     ASSERT_TRUE(moved.next(feature));
     EXPECT_EQ(feature.fid, 3U);
+}
+
+TEST_F(FeatureCursorGdalTest,
+       QueryEngineMoveKeepsCursorLiveAndSourceSafelyUnavailable) {
+    const std::string path = create_point_fixture();
+    ASSERT_FALSE(path.empty());
+
+    GdbCatalog catalog;
+    ResolvedTable resolved;
+    ASSERT_TRUE(resolve_table(path, kPointLayer, catalog, resolved));
+    QueryEngine source(catalog, resolved);
+    ASSERT_TRUE(source.open());
+
+    QueryRequest request;
+    request.kind = QueryKind::SequentialScan;
+    FeatureCursor cursor = source.open_cursor(request);
+    QueryEngine destination(std::move(source));
+
+    EXPECT_FALSE(source.open());
+    EXPECT_EQ(source.query(request).fallback_reason, "table not open");
+    EXPECT_EQ(source.open_cursor(request).error(), "table not open");
+    FeatureRecord record;
+    EXPECT_FALSE(source.read_by_fid(0, record));
+    EXPECT_EQ(source.scan([](uint32_t, const FieldRef*, int) {
+        return true;
+    }), 0U);
+    EXPECT_EQ(source.query_bbox_unified(0, 0, 10, 10).execution_path,
+              "bbox:model:unavailable");
+
+    EXPECT_EQ(destination.query(request).execution_path, "query:blocked");
+    EXPECT_EQ(consume_fids(cursor), (std::vector<uint32_t>{0, 1, 3, 4}));
+    ASSERT_TRUE(cursor.move_to(0));
+    QueryFeature feature;
+    ASSERT_TRUE(cursor.next(feature));
+    EXPECT_EQ(feature.fid, 0U);
+}
+
+TEST_F(FeatureCursorGdalTest,
+       EmptyCandidateCursorMoveToRemainsNormalEof) {
+    const std::string path = create_point_fixture();
+    ASSERT_FALSE(path.empty());
+
+    GdbCatalog catalog;
+    ResolvedTable resolved;
+    ASSERT_TRUE(resolve_table(path, kPointLayer, catalog, resolved));
+    QueryEngine engine(catalog, resolved);
+    ASSERT_TRUE(engine.open());
+
+    QueryRequest request;
+    request.kind = QueryKind::ReadByFid;
+    request.fid = std::numeric_limits<uint32_t>::max();
+    FeatureCursor cursor = engine.open_cursor(request);
+    EXPECT_TRUE(cursor.done());
+    EXPECT_TRUE(cursor.error().empty());
+    EXPECT_FALSE(cursor.move_to(0));
+    EXPECT_TRUE(cursor.done());
+    EXPECT_TRUE(cursor.error().empty());
+}
+
+TEST_F(FeatureCursorGdalTest,
+       EmptySequentialCursorMoveToRemainsNormalEof) {
+    const std::string path = spatial_where_test_utils::fixture_path(
+        "fast_gdb_feature_cursor_empty_table").string();
+    GDALDataset* dataset = createGdb(path.c_str());
+    ASSERT_NE(dataset, nullptr);
+    ASSERT_NE(dataset->CreateLayer(
+        "empty_cursor_rows", nullptr, wkbPoint, nullptr), nullptr);
+    GDALClose(dataset);
+
+    GdbCatalog catalog;
+    ResolvedTable resolved;
+    ASSERT_TRUE(resolve_table(path, "empty_cursor_rows", catalog, resolved));
+    QueryEngine engine(catalog, resolved);
+    ASSERT_TRUE(engine.open());
+
+    QueryRequest request;
+    request.kind = QueryKind::SequentialScan;
+    FeatureCursor cursor = engine.open_cursor(request);
+    EXPECT_TRUE(cursor.done());
+    EXPECT_TRUE(cursor.error().empty());
+    EXPECT_FALSE(cursor.move_to(0));
+    EXPECT_TRUE(cursor.done());
+    EXPECT_TRUE(cursor.error().empty());
 }
 
 TEST_F(FeatureCursorGdalTest,

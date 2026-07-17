@@ -66,7 +66,7 @@ bool FeatureCursor::move_to(uint32_t fid);
 
 ### P1：QueryEngine 地址可移动
 
-修复：删除 QueryEngine copy/move 构造和赋值；静态测试锁定地址稳定合同。
+初始修复删除了 QueryEngine copy/move 构造和赋值。后续以稳定堆控制块恢复 noexcept 移动构造：活动 cursor 在 engine 移动后继续有效，moved-from engine 安全不可用；静态与运行时测试共同锁定该合同。
 
 ### P1：capability 打开失败仍可能创建 cursor
 
@@ -159,7 +159,7 @@ timing_scope = engine-or-dataset-open-through-last-feature
 
 - `test_feature_cursor.cpp`
   - move-only cursor；
-  - non-movable engine；
+  - engine 可移动构造但不可复制/移动赋值，并覆盖 moved-from 安全边界；
   - 方法签名；
   - 默认对象合同。
 
