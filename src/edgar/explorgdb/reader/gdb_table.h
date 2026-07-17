@@ -19,6 +19,16 @@
 
 namespace explorgdb {
 
+// Optional per-feature timings for the one-pass full-object path. Callers pass
+// nullptr to avoid clock reads in normal operation. All values are milliseconds.
+struct FeatureReadMetrics {
+    double row_lookup_ms = 0.0;
+    double field_materialization_ms = 0.0;
+    double geometry_decode_ms = 0.0;
+    double wkt_write_ms = 0.0;
+    double wkb_write_ms = 0.0;
+};
+
 class GdbTableParser {
 public:
     explicit GdbTableParser(const std::string& file_path);
@@ -54,6 +64,15 @@ public:
     bool load_file();
     bool load_tablx(const std::string& tablx_path);
     bool read_record_by_fid(uint32_t fid, FeatureRecord& record);
+
+    // FeatureCursor fast path. The row is located once; fields are materialized
+    // once; the winning geometry blob is decoded to one GeometryModel, which is
+    // then serialized to both compatibility WKT and ISO WKB. Existing per-record
+    // and geometry APIs remain unchanged for compatibility and benchmark control.
+    bool read_feature_by_fid(uint32_t fid,
+                             FeatureRecord& record,
+                             GeometryValue& geometry,
+                             FeatureReadMetrics* metrics = nullptr);
 
     // Canonical geometry locator. Non-geometry fields are consumed through
     // field_layout.h::skip_field_value(), including the 10-byte
