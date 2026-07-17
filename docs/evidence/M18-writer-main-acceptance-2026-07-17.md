@@ -37,21 +37,21 @@ PR #13 当前分支提交触发了 Writer、Reader、release 和 geometry workfl
 
 ## 4. 本地验证证据状态
 
-当前执行环境没有该私有仓库 checkout，也无法在 macOS runner 上执行构建。因此以下项目均未在本次收口中生成新的、可审计的原始证据：
+随后已在 macOS arm64 本地 checkout 对 `f9d5a1b7` 完成验收，证据保存在 `local-acceptance/20260717-135920/`：
 
 | 验证项 | 要求 | 本次状态 |
 |---|---|---|
-| GDAL ON Release | 配置、构建、完整 CTest | 未执行/无新证据 |
-| GDAL OFF Release | 配置、构建、完整 CTest | 未执行/无新证据 |
-| Writer 基础合同 | 连续 3 次 | 未执行/无新证据 |
-| Append 合同 | 连续 3 次 | 未执行/无新证据 |
-| Update 合同 | 连续 3 次 | 未执行/无新证据 |
-| Delete 合同 | 连续 3 次 | 未执行/无新证据 |
-| Transaction/Recovery 合同 | 连续 3 次 | 未执行/无新证据 |
-| 性能合同 | samples=3、profile=5s、reader10m=false | 未执行/无新证据 |
-| no-GDAL consumer | 编译并运行 | 未执行/无新证据 |
-| legacy consumer | 编译并运行 | 未执行/无新证据 |
-| GDAL consumer | Index/Append/Transaction 编译并运行 | 未执行/无新证据 |
+| GDAL ON Release | 配置、构建、完整 CTest | 573/573，0 失败；69 个可解释 optional SKIP |
+| GDAL OFF Release | 配置、构建、完整 CTest | 272/272，0 失败、0 SKIP |
+| Writer 基础合同 | 连续 3 次 | required 全部 3/3 PASS；3 个 manual gate SKIP |
+| Append 合同 | 连续 3 次 | 5 个场景全部 3/3 PASS |
+| Update 合同 | 连续 3 次 | 5 个场景全部 3/3 PASS |
+| Delete 合同 | 连续 3 次 | 5 个场景全部 3/3 PASS |
+| Transaction/Recovery 合同 | 连续 3 次 | 6 个场景全部 3/3 PASS |
+| 性能合同 | samples=3、profile=5s、reader10m=false | 5% 门禁 PASS，最大回退 3.332%；两个 profile 完成，Point-XYZM 以 2000 万行取得有效 sample |
+| no-GDAL consumer | 编译并运行 | PASS |
+| legacy consumer | 编译并运行 | PASS |
+| GDAL consumer | Index/Append/Transaction 编译并运行 | PASS |
 
 ## 5. 六个 macOS artifacts
 
@@ -66,16 +66,16 @@ PR #13 当前分支提交触发了 Writer、Reader、release 和 geometry workfl
 
 ## 6. SKIP、故障注入与未覆盖项
 
-- 无本次新运行结果，因此无法形成可信的 SKIP 清单。
+- 本地 CTest 与合同 SKIP 已保存在证据目录；required 场景无异常 SKIP。
 - publish/rollback/cleanup 故障注入无本次新证据。
 - Recovery 的损坏源、损坏 backup、伪造候选、歧义候选、错误动作与发布后验证失败没有本次新 artifact。
 - Linux、Windows、50M、35GB/5 亿、原生曲线与 MultiPatch 继续 Deferred。
-- Reader 10M fresh-open 性能尚未完成运行验收。
+- Reader 10M fresh-open 本地性能门禁已完成，正式 artifact 仍缺失。
 
 ## 7. 最终判定
 
 **Code accepted / Formal acceptance blocked**
 
-理由：M18 计划内实现已通过 squash 提交进入 main，但正式验收所要求的 GDAL ON/OFF Release、完整 CTest、五套 Writer 合同各三次、三类 package consumer、六个 macOS artifacts、故障注入及 raw profile 证据不齐全。
+理由：本地 GDAL ON/OFF Release、完整 CTest、五套 Writer 合同、三类 package consumer、性能和 raw profile 已完成；六个 GitHub Actions artifacts 与人工故障注入仍不齐全。
 
 在上述证据齐全前，禁止标记 `Accepted`；Issue #12 保持 Open。当前统一开发 PR #13 保持 Draft，不提前合并。

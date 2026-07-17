@@ -1,11 +1,11 @@
 # 19 — M18 正式收口与 Reader 10M fresh-open 性能优化计划
 
 - **更新日期**：2026-07-17
-- **状态**：执行中，运行验收阻塞
+- **状态**：本地运行门禁已完成，正式 artifact 阻塞
 - **当前基线**：`main@42d8f76620a8c39eeb8523a0f84fcde0eb719f01`
 - **执行分支**：`codex/m18-main-closeout`
 - **执行顺序**：M18 收口 → Reader 10M 性能 → 统一审核 → 最终合并
-- **当前操作**：无 runner 条件下可完成的文档、工具、静态审查和测试代码已完成；等待真实构建、profile 与 artifact
+- **当前操作**：`f9d5a1b7` 本地构建、合同、consumer、性能与 profile 已完成；等待 GitHub Actions artifact 和人工故障注入
 
 ## 1. 目标与原则
 
@@ -75,8 +75,8 @@ codex/m18-main-closeout
 运行阻塞：
 
 - PR #13 已触发 Actions，但 job 仍在 checkout 前失败，`steps=None`、无日志、无 artifact；
-- 当前执行环境没有仓库 checkout，不能本地执行 macOS Release、CTest、10M profile 或 benchmark；
-- 因此 Writer 正式验收和 Reader 性能验收均不能标记 Accepted。
+- 本地证据位于 `local-acceptance/20260717-135920/`，绑定 `current@f9d5a1b7` 与 `main@42d8f766`；
+- 本地 Writer/Reader 门禁通过，但正式验收仍不能用本地结果替代 GitHub artifact。
 
 ## 4. 阶段一：M18 正式收口
 
@@ -174,11 +174,13 @@ Point、MultiPoint、Polyline 各覆盖 1%、10%、30%、80%、100%，每档保�
 --trials <1-100>
 --max-regression <ratio>
 --output <directory>
+--current-sha <expected-sha>
+--baseline-sha <expected-sha>
 ```
 
-已实现重复 `--dataset`、current/main 交替执行、CSV/JSON/环境摘要、非 strict-cold 标记、`invalid_geometries` 失败、result count 对照、可用时 FID 签名对照、5% 回退门禁，并兼容原 `--gdb` 调用。
+已实现重复 `--dataset`、current/main 交替执行、CSV/JSON/环境摘要、非 strict-cold 标记、完整 FID 向量对 GDAL 验证、`invalid_geometries` 失败、result count 对照和 5% 回退门禁，并兼容原 `--gdb` 调用。工具同时验证 runner、源码目录和 Git SHA，拒绝同 runner、同 SHA、脏源码及清洗后冲突的数据集标签。
 
-静态门禁已经覆盖空 label/path、空格规范化、稳定覆盖率集合、回退阈值、数量漂移和 FID 签名漂移。真实 runner 执行仍待环境恢复。
+静态门禁已经覆盖空 label/path、空格规范化、稳定覆盖率集合、回退阈值、数量漂移、FID 验证、构建身份和日志名碰撞。`f9d5a1b7` 的真实 runner 本地执行证据位于 `local-acceptance/20260717-135920/`。
 
 ### 5.4 Profile 与优化准入
 

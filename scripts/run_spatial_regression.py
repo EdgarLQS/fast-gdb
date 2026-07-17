@@ -31,6 +31,7 @@ FUNNEL_RE = re.compile(
     re.MULTILINE,
 )
 FID_RE = re.compile(r"^\s+fids(?:_sha256)?:\s*(.+)$", re.MULTILINE)
+CACHE_ENTRY_RE = re.compile(r"^([^#/:][^:]*):[^=]*=(.*)$")
 
 
 @dataclass(frozen=True)
@@ -53,7 +54,19 @@ class Sample:
     invalid_geometries: int
     result_count: int
     fid_signature: str
+    fid_verification: str
     log: str
+
+
+@dataclass(frozen=True)
+class BuildProvenance:
+    build: str
+    runner: str
+    source: str
+    source_sha: str
+    source_dirty: bool
+    compiler: str
+    gdal: str
 
 
 def parse_dataset(value: str) -> Dataset:
@@ -68,6 +81,13 @@ def parse_dataset(value: str) -> Dataset:
         raise argparse.ArgumentTypeError("dataset path must not be empty")
     path = Path(raw_path).expanduser()
     return Dataset(label=label, path=path)
+
+
+def parse_sha(value: str) -> str:
+    value = value.strip().lower()
+    if not re.fullmatch(r"[0-9a-f]{7,40}", value):
+        raise argparse.ArgumentTypeError("SHA must contain 7 to 40 hexadecimal digits")
+    return value
 
 
 def resolve_runner(build_dir: Path) -> Path:
@@ -85,6 +105,86 @@ def resolve_runner(build_dir: Path) -> Path:
 
 def safe_name(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]+", "-", value).strip("-") or "dataset"
+
+
+def validate_dataset_labels(datasets: list[Dataset]) -> None:
+    labels = [dataset.label for dataset in datasets]
+    if len(labels) != len(set(labels)):
+        raise ValueError("dataset labels must be unique")
+    safe_labels = [safe_name(label).casefold() for label in labels]
+    if len(safe_labels) != len(set(safe_labels)):
+        raise ValueError(
+            "dataset labels must remain unique after filename sanitization"
+        )
+
+
+def read_cmake_cache(build_dir: Path) -> dict[str, str]:
+    cache_path = build_dir.resolve() / "CMakeCache.txt"
+    if not cache_path.is_file():
+        raise FileNotFoundError(f"missing CMake cache: {cache_path}")
+    entries: dict[str, str] = {}
+    for line in cache_path.read_text(encoding="utf-8", errors="replace").splitlines():
+        match = CACHE_ENTRY_RE.match(line)
+        if match:
+            entries[match.group(1)] = match.group(2)
+    return entries
+
+
+def git_value(source: Path, *args: str) -> str:
+    completed = subprocess.run(
+        ["git", "-C", str(source), *args],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if completed.returncode != 0:
+        detail = completed.stderr.strip() or "unknown git error"
+        raise RuntimeError(f"cannot inspect source repository {source}: {detail}")
+    return completed.stdout.strip()
+
+
+def inspect_build(build_dir: Path, runner: Path) -> BuildProvenance:
+    cache = read_cmake_cache(build_dir)
+    raw_source = cache.get("CMAKE_HOME_DIRECTORY")
+    if not raw_source:
+        raise RuntimeError(f"CMAKE_HOME_DIRECTORY missing from {build_dir}/CMakeCache.txt")
+    source = Path(raw_source).resolve()
+    source_sha = git_value(source, "rev-parse", "HEAD")
+    dirty = bool(
+        git_value(source, "status", "--porcelain", "--untracked-files=normal")
+    )
+    return BuildProvenance(
+        build=str(build_dir.resolve()),
+        runner=str(runner.resolve()),
+        source=str(source),
+        source_sha=source_sha,
+        source_dirty=dirty,
+        compiler=cache.get("CMAKE_CXX_COMPILER", "unknown"),
+        gdal=cache.get("FIND_PACKAGE_MESSAGE_DETAILS_GDAL", "disabled-or-unknown"),
+    )
+
+
+def validate_builds(
+    current: BuildProvenance,
+    baseline: BuildProvenance,
+    current_sha: str | None,
+    baseline_sha: str | None,
+) -> None:
+    if current.runner == baseline.runner:
+        raise ValueError("current and baseline resolve to the same runner")
+    if current.source_sha == baseline.source_sha:
+        raise ValueError("current and baseline source SHA must differ")
+    if current.source_dirty or baseline.source_dirty:
+        raise ValueError("current and baseline source worktrees must be clean")
+    for label, actual, expected in (
+        ("current", current.source_sha, current_sha),
+        ("baseline", baseline.source_sha, baseline_sha),
+    ):
+        if expected and not actual.startswith(expected):
+            raise ValueError(
+                f"{label} source SHA mismatch: expected {expected}, found {actual}"
+            )
 
 
 def compare_samples(
@@ -106,10 +206,12 @@ def compare_samples(
             f"{prefix}: result count differs "
             f"current={current.result_count}, main={baseline.result_count}"
         )
-    if (
-        current.fid_signature != "unavailable"
-        and baseline.fid_signature != "unavailable"
-        and current.fid_signature != baseline.fid_signature
+    if current.fid_verification != "full-vector-gdal-equality":
+        failures.append(f"{prefix}: current FID verification is missing")
+    if baseline.fid_verification != "full-vector-gdal-equality":
+        failures.append(f"{prefix}: main FID verification is missing")
+    if current.fid_signature and baseline.fid_signature and (
+        current.fid_signature != baseline.fid_signature
     ):
         failures.append(f"{prefix}: FID signature differs between current and main")
     return failures
@@ -192,7 +294,7 @@ def run_case(
         )
 
     fid_matches = list(FID_RE.finditer(completed.stdout))
-    fid_signature = fid_matches[-1].group(1).strip() if fid_matches else "unavailable"
+    fid_signature = fid_matches[-1].group(1).strip() if fid_matches else ""
 
     return Sample(
         dataset=dataset.label,
@@ -207,11 +309,18 @@ def run_case(
         invalid_geometries=invalid,
         result_count=result_count,
         fid_signature=fid_signature,
+        fid_verification="full-vector-gdal-equality",
         log=str(log_path),
     )
 
 
-def write_environment(output: Path, args: argparse.Namespace, datasets: list[Dataset]) -> None:
+def write_environment(
+    output: Path,
+    args: argparse.Namespace,
+    datasets: list[Dataset],
+    current: BuildProvenance,
+    baseline: BuildProvenance,
+) -> None:
     environment = {
         "platform": platform.platform(),
         "machine": platform.machine(),
@@ -220,8 +329,8 @@ def write_environment(output: Path, args: argparse.Namespace, datasets: list[Dat
         "strict_cold": False,
         "trials": args.trials,
         "max_regression": args.max_regression,
-        "current_build": str(args.current_build.resolve()),
-        "baseline_build": str(args.baseline_build.resolve()),
+        "current": asdict(current),
+        "baseline": asdict(baseline),
         "datasets": [
             {"label": dataset.label, "path": str(dataset.path.resolve())}
             for dataset in datasets
@@ -237,6 +346,14 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--current-build", required=True, type=Path)
     parser.add_argument("--baseline-build", required=True, type=Path)
+    parser.add_argument(
+        "--current-sha", required=True, type=parse_sha,
+        help="expected current source SHA or prefix",
+    )
+    parser.add_argument(
+        "--baseline-sha", required=True, type=parse_sha,
+        help="expected baseline source SHA or prefix",
+    )
     parser.add_argument(
         "--dataset",
         action="append",
@@ -262,19 +379,28 @@ def main() -> int:
         datasets.append(Dataset(label="default", path=args.gdb))
     if not datasets:
         parser.error("at least one --dataset LABEL=PATH or --gdb is required")
-    labels = [dataset.label for dataset in datasets]
-    if len(labels) != len(set(labels)):
-        parser.error("dataset labels must be unique")
+    try:
+        validate_dataset_labels(datasets)
+    except ValueError as error:
+        parser.error(str(error))
     for dataset in datasets:
         if not dataset.path.is_dir():
             parser.error(f"GDB directory does not exist: {dataset.path}")
 
-    current_runner = resolve_runner(args.current_build)
-    baseline_runner = resolve_runner(args.baseline_build)
+    try:
+        current_runner = resolve_runner(args.current_build)
+        baseline_runner = resolve_runner(args.baseline_build)
+        current_build = inspect_build(args.current_build, current_runner)
+        baseline_build = inspect_build(args.baseline_build, baseline_runner)
+        validate_builds(
+            current_build, baseline_build, args.current_sha, args.baseline_sha
+        )
+    except (FileNotFoundError, RuntimeError, ValueError) as error:
+        parser.error(str(error))
     samples: list[Sample] = []
     failures: list[str] = []
     args.output.mkdir(parents=True, exist_ok=True)
-    write_environment(args.output, args, datasets)
+    write_environment(args.output, args, datasets, current_build, baseline_build)
 
     for dataset_index, dataset in enumerate(datasets):
         current_by_coverage: dict[str, Sample] = {}

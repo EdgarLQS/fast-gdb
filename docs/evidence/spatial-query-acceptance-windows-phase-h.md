@@ -120,6 +120,8 @@ FAST_GDB_SPATIAL_PROFILE=1 \
 python3 scripts/run_spatial_regression.py \
   --current-build build-posix \
   --baseline-build baseline/build-posix \
+  --current-sha "$(git rev-parse HEAD)" \
+  --baseline-sha "$(git -C baseline rev-parse HEAD)" \
   --gdb test_data/spatial_matrix/posix/point_10m/point_10m.gdb \
   --output artifacts/posix-spatial-regression/local \
   --trials 20 \

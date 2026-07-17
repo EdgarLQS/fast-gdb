@@ -21,8 +21,8 @@
       {
         "id": "P0-POINT-XYZM-PROFILE",
         "workload": "point-xyzm",
-        "rows": 2000000,
-        "reason": "highest-dimensional P0 point path"
+        "rows": 20000000,
+        "reason": "highest-dimensional P0 point path; 20M keeps sample attachable on fast Apple Silicon"
       }
     ]
   },

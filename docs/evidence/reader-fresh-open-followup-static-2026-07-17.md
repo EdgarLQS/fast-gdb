@@ -2,7 +2,7 @@
 
 ## 1. 范围
 
-本记录覆盖在 GitHub runner 无法启动、当前执行环境没有仓库 checkout 的条件下，能够完成并审计的 Reader 10M fresh-open 后续工作。
+本记录最初覆盖 GitHub runner 无法启动时的静态工作；随后已补充 `f9d5a1b7` 的本地 Reader 10M fresh-open 运行证据。
 
 不把静态检查、脚本实现或历史性能数字替代为新的 macOS profile、构建、CTest 或性能验收。
 
@@ -28,7 +28,8 @@
 - `environment.json` 明确记录 `strict_cold=false`；
 - `invalid_geometries != 0` 立即失败；
 - current/main result count 不一致时失败；
-- benchmark 输出 FID 签名时执行签名一致性检查；
+- 每次 benchmark 由 Google Test 断言完整 FID 向量与 GDAL 相等，并在结果中记录验证方式；
+- current/main 构建绑定源码目录和 Git SHA，拒绝同 runner、同 SHA 与脏源码；
 - current 相对 baseline median 回退超过默认 5% 时失败；
 - 任一门禁失败时返回非零。
 
@@ -49,6 +50,8 @@ python3 -m unittest tests/scripts/test_run_spatial_regression.py
 python3 scripts/run_spatial_regression.py \
   --current-build /tmp/fast-gdb-reader-current \
   --baseline-build /tmp/fast-gdb-reader-main \
+  --current-sha "$(git rev-parse HEAD)" \
+  --baseline-sha "$(git rev-parse main)" \
   --mode fresh-open \
   --trials 5 \
   --max-regression 0.05 \
@@ -71,21 +74,19 @@ PR #13 对应提交触发了 Writer、Reader、release 和 geometry workflows，
 
 失败重跑仍未形成可审计执行结果。因此 Issue #12 保持 Open。
 
-## 7. 未执行与禁止外推
+## 7. 本地运行结果与禁止外推
 
-以下项目仍未执行：
+`local-acceptance/20260717-135920/` 已完成：
 
-- 当前分支三类 10M × 五档正式复测；
-- 目标失败档的当前 profile；
-- Point geometry-only scan 或候选路径算法优化；
-- MultiPoint/Polyline 算法优化；
-- Reader 专项测试、GDAL ON/OFF 完整 CTest；
-- current/main/GDAL 最终对比 artifact。
+- Point、MultiPoint、Polyline 三类 10M × 五档 fresh-open，30 次 current/main runner 均 PASS；
+- 完整 FID 与 GDAL 一致，`invalid_geometries=0`，最大 current/main 回退 2.393%；
+- 7 个目标场景各 3 次 profile，共 21 次 PASS；
+- GDAL ON 573/573、GDAL OFF 272/272，均无失败。
 
-由于计划要求热点可重复且约占总耗时 20% 以上才允许优化，本轮不提交无 profile 支撑的 Reader 算法修改。
+本轮计划只审核和测量，未实施 Reader 算法修改。GitHub artifact、strict-cold、Linux、Windows、50M、曲线与 MultiPatch 仍不得外推。
 
 ## 8. 判定
 
-**Tooling complete / Runtime acceptance blocked**
+**Local runtime accepted / Formal artifact blocked**
 
-可在无 runner 条件下完成的工具、静态审查、测试代码和执行说明已经完成。Reader 性能本身仍未验收，不能标记 Accepted。
+本地正确性、性能和 profile 门禁已通过；GitHub Actions 没有生成绑定当前 SHA 的正式 artifact，因此不能标记正式 Accepted。
