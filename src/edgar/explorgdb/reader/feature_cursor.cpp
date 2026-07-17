@@ -46,6 +46,44 @@ std::string fid_error(const char* prefix, uint32_t fid) {
     return stream.str();
 }
 
+bool materialize_zero_length_record(
+    FeatureRecord& record,
+    const std::vector<FieldDescriptor>& fields) {
+    if (record.blob_len != 0 || !record.field_values.empty()) return false;
+
+    size_t nullable_count = 0;
+    for (const FieldDescriptor& field : fields) {
+        if ((field.flag & 1U) != 0) ++nullable_count;
+    }
+    record.nullable_flags.assign((nullable_count + 7U) / 8U, 0U);
+    record.field_values.reserve(fields.size());
+
+    size_t nullable_bit = 0;
+    for (const FieldDescriptor& field : fields) {
+        const bool nullable = (field.flag & 1U) != 0;
+        const size_t current_nullable_bit = nullable_bit;
+        if (nullable) ++nullable_bit;
+
+        if (field.type == FieldType::ObjectId) {
+            record.field_values.push_back(
+                static_cast<int32_t>(record.fid + 1U));
+            continue;
+        }
+        if (!nullable) {
+            record.field_values.clear();
+            record.nullable_flags.clear();
+            return false;
+        }
+
+        const size_t byte_index = current_nullable_bit / 8U;
+        const size_t bit_index = current_nullable_bit % 8U;
+        record.nullable_flags[byte_index] |=
+            static_cast<uint8_t>(1U << bit_index);
+        record.field_values.push_back(nullptr);
+    }
+    return true;
+}
+
 } // namespace
 
 class FeatureCursor::Impl {
@@ -148,7 +186,9 @@ public:
             fail(fid_error("feature record fid mismatch for fid", fid));
             return false;
         }
-        if (candidate.record.field_values.size() != parser->fields().size()) {
+        if (candidate.record.field_values.size() != parser->fields().size() &&
+            !materialize_zero_length_record(
+                candidate.record, parser->fields())) {
             fail(fid_error("feature field count mismatch for fid", fid));
             return false;
         }
