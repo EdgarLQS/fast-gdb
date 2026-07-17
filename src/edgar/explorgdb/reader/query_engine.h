@@ -71,6 +71,17 @@ struct CombinedQueryMetrics {
     bool used_attribute_index = false;
 };
 
+// Aggregated only when FAST_GDB_FEATURE_CURSOR_PROFILE=1. Normal cursor reads
+// do not call the clock and leave this structure at zero.
+struct FeatureCursorMetrics {
+    size_t feature_count = 0;
+    double row_lookup_ms = 0.0;
+    double field_materialization_ms = 0.0;
+    double geometry_decode_ms = 0.0;
+    double wkt_write_ms = 0.0;
+    double wkb_write_ms = 0.0;
+};
+
 struct QueryResult {
     std::vector<uint32_t> matched_fids;
     std::optional<FeatureRecord> record;
@@ -78,6 +89,7 @@ struct QueryResult {
     std::string fallback_reason;
     SpatialQueryMetrics spatial_metrics;
     CombinedQueryMetrics combined_metrics;
+    FeatureCursorMetrics feature_cursor_metrics;
 };
 
 struct QueryFeature {
