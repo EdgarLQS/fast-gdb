@@ -19,11 +19,13 @@ TEST(GdbIndexesExpressionTest, LowerExpressionMapsFieldButIsNotDirect) {
         GdbIndexesParser::is_direct_field_expression("LOWER(Name)"));
 }
 
-TEST(GdbIndexesExpressionTest, UnknownExpressionIsNotMisclassifiedAsLower) {
+TEST(GdbIndexesExpressionTest, UnknownFunctionsAreNotDirect) {
     EXPECT_EQ(GdbIndexesParser::field_name_from_expression("UPPER(Name)"),
               "UPPER(Name)");
-    EXPECT_TRUE(
+    EXPECT_FALSE(
         GdbIndexesParser::is_direct_field_expression("UPPER(Name)"));
     EXPECT_EQ(GdbIndexesParser::field_name_from_expression("LOWER(Name"),
               "LOWER(Name");
+    EXPECT_FALSE(
+        GdbIndexesParser::is_direct_field_expression("LOWER(Name"));
 }
