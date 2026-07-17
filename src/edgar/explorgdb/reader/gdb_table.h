@@ -36,6 +36,8 @@ public:
     const TableHeader& header() const { return header_; }
     const std::vector<FieldDescriptor>& fields() const { return fields_; }
     const std::vector<FeatureRecord>& records() const { return records_; }
+    // Physical .gdbtablx slot count. It is the exclusive upper bound for FIDs,
+    // and can exceed the number of live records because the index is block-sized.
     size_t feature_count() const { return feature_offsets_.size(); }
     size_t active_feature_count() const {
         if (active_feature_count_known_) return active_feature_count_;
@@ -53,10 +55,15 @@ public:
     bool load_tablx(const std::string& tablx_path);
     bool read_record_by_fid(uint32_t fid, FeatureRecord& record);
 
+    // Canonical geometry locator. Non-geometry fields are consumed through
+    // field_layout.h::skip_field_value(), including the 10-byte
+    // DateTimeWithOffset physical representation.
     bool peek_geometry_blob(uint32_t fid,
                             const uint8_t*& blob_data,
                             size_t& blob_size);
 
+    // WKB-first geometry APIs. They decode directly from the row geometry
+    // blob and do not round-trip through the legacy WKT FieldValue.
     bool read_geometry_model(uint32_t fid, GeometryModel& model);
     bool read_geometry_value(uint32_t fid, GeometryValue& value);
 
@@ -68,6 +75,11 @@ public:
                            int field_count)>;
     uint64_t sequential_scan(ScanCallback callback);
 
+    // Dedicated high-density spatial-query scanner. It validates the complete
+    // physical row layout but never materializes FieldRef arrays and never
+    // exposes unrelated attribute columns. mmap uses a stable zero-copy view;
+    // fd fallback uses bounded physical windows and P3 may prefetch a bounded
+    // number of those windows with ReadFile + OVERLAPPED.
     using GeometryScanCallback =
         std::function<bool(uint32_t fid,
                            const uint8_t* geometry_blob,
@@ -75,6 +87,11 @@ public:
                            bool is_null)>;
     uint64_t scan_geometry_blobs(GeometryScanCallback callback);
 
+    // P2 sparse-candidate scanner. It resolves candidate FIDs through .gdbtablx,
+    // sorts by physical offset, merges nearby records into bounded read ranges,
+    // and invokes the callback in physical order. QueryEngine restores ascending
+    // FID order before exposing the final result set. A zero return means the
+    // caller should retain the canonical exact-read fallback.
     uint64_t scan_geometry_candidates(
         const std::vector<uint32_t>& candidates,
         GeometryScanCallback callback);
@@ -110,6 +127,9 @@ private:
     std::vector<uint8_t> row_buffer_;
 
 #ifdef _WIN32
+    // P0 parser-owned mapping state. The object owns the mapping handle, current
+    // aligned view base/length, and logical pointer. Scanner scope guards reset
+    // it before the CRT file descriptor is closed.
     FastGdbSlidingMap sliding_map_;
 #endif
 
