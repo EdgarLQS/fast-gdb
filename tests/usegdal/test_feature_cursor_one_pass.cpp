@@ -9,6 +9,7 @@
 #include "catalog_resolver.h"
 #include "gdb_catalog.h"
 #include "gdb_table.h"
+#include "query_engine.h"
 #include "spatial_where_test_utils.h"
 #include "test_fixture.h"
 
@@ -188,4 +189,52 @@ TEST_F(FeatureCursorOnePassTest,
     EXPECT_EQ(geometry.status, GeometryStatus::Empty);
     EXPECT_TRUE(geometry.wkb.empty());
     EXPECT_EQ(geometry.diagnostic, "geometry is null");
+}
+
+TEST_F(FeatureCursorOnePassTest,
+       CursorProfilingIsRequestScopedAndOptIn) {
+    const std::string path = create_fixture();
+    ASSERT_FALSE(path.empty());
+
+    GdbCatalog catalog;
+    ASSERT_TRUE(catalog.scan(path));
+    CatalogResolver resolver(catalog);
+    ASSERT_TRUE(resolver.load());
+    const auto resolved = resolver.resolve(kLayer);
+    ASSERT_TRUE(resolved.has_value());
+
+    QueryEngine default_engine(catalog, *resolved);
+    ASSERT_TRUE(default_engine.open());
+    QueryRequest default_request;
+    default_request.kind = QueryKind::SequentialScan;
+    FeatureCursor default_cursor = default_engine.open_cursor(default_request);
+    QueryFeature feature;
+    size_t default_count = 0;
+    while (default_cursor.next(feature)) ++default_count;
+    ASSERT_TRUE(default_cursor.done());
+    ASSERT_TRUE(default_cursor.error().empty());
+    EXPECT_EQ(default_count, 3U);
+    EXPECT_EQ(default_cursor.query_result().feature_cursor_metrics.feature_count,
+              0U);
+
+    QueryEngine profiled_engine(catalog, *resolved);
+    ASSERT_TRUE(profiled_engine.open());
+    QueryRequest profiled_request;
+    profiled_request.kind = QueryKind::SequentialScan;
+    profiled_request.profile_feature_reads = true;
+    FeatureCursor profiled_cursor =
+        profiled_engine.open_cursor(profiled_request);
+    size_t profiled_count = 0;
+    while (profiled_cursor.next(feature)) ++profiled_count;
+    ASSERT_TRUE(profiled_cursor.done());
+    ASSERT_TRUE(profiled_cursor.error().empty());
+    const FeatureCursorMetrics& metrics =
+        profiled_cursor.query_result().feature_cursor_metrics;
+    EXPECT_EQ(profiled_count, 3U);
+    EXPECT_EQ(metrics.feature_count, 3U);
+    EXPECT_GE(metrics.row_lookup_ms, 0.0);
+    EXPECT_GE(metrics.field_materialization_ms, 0.0);
+    EXPECT_GE(metrics.geometry_decode_ms, 0.0);
+    EXPECT_GE(metrics.wkt_write_ms, 0.0);
+    EXPECT_GE(metrics.wkb_write_ms, 0.0);
 }
