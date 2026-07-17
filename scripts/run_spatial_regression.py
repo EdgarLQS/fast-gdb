@@ -61,8 +61,11 @@ def parse_dataset(value: str) -> Dataset:
         raise argparse.ArgumentTypeError("--dataset must use LABEL=PATH")
     label, raw_path = value.split("=", 1)
     label = label.strip()
+    raw_path = raw_path.strip()
     if not label:
         raise argparse.ArgumentTypeError("dataset label must not be empty")
+    if not raw_path:
+        raise argparse.ArgumentTypeError("dataset path must not be empty")
     path = Path(raw_path).expanduser()
     return Dataset(label=label, path=path)
 
@@ -82,6 +85,34 @@ def resolve_runner(build_dir: Path) -> Path:
 
 def safe_name(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]+", "-", value).strip("-") or "dataset"
+
+
+def compare_samples(
+    current: Sample,
+    baseline: Sample,
+    max_regression: float,
+) -> list[str]:
+    """Return deterministic gate failures for one dataset/coverage pair."""
+    failures: list[str] = []
+    prefix = f"{current.dataset}/{current.coverage}"
+    limit = baseline.fast_median_ms * (1.0 + max_regression)
+    if current.fast_median_ms > limit:
+        failures.append(
+            f"{prefix}: current={current.fast_median_ms:.1f}ms, "
+            f"main={baseline.fast_median_ms:.1f}ms, limit={limit:.1f}ms"
+        )
+    if current.result_count != baseline.result_count:
+        failures.append(
+            f"{prefix}: result count differs "
+            f"current={current.result_count}, main={baseline.result_count}"
+        )
+    if (
+        current.fid_signature != "unavailable"
+        and baseline.fid_signature != "unavailable"
+        and current.fid_signature != baseline.fid_signature
+    ):
+        failures.append(f"{prefix}: FID signature differs between current and main")
+    return failures
 
 
 def run_case(
@@ -273,27 +304,13 @@ def main() -> int:
                     baseline_by_coverage[coverage] = sample
 
         for coverage in COVERAGES:
-            current = current_by_coverage[coverage]
-            baseline = baseline_by_coverage[coverage]
-            limit = baseline.fast_median_ms * (1.0 + args.max_regression)
-            if current.fast_median_ms > limit:
-                failures.append(
-                    f"{dataset.label}/{coverage}: current={current.fast_median_ms:.1f}ms, "
-                    f"main={baseline.fast_median_ms:.1f}ms, limit={limit:.1f}ms"
+            failures.extend(
+                compare_samples(
+                    current_by_coverage[coverage],
+                    baseline_by_coverage[coverage],
+                    args.max_regression,
                 )
-            if current.result_count != baseline.result_count:
-                failures.append(
-                    f"{dataset.label}/{coverage}: result count differs "
-                    f"current={current.result_count}, main={baseline.result_count}"
-                )
-            if (
-                current.fid_signature != "unavailable"
-                and baseline.fid_signature != "unavailable"
-                and current.fid_signature != baseline.fid_signature
-            ):
-                failures.append(
-                    f"{dataset.label}/{coverage}: FID signature differs between current and main"
-                )
+            )
 
     csv_path = args.output / f"posix-10m-{args.mode}-main-regression.csv"
     with csv_path.open("w", newline="", encoding="utf-8") as stream:
