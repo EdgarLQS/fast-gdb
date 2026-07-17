@@ -3,6 +3,7 @@
 #include "query_where_internal.h"
 
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
@@ -96,6 +97,20 @@ TEST(QueryWhereInternalTest, PreservesNullAndEscapedStringSemantics) {
 
     ref.is_null = true;
     EXPECT_FALSE(evaluate_where(expression, &ref, 1));
+}
+
+TEST(QueryWhereInternalTest, NotEqualTreatsNaNAsDifferent) {
+    const std::vector<FieldDescriptor> descriptors = {
+        field("value", FieldType::Float64)};
+    const CompiledWhere expression = compile_where(
+        "value != 5", descriptors);
+    ASSERT_TRUE(expression.valid());
+
+    double value = std::numeric_limits<double>::quiet_NaN();
+    const FieldRef ref{FieldType::Float64,
+                       reinterpret_cast<const uint8_t*>(&value),
+                       sizeof(value), false, 0};
+    EXPECT_TRUE(evaluate_where(expression, &ref, 1));
 }
 
 TEST(QueryWhereInternalTest, ReportsInvalidRequestsDistinctly) {
