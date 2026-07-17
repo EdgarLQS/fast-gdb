@@ -187,7 +187,7 @@ public:
 
     bool move_to(uint32_t fid) {
         if (state_ == State::Failed) return false;
-        if (!engine_is_current()) return false;
+        if (!engine_is_current() || !ensure_lease()) return false;
 
         if (mode_ == Mode::CandidateFids) {
             const auto iterator = std::lower_bound(fids_.begin(), fids_.end(), fid);
@@ -221,7 +221,6 @@ public:
             }
         }
 
-        if (!ensure_lease()) return false;
         state_ = State::Ready;
         return true;
     }
@@ -421,6 +420,7 @@ FeatureCursor QueryEngine::open_cursor(const QueryRequest& request) {
     result.matched_fids.erase(
         std::unique(result.matched_fids.begin(), result.matched_fids.end()),
         result.matched_fids.end());
+    result.record.reset();
     if (result.matched_fids.empty())
         return FeatureCursor(std::make_unique<FeatureCursor::Impl>(
             std::move(result)));
