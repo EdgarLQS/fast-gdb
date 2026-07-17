@@ -59,6 +59,11 @@ bool execute_sql(GDALDataset* dataset, const std::string& sql) {
     return CPLGetLastErrorType() < CE_Failure;
 }
 
+double elapsed_ms(BenchmarkClock::time_point start) {
+    return std::chrono::duration<double, std::milli>(
+        BenchmarkClock::now() - start).count();
+}
+
 double percentile(std::vector<double> values, double fraction) {
     if (values.empty()) return 0.0;
     std::sort(values.begin(), values.end());
@@ -95,9 +100,11 @@ struct Digest {
 
 struct RunResult {
     double milliseconds = 0.0;
+    double checksum_ms = 0.0;
     Digest digest;
     std::string execution_path;
-    FeatureCursorMetrics profile;
+    CombinedQueryMetrics query_profile;
+    FeatureCursorMetrics feature_profile;
 };
 
 int fast_field_index(const GdbTableParser* table, const std::string& name) {
@@ -181,18 +188,26 @@ std::optional<RunResult> run_cursor(
     FeatureCursor cursor = engine.open_cursor(cursor_request);
     if (!cursor.error().empty()) return std::nullopt;
     Digest digest;
+    double checksum_ms = 0.0;
     QueryFeature feature;
-    while (cursor.next(feature))
-        add_fast_feature(digest, feature, value_index, payload_index);
+    while (cursor.next(feature)) {
+        if (profile_enabled) {
+            const auto checksum_start = BenchmarkClock::now();
+            add_fast_feature(digest, feature, value_index, payload_index);
+            checksum_ms += elapsed_ms(checksum_start);
+        } else {
+            add_fast_feature(digest, feature, value_index, payload_index);
+        }
+    }
     if (!cursor.done() || !cursor.error().empty()) return std::nullopt;
 
     RunResult result;
-    result.milliseconds =
-        std::chrono::duration<double, std::milli>(
-            BenchmarkClock::now() - start).count();
+    result.milliseconds = elapsed_ms(start);
+    result.checksum_ms = checksum_ms;
     result.digest = digest;
     result.execution_path = cursor.query_result().execution_path;
-    result.profile = cursor.query_result().feature_cursor_metrics;
+    result.query_profile = cursor.query_result().combined_metrics;
+    result.feature_profile = cursor.query_result().feature_cursor_metrics;
     return result;
 }
 
@@ -220,9 +235,7 @@ std::optional<RunResult> run_legacy(
     }
 
     RunResult result;
-    result.milliseconds =
-        std::chrono::duration<double, std::milli>(
-            BenchmarkClock::now() - start).count();
+    result.milliseconds = elapsed_ms(start);
     result.digest = digest;
     result.execution_path = query.execution_path;
     return result;
@@ -243,9 +256,7 @@ std::optional<RunResult> run_gdal(const std::string& path) {
     GDALClose(dataset);
 
     RunResult result;
-    result.milliseconds =
-        std::chrono::duration<double, std::milli>(
-            BenchmarkClock::now() - start).count();
+    result.milliseconds = elapsed_ms(start);
     result.digest = digest;
     result.execution_path = "gdal:GetNextFeature";
     return result;
@@ -257,7 +268,9 @@ struct Samples {
     std::vector<double> gdal_ms;
     Digest digest;
     std::string execution_path;
-    FeatureCursorMetrics profile;
+    CombinedQueryMetrics query_profile;
+    FeatureCursorMetrics feature_profile;
+    double checksum_ms = 0.0;
     bool correct = false;
 };
 
@@ -281,7 +294,9 @@ void append_sample(Samples& samples,
 
 void write_evidence(const Samples& samples) {
     const char* configured = std::getenv("FAST_GDB_BENCHMARK_OUTPUT_DIR");
-    const fs::path output_dir = configured ? configured : "benchmark_results";
+    const fs::path output_dir = configured != nullptr && *configured != '\0'
+        ? fs::path(configured)
+        : fs::temp_directory_path() / "fast-gdb-benchmark-results";
     fs::create_directories(output_dir);
     const fs::path output =
         output_dir / "feature-cursor-100k-schema-v2.json";
@@ -311,18 +326,28 @@ void write_evidence(const Samples& samples) {
          << percentile(samples.gdal_ms, 0.5) << ",\n"
          << "  \"gdal_p95_ms\": "
          << percentile(samples.gdal_ms, 0.95) << ",\n"
+         << "  \"profile_query_total_ms\": "
+         << samples.query_profile.total_ms << ",\n"
+         << "  \"profile_query_spatial_ms\": "
+         << samples.query_profile.spatial_ms << ",\n"
+         << "  \"profile_query_attribute_ms\": "
+         << samples.query_profile.attribute_ms << ",\n"
+         << "  \"profile_query_intersection_ms\": "
+         << samples.query_profile.intersection_ms << ",\n"
          << "  \"profile_feature_count\": "
-         << samples.profile.feature_count << ",\n"
+         << samples.feature_profile.feature_count << ",\n"
          << "  \"profile_row_lookup_ms\": "
-         << samples.profile.row_lookup_ms << ",\n"
+         << samples.feature_profile.row_lookup_ms << ",\n"
          << "  \"profile_field_materialization_ms\": "
-         << samples.profile.field_materialization_ms << ",\n"
+         << samples.feature_profile.field_materialization_ms << ",\n"
          << "  \"profile_geometry_decode_ms\": "
-         << samples.profile.geometry_decode_ms << ",\n"
+         << samples.feature_profile.geometry_decode_ms << ",\n"
          << "  \"profile_wkt_write_ms\": "
-         << samples.profile.wkt_write_ms << ",\n"
+         << samples.feature_profile.wkt_write_ms << ",\n"
          << "  \"profile_wkb_write_ms\": "
-         << samples.profile.wkb_write_ms << ",\n"
+         << samples.feature_profile.wkb_write_ms << ",\n"
+         << "  \"profile_checksum_sink_ms\": "
+         << samples.checksum_ms << ",\n"
          << "  \"execution_path\": \"" << samples.execution_path
          << "\",\n"
          << "  \"correct\": " << (samples.correct ? "true" : "false")
@@ -474,8 +499,11 @@ TEST_F(FeatureCursorBenchmarkTest, Point100KFullFeatureEvidence) {
     const auto profile = run_cursor(catalog, *resolved, request, true);
     ASSERT_TRUE(profile.has_value());
     ASSERT_TRUE(profile->digest == samples.digest);
-    ASSERT_EQ(profile->profile.feature_count, samples.digest.feature_count);
-    samples.profile = profile->profile;
+    ASSERT_EQ(profile->feature_profile.feature_count,
+              samples.digest.feature_count);
+    samples.query_profile = profile->query_profile;
+    samples.feature_profile = profile->feature_profile;
+    samples.checksum_ms = profile->checksum_ms;
 
     ASSERT_GT(samples.digest.feature_count, 0U);
     ASSERT_EQ(samples.cursor_ms.size(), static_cast<size_t>(kSamples));
