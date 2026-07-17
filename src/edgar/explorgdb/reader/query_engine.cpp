@@ -13,6 +13,15 @@ QueryEngine::QueryEngine(const GdbCatalog& catalog,
 
 bool QueryEngine::open() {
     if (feature_cursor_active()) return false;
+
+    ++open_generation_;
+    if (open_generation_ == 0) ++open_generation_;
+    parser_.reset();
+    spatial_index_.reset();
+    spatial_index_initialized_ = false;
+    spatial_index_present_ = false;
+    capabilities_ = CapabilityReport{};
+
     if (resolved_.table_path.empty() || resolved_.tablx_path.empty())
         return false;
     parser_ = std::make_unique<GdbTableParser>(resolved_.table_path);
