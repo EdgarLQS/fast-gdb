@@ -11,6 +11,8 @@
 #include <cctype>
 #include <cstring>
 #include <fstream>
+#include <limits>
+#include <utility>
 
 namespace explorgdb {
 namespace {
@@ -56,11 +58,20 @@ bool GdbIndexesParser::parse() {
     std::ifstream input(file_path_, std::ios::binary | std::ios::ate);
     if (!input.is_open()) return false;
 
-    const auto file_size = input.tellg();
-    if (file_size < 0) return false;
+    const std::streampos end_position = input.tellg();
+    if (end_position < 0 ||
+        static_cast<uint64_t>(end_position) >
+            static_cast<uint64_t>(std::numeric_limits<size_t>::max()) ||
+        static_cast<uint64_t>(end_position) >
+            static_cast<uint64_t>(
+                std::numeric_limits<std::streamsize>::max())) {
+        return false;
+    }
+    const size_t byte_count = static_cast<size_t>(end_position);
     input.seekg(0, std::ios::beg);
-    file_data_.resize(static_cast<size_t>(file_size));
-    input.read(reinterpret_cast<char*>(file_data_.data()), file_size);
+    file_data_.resize(byte_count);
+    input.read(reinterpret_cast<char*>(file_data_.data()),
+               static_cast<std::streamsize>(byte_count));
     if (!input) return false;
 
     entries_.clear();
