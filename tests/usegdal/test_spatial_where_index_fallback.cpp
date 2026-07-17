@@ -46,6 +46,11 @@ QueryResult query(const GdbCatalog& catalog, const ResolvedTable& table) {
     request.where_clause = "value >= 10";
     return engine.query(request);
 }
+
+std::filesystem::path entry_path(const std::string& gdb,
+                                 const CatalogEntry* entry) {
+    return std::filesystem::path(gdb) / entry->filename;
+}
 } // namespace
 
 class SpatialWhereIndexFallbackTest : public GdbTutorialFixture {
@@ -99,8 +104,7 @@ TEST_F(SpatialWhereIndexFallbackTest, MissingAtxKeepsCorrectResults) {
     ASSERT_TRUE(resolve(path, before, table_before));
     const CatalogEntry* atx = before.find_atx(table_before.id, "value_idx");
     ASSERT_NE(atx, nullptr);
-    const std::filesystem::path source =
-        std::filesystem::path(path) / atx->filename;
+    const std::filesystem::path source = entry_path(path, atx);
     std::filesystem::rename(source, source.string() + ".missing");
 
     GdbCatalog catalog;
@@ -122,8 +126,7 @@ TEST_F(SpatialWhereIndexFallbackTest, DamagedAtxKeepsCorrectResults) {
     ASSERT_TRUE(resolve(path, catalog, table));
     const CatalogEntry* atx = catalog.find_atx(table.id, "value_idx");
     ASSERT_NE(atx, nullptr);
-    const std::filesystem::path atx_path =
-        std::filesystem::path(path) / atx->filename;
+    const std::filesystem::path atx_path = entry_path(path, atx);
     std::ofstream output(atx_path, std::ios::binary | std::ios::trunc);
     ASSERT_TRUE(output.is_open());
     output.write("bad", 3);
@@ -134,5 +137,51 @@ TEST_F(SpatialWhereIndexFallbackTest, DamagedAtxKeepsCorrectResults) {
     EXPECT_FALSE(result.combined_metrics.used_attribute_index);
     EXPECT_NE(result.fallback_reason.find("could not be parsed"),
               std::string::npos);
+    EXPECT_EQ(result.matched_fids, (std::vector<uint32_t>{1, 2}));
+}
+
+TEST_F(SpatialWhereIndexFallbackTest, MissingSpxStillUsesAtxCandidates) {
+    const std::string path = createFixture();
+    ASSERT_FALSE(path.empty());
+    GdbCatalog before;
+    ResolvedTable table_before;
+    ASSERT_TRUE(resolve(path, before, table_before));
+    const CatalogEntry* spx = before.find_spx(table_before.id);
+    ASSERT_NE(spx, nullptr);
+    const std::filesystem::path source = entry_path(path, spx);
+    std::filesystem::rename(source, source.string() + ".missing");
+
+    GdbCatalog catalog;
+    ResolvedTable table;
+    ASSERT_TRUE(resolve(path, catalog, table));
+    const QueryResult result = query(catalog, table);
+    EXPECT_EQ(result.execution_path, "spatial-where:sequential");
+    EXPECT_FALSE(result.combined_metrics.used_spatial_index);
+    EXPECT_TRUE(result.combined_metrics.used_attribute_index);
+    EXPECT_EQ(result.matched_fids, (std::vector<uint32_t>{1, 2}));
+}
+
+TEST_F(SpatialWhereIndexFallbackTest, MissingBothIndexesStillMatches) {
+    const std::string path = createFixture();
+    ASSERT_FALSE(path.empty());
+    GdbCatalog before;
+    ResolvedTable table_before;
+    ASSERT_TRUE(resolve(path, before, table_before));
+    const CatalogEntry* spx = before.find_spx(table_before.id);
+    const CatalogEntry* atx = before.find_atx(table_before.id, "value_idx");
+    ASSERT_NE(spx, nullptr);
+    ASSERT_NE(atx, nullptr);
+    const std::filesystem::path spx_path = entry_path(path, spx);
+    const std::filesystem::path atx_path = entry_path(path, atx);
+    std::filesystem::rename(spx_path, spx_path.string() + ".missing");
+    std::filesystem::rename(atx_path, atx_path.string() + ".missing");
+
+    GdbCatalog catalog;
+    ResolvedTable table;
+    ASSERT_TRUE(resolve(path, catalog, table));
+    const QueryResult result = query(catalog, table);
+    EXPECT_EQ(result.execution_path, "spatial-where:sequential");
+    EXPECT_FALSE(result.combined_metrics.used_spatial_index);
+    EXPECT_FALSE(result.combined_metrics.used_attribute_index);
     EXPECT_EQ(result.matched_fids, (std::vector<uint32_t>{1, 2}));
 }
