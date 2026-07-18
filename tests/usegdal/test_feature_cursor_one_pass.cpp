@@ -149,10 +149,16 @@ TEST_F(FeatureCursorOnePassTest,
                       static_cast<size_t>(payload_index)]),
                   std::get<std::vector<uint8_t>>(legacy_record.field_values[
                       static_cast<size_t>(payload_index)]));
-        EXPECT_EQ(std::get<std::string>(one_pass_record.field_values[
-                      static_cast<size_t>(geometry_index)]),
-                  std::get<std::string>(legacy_record.field_values[
-                      static_cast<size_t>(geometry_index)]));
+        // read_feature_by_fid 不再产生 WKT，field_values[geometry_index]
+        // 保持空字符串占位。WKB 是下游读取几何的推荐方式。legacy 路径
+        // (read_record_by_fid) 仍产生 WKT 以保持向后兼容。
+        EXPECT_TRUE(std::holds_alternative<std::string>(
+            one_pass_record.field_values[
+                static_cast<size_t>(geometry_index)]));
+        EXPECT_TRUE(std::get<std::string>(one_pass_record.field_values[
+                        static_cast<size_t>(geometry_index)]).empty());
+        EXPECT_FALSE(std::get<std::string>(legacy_record.field_values[
+                         static_cast<size_t>(geometry_index)]).empty());
         EXPECT_EQ(one_pass_geometry.wkb, legacy_geometry.wkb);
         EXPECT_EQ(one_pass_geometry.geometry_type,
                   legacy_geometry.geometry_type);

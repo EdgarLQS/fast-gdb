@@ -2,7 +2,6 @@
 
 #include "field_layout.h"
 #include "wkb_writer.h"
-#include "wkt_writer.h"
 
 #include <algorithm>
 #include <chrono>
@@ -418,10 +417,8 @@ bool GdbTableParser::read_feature_by_fid(
         return false;
     }
 
-    const auto wkt_start = metric_start(metrics);
-    std::string wkt = WktWriter::write(model);
-    metric_add(metrics, &FeatureReadMetrics::wkt_write_ms, wkt_start);
-
+    // WKB 序列化 -- field_values 中的几何字段占位空字符串保留不动，
+    // 因为当前没有任何消费者从 field_values 读取 WKT。
     const auto wkb_start = metric_start(metrics);
     output_geometry = WkbWriter::write(model);
     metric_add(metrics, &FeatureReadMetrics::wkb_write_ms, wkb_start);
@@ -430,7 +427,6 @@ bool GdbTableParser::read_feature_by_fid(
         return false;
     }
 
-    best_record.field_values[best_geometry.field_index] = std::move(wkt);
     record = std::move(best_record);
     geometry = std::move(output_geometry);
     return true;
