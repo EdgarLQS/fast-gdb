@@ -1,4 +1,8 @@
+// src/edgar/explorgdb/reader/query_engine.cpp
+// 查询引擎主分派 — 管理表打开、游标互斥和基础查询入口。
+
 #include "query_engine.h"
+
 #include "catalog_resolver.h"
 #include "gdb_geometry.h"
 #include "query_where_internal.h"
@@ -6,6 +10,10 @@
 #include <utility>
 
 namespace explorgdb {
+
+// ────────────────────────────────────────────────
+// 1. 引擎与游标代次控制
+// ────────────────────────────────────────────────
 
 QueryEngine::QueryEngine(const GdbCatalog& catalog,
                          const ResolvedTable& table)
@@ -15,6 +23,8 @@ QueryEngine::QueryEngine(const GdbCatalog& catalog,
 
 uint64_t QueryEngine::CursorControl::register_feature_cursor() noexcept {
     if (active_cursor_generation != 0) return 0;
+
+    // 0 作为“无租约”哨兵；自然溢出后主动跳过 0。
     ++next_cursor_generation;
     if (next_cursor_generation == 0) ++next_cursor_generation;
     active_cursor_generation = next_cursor_generation;
@@ -23,20 +33,28 @@ uint64_t QueryEngine::CursorControl::register_feature_cursor() noexcept {
 
 void QueryEngine::CursorControl::release_feature_cursor(
     uint64_t generation) noexcept {
-    if (generation != 0 && active_cursor_generation == generation)
+    // 只允许持有当前代次的游标释放租约，防止迟到析构误清理新游标。
+    if (generation != 0 && active_cursor_generation == generation) {
         active_cursor_generation = 0;
+    }
 }
 
 bool QueryEngine::CursorControl::feature_cursor_active() const noexcept {
     return active_cursor_generation != 0;
 }
 
+// ────────────────────────────────────────────────
+// 2. 打开与能力检查
+// ────────────────────────────────────────────────
+
 bool QueryEngine::open() {
+    // 活动游标持有 parser 映射和计划代次，期间禁止重开引擎。
     if (cursor_control_ == nullptr || feature_cursor_active()) return false;
 
     ++cursor_control_->open_generation;
-    if (cursor_control_->open_generation == 0)
+    if (cursor_control_->open_generation == 0) {
         ++cursor_control_->open_generation;
+    }
     opened_ = false;
     parser_.reset();
     spatial_index_.reset();
@@ -44,14 +62,17 @@ bool QueryEngine::open() {
     spatial_index_present_ = false;
     capabilities_ = CapabilityReport{};
 
-    if (resolved_.table_path.empty() || resolved_.tablx_path.empty())
+    if (resolved_.table_path.empty() || resolved_.tablx_path.empty()) {
         return false;
+    }
+
     parser_ = std::make_unique<GdbTableParser>(resolved_.table_path);
     if (!parser_->open() || !parser_->load_tablx(resolved_.tablx_path)) {
         parser_.reset();
         return false;
     }
 
+    // Resolver 已缓存空间参考可用性时直接复用，避免每次 fresh-open 重扫目录。
     if (resolved_.has_spatial_refs.has_value()) {
         capabilities_ = CapabilityReport::inspect(
             catalog_, *resolved_.has_spatial_refs, resolved_.id, *parser_);
@@ -61,12 +82,18 @@ bool QueryEngine::open() {
         capabilities_ = CapabilityReport::inspect(
             catalog_, resolver, resolved_.id, *parser_);
     }
+
     opened_ = capabilities_.can_read_layer();
     if (!opened_) parser_.reset();
     return opened_;
 }
 
+// ────────────────────────────────────────────────
+// 3. 统一查询分派
+// ────────────────────────────────────────────────
+
 QueryResult QueryEngine::query(const QueryRequest& request) {
+    // FeatureCursor 依赖底层映射和共享扫描状态，活动期间阻止旁路查询。
     if (feature_cursor_active()) {
         QueryResult result;
         result.execution_path = "query:blocked";
@@ -75,29 +102,29 @@ QueryResult QueryEngine::query(const QueryRequest& request) {
     }
 
     switch (request.kind) {
-    case QueryKind::ReadByFid: {
-        QueryResult result;
-        result.execution_path = "fid";
-        FeatureRecord record;
-        if (read_by_fid(request.fid, record)) {
-            result.record = record;
-            result.matched_fids.push_back(request.fid);
-        } else {
-            result.fallback_reason = "fid not found";
+        case QueryKind::ReadByFid: {
+            QueryResult result;
+            result.execution_path = "fid";
+            FeatureRecord record;
+            if (read_by_fid(request.fid, record)) {
+                result.record = record;
+                result.matched_fids.push_back(request.fid);
+            } else {
+                result.fallback_reason = "fid not found";
+            }
+            return result;
         }
-        return result;
-    }
-    case QueryKind::SequentialScan:
-        return query_sequential_scan();
-    case QueryKind::SpatialBbox:
-        return query_spatial(request);
-    case QueryKind::AttributeDouble:
-    case QueryKind::AttributeString:
-        return query_attribute(request);
-    case QueryKind::WhereClause:
-        return query_where(request);
-    case QueryKind::SpatialWhere:
-        return query_spatial_where(request);
+        case QueryKind::SequentialScan:
+            return query_sequential_scan();
+        case QueryKind::SpatialBbox:
+            return query_spatial(request);
+        case QueryKind::AttributeDouble:
+        case QueryKind::AttributeString:
+            return query_attribute(request);
+        case QueryKind::WhereClause:
+            return query_where(request);
+        case QueryKind::SpatialWhere:
+            return query_spatial_where(request);
     }
 
     QueryResult result;
@@ -122,6 +149,7 @@ QueryResult QueryEngine::query_sequential_scan() const {
         result.fallback_reason = "table not open";
         return result;
     }
+
     parser_->sequential_scan(
         [&](uint32_t fid, const FieldRef*, int) {
             result.matched_fids.push_back(fid);
@@ -129,6 +157,10 @@ QueryResult QueryEngine::query_sequential_scan() const {
         });
     return result;
 }
+
+// ────────────────────────────────────────────────
+// 4. 基础空间查询
+// ────────────────────────────────────────────────
 
 const FieldDescriptor* QueryEngine::geometry_field() const {
     if (!parser_) return nullptr;
@@ -140,8 +172,10 @@ const FieldDescriptor* QueryEngine::geometry_field() const {
 
 bool QueryEngine::feature_intersects(
     uint32_t fid,
-    double xmin, double ymin,
-    double xmax, double ymax,
+    double xmin,
+    double ymin,
+    double xmax,
+    double ymax,
     bool* skipped_unsupported_curve) {
     const auto* geom_field = geometry_field();
     if (!geom_field || !parser_) return false;
@@ -155,13 +189,21 @@ bool QueryEngine::feature_intersects(
     const bool has_m =
         ((parser_->header().geom_type_full >> 24U) & (1U << 6U)) != 0;
     GdbGeomDecoder decoder(
-        geom_field->xorig, geom_field->yorig, geom_field->xyscale,
-        geom_field->zorig, geom_field->zscale,
-        geom_field->morig, geom_field->mscale,
-        has_z, has_m);
+        geom_field->xorig,
+        geom_field->yorig,
+        geom_field->xyscale,
+        geom_field->zorig,
+        geom_field->zscale,
+        geom_field->morig,
+        geom_field->mscale,
+        has_z,
+        has_m);
+
+    // 该旧入口只支持可由快速 peek 精确判断的线性几何；曲线由统一路径处理。
     if (decoder.has_unsupported_curve_geometry(blob, size)) {
-        if (skipped_unsupported_curve != nullptr)
+        if (skipped_unsupported_curve != nullptr) {
             *skipped_unsupported_curve = true;
+        }
         return false;
     }
     return decoder.intersects_with_peek(
@@ -169,26 +211,34 @@ bool QueryEngine::feature_intersects(
 }
 
 std::vector<uint32_t> QueryEngine::query_bbox(
-    double xmin, double ymin,
-    double xmax, double ymax,
+    double xmin,
+    double ymin,
+    double xmax,
+    double ymax,
     bool* skipped_unsupported_curve) {
     if (feature_cursor_active()) return {};
-    if (skipped_unsupported_curve != nullptr)
+    if (skipped_unsupported_curve != nullptr) {
         *skipped_unsupported_curve = false;
-    return query_bbox_unified(
-        xmin, ymin, xmax, ymax).matched_fids;
+    }
+    return query_bbox_unified(xmin, ymin, xmax, ymax).matched_fids;
 }
 
 QueryResult QueryEngine::query_spatial(const QueryRequest& request) {
     QueryResult result = query_bbox_unified(
-        request.xmin, request.ymin,
-        request.xmax, request.ymax);
-    if (result.execution_path == "bbox:model:invalid")
+        request.xmin, request.ymin, request.xmax, request.ymax);
+
+    // 对外保留历史 SpatialBbox execution_path 名称，内部 model 路径不泄露。
+    if (result.execution_path == "bbox:model:invalid") {
         result.execution_path = "bbox:invalid";
-    else if (result.execution_path == "bbox:model:unavailable")
+    } else if (result.execution_path == "bbox:model:unavailable") {
         result.execution_path = "bbox:unavailable";
+    }
     return result;
 }
+
+// ────────────────────────────────────────────────
+// 5. 属性索引与 WHERE
+// ────────────────────────────────────────────────
 
 std::vector<uint32_t> QueryEngine::query_attribute_double(
     const std::string& index_name,
@@ -197,6 +247,7 @@ std::vector<uint32_t> QueryEngine::query_attribute_double(
     if (feature_cursor_active()) return {};
     const auto* atx = catalog_.find_atx(resolved_.id, index_name);
     if (!atx) return {};
+
     GdbAttributeIndexParser index(
         catalog_.path() + "/" + atx->filename);
     return index.parse()
@@ -211,6 +262,7 @@ std::vector<uint32_t> QueryEngine::query_attribute_string(
     if (feature_cursor_active()) return {};
     const auto* atx = catalog_.find_atx(resolved_.id, index_name);
     if (!atx) return {};
+
     GdbAttributeIndexParser index(
         catalog_.path() + "/" + atx->filename);
     return index.parse()
@@ -223,22 +275,20 @@ QueryResult QueryEngine::query_attribute(const QueryRequest& request) {
     result.execution_path = "attribute:atx";
     if (request.kind == QueryKind::AttributeDouble) {
         result.matched_fids = query_attribute_double(
-            request.index_name,
-            request.double_value,
-            request.attr_op);
+            request.index_name, request.double_value, request.attr_op);
     } else {
         result.matched_fids = query_attribute_string(
-            request.index_name,
-            request.string_value,
-            request.attr_op);
+            request.index_name, request.string_value, request.attr_op);
     }
 
     const auto* atx =
         catalog_.find_atx(resolved_.id, request.index_name);
     if (!atx) {
+        // 该兼容入口只报告缺索引，不在此处重复实现通用 WHERE 扫描。
         result.execution_path = "attribute:sequential";
         result.fallback_reason = "attribute index missing";
     } else if (result.matched_fids.empty()) {
+        // 合法空结果不是错误，不保留 fallback 原因。
         result.fallback_reason.clear();
     }
     return result;
@@ -259,10 +309,12 @@ QueryResult QueryEngine::query_where(const QueryRequest& request) {
         return result;
     }
 
+    // FieldRef 只在当前扫描回调有效；求值器不得把底层指针保存到回调外。
     parser_->sequential_scan(
         [&](uint32_t fid, const FieldRef* fields, int field_count) {
-            if (evaluate_where(expression, fields, field_count))
+            if (evaluate_where(expression, fields, field_count)) {
                 result.matched_fids.push_back(fid);
+            }
             return true;
         });
     return result;
