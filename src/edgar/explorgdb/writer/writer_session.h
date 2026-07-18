@@ -1,3 +1,6 @@
+// src/edgar/explorgdb/writer/writer_session.h
+// Writer 会话公开契约 — 定义分阶段写入、错误模型和几何追加接口。
+
 #ifndef EXPLORGDB_WRITER_SESSION_H
 #define EXPLORGDB_WRITER_SESSION_H
 
@@ -9,6 +12,7 @@
 namespace explorgdb {
 namespace writer {
 
+/** Writer 状态机阶段；错误定位和事务恢复均以该阶段为锚点。 */
 enum class WriterStage : uint8_t {
     None = 0,
     Open,
@@ -22,6 +26,7 @@ enum class WriterStage : uint8_t {
 
 const char* writer_stage_name(WriterStage stage) noexcept;
 
+/** 稳定错误码；调用方不需要解析本地化或系统错误字符串。 */
 enum class WriterErrorCode : uint16_t {
     None = 0,
     Unknown,
@@ -45,6 +50,12 @@ enum class WriterErrorCode : uint16_t {
 
 const char* writer_error_code_name(WriterErrorCode code) noexcept;
 
+/**
+ * Writer 操作失败的诊断对象。
+ *
+ * stage/code 用于机器判断，layer/path/system_reason/message 用于日志与界面展示；
+ * retryable 只表达当前失败是否具备重试价值，不自动执行重试。
+ */
 struct WriterError {
     WriterStage stage = WriterStage::None;
     WriterErrorCode code = WriterErrorCode::None;
@@ -67,6 +78,7 @@ struct WriterError {
     }
 };
 
+/** FileGDB 几何类型编码，保留 Z/M/ZM 高位标记。 */
 enum class WriterGeometryType : uint32_t {
     Point = 1,
     Polyline = 3,
@@ -86,6 +98,7 @@ enum class WriterGeometryType : uint32_t {
     MultiPointZM = 0xC0000008,
 };
 
+/** 写入器几何坐标；未启用的 Z/M 分量由类型决定是否写出。 */
 struct WriterCoordinate {
     double x = 0.0;
     double y = 0.0;
@@ -93,6 +106,12 @@ struct WriterCoordinate {
     double m = 0.0;
 };
 
+/**
+ * 单表追加写入会话。
+ *
+ * 会话采用显式阶段顺序：open → begin_row → append/set_* → end_row → flush → commit。
+ * PIMPL 隔离内部缓存、文件句柄和恢复状态，公开头只暴露稳定 ABI 与职责边界。
+ */
 class WriterSession {
 public:
     WriterSession();
@@ -102,8 +121,11 @@ public:
     WriterSession(const WriterSession&) = delete;
     WriterSession& operator=(const WriterSession&) = delete;
 
+    /** 打开 staging GDB 中的目标图层并初始化字段/几何编码上下文。 */
     bool open(const std::string& staging_gdb_path,
               const std::string& layer_name);
+
+    /** 开始一条新记录；后续 append_* 调用只作用于当前行。 */
     bool begin_row();
     bool set_null(int field_index);
     bool append_i16(int field_index, int16_t value);
@@ -121,6 +143,7 @@ public:
     bool append_datetime_with_offset(int field_index, double ole_date,
                                      int16_t offset_minutes);
 
+    /** 设置当前行几何缓存；append_geometry 再把缓存写入指定几何字段。 */
     bool set_point(const WriterCoordinate& point,
                    WriterGeometryType type = WriterGeometryType::Point);
     bool set_multipoint(
@@ -133,9 +156,14 @@ public:
         const std::vector<std::vector<WriterCoordinate>>& rings,
         WriterGeometryType type = WriterGeometryType::Polygon);
     bool append_geometry(int field_index);
+
+    /** 完成当前行并进入可继续写下一行的状态。 */
     bool end_row();
+    /** 将内存缓存刷新到 staging 文件，但不发布最终目录。 */
     bool flush();
+    /** 原子发布 staging GDB 到 final_gdb_path；成功后会话不可继续写。 */
     bool commit(const std::string& final_gdb_path);
+    /** 放弃当前会话并尽力清理 staging 产物。 */
     bool abort();
 
     uint64_t row_count() const noexcept;
