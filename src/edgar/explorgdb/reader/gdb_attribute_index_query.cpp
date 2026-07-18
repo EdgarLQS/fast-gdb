@@ -1,3 +1,6 @@
+// src/edgar/explorgdb/reader/gdb_attribute_index_query.cpp
+// .atx 直接查询 — 校验完整 B+ 树叶链并只物化命中的零基 FID。
+
 #include "gdb_attribute_index.h"
 
 #include <algorithm>
@@ -11,6 +14,7 @@ namespace {
 
 using AttributeClock = std::chrono::steady_clock;
 
+// metrics 为 nullptr 时返回默认时间点，热路径不会读取时钟。
 AttributeClock::time_point metric_start(
     AttributeIndexQueryMetrics* metrics) {
     return metrics == nullptr ? AttributeClock::time_point{}
@@ -28,6 +32,7 @@ void metric_set(AttributeIndexQueryMetrics* metrics,
     if (metrics != nullptr) metrics->*member = elapsed_ms(start);
 }
 
+/** 根据值宽度计算单页能够容纳的最大 FID/value 对数量。 */
 int max_per_page(uint8_t value_size) {
     if (value_size == 0) return 0;
     return static_cast<int>(
@@ -35,6 +40,9 @@ int max_per_page(uint8_t value_size) {
         (4U + static_cast<size_t>(value_size)));
 }
 
+/**
+ * 将 1-based page id 转为文件偏移，并在乘法前限制到 size_t 范围。
+ */
 bool page_offset_for(uint32_t page_id,
                      size_t page_count,
                      size_t& page_offset) {
@@ -68,6 +76,7 @@ bool comparison_matches(int comparison, AttrOp op) {
     return false;
 }
 
+/** 按 trailer 的 value_size 解码当前数值物理表示。 */
 bool decode_numeric(const uint8_t* bytes,
                     uint8_t value_size,
                     double& value) {
@@ -100,11 +109,18 @@ size_t utf8_sequence_bytes(unsigned char lead) {
     return 0;
 }
 
+/**
+ * 按索引可容纳的 UTF-16 单元数截断查询字符串。
+ *
+ * .atx 字符串尾部以空格填充；遇到空格或损坏 UTF-8 序列即停止。此函数只
+ * 准备索引比较键，完整 WHERE 仍由上层对候选记录复核。
+ */
 std::string truncate_index_string(const std::string& value,
                                   size_t max_utf16_units) {
     std::string result;
     size_t units = 0;
-    for (size_t index = 0; index < value.size() && units < max_utf16_units;) {
+    for (size_t index = 0;
+         index < value.size() && units < max_utf16_units;) {
         if (value[index] == ' ') break;
         const size_t bytes = utf8_sequence_bytes(
             static_cast<unsigned char>(value[index]));
@@ -150,10 +166,12 @@ bool GdbAttributeIndexParser::query_direct(
     if (metrics != nullptr) *metrics = AttributeIndexQueryMetrics{};
     const auto total_start = metric_start(metrics);
 
+    // 每次查询使用当前文件快照；旧物化结果和 trailer 不跨文件版本复用。
     file_data_.clear();
     all_entries_.clear();
     trailer_ = BPlusTreeTrailer{};
 
+    // ── 文件加载与尺寸边界 ──
     const auto load_start = metric_start(metrics);
     std::ifstream input(file_path_, std::ios::binary | std::ios::ate);
     if (!input.is_open()) return false;
@@ -180,6 +198,7 @@ bool GdbAttributeIndexParser::query_direct(
         metrics->file_load_ms = elapsed_ms(load_start);
     }
 
+    // ── Trailer 与页面布局验证 ──
     const auto trailer_start = metric_start(metrics);
     if (file_data_.size() < kTrailerSize) return false;
     const size_t page_bytes = file_data_.size() - kTrailerSize;
@@ -195,10 +214,14 @@ bool GdbAttributeIndexParser::query_direct(
         (!is_string && !trailer_.is_numeric)) {
         return false;
     }
+
+    // 深度为 0 只允许真正的空树；空结果是成功，不是回退信号。
     if (trailer_.tree_depth == 0) {
         if (trailer_.total_value_count != 0) return false;
         result.clear();
-        if (metrics != nullptr) metrics->total_ms = elapsed_ms(total_start);
+        if (metrics != nullptr) {
+            metrics->total_ms = elapsed_ms(total_start);
+        }
         return true;
     }
     if (page_count == 0 || trailer_.tree_depth > page_count) return false;
@@ -214,11 +237,16 @@ bool GdbAttributeIndexParser::query_direct(
     }
 
     const std::string effective_string = is_string
-        ? truncate_index_string(string_value, trailer_.value_size / 2U)
+        ? truncate_index_string(
+              string_value, trailer_.value_size / 2U)
         : std::string{};
 
+    // visited 同时保护根到叶导航和叶链扫描，任何循环或重复页面均视为损坏。
     std::vector<uint8_t> visited(page_count + 1U, 0U);
     uint32_t leaf_page_id = 1U;
+
+    // ── 根节点导航到最左叶 ──
+    // 当前直接查询仍扫描完整叶链，以验证全树计数并正确支持所有比较操作。
     const auto navigation_start = metric_start(metrics);
     for (uint32_t depth = trailer_.tree_depth; depth > 1U; --depth) {
         size_t page_offset = 0;
@@ -243,6 +271,8 @@ bool GdbAttributeIndexParser::query_direct(
                &AttributeIndexQueryMetrics::tree_navigation_ms,
                navigation_start);
 
+    // ── 完整叶链扫描 ──
+    // 候选只暂存在局部 vector；文件结构全部通过后才移动到 result，确保 fail closed。
     const auto scan_start = metric_start(metrics);
     std::vector<uint32_t> candidates;
     size_t entries_seen = 0;
@@ -260,6 +290,8 @@ bool GdbAttributeIndexParser::query_direct(
         const uint32_t next_page_id = read_u32(page);
         const uint32_t entry_count = read_u32(page + 4U);
         if (entry_count > static_cast<uint32_t>(capacity)) return false;
+
+        // 累积计数在加法前验证，避免损坏条目数产生 size_t 下溢/溢出。
         if (entries_seen > static_cast<size_t>(
                                trailer_.total_value_count) ||
             static_cast<size_t>(entry_count) >
@@ -294,8 +326,11 @@ bool GdbAttributeIndexParser::query_direct(
                 if (indexed_value < numeric_value) comparison = -1;
                 else if (indexed_value > numeric_value) comparison = 1;
             }
-            if (comparison_matches(comparison, op))
+
+            if (comparison_matches(comparison, op)) {
+                // .atx 存储 1-based ObjectID，Reader 对外统一发布 0-based FID。
                 candidates.push_back(stored_fid - 1U);
+            }
         }
 
         entries_seen += entry_count;
@@ -311,6 +346,8 @@ bool GdbAttributeIndexParser::query_direct(
         metrics->leaf_scan_ms = elapsed_ms(scan_start);
     }
 
+    // ── 发布候选 ──
+    // 索引物理顺序不作为公开保证；统一排序去重后再交给 QueryEngine。
     const auto order_start = metric_start(metrics);
     std::sort(candidates.begin(), candidates.end());
     candidates.erase(
