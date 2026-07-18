@@ -1,3 +1,6 @@
+// tests/usegdal/test_feature_cursor_one_pass.cpp
+// WKB-first 完整要素读取、record 占位和 Cursor 指标契约。
+
 #include <gtest/gtest.h>
 
 #include <string>
@@ -22,9 +25,31 @@ constexpr const char* kLayer = "feature_cursor_one_pass";
 int field_index(const GdbTableParser& table, const char* name) {
     const auto& fields = table.fields();
     for (size_t index = 0; index < fields.size(); ++index) {
-        if (fields[index].name == name) return static_cast<int>(index);
+        if (fields[index].name == name) {
+            return static_cast<int>(index);
+        }
     }
     return -1;
+}
+
+int geometry_field_index(const GdbTableParser& table) {
+    for (size_t index = 0; index < table.fields().size(); ++index) {
+        if (table.fields()[index].type == FieldType::Geometry) {
+            return static_cast<int>(index);
+        }
+    }
+    return -1;
+}
+
+void expect_empty_geometry_slot(const FeatureRecord& record,
+                                int geometry_index) {
+    ASSERT_GE(geometry_index, 0);
+    ASSERT_LT(static_cast<size_t>(geometry_index),
+              record.field_values.size());
+    ASSERT_TRUE(std::holds_alternative<std::string>(
+        record.field_values[static_cast<size_t>(geometry_index)]));
+    EXPECT_TRUE(std::get<std::string>(
+        record.field_values[static_cast<size_t>(geometry_index)]).empty());
 }
 
 } // namespace
@@ -89,7 +114,7 @@ protected:
 };
 
 TEST_F(FeatureCursorOnePassTest,
-       OnePassMatchesLegacyFieldsWktAndWkb) {
+       RecordAndOnePassShareFieldsAndUseGeometryPlaceholder) {
     const std::string path = create_fixture();
     ASSERT_FALSE(path.empty());
 
@@ -107,23 +132,17 @@ TEST_F(FeatureCursorOnePassTest,
     const int value_index = field_index(table, "value");
     const int name_index = field_index(table, "name");
     const int payload_index = field_index(table, "payload");
-    int geometry_index = -1;
-    for (size_t index = 0; index < table.fields().size(); ++index) {
-        if (table.fields()[index].type == FieldType::Geometry) {
-            geometry_index = static_cast<int>(index);
-            break;
-        }
-    }
+    const int geometry_index = geometry_field_index(table);
     ASSERT_GE(value_index, 0);
     ASSERT_GE(name_index, 0);
     ASSERT_GE(payload_index, 0);
     ASSERT_GE(geometry_index, 0);
 
     for (uint32_t fid = 0; fid < 2; ++fid) {
-        FeatureRecord legacy_record;
-        GeometryValue legacy_geometry;
-        ASSERT_TRUE(table.read_record_by_fid(fid, legacy_record));
-        ASSERT_TRUE(table.read_geometry_value(fid, legacy_geometry));
+        FeatureRecord record_only;
+        GeometryValue geometry_only;
+        ASSERT_TRUE(table.read_record_by_fid(fid, record_only));
+        ASSERT_TRUE(table.read_geometry_value(fid, geometry_only));
 
         FeatureRecord one_pass_record;
         GeometryValue one_pass_geometry;
@@ -131,48 +150,43 @@ TEST_F(FeatureCursorOnePassTest,
         ASSERT_TRUE(table.read_feature_by_fid(
             fid, one_pass_record, one_pass_geometry, &metrics));
 
-        EXPECT_EQ(one_pass_record.fid, legacy_record.fid);
-        EXPECT_EQ(one_pass_record.blob_len, legacy_record.blob_len);
+        EXPECT_EQ(one_pass_record.fid, record_only.fid);
+        EXPECT_EQ(one_pass_record.blob_len, record_only.blob_len);
         EXPECT_EQ(one_pass_record.nullable_flags,
-                  legacy_record.nullable_flags);
+                  record_only.nullable_flags);
         ASSERT_EQ(one_pass_record.field_values.size(),
-                  legacy_record.field_values.size());
+                  record_only.field_values.size());
         EXPECT_EQ(std::get<int32_t>(one_pass_record.field_values[
                       static_cast<size_t>(value_index)]),
-                  std::get<int32_t>(legacy_record.field_values[
+                  std::get<int32_t>(record_only.field_values[
                       static_cast<size_t>(value_index)]));
         EXPECT_EQ(std::get<std::string>(one_pass_record.field_values[
                       static_cast<size_t>(name_index)]),
-                  std::get<std::string>(legacy_record.field_values[
+                  std::get<std::string>(record_only.field_values[
                       static_cast<size_t>(name_index)]));
-        EXPECT_EQ(std::get<std::vector<uint8_t>>(one_pass_record.field_values[
-                      static_cast<size_t>(payload_index)]),
-                  std::get<std::vector<uint8_t>>(legacy_record.field_values[
-                      static_cast<size_t>(payload_index)]));
-        // read_feature_by_fid 不再产生 WKT，field_values[geometry_index]
-        // 保持空字符串占位。WKB 是下游读取几何的推荐方式。legacy 路径
-        // (read_record_by_fid) 仍产生 WKT 以保持向后兼容。
-        EXPECT_TRUE(std::holds_alternative<std::string>(
-            one_pass_record.field_values[
-                static_cast<size_t>(geometry_index)]));
-        EXPECT_TRUE(std::get<std::string>(one_pass_record.field_values[
-                        static_cast<size_t>(geometry_index)]).empty());
-        EXPECT_FALSE(std::get<std::string>(legacy_record.field_values[
-                         static_cast<size_t>(geometry_index)]).empty());
-        EXPECT_EQ(one_pass_geometry.wkb, legacy_geometry.wkb);
+        EXPECT_EQ(std::get<std::vector<uint8_t>>(
+                      one_pass_record.field_values[
+                          static_cast<size_t>(payload_index)]),
+                  std::get<std::vector<uint8_t>>(
+                      record_only.field_values[
+                          static_cast<size_t>(payload_index)]));
+
+        expect_empty_geometry_slot(record_only, geometry_index);
+        expect_empty_geometry_slot(one_pass_record, geometry_index);
+        EXPECT_EQ(one_pass_geometry.wkb, geometry_only.wkb);
         EXPECT_EQ(one_pass_geometry.geometry_type,
-                  legacy_geometry.geometry_type);
-        EXPECT_EQ(one_pass_geometry.status, legacy_geometry.status);
+                  geometry_only.geometry_type);
+        EXPECT_EQ(one_pass_geometry.status, geometry_only.status);
+        ASSERT_TRUE(one_pass_geometry.to_wkt().has_value());
         EXPECT_GE(metrics.row_lookup_ms, 0.0);
         EXPECT_GE(metrics.field_materialization_ms, 0.0);
         EXPECT_GE(metrics.geometry_decode_ms, 0.0);
-        EXPECT_GE(metrics.wkt_write_ms, 0.0);
         EXPECT_GE(metrics.wkb_write_ms, 0.0);
     }
 }
 
 TEST_F(FeatureCursorOnePassTest,
-       NullGeometryIsACompleteEmptyFeature) {
+       NullGeometryUsesEmptyStatusNotRecordSlot) {
     const std::string path = create_fixture();
     ASSERT_FALSE(path.empty());
 
@@ -186,19 +200,26 @@ TEST_F(FeatureCursorOnePassTest,
     GdbTableParser table(resolved->table_path);
     ASSERT_TRUE(table.open());
     ASSERT_TRUE(table.load_tablx(resolved->tablx_path));
+    const int geometry_index = geometry_field_index(table);
+
+    FeatureRecord record_only;
+    ASSERT_TRUE(table.read_record_by_fid(2, record_only));
+    expect_empty_geometry_slot(record_only, geometry_index);
 
     FeatureRecord record;
     GeometryValue geometry;
     ASSERT_TRUE(table.read_feature_by_fid(2, record, geometry));
     EXPECT_EQ(record.fid, 2U);
     EXPECT_EQ(record.field_values.size(), table.fields().size());
+    expect_empty_geometry_slot(record, geometry_index);
     EXPECT_EQ(geometry.status, GeometryStatus::Empty);
     EXPECT_TRUE(geometry.wkb.empty());
+    EXPECT_FALSE(geometry.to_wkt().has_value());
     EXPECT_EQ(geometry.diagnostic, "geometry is null");
 }
 
 TEST_F(FeatureCursorOnePassTest,
-       CursorProfilingIsRequestScopedAndOptIn) {
+       CursorProfilingIsRequestScopedAndWkbOnly) {
     const std::string path = create_fixture();
     ASSERT_FALSE(path.empty());
 
@@ -213,15 +234,17 @@ TEST_F(FeatureCursorOnePassTest,
     ASSERT_TRUE(default_engine.open());
     QueryRequest default_request;
     default_request.kind = QueryKind::SequentialScan;
-    FeatureCursor default_cursor = default_engine.open_cursor(default_request);
+    FeatureCursor default_cursor =
+        default_engine.open_cursor(default_request);
     QueryFeature feature;
     size_t default_count = 0;
     while (default_cursor.next(feature)) ++default_count;
     ASSERT_TRUE(default_cursor.done());
     ASSERT_TRUE(default_cursor.error().empty());
     EXPECT_EQ(default_count, 3U);
-    EXPECT_EQ(default_cursor.query_result().feature_cursor_metrics.feature_count,
-              0U);
+    EXPECT_EQ(
+        default_cursor.query_result().feature_cursor_metrics.feature_count,
+        0U);
 
     QueryEngine profiled_engine(catalog, *resolved);
     ASSERT_TRUE(profiled_engine.open());
@@ -241,6 +264,5 @@ TEST_F(FeatureCursorOnePassTest,
     EXPECT_GE(metrics.row_lookup_ms, 0.0);
     EXPECT_GE(metrics.field_materialization_ms, 0.0);
     EXPECT_GE(metrics.geometry_decode_ms, 0.0);
-    EXPECT_GE(metrics.wkt_write_ms, 0.0);
     EXPECT_GE(metrics.wkb_write_ms, 0.0);
 }
