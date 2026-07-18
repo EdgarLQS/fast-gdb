@@ -1,3 +1,6 @@
+// src/edgar/explorgdb/reader/windows_posix_compat.cpp
+// Windows 平台兼容实现 — POSIX 函数的 Win32 替代（仅用于 MSVC 构建）。
+
 #ifdef _WIN32
 
 #ifndef NOMINMAX

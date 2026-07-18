@@ -1,3 +1,6 @@
+// src/edgar/explorgdb/reader/wkb_writer.cpp
+// WKB 写入器 — 从 GeometryModel 生成 ISO WKB 字节流，作为 GeometryValue 的默认输出。
+
 #include "wkb_writer.h"
 
 #include <cstring>
@@ -8,6 +11,7 @@
 namespace explorgdb {
 namespace {
 
+/** 小端字节序的 WKB 缓冲写入器。 */
 class BufferWriter {
 public:
     explicit BufferWriter(size_t reserve_bytes) {
@@ -33,12 +37,15 @@ private:
     std::vector<uint8_t> data_;
 };
 
+/** 检查 count 是否超出 ISO WKB uint32 范围。 */
 uint32_t checked_count(size_t count, const char* label) {
     if (count > std::numeric_limits<uint32_t>::max())
         throw std::length_error(std::string(label) +
                                 " exceeds ISO WKB uint32 count range");
     return static_cast<uint32_t>(count);
 }
+
+// ========== 预分配大小估算 ==========
 
 size_t saturating_add(size_t left, size_t right) {
     return right > std::numeric_limits<size_t>::max() - left
@@ -89,6 +96,7 @@ size_t polygon_body_bytes(const GeometryModel& model,
     return total;
 }
 
+/** 预估 WKB 总字节数，用于预分配缓冲。 */
 size_t estimated_wkb_bytes(const GeometryModel& model) {
     const size_t position = coordinate_bytes(model);
     switch (model.kind) {
@@ -129,12 +137,16 @@ size_t estimated_wkb_bytes(const GeometryModel& model) {
     }
 }
 
+// ========== WKB 写入函数 ==========
+
+/** 写入 WKB 头：字节序（小端 1 字节）+ 类型码（4 字节）。 */
 void write_header(BufferWriter& output, GeometryKind kind,
                   bool has_z, bool has_m) {
     output.byte(1);
     output.u32(WkbWriter::iso_type_code(kind, has_z, has_m));
 }
 
+/** 写入单个坐标点的 X Y [Z [M]]。 */
 void write_position(BufferWriter& output, const GridPoint& point,
                     const CoordinateTransform& transform,
                     bool has_z, bool has_m) {
@@ -144,6 +156,7 @@ void write_position(BufferWriter& output, const GridPoint& point,
     if (has_m) output.f64(point.m);
 }
 
+/** 写入 Point 类型（含 Empty 时的 NaN 填充）。 */
 void write_point(BufferWriter& output, const GeometryModel& model,
                  const GridPoint* point) {
     write_header(output, GeometryKind::Point,
@@ -161,6 +174,7 @@ void write_point(BufferWriter& output, const GeometryModel& model,
                    model.has_z, model.has_m);
 }
 
+/** 写入 LineString 类型。 */
 void write_line(BufferWriter& output, const GeometryModel& model,
                 const PointSequence& line) {
     write_header(output, GeometryKind::LineString,
@@ -171,6 +185,7 @@ void write_line(BufferWriter& output, const GeometryModel& model,
                        model.has_z, model.has_m);
 }
 
+/** 写入闭合环（在 points 末尾补首点实现闭合）。 */
 void write_ring(BufferWriter& output, const GeometryModel& model,
                 const RingModel& ring) {
     if (ring.points.empty()) {
@@ -189,6 +204,7 @@ void write_ring(BufferWriter& output, const GeometryModel& model,
                    model.has_z, model.has_m);
 }
 
+/** 写入 Polygon 的环集合（外环 + 内环）。 */
 void write_polygon_body(BufferWriter& output,
                         const GeometryModel& model,
                         const PolygonModel& polygon) {
@@ -205,6 +221,7 @@ void write_polygon_body(BufferWriter& output,
         write_ring(output, model, rings.at(index));
 }
 
+/** 写入 Polygon 类型（含 Empty 时输出零环）。 */
 void write_polygon(BufferWriter& output,
                    const GeometryModel& model,
                    const PolygonModel* polygon) {
@@ -217,6 +234,7 @@ void write_polygon(BufferWriter& output,
     write_polygon_body(output, model, *polygon);
 }
 
+/** 根据 GeometryKind 分派 WKB 写入。 */
 void write_geometry(BufferWriter& output,
                     const GeometryModel& model) {
     switch (model.kind) {
@@ -277,6 +295,7 @@ void write_geometry(BufferWriter& output,
 
 } // namespace
 
+/** ISO WKB 类型码，含 Z/M 维度偏移。 */
 uint32_t WkbWriter::iso_type_code(GeometryKind kind,
                                   bool has_z, bool has_m) {
     const uint32_t base = static_cast<uint32_t>(kind);
@@ -285,6 +304,7 @@ uint32_t WkbWriter::iso_type_code(GeometryKind kind,
         ? 3000u : (has_z ? 1000u : (has_m ? 2000u : 0u)));
 }
 
+/** 从 GeometryModel 生成 WKB-first GeometryValue。 */
 GeometryValue WkbWriter::write(const GeometryModel& model) {
     GeometryValue value;
     value.srid = model.srid;

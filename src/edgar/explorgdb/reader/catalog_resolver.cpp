@@ -1,3 +1,6 @@
+// src/edgar/explorgdb/reader/catalog_resolver.cpp
+// 目录解析器 — 通过 GDB_SystemCatalog 表的名 → ID 映射解析图层路径。
+
 #include "catalog_resolver.h"
 #include "gdb_table.h"
 #include <algorithm>
@@ -20,6 +23,12 @@ bool CatalogResolver::load_rows(const std::vector<SystemCatalogRow>& rows) {
     return !rows_by_name_.empty();
 }
 
+/**
+ * 从 GDB_SystemCatalog（表 ID = 1）读取图层名 → ID 映射。
+ *
+ * 打开 .gdbtable + .gdbtablx，扫描所有要素记录提取 Name 和 ObjectClassID 字段，
+ * 构建小写标准化的名 → 行查找表。
+ */
 bool CatalogResolver::load() {
     const CatalogEntry* table = catalog_.find_table(1);
     const CatalogEntry* tablx = catalog_.find_tablx(1);
@@ -53,6 +62,7 @@ bool CatalogResolver::load() {
     return load_rows(rows);
 }
 
+/** 按图层名查找 ResolvedTable：包含 .gdbtable、.gdbtablx 路径和空间参考存在性。 */
 std::optional<ResolvedTable> CatalogResolver::resolve(const std::string& table_name) const {
     const auto it = rows_by_name_.find(normalize(table_name));
     if (it == rows_by_name_.end()) return std::nullopt;

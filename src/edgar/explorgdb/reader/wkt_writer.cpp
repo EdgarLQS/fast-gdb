@@ -1,3 +1,9 @@
+// src/edgar/explorgdb/reader/wkt_writer.cpp
+// WKT 写入器 — 从 GeometryModel 生成 WKT 文本，用于调试和兼容输出。
+//
+// 注意：WKT 输出不是默认读取路径，公开 API 应优先使用 WKB-first 的 GeometryValue。
+// 本实现仅用于显示/调试场景，不对 NaN 统一 fail closed。
+
 #include "wkt_writer.h"
 
 #include <cmath>
@@ -10,6 +16,7 @@
 namespace explorgdb {
 namespace {
 
+/** 预分配字符串缓冲的 streambuf，避免 std::ostringstream 的额外开销。 */
 class StringWriterBuffer final : public std::streambuf {
 public:
     explicit StringWriterBuffer(size_t reserve_bytes) {
@@ -37,6 +44,7 @@ private:
     std::string value_;
 };
 
+/** 根据维度生成 WKT 后缀（Z/M/ZM/空）。 */
 std::string dimension_suffix(bool has_z, bool has_m) {
     if (has_z && has_m) return " ZM";
     if (has_z) return " Z";
@@ -44,11 +52,13 @@ std::string dimension_suffix(bool has_z, bool has_m) {
     return "";
 }
 
+/** 输出单个坐标值（保留 15 位有效数字）。 */
 void number(std::ostream& out, double value) {
     if (std::isnan(value)) out << "NaN";
     else out << std::setprecision(15) << value;
 }
 
+/** 输出一个坐标点的 X Y [Z [M]]。 */
 void position(std::ostream& out,
               const GeometryModel& model,
               const GridPoint& point) {
@@ -65,6 +75,7 @@ void position(std::ostream& out,
     }
 }
 
+/** 输出坐标序列，close_ring 表示是否闭合多边形环。 */
 void sequence(std::ostream& out,
               const GeometryModel& model,
               const PointSequence& points,
@@ -79,6 +90,7 @@ void sequence(std::ostream& out,
     }
 }
 
+/** 输出 Polygon 的外环 + 内环。 */
 void polygon_body(std::ostream& out,
                   const GeometryModel& model,
                   const PolygonModel& polygon) {
@@ -101,6 +113,7 @@ void polygon_body(std::ostream& out,
 
 } // namespace
 
+/** 根据几何类型分派 WKT 输出。 */
 std::string WktWriter::write(const GeometryModel& model) {
     StringWriterBuffer buffer(64U);
     std::ostream out(&buffer);

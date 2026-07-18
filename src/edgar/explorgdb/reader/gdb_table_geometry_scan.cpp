@@ -1,3 +1,6 @@
+// src/edgar/explorgdb/reader/gdb_table_geometry_scan.cpp
+// 几何字段扫描 — 零拷贝跳过 Geometry blob、按需物化 GeometryValue 的扫描器实现。
+
 #include "gdb_table.h"
 #include "field_layout.h"
 

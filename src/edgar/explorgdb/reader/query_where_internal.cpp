@@ -1,3 +1,12 @@
+// src/edgar/explorgdb/reader/query_where_internal.cpp
+// WHERE 子句解析、编译与求值。
+//
+// 设计要点：
+// - 支持 Comparison、IN、AND、OR 四种表达式
+// - 零拷贝行（FieldRef）和物化行（FeatureRecord）两种求值方式
+// - 单一 Comparison 且字段可索引时，暴露 indexable_predicate 供 ATX 使用
+// - 不支持运算符优先级（所有 AND/OR 左结合，同优先级）
+
 #include "query_where_internal.h"
 
 #include <algorithm>
@@ -10,6 +19,8 @@
 
 namespace explorgdb {
 namespace {
+
+// ========== Token 类型与 AST 节点 ==========
 
 enum class TokenKind {
     Identifier,
@@ -59,6 +70,8 @@ struct Expr {
     std::unique_ptr<Expr> right;
 };
 
+// ========== 辅助函数 ==========
+
 std::string lower_copy(std::string value) {
     std::transform(value.begin(), value.end(), value.begin(),
                    [](unsigned char ch) {
@@ -104,6 +117,7 @@ bool parse_numeric_literal(const std::string& text, double& value) {
            std::isfinite(value);
 }
 
+/** 词法分析：将 WHERE 文本拆分为 Token 流。 */
 std::vector<Token> tokenize(const std::string& text) {
     std::vector<Token> tokens;
     for (size_t i = 0; i < text.size();) {
@@ -218,6 +232,8 @@ std::vector<Token> tokenize(const std::string& text) {
     tokens.push_back({TokenKind::End, {}});
     return tokens;
 }
+
+// ========== 递归下降解析器 ==========
 
 class Parser {
 public:
@@ -341,6 +357,7 @@ private:
     size_t index_ = 0;
 };
 
+/** 将字段名绑定到字段索引。返回引用的字段索引列表。 */
 bool bind_fields(Expr& expression,
                  const std::unordered_map<std::string, size_t>& indexes,
                  std::vector<size_t>& referenced) {
@@ -362,6 +379,7 @@ bool bind_fields(Expr& expression,
     return false;
 }
 
+/** 数值比较，用于 FieldRef/FeatureRecord 求值。 */
 bool compare_numeric(double left, double right, AttrOp op) {
     switch (op) {
         case AttrOp::Eq: return left == right;
@@ -537,6 +555,8 @@ bool evaluate_expr(const Expr& expression, const FeatureRecord& record) {
     }
     return false;
 }
+
+// ========== 求值函数 ==========
 
 } // namespace
 
