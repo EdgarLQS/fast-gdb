@@ -1,3 +1,6 @@
+// tests/usegdal/test_feature_cursor_benchmark.cpp
+// 100K Point WKB-first 全对象读取、按需 WKT 与 GDAL 对照基准。
+
 #include <gtest/gtest.h>
 
 #include <algorithm>
@@ -34,16 +37,16 @@ constexpr int kSamples = 5;
 
 enum class PathKind {
     Cursor,
-    Legacy,
+    RecordGeometry,
     Gdal
 };
 
 constexpr std::array<std::array<PathKind, 3>, kSamples> kExecutionOrders{{
-    {{PathKind::Cursor, PathKind::Legacy, PathKind::Gdal}},
-    {{PathKind::Legacy, PathKind::Gdal, PathKind::Cursor}},
-    {{PathKind::Gdal, PathKind::Cursor, PathKind::Legacy}},
-    {{PathKind::Cursor, PathKind::Gdal, PathKind::Legacy}},
-    {{PathKind::Legacy, PathKind::Cursor, PathKind::Gdal}},
+    {{PathKind::Cursor, PathKind::RecordGeometry, PathKind::Gdal}},
+    {{PathKind::RecordGeometry, PathKind::Gdal, PathKind::Cursor}},
+    {{PathKind::Gdal, PathKind::Cursor, PathKind::RecordGeometry}},
+    {{PathKind::Cursor, PathKind::Gdal, PathKind::RecordGeometry}},
+    {{PathKind::RecordGeometry, PathKind::Cursor, PathKind::Gdal}},
 }};
 
 bool enabled() {
@@ -107,18 +110,28 @@ struct RunResult {
     FeatureCursorMetrics feature_profile;
 };
 
-int fast_field_index(const GdbTableParser* table, const std::string& name) {
+struct WktResult {
+    double milliseconds = 0.0;
+    uint64_t feature_count = 0;
+    uint64_t output_bytes = 0;
+};
+
+int fast_field_index(const GdbTableParser* table,
+                     const std::string& name) {
     if (table == nullptr) return -1;
     const auto& fields = table->fields();
     for (size_t index = 0; index < fields.size(); ++index) {
-        if (fields[index].name == name) return static_cast<int>(index);
+        if (fields[index].name == name) {
+            return static_cast<int>(index);
+        }
     }
     return -1;
 }
 
 std::vector<uint8_t> export_iso_wkb(OGRGeometry* geometry) {
     if (geometry == nullptr) return {};
-    std::vector<uint8_t> wkb(static_cast<size_t>(geometry->WkbSize()));
+    std::vector<uint8_t> wkb(
+        static_cast<size_t>(geometry->WkbSize()));
     if (geometry->exportToWkb(
             wkbNDR, wkb.data(), wkbVariantIso) != OGRERR_NONE) {
         return {};
@@ -127,39 +140,46 @@ std::vector<uint8_t> export_iso_wkb(OGRGeometry* geometry) {
 }
 
 void add_fast_feature(Digest& digest,
-                      const QueryFeature& feature,
+                      uint32_t fid,
+                      const FeatureRecord& record,
+                      const GeometryValue& geometry,
                       int value_index,
                       int payload_index) {
-    digest.add_scalar(feature.fid);
+    digest.add_scalar(fid);
     const int32_t value = std::get<int32_t>(
-        feature.record.field_values[static_cast<size_t>(value_index)]);
+        record.field_values[static_cast<size_t>(value_index)]);
     digest.add_scalar(value);
     const auto& payload = std::get<std::vector<uint8_t>>(
-        feature.record.field_values[static_cast<size_t>(payload_index)]);
+        record.field_values[static_cast<size_t>(payload_index)]);
     digest.add_bytes(payload.data(), payload.size());
-    digest.add_bytes(feature.geometry.wkb.data(), feature.geometry.wkb.size());
+    digest.add_bytes(geometry.wkb.data(), geometry.wkb.size());
     ++digest.feature_count;
 }
 
 Digest consume_gdal(OGRLayer* layer) {
     Digest digest;
     layer->SetSpatialFilterRect(0, 0, 99, 99);
-    if (layer->SetAttributeFilter("value >= 90") != OGRERR_NONE)
+    if (layer->SetAttributeFilter("value >= 90") != OGRERR_NONE) {
         return digest;
+    }
     layer->ResetReading();
     while (OGRFeature* feature = layer->GetNextFeature()) {
         if (feature->GetFID() > 0) {
             const uint32_t fid =
                 static_cast<uint32_t>(feature->GetFID() - 1);
             digest.add_scalar(fid);
-            const int32_t value = feature->GetFieldAsInteger("value");
+            const int32_t value =
+                feature->GetFieldAsInteger("value");
             digest.add_scalar(value);
-            const int payload_index = feature->GetFieldIndex("payload");
+            const int payload_index =
+                feature->GetFieldIndex("payload");
             int byte_count = 0;
             const GByte* bytes = feature->GetFieldAsBinary(
                 payload_index, &byte_count);
-            if (bytes != nullptr && byte_count > 0)
-                digest.add_bytes(bytes, static_cast<size_t>(byte_count));
+            if (bytes != nullptr && byte_count > 0) {
+                digest.add_bytes(
+                    bytes, static_cast<size_t>(byte_count));
+            }
             const std::vector<uint8_t> wkb =
                 export_iso_wkb(feature->GetGeometryRef());
             digest.add_bytes(wkb.data(), wkb.size());
@@ -193,13 +213,19 @@ std::optional<RunResult> run_cursor(
     while (cursor.next(feature)) {
         if (profile_enabled) {
             const auto checksum_start = BenchmarkClock::now();
-            add_fast_feature(digest, feature, value_index, payload_index);
+            add_fast_feature(digest, feature.fid, feature.record,
+                             feature.geometry, value_index,
+                             payload_index);
             checksum_ms += elapsed_ms(checksum_start);
         } else {
-            add_fast_feature(digest, feature, value_index, payload_index);
+            add_fast_feature(digest, feature.fid, feature.record,
+                             feature.geometry, value_index,
+                             payload_index);
         }
     }
-    if (!cursor.done() || !cursor.error().empty()) return std::nullopt;
+    if (!cursor.done() || !cursor.error().empty()) {
+        return std::nullopt;
+    }
 
     RunResult result;
     result.milliseconds = elapsed_ms(start);
@@ -207,11 +233,12 @@ std::optional<RunResult> run_cursor(
     result.digest = digest;
     result.execution_path = cursor.query_result().execution_path;
     result.query_profile = cursor.query_result().combined_metrics;
-    result.feature_profile = cursor.query_result().feature_cursor_metrics;
+    result.feature_profile =
+        cursor.query_result().feature_cursor_metrics;
     return result;
 }
 
-std::optional<RunResult> run_legacy(
+std::optional<RunResult> run_record_geometry(
     const GdbCatalog& catalog,
     const ResolvedTable& resolved,
     const QueryRequest& request) {
@@ -225,13 +252,14 @@ std::optional<RunResult> run_legacy(
     const QueryResult query = engine.query(request);
     Digest digest;
     for (uint32_t fid : query.matched_fids) {
-        QueryFeature feature;
-        feature.fid = fid;
-        if (!engine.read_by_fid(fid, feature.record) ||
-            !engine.table()->read_geometry_value(fid, feature.geometry)) {
+        FeatureRecord record;
+        GeometryValue geometry;
+        if (!engine.read_by_fid(fid, record) ||
+            !engine.table()->read_geometry_value(fid, geometry)) {
             return std::nullopt;
         }
-        add_fast_feature(digest, feature, value_index, payload_index);
+        add_fast_feature(digest, fid, record, geometry,
+                         value_index, payload_index);
     }
 
     RunResult result;
@@ -262,15 +290,46 @@ std::optional<RunResult> run_gdal(const std::string& path) {
     return result;
 }
 
+std::optional<WktResult> run_explicit_wkt(
+    const GdbCatalog& catalog,
+    const ResolvedTable& resolved,
+    const QueryRequest& request) {
+    QueryEngine engine(catalog, resolved);
+    if (!engine.open()) return std::nullopt;
+    const QueryResult query = engine.query(request);
+
+    std::vector<GeometryValue> geometries;
+    geometries.reserve(query.matched_fids.size());
+    for (uint32_t fid : query.matched_fids) {
+        GeometryValue geometry;
+        if (!engine.table()->read_geometry_value(fid, geometry)) {
+            return std::nullopt;
+        }
+        geometries.push_back(std::move(geometry));
+    }
+
+    WktResult result;
+    const auto start = BenchmarkClock::now();
+    for (const GeometryValue& geometry : geometries) {
+        const auto wkt = geometry.to_wkt();
+        if (!wkt.has_value()) return std::nullopt;
+        result.output_bytes += wkt->size();
+        ++result.feature_count;
+    }
+    result.milliseconds = elapsed_ms(start);
+    return result;
+}
+
 struct Samples {
     std::vector<double> cursor_ms;
-    std::vector<double> legacy_ms;
+    std::vector<double> record_geometry_ms;
     std::vector<double> gdal_ms;
     Digest digest;
     std::string execution_path;
     CombinedQueryMetrics query_profile;
     FeatureCursorMetrics feature_profile;
     double checksum_ms = 0.0;
+    WktResult explicit_wkt;
     bool correct = false;
 };
 
@@ -280,11 +339,12 @@ void append_sample(Samples& samples,
     switch (path) {
         case PathKind::Cursor:
             samples.cursor_ms.push_back(result.milliseconds);
-            if (samples.execution_path.empty())
+            if (samples.execution_path.empty()) {
                 samples.execution_path = result.execution_path;
+            }
             break;
-        case PathKind::Legacy:
-            samples.legacy_ms.push_back(result.milliseconds);
+        case PathKind::RecordGeometry:
+            samples.record_geometry_ms.push_back(result.milliseconds);
             break;
         case PathKind::Gdal:
             samples.gdal_ms.push_back(result.milliseconds);
@@ -293,18 +353,22 @@ void append_sample(Samples& samples,
 }
 
 void write_evidence(const Samples& samples) {
-    const char* configured = std::getenv("FAST_GDB_BENCHMARK_OUTPUT_DIR");
-    const fs::path output_dir = configured != nullptr && *configured != '\0'
+    const char* configured =
+        std::getenv("FAST_GDB_BENCHMARK_OUTPUT_DIR");
+    const fs::path output_dir =
+        configured != nullptr && *configured != '\0'
         ? fs::path(configured)
         : fs::temp_directory_path() / "fast-gdb-benchmark-results";
     fs::create_directories(output_dir);
     const fs::path output =
-        output_dir / "feature-cursor-100k-schema-v2.json";
+        output_dir / "feature-cursor-100k-schema-v3.json";
+
     std::ofstream json(output);
     json << std::fixed << std::setprecision(3)
          << "{\n"
-         << "  \"evidence_schema_version\": 2,\n"
-         << "  \"scenario\": \"full-feature-spatial-where-100k\",\n"
+         << "  \"evidence_schema_version\": 3,\n"
+         << "  \"scenario\": \"wkb-first-full-feature-spatial-where-100k\",\n"
+         << "  \"checksum_semantics\": \"fid-fields-binary-iso-wkb\",\n"
          << "  \"timing_scope\": \"engine-or-dataset-open-through-last-feature\",\n"
          << "  \"cache_semantics\": \"fresh-open-not-strict-cold\",\n"
          << "  \"execution_order\": \"rotated-five-sample-schedule\",\n"
@@ -318,14 +382,20 @@ void write_evidence(const Samples& samples) {
          << percentile(samples.cursor_ms, 0.5) << ",\n"
          << "  \"cursor_p95_ms\": "
          << percentile(samples.cursor_ms, 0.95) << ",\n"
-         << "  \"legacy_median_ms\": "
-         << percentile(samples.legacy_ms, 0.5) << ",\n"
-         << "  \"legacy_p95_ms\": "
-         << percentile(samples.legacy_ms, 0.95) << ",\n"
+         << "  \"record_geometry_median_ms\": "
+         << percentile(samples.record_geometry_ms, 0.5) << ",\n"
+         << "  \"record_geometry_p95_ms\": "
+         << percentile(samples.record_geometry_ms, 0.95) << ",\n"
          << "  \"gdal_median_ms\": "
          << percentile(samples.gdal_ms, 0.5) << ",\n"
          << "  \"gdal_p95_ms\": "
          << percentile(samples.gdal_ms, 0.95) << ",\n"
+         << "  \"explicit_to_wkt_ms\": "
+         << samples.explicit_wkt.milliseconds << ",\n"
+         << "  \"explicit_to_wkt_count\": "
+         << samples.explicit_wkt.feature_count << ",\n"
+         << "  \"explicit_to_wkt_bytes\": "
+         << samples.explicit_wkt.output_bytes << ",\n"
          << "  \"profile_query_total_ms\": "
          << samples.query_profile.total_ms << ",\n"
          << "  \"profile_query_spatial_ms\": "
@@ -355,16 +425,14 @@ void write_evidence(const Samples& samples) {
          << samples.feature_profile.field_materialization_ms << ",\n"
          << "  \"profile_geometry_decode_ms\": "
          << samples.feature_profile.geometry_decode_ms << ",\n"
-         << "  \"profile_wkt_write_ms\": "
-         << samples.feature_profile.wkt_write_ms << ",\n"
          << "  \"profile_wkb_write_ms\": "
          << samples.feature_profile.wkb_write_ms << ",\n"
          << "  \"profile_checksum_sink_ms\": "
          << samples.checksum_ms << ",\n"
-         << "  \"execution_path\": \"" << samples.execution_path
-         << "\",\n"
-         << "  \"correct\": " << (samples.correct ? "true" : "false")
-         << "\n"
+         << "  \"execution_path\": \""
+         << samples.execution_path << "\",\n"
+         << "  \"correct\": "
+         << (samples.correct ? "true" : "false") << "\n"
          << "}\n";
     EXPECT_TRUE(json.good()) << "failed to write " << output;
 }
@@ -455,9 +523,11 @@ protected:
     }
 };
 
-TEST_F(FeatureCursorBenchmarkTest, Point100KFullFeatureEvidence) {
-    if (!enabled())
-        GTEST_SKIP() << "set FAST_GDB_RUN_FEATURE_CURSOR_BENCHMARKS=1";
+TEST_F(FeatureCursorBenchmarkTest, Point100KWkbFirstEvidence) {
+    if (!enabled()) {
+        GTEST_SKIP()
+            << "set FAST_GDB_RUN_FEATURE_CURSOR_BENCHMARKS=1";
+    }
 
     const std::string path = create_fixture();
     ASSERT_FALSE(path.empty());
@@ -479,18 +549,21 @@ TEST_F(FeatureCursorBenchmarkTest, Point100KFullFeatureEvidence) {
     Samples samples;
     for (int sample = 0; sample < kSamples; ++sample) {
         std::optional<RunResult> cursor;
-        std::optional<RunResult> legacy;
+        std::optional<RunResult> record_geometry;
         std::optional<RunResult> gdal;
-        for (PathKind path_kind : kExecutionOrders[static_cast<size_t>(sample)]) {
+        for (PathKind path_kind :
+             kExecutionOrders[static_cast<size_t>(sample)]) {
             std::optional<RunResult> result;
             switch (path_kind) {
                 case PathKind::Cursor:
-                    result = run_cursor(catalog, *resolved, request, false);
+                    result = run_cursor(
+                        catalog, *resolved, request, false);
                     cursor = result;
                     break;
-                case PathKind::Legacy:
-                    result = run_legacy(catalog, *resolved, request);
-                    legacy = result;
+                case PathKind::RecordGeometry:
+                    result = run_record_geometry(
+                        catalog, *resolved, request);
+                    record_geometry = result;
                     break;
                 case PathKind::Gdal:
                     result = run_gdal(path);
@@ -501,15 +574,16 @@ TEST_F(FeatureCursorBenchmarkTest, Point100KFullFeatureEvidence) {
             append_sample(samples, path_kind, *result);
         }
         ASSERT_TRUE(cursor.has_value());
-        ASSERT_TRUE(legacy.has_value());
+        ASSERT_TRUE(record_geometry.has_value());
         ASSERT_TRUE(gdal.has_value());
-        ASSERT_TRUE(cursor->digest == legacy->digest);
+        ASSERT_TRUE(cursor->digest == record_geometry->digest);
         ASSERT_TRUE(cursor->digest == gdal->digest);
         ASSERT_EQ(cursor->execution_path, samples.execution_path);
         samples.digest = cursor->digest;
     }
 
-    const auto profile = run_cursor(catalog, *resolved, request, true);
+    const auto profile =
+        run_cursor(catalog, *resolved, request, true);
     ASSERT_TRUE(profile.has_value());
     ASSERT_TRUE(profile->digest == samples.digest);
     ASSERT_TRUE(profile->query_profile.fused_spatial_attribute_scan);
@@ -522,10 +596,20 @@ TEST_F(FeatureCursorBenchmarkTest, Point100KFullFeatureEvidence) {
     samples.feature_profile = profile->feature_profile;
     samples.checksum_ms = profile->checksum_ms;
 
+    const auto explicit_wkt =
+        run_explicit_wkt(catalog, *resolved, request);
+    ASSERT_TRUE(explicit_wkt.has_value());
+    ASSERT_EQ(explicit_wkt->feature_count,
+              samples.digest.feature_count);
+    samples.explicit_wkt = *explicit_wkt;
+
     ASSERT_GT(samples.digest.feature_count, 0U);
-    ASSERT_EQ(samples.cursor_ms.size(), static_cast<size_t>(kSamples));
-    ASSERT_EQ(samples.legacy_ms.size(), static_cast<size_t>(kSamples));
-    ASSERT_EQ(samples.gdal_ms.size(), static_cast<size_t>(kSamples));
+    ASSERT_EQ(samples.cursor_ms.size(),
+              static_cast<size_t>(kSamples));
+    ASSERT_EQ(samples.record_geometry_ms.size(),
+              static_cast<size_t>(kSamples));
+    ASSERT_EQ(samples.gdal_ms.size(),
+              static_cast<size_t>(kSamples));
     samples.correct = true;
     write_evidence(samples);
 }
