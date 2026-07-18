@@ -1,3 +1,6 @@
+// src/edgar/explorgdb/reader/feature_cursor.cpp
+// FeatureCursor — 管理查询结果遍历、引擎租约和 WKB-first 完整要素读取。
+
 #include "query_engine.h"
 
 #include <algorithm>
@@ -33,11 +36,8 @@ bool query_result_is_error(const QueryRequest& request,
          result.execution_path == "bbox:model:unavailable")) {
         return true;
     }
-    if (result.execution_path.empty() &&
-        !result.fallback_reason.empty()) {
-        return true;
-    }
-    return false;
+    return result.execution_path.empty() &&
+           !result.fallback_reason.empty();
 }
 
 std::string fid_error(const char* prefix, uint32_t fid) {
@@ -48,6 +48,7 @@ std::string fid_error(const char* prefix, uint32_t fid) {
 
 } // namespace
 
+/** FeatureCursor 的状态机和 QueryEngine 单游标租约实现。 */
 class FeatureCursor::Impl {
 public:
     enum class State {
@@ -141,7 +142,8 @@ public:
         }
 
         FeatureReadMetrics metrics;
-        FeatureReadMetrics* metrics_ptr = profile_enabled_ ? &metrics : nullptr;
+        FeatureReadMetrics* metrics_ptr =
+            profile_enabled_ ? &metrics : nullptr;
         if (!parser->read_feature_by_fid(
                 fid, candidate.record, candidate.geometry, metrics_ptr)) {
             std::string message = candidate.geometry.diagnostic.empty()
@@ -171,7 +173,8 @@ public:
 
         if (mode_ == Mode::CandidateFids) {
             const auto& fids = query_result_.matched_fids;
-            const auto iterator = std::lower_bound(fids.begin(), fids.end(), fid);
+            const auto iterator =
+                std::lower_bound(fids.begin(), fids.end(), fid);
             fid_index_ = static_cast<size_t>(iterator - fids.begin());
             if (iterator == fids.end()) {
                 exhaust();
@@ -191,7 +194,10 @@ public:
                     fail("feature fid exceeds uint32 range");
                     return false;
                 }
-                if (parser->has_feature(static_cast<uint32_t>(candidate))) break;
+                if (parser->has_feature(
+                        static_cast<uint32_t>(candidate))) {
+                    break;
+                }
                 ++candidate;
             }
             next_sequential_fid_ = candidate;
@@ -219,12 +225,13 @@ public:
 
 private:
     void add_metrics(const FeatureReadMetrics& metrics) {
-        FeatureCursorMetrics& total = query_result_.feature_cursor_metrics;
+        FeatureCursorMetrics& total =
+            query_result_.feature_cursor_metrics;
         ++total.feature_count;
         total.row_lookup_ms += metrics.row_lookup_ms;
-        total.field_materialization_ms += metrics.field_materialization_ms;
+        total.field_materialization_ms +=
+            metrics.field_materialization_ms;
         total.geometry_decode_ms += metrics.geometry_decode_ms;
-        total.wkt_write_ms += metrics.wkt_write_ms;
         total.wkb_write_ms += metrics.wkb_write_ms;
     }
 
@@ -269,7 +276,8 @@ private:
                 fail("feature fid exceeds uint32 range");
                 return false;
             }
-            const uint32_t current = static_cast<uint32_t>(candidate);
+            const uint32_t current =
+                static_cast<uint32_t>(candidate);
             if (!parser->has_feature(current)) continue;
             fid = current;
             return true;
@@ -356,7 +364,8 @@ FeatureCursor QueryEngine::open_cursor(const QueryRequest& request) {
             std::move(result), "another feature cursor is active"));
     }
 
-    const uint64_t planned_open_generation = cursor_control_->open_generation;
+    const uint64_t planned_open_generation =
+        cursor_control_->open_generation;
     CursorControl* const control = cursor_control_.get();
     auto acquire = [control]() noexcept {
         return control->register_feature_cursor();
@@ -373,12 +382,14 @@ FeatureCursor QueryEngine::open_cursor(const QueryRequest& request) {
         const size_t feature_limit = parser_->feature_count();
         if (parser_->active_feature_count() == 0) {
             return FeatureCursor(std::make_unique<FeatureCursor::Impl>(
-                parser_.get(), 0, std::move(acquire), std::move(release),
-                std::move(engine_valid), std::move(result),
-                request.profile_feature_reads, size_t(0)));
+                parser_.get(), 0, std::move(acquire),
+                std::move(release), std::move(engine_valid),
+                std::move(result), request.profile_feature_reads,
+                size_t(0)));
         }
 
-        const uint64_t generation = control->register_feature_cursor();
+        const uint64_t generation =
+            control->register_feature_cursor();
         if (generation == 0) {
             result.execution_path = "cursor:invalid";
             result.fallback_reason = "another feature cursor is active";
@@ -386,9 +397,10 @@ FeatureCursor QueryEngine::open_cursor(const QueryRequest& request) {
                 std::move(result), "another feature cursor is active"));
         }
         return FeatureCursor(std::make_unique<FeatureCursor::Impl>(
-            parser_.get(), generation, std::move(acquire), std::move(release),
-            std::move(engine_valid), std::move(result),
-            request.profile_feature_reads, feature_limit));
+            parser_.get(), generation, std::move(acquire),
+            std::move(release), std::move(engine_valid),
+            std::move(result), request.profile_feature_reads,
+            feature_limit));
     }
 
     result = query(request);
@@ -400,19 +412,22 @@ FeatureCursor QueryEngine::open_cursor(const QueryRequest& request) {
             std::move(result), std::move(error)));
     }
 
-    std::sort(result.matched_fids.begin(), result.matched_fids.end());
+    std::sort(result.matched_fids.begin(),
+              result.matched_fids.end());
     result.matched_fids.erase(
-        std::unique(result.matched_fids.begin(), result.matched_fids.end()),
+        std::unique(result.matched_fids.begin(),
+                    result.matched_fids.end()),
         result.matched_fids.end());
     result.record.reset();
     if (result.matched_fids.empty()) {
         return FeatureCursor(std::make_unique<FeatureCursor::Impl>(
-            parser_.get(), 0, std::move(acquire), std::move(release),
-            std::move(engine_valid), std::move(result),
-            request.profile_feature_reads));
+            parser_.get(), 0, std::move(acquire),
+            std::move(release), std::move(engine_valid),
+            std::move(result), request.profile_feature_reads));
     }
 
-    const uint64_t generation = control->register_feature_cursor();
+    const uint64_t generation =
+        control->register_feature_cursor();
     if (generation == 0) {
         result.execution_path = "cursor:invalid";
         result.fallback_reason = "another feature cursor is active";
@@ -421,9 +436,9 @@ FeatureCursor QueryEngine::open_cursor(const QueryRequest& request) {
     }
 
     return FeatureCursor(std::make_unique<FeatureCursor::Impl>(
-        parser_.get(), generation, std::move(acquire), std::move(release),
-        std::move(engine_valid), std::move(result),
-        request.profile_feature_reads));
+        parser_.get(), generation, std::move(acquire),
+        std::move(release), std::move(engine_valid),
+        std::move(result), request.profile_feature_reads));
 }
 
 uint64_t QueryEngine::register_feature_cursor() noexcept {
@@ -433,19 +448,19 @@ uint64_t QueryEngine::register_feature_cursor() noexcept {
 }
 
 void QueryEngine::release_feature_cursor(uint64_t generation) noexcept {
-    if (cursor_control_ != nullptr)
+    if (cursor_control_ != nullptr) {
         cursor_control_->release_feature_cursor(generation);
+    }
 }
 
 bool QueryEngine::feature_cursor_active() const noexcept {
     return cursor_control_ != nullptr &&
-        cursor_control_->feature_cursor_active();
+           cursor_control_->feature_cursor_active();
 }
 
-bool QueryEngine::peek_bbox_source(
-    uint32_t fid,
-    const uint8_t*& blob,
-    size_t& size) {
+bool QueryEngine::peek_bbox_source(uint32_t fid,
+                                   const uint8_t*& blob,
+                                   size_t& size) {
     if (feature_cursor_active()) return false;
     return parser_ && parser_->peek_geometry_blob(fid, blob, size);
 }
