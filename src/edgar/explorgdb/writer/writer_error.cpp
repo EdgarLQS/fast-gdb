@@ -1,3 +1,6 @@
+// src/edgar/explorgdb/writer/writer_error.cpp
+// Writer 错误码稳定名称映射，不携带堆栈或诊断细节。
+
 #include "writer_session.h"
 
 namespace explorgdb {

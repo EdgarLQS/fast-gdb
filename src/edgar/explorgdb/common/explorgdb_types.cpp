@@ -8,6 +8,15 @@
 
 namespace explorgdb {
 
+/**
+ * 返回字段物理类型的稳定显示名称。
+ *
+ * 该函数只负责诊断文本映射，不参与二进制解析分派；新增字段类型时需要
+ * 同步补充 switch 分支，避免 CLI、测试失败信息和日志退化为 UNKNOWN。
+ *
+ * @param t FileGDB 字段类型枚举。
+ * @return 静态字符串常量，调用方不得释放。
+ */
 const char* field_type_name(FieldType t) {
     switch (t) {
         case FieldType::Int16:              return "INT16";

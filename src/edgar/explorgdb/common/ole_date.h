@@ -1,38 +1,47 @@
-// src/edgar/explorgdb/ole_date.h
-// OLE DATE 转换 — FileGDB 中 DateTime/Date/Time 字段的编码格式
-//
-// OLE DATE 是 IEEE 754 double，基准点 1899-12-30 00:00:00
-//   整数部分 = 距 1899-12-30 的天数
-//   小数部分 = 当日的时间比例 (0.5 = 12:00:00)
-//
-// 注意:
-//   - Excel 兼容的 bug: 1900-02-29 被视为合法日期（实际不存在）
-//   - 负值: 1899-12-30 之前的日期，double < 0
-//   - Date: 只取整数部分（日期）
-//   - Time: 只取小数部分（时间），日期固定为 1899-12-30
-//   - DateTime: 完整的 double 值
+// src/edgar/explorgdb/common/ole_date.h
+// OLE DATE 转换 — FileGDB DateTime/Date/Time 字段的公共表示。
 
 #ifndef EXPLORGDB_OLE_DATE_H
 #define EXPLORGDB_OLE_DATE_H
 
-#include <string>
 #include <chrono>
+#include <string>
 
 namespace explorgdb {
 
-// OLE DATE → std::chrono::system_clock::time_point
-// 返回 UTC 时间点
+/**
+ * 将 OLE Automation DATE 转为 system_clock 时间点。
+ *
+ * OLE DATE 使用 1899-12-30 00:00:00 为基准，整数部分表示天数，小数部分
+ * 表示当日时间比例。返回值按 UTC 解释，不应用本地时区或夏令时。
+ *
+ * @param ole_date OLE DATE double 值。
+ * @return 对应的 UTC system_clock 时间点。
+ */
 std::chrono::system_clock::time_point ole_to_timepoint(double ole_date);
 
-// OLE DATE → 格式化的日期时间字符串
-// 格式: "YYYY-MM-DD HH:MM:SS" (DateTime)
-//       "YYYY-MM-DD"           (Date)
-//       "HH:MM:SS"             (Time)
-std::string ole_to_string(double ole_date, bool date_only, bool time_only);
+/**
+ * 将 OLE DATE 格式化为稳定诊断字符串。
+ *
+ * date_only 与 time_only 由调用方按字段物理类型选择；两者均为 false 时输出
+ * `YYYY-MM-DD HH:MM:SS`。该函数不追加时区后缀。
+ *
+ * @param ole_date OLE DATE double 值。
+ * @param date_only 仅输出日期部分。
+ * @param time_only 仅输出时间部分。
+ * @return 格式化字符串。
+ */
+std::string ole_to_string(double ole_date,
+                          bool date_only,
+                          bool time_only);
 
-// 便捷函数
+/** 格式化完整日期时间。 */
 std::string ole_datetime(double ole_date);
+
+/** 仅格式化日期部分。 */
 std::string ole_date_only(double ole_date);
+
+/** 仅格式化时间部分。 */
 std::string ole_time_only(double ole_date);
 
 } // namespace explorgdb

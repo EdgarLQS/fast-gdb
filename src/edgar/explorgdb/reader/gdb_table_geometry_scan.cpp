@@ -1,5 +1,9 @@
+// src/edgar/explorgdb/reader/gdb_table_geometry_scan.cpp
+// 几何字段扫描 — 零拷贝跳过 Geometry blob、按需物化 GeometryValue 的扫描器实现。
+
 #include "gdb_table.h"
 #include "field_layout.h"
+#include "explorgdb_constants.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -182,7 +186,7 @@ GeometryLocation locate_geometry(const std::vector<FieldDescriptor>& fields,
 size_t bounded_window_bytes(const char* env_name,
                             size_t default_mebibytes) {
     constexpr size_t kMiB = 1024U * 1024U;
-    constexpr size_t kMaximumMiB = 8U;
+    constexpr size_t kMaximumWindowMiB = 8U;
     const char* value = std::getenv(env_name);
     if (value == nullptr || *value == '\0') return default_mebibytes * kMiB;
 
@@ -190,7 +194,7 @@ size_t bounded_window_bytes(const char* env_name,
     const unsigned long parsed = std::strtoul(value, &end, 10);
     if (end == value || *end != '\0' || parsed == 0)
         return default_mebibytes * kMiB;
-    return std::min<size_t>(static_cast<size_t>(parsed), kMaximumMiB) * kMiB;
+    return std::min<size_t>(static_cast<size_t>(parsed), kMaximumWindowMiB) * kMiB;
 }
 
 size_t dense_batch_bytes() {

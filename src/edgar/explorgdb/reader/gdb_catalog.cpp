@@ -3,12 +3,15 @@
 
 #include "gdb_catalog.h"
 #include "binary_reader.h"
+#include "gdb_indexes.h"
 #include <algorithm>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <mutex>
 #include <regex>
+#include <utility>
 
 namespace fs = std::filesystem;
 
@@ -17,6 +20,7 @@ namespace explorgdb {
 bool GdbCatalog::scan(const std::string& gdb_path) {
     gdb_path_ = gdb_path;
     entries_.clear();
+    index_metadata_cache_ = std::make_shared<IndexMetadataCacheState>();
     has_magic_ = false;
     has_timestamps_ = false;
 
@@ -60,9 +64,6 @@ bool GdbCatalog::scan(const std::string& gdb_path) {
 }
 
 bool GdbCatalog::read_magic() {
-    // std::filesystem::path::value_type is wchar_t on Windows, so make the
-    // conversion explicit instead of relying on an unavailable implicit
-    // path -> std::string conversion.
     const std::string magic_file =
         (fs::path(gdb_path_) / "gdb").string();
     std::ifstream input(magic_file, std::ios::binary);
@@ -125,6 +126,65 @@ const CatalogEntry* GdbCatalog::find_spx(uint32_t id) const {
             return &entry;
     }
     return nullptr;
+}
+
+const CatalogEntry* GdbCatalog::find_indexes(uint32_t id) const {
+    for (const auto& entry : entries_) {
+        if (entry.numeric_id == id && entry.extension == ".gdbindexes")
+            return &entry;
+    }
+    return nullptr;
+}
+
+bool GdbCatalog::read_index_metadata(
+    uint32_t id,
+    std::vector<IndexEntry>& output) const {
+    output.clear();
+    const std::shared_ptr<IndexMetadataCacheState> cache =
+        index_metadata_cache_;
+    {
+        std::shared_lock<std::shared_mutex> lock(cache->mutex);
+        const auto found = cache->entries.find(id);
+        if (found != cache->entries.end()) {
+            if (found->second.parsed) output = found->second.entries;
+            return found->second.parsed;
+        }
+    }
+
+    // Metadata files are small. Serialize the first parse per catalog snapshot
+    // so concurrent QueryEngine instances cannot duplicate UTF-16 decoding or
+    // publish conflicting success/failure entries.
+    std::unique_lock<std::shared_mutex> lock(cache->mutex);
+    const auto existing = cache->entries.find(id);
+    if (existing != cache->entries.end()) {
+        if (existing->second.parsed) output = existing->second.entries;
+        return existing->second.parsed;
+    }
+
+    std::string filename;
+    for (const auto& entry : entries_) {
+        if (entry.numeric_id == id && entry.extension == ".gdbindexes") {
+            filename = entry.filename;
+            break;
+        }
+    }
+
+    IndexMetadataCacheEntry parsed;
+    if (!filename.empty()) {
+        try {
+            GdbIndexesParser parser(gdb_path_ + "/" + filename);
+            parsed.parsed = parser.parse();
+            if (parsed.parsed) parsed.entries = parser.entries();
+        } catch (...) {
+            parsed.parsed = false;
+            parsed.entries.clear();
+        }
+    }
+
+    const auto inserted = cache->entries.emplace(id, std::move(parsed));
+    const IndexMetadataCacheEntry& stored = inserted.first->second;
+    if (stored.parsed) output = stored.entries;
+    return stored.parsed;
 }
 
 const CatalogEntry* GdbCatalog::find_atx(

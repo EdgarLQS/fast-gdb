@@ -1,7 +1,13 @@
-// src/field.cpp — GdbField 实现
+// src/edgar/usegdal/field.cpp
+// GdbField 实现 — 在 std::variant 值模型与 GDAL/OGR 字段类型之间转换。
+//
+// 转换策略刻意保持轻量：数值读取允许窄化/拓宽，字符串不隐式解析为数值；
+// 不支持的 OGR 类型和空字段统一映射为 Null，使调用方能够稳定处理降级情况。
 
 #include "field.h"
 #include "ogr_feature.h"
+
+// ========== 运行时类型与空值 ==========
 
 GdbField::Type GdbField::getType() const {
     if (std::holds_alternative<std::nullptr_t>(m_value)) return Type::Null;
@@ -15,6 +21,8 @@ GdbField::Type GdbField::getType() const {
 bool GdbField::isNull() const {
     return std::holds_alternative<std::nullptr_t>(m_value);
 }
+
+// ========== 标量访问 ==========
 
 int32_t GdbField::asInteger() const {
     if (std::holds_alternative<int32_t>(m_value))
@@ -49,6 +57,7 @@ double GdbField::asDouble() const {
 const std::string& GdbField::asString() const {
     if (std::holds_alternative<std::string>(m_value))
         return std::get<std::string>(m_value);
+    // 返回静态对象避免为非字符串访问重复分配临时字符串。
     static const std::string empty;
     return empty;
 }
@@ -63,6 +72,8 @@ std::string GdbField::typeName() const {
     }
     return "Unknown";
 }
+
+// ========== OGR 字段适配 ==========
 
 GdbField GdbField::fromOgrField(
     const OGRFeature* feature, int index) {
@@ -94,6 +105,7 @@ GdbField GdbField::fromOgrField(
         case OFTDate:
         case OFTTime:
         case OFTDateTime:
+            // 日期时间保持 GDAL 的标准文本表示，避免在值层引入时区策略。
             return GdbField(std::string(
                 feature->GetFieldAsString(index)));
         default:

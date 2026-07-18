@@ -1,3 +1,6 @@
+// src/edgar/explorgdb/writer/writer_transaction.h
+// 组合事务 — 在同一私有工作 GDB 上串联 Append/Update/Delete 并一次发布。
+
 #ifndef EXPLORGDB_WRITER_TRANSACTION_H
 #define EXPLORGDB_WRITER_TRANSACTION_H
 
@@ -14,9 +17,13 @@
 namespace explorgdb {
 namespace writer {
 
-// GDAL-only single-writer transaction. Append/Update/Delete callbacks operate
-// on one private working GDB. The real source is replaced exactly once by
-// commit(); abort()/destruction remove all transaction-owned state.
+/**
+ * GDAL 单写者组合事务。
+ *
+ * open() 创建一份 transaction-owned working GDB。append/update/erase 回调
+ * 复用该工作副本，不在每个操作后发布；commit() 只替换真实源一次。
+ * abort() 或析构负责清理全部事务私有状态。
+ */
 class WriterTransaction {
 public:
     using AppendEdit = std::function<bool(WriterAppendSession&)>;
@@ -30,12 +37,23 @@ public:
     WriterTransaction(const WriterTransaction&) = delete;
     WriterTransaction& operator=(const WriterTransaction&) = delete;
 
+    /** 创建事务工作副本并锁定目标图层的单写者上下文。 */
     bool open(const std::string& source_gdb_path,
               const std::string& layer_name);
+
+    /** 在同一 working GDB 上执行一次追加编辑回调。 */
     bool append(const AppendEdit& edit);
+
+    /** 在同一 working GDB 上执行一次更新编辑回调。 */
     bool update(const UpdateEdit& edit);
+
+    /** 在同一 working GDB 上执行一次删除编辑回调。 */
     bool erase(const DeleteEdit& edit);
+
+    /** 完整验证 working GDB 后一次发布；失败保留可恢复证据。 */
     bool commit();
+
+    /** 放弃全部未发布操作并清理事务私有目录。 */
     bool abort();
 
     uint64_t operation_count() const noexcept;
@@ -50,7 +68,7 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace writer
-}  // namespace explorgdb
+} // namespace writer
+} // namespace explorgdb
 
-#endif  // EXPLORGDB_WRITER_TRANSACTION_H
+#endif // EXPLORGDB_WRITER_TRANSACTION_H

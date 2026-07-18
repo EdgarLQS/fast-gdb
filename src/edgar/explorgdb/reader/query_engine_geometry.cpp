@@ -1,4 +1,5 @@
 #include "query_engine.h"
+#include "explorgdb_constants.h"
 #include "spatial_predicate.h"
 
 #include <algorithm>
@@ -11,9 +12,6 @@
 namespace explorgdb {
 namespace {
 
-constexpr double kDefaultSequentialDensity = 0.50;
-constexpr double kDefaultDirectScanCoverage = 0.29;
-constexpr size_t kMinimumAdaptiveFeatureCount = 1024;
 using SpatialClock = std::chrono::steady_clock;
 
 double elapsed_ms(SpatialClock::time_point start) {
@@ -100,23 +98,28 @@ QueryResult QueryEngine::query_bbox_unified(
     const auto total_start = SpatialClock::now();
     const bool profile_stages =
         env_flag_enabled("FAST_GDB_SPATIAL_PROFILE");
+    if (feature_cursor_active()) {
+        result.execution_path = kPathBboxModelBlocked;
+        result.fallback_reason = kFallbackCursorActive;
+        return result;
+    }
     if (!parser_) {
-        result.execution_path = "bbox:model:unavailable";
-        result.fallback_reason = "table not open";
+        result.execution_path = kPathBboxModelUnavailable;
+        result.fallback_reason = kFallbackTableNotOpen;
         return result;
     }
     if (!std::isfinite(xmin) || !std::isfinite(ymin) ||
         !std::isfinite(xmax) || !std::isfinite(ymax) ||
         xmin > xmax || ymin > ymax) {
-        result.execution_path = "bbox:model:invalid";
-        result.fallback_reason = "invalid query bbox";
+        result.execution_path = kPathBboxModelInvalid;
+        result.fallback_reason = kFallbackInvalidBbox;
         return result;
     }
 
     const auto* geom_field = geometry_field();
     if (geom_field == nullptr) {
-        result.execution_path = "bbox:model:unavailable";
-        result.fallback_reason = "table has no geometry field";
+        result.execution_path = kPathBboxModelUnavailable;
+        result.fallback_reason = kDiagnosticNoGeometryField;
         return result;
     }
 
@@ -124,7 +127,7 @@ QueryResult QueryEngine::query_bbox_unified(
     const size_t feature_count = parser_->active_feature_count();
     result.spatial_metrics.feature_count = feature_count;
     if (feature_count == 0) {
-        result.execution_path = "bbox:model:empty";
+        result.execution_path = kPathBboxModelEmpty;
         result.spatial_metrics.total_ms = elapsed_ms(total_start);
         return result;
     }
@@ -161,8 +164,8 @@ QueryResult QueryEngine::query_bbox_unified(
                 } else {
                     capabilities_.spatial_index = {
                         CapabilityState::Degraded,
-                        ".spx exists but could not be parsed; "
-                        "falling back to sequential model filtering"};
+
+                        kDiagnosticSpxParseFail};
                 }
             }
         }
@@ -181,13 +184,13 @@ QueryResult QueryEngine::query_bbox_unified(
     }
 
     if (planner_direct_scan) {
-        result.execution_path = "bbox:model:sequential-planned";
+        result.execution_path = kPathBboxModelSequentialPlanned;
         result.spatial_metrics.candidate_count = feature_count;
         result.spatial_metrics.candidate_ratio = 1.0;
     } else if (sequential_fallback) {
-        result.execution_path = "bbox:model:sequential-fallback";
+        result.execution_path = kPathBboxModelSequentialFallback;
         result.fallback_reason = !spatial_index_present_
-            ? "spatial index missing; sequential model filtering used"
+            ? kDiagnosticSpatialIndexMissing
             : capabilities_.spatial_index.reason;
         result.spatial_metrics.candidate_count = feature_count;
         result.spatial_metrics.candidate_ratio = 1.0;
@@ -328,8 +331,8 @@ QueryResult QueryEngine::query_bbox_unified(
                 std::sort(result.matched_fids.begin(),
                           result.matched_fids.end());
                 result.execution_path = spx_parse_ok
-                    ? "bbox:model:spx-candidates-batched"
-                    : "bbox:model:candidate-fallback-batched";
+                    ? kPathBboxModelSpxCandidatesBatched
+                    : kPathBboxModelCandidateFallbackBatched;
                 return;
             }
             result.matched_fids.resize(matched_before);
@@ -359,7 +362,7 @@ QueryResult QueryEngine::query_bbox_unified(
 
     if (use_sequential_scan) {
         if (!planner_direct_scan && !sequential_fallback)
-            result.execution_path = "bbox:model:sequential-adaptive";
+            result.execution_path = kPathBboxModelSequentialAdaptive;
         const auto scan_start = SpatialClock::now();
         const uint64_t scanned = parser_->scan_geometry_blobs(
             [&](uint32_t fid, const uint8_t* geometry,
@@ -376,8 +379,8 @@ QueryResult QueryEngine::query_bbox_unified(
 
         if (scanned == 0 && feature_count != 0) {
             result.execution_path = spx_parse_ok
-                ? "bbox:model:spx-candidates"
-                : "bbox:model:candidate-fallback";
+                ? kPathBboxModelSpxCandidates
+                : kPathBboxModelCandidateFallback;
             result.matched_fids.clear();
             result.spatial_metrics.bbox_rejected = 0;
             result.spatial_metrics.bbox_contained = 0;
@@ -393,7 +396,7 @@ QueryResult QueryEngine::query_bbox_unified(
         }
     } else {
         if (spx_parse_ok)
-            result.execution_path = "bbox:model:spx-candidates";
+            result.execution_path = kPathBboxModelSpxCandidates;
         evaluate_candidates();
     }
 
@@ -402,7 +405,7 @@ QueryResult QueryEngine::query_bbox_unified(
             result.fallback_reason += "; ";
         result.fallback_reason +=
             std::to_string(result.spatial_metrics.invalid_geometries) +
-            " candidate geometries had explicit decode/topology errors";
+            kDiagnosticGeometryDecodeErrors;
     }
     result.spatial_metrics.total_ms = elapsed_ms(total_start);
     return result;

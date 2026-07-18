@@ -1,0 +1,91 @@
+name: spatial-where-performance
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/spatial-where-performance.yml'
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+      - 'src/edgar/explorgdb/reader/**'
+      - 'tests/usegdal/test_feature_cursor_benchmark.cpp'
+      - 'tests/usegdal/test_spatial_where_*.cpp'
+      - 'tests/edgar/explorgdb/reader/test_gdb_attribute_index_safety.cpp'
+      - 'tests/edgar/explorgdb/reader/test_catalog_index_metadata_cache.cpp'
+      - 'tests/edgar/explorgdb/reader/test_gdb_spatial_index_merge.cpp'
+      - 'tests/edgar/explorgdb/reader/test_catalog_resolver.cpp'
+      - 'tests/edgar/explorgdb/reader/test_geometry_contracts.cpp'
+      - 'tests/edgar/explorgdb/reader/test_geometry_writer_exact.cpp'
+  workflow_dispatch:
+
+concurrency:
+  group: spatial-where-performance-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release-benchmark:
+    name: release-100k-full-feature-vs-gdal
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libgdal-dev python3
+
+      - name: Configure Release reader tests
+        run: >-
+          cmake -S . -B build-perf -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DFAST_GDB_WITH_GDAL=ON
+          -DFAST_GDB_CURVE_BACKEND=BUILTIN
+          -DFAST_GDB_GEOMETRY_OUTPUT=STANDARD_WKB
+          -DFAST_GDB_BUILD_TOOLS=OFF
+          -DFAST_GDB_BUILD_FULL_TESTS=ON
+          -DBUILD_TESTING=ON
+
+      - name: Build test runner
+        run: cmake --build build-perf --target gdb_tutorial_test_runner --parallel
+
+      - name: Run optimization correctness tests
+        run: >-
+          ctest --test-dir build-perf --output-on-failure
+          -R 'AttributeIndexSafety|CatalogResolverTest|GdbCatalogIndexMetadataCache|GeometryOutputContract|GeometryCurveDecoder|GeometryWriterExactTest|SpatialIndexMerge|SpatialWhereAdaptive|SpatialWhereFusedGeometry|SpatialWhereIndexFallback|FeatureCursorOnePass'
+
+      - name: Run 100K full-feature benchmark
+        env:
+          FAST_GDB_RUN_FEATURE_CURSOR_BENCHMARKS: '1'
+          FAST_GDB_BENCHMARK_OUTPUT_DIR: ${{ github.workspace }}/benchmark-results
+        run: >-
+          ctest --test-dir build-perf --output-on-failure
+          -R 'FeatureCursorBenchmarkTest.Point100KFullFeatureEvidence'
+
+      - name: Enforce strict GDAL overtake gate
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path('benchmark-results/feature-cursor-100k-schema-v2.json')
+          data = json.loads(path.read_text(encoding='utf-8'))
+          cursor = float(data['cursor_median_ms'])
+          gdal = float(data['gdal_median_ms'])
+          assert data.get('correct') is True, data
+          assert int(data.get('result_count', -1)) == 1000, data
+          assert data.get('profile_fused_spatial_attribute_scan') is True, data
+          assert int(data.get('profile_spatial_match_count', -1)) == 10000, data
+          assert int(data.get('profile_attribute_tested', -1)) == 10000, data
+          assert cursor < gdal, (
+              f'fast-gdb has not overtaken GDAL: cursor={cursor:.3f} ms, '
+              f'gdal={gdal:.3f} ms')
+          print(f'PASS: cursor={cursor:.3f} ms < GDAL={gdal:.3f} ms')
+          PY
+
+      - name: Upload benchmark evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: spatial-where-performance-${{ github.sha }}
+          path: benchmark-results/*.json
+          if-no-files-found: warn

@@ -1,9 +1,19 @@
+// src/edgar/explorgdb/writer/writer_transaction.cpp
+// 复合 Writer 事务 — 在单个 working 副本中组合 append/update/delete 并原子发布。
+//
+// 一致性模型：
+// - open() 复制 source 并记录目录指纹，所有子操作只修改 working 副本。
+// - 任一子会话失败后锁定事务，防止带着部分结果继续执行后续操作。
+// - commit() 先重开验证 working，再检查 source 未变化，最后执行 source→backup、
+//   working→source 的两阶段目录切换；第二步失败时尽力恢复 backup。
+
 #include "writer_transaction.h"
 
 #if defined(FAST_GDB_WITH_GDAL_ENABLED)
 
 #include "gdal_priv.h"
 #include "ogrsf_frmts.h"
+#include "explorgdb_constants.h"
 
 #include <chrono>
 #include <filesystem>
@@ -16,27 +26,32 @@ namespace writer {
 namespace fs = std::filesystem;
 
 namespace {
+
+// 同一父目录内使用高精度时间与随机数生成互不冲突的工作目录后缀。
 std::string suffix() {
     return std::to_string(std::chrono::high_resolution_clock::now()
                               .time_since_epoch().count()) + "-" +
            std::to_string(std::random_device{}());
 }
 
+// 轻量指纹用于检测事务期间的外部修改；它不是内容哈希，而是并发发布守卫。
 uint64_t fingerprint(const fs::path& root) {
-    uint64_t hash = 1469598103934665603ULL;
+    uint64_t hash = kFnv1aBasis;
     std::error_code error;
     for (fs::recursive_directory_iterator it(root, error), end;
          !error && it != end; it.increment(error)) {
         if (!it->is_regular_file(error)) continue;
         hash ^= it->file_size(error);
-        hash *= 1099511628211ULL;
+        hash *= kFnv1aPrime;
         hash ^= static_cast<uint64_t>(
             it->last_write_time(error).time_since_epoch().count());
-        hash *= 1099511628211ULL;
+        hash *= kFnv1aPrime;
     }
     return error ? 0 : hash;
 }
 }  // namespace
+
+// ========== 事务状态与错误传播 ==========
 
 struct WriterTransaction::Impl {
     std::string source;
@@ -52,6 +67,7 @@ struct WriterTransaction::Impl {
     bool published = false;
     bool aborted = false;
 
+    // 首个失败锁定事务；后续入口不再覆盖最接近根因的诊断。
     bool fail(WriterStage stage, WriterErrorCode code,
               const std::string& path, const std::string& reason,
               bool retryable = false) {
@@ -78,6 +94,7 @@ struct WriterTransaction::Impl {
         return true;
     }
 
+    // 子会话已提供结构化错误时原样保留；否则生成稳定的回退诊断。
     bool adopt_child_error(const WriterError& child,
                            const std::string& fallback) {
         if (child) {
@@ -99,11 +116,14 @@ struct WriterTransaction::Impl {
 
 WriterTransaction::WriterTransaction() : impl_(std::make_unique<Impl>()) {}
 WriterTransaction::~WriterTransaction() {
+    // 未发布事务自动清理 working；已发布状态绝不由析构路径反向修改。
     if (impl_ && !impl_->committed && !impl_->published && !impl_->aborted)
         abort();
 }
 WriterTransaction::WriterTransaction(WriterTransaction&&) noexcept = default;
 WriterTransaction& WriterTransaction::operator=(WriterTransaction&&) noexcept = default;
+
+// ========== 创建 working 副本 ==========
 
 bool WriterTransaction::open(const std::string& source,
                              const std::string& layer_name) {
@@ -149,6 +169,8 @@ bool WriterTransaction::open(const std::string& source,
     impl_->opened = true;
     return true;
 }
+
+// ========== 子编辑操作 ==========
 
 bool WriterTransaction::append(const AppendEdit& edit) {
     if (!impl_->usable(WriterStage::Row)) return false;
@@ -207,6 +229,8 @@ bool WriterTransaction::erase(const DeleteEdit& edit) {
     return true;
 }
 
+// ========== 原子发布与回滚 ==========
+
 bool WriterTransaction::commit() {
     if (!impl_->usable(WriterStage::Publish)) return false;
     if (impl_->operations == 0)
@@ -214,6 +238,7 @@ bool WriterTransaction::commit() {
                            WriterErrorCode::InvalidState, impl_->working,
                            "transaction has no successful operations");
 
+    // 发布前重开 working，至少确保目标图层仍可由 GDAL 识别。
     auto* dataset = static_cast<GDALDataset*>(GDALOpenEx(
         impl_->working.c_str(), GDAL_OF_VECTOR, nullptr, nullptr, nullptr));
     if (!dataset)
@@ -227,6 +252,7 @@ bool WriterTransaction::commit() {
                            WriterErrorCode::ValidationFailed, impl_->working,
                            "transaction working layer cannot be reopened");
 
+    // 乐观并发检查：source 被外部进程修改时拒绝覆盖。
     if (fingerprint(impl_->source) != impl_->source_fingerprint)
         return impl_->fail(WriterStage::Publish,
                            WriterErrorCode::SourceChanged, impl_->source,
@@ -240,6 +266,7 @@ bool WriterTransaction::commit() {
                            error.message(), true);
     fs::rename(impl_->working, impl_->source, error);
     if (error) {
+        // 第二次 rename 失败时，backup 是唯一完整副本，必须优先恢复 source。
         std::error_code rollback;
         fs::rename(impl_->backup, impl_->source, rollback);
         return impl_->fail(WriterStage::Publish,
@@ -299,6 +326,7 @@ const WriterError& WriterTransaction::error() const noexcept { return impl_->err
 
 #else
 
+// 非 GDAL 构建保留 API 和可诊断失败，不创建 working 或修改源目录。
 namespace explorgdb {
 namespace writer {
 struct WriterTransaction::Impl {

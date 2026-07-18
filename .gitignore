@@ -16,3 +16,5 @@ test_data/
 /local-acceptance-*.txt
 __pycache__/
 *.py[cod]
+/build_off
+/.idea

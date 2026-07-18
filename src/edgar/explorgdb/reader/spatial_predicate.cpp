@@ -1,3 +1,6 @@
+// src/edgar/explorgdb/reader/spatial_predicate.cpp
+// 空间谓词 — FileGDB 整数网格上的包围盒相交判断与点定位。
+
 #include "spatial_predicate.h"
 
 #include <algorithm>
@@ -5,6 +8,7 @@
 namespace explorgdb {
 namespace {
 
+/** 几何包围盒与查询包围盒是否不相交。 */
 bool bbox_disjoint(const GridBbox& geometry,
                    const QueryGridBbox& query) {
     return !geometry.initialized ||
@@ -14,6 +18,7 @@ bool bbox_disjoint(const GridBbox& geometry,
            query.ymax < static_cast<long double>(geometry.ymin);
 }
 
+/** 单个网格点是否在查询包围盒内。 */
 bool point_in_bbox(const GridPoint& point,
                    const QueryGridBbox& bbox) {
     return static_cast<long double>(point.x) >= bbox.xmin &&
@@ -22,6 +27,12 @@ bool point_in_bbox(const GridPoint& point,
            static_cast<long double>(point.y) <= bbox.ymax;
 }
 
+/**
+ * 线段与包围盒是否相交（Liang-Barsky 裁剪算法）。
+ *
+ * 使用参数化线段方程，clip 到六个面的裁剪平面。
+ * 两个端点都在外面时，如果线段穿过包围盒，param 区间 [first, last] 仍有有效重叠。
+ */
 bool segment_intersects_bbox(const GridPoint& a, const GridPoint& b,
                              const QueryGridBbox& query) {
     if (point_in_bbox(a, query) || point_in_bbox(b, query)) return true;
@@ -53,6 +64,7 @@ bool segment_intersects_bbox(const GridPoint& a, const GridPoint& b,
            first <= last;
 }
 
+/** 折线与包围盒相交判断，closed 参数表示是否闭合多边形。 */
 bool line_intersects_bbox(const PointSequence& line,
                           const QueryGridBbox& bbox,
                           bool closed) {
@@ -70,6 +82,12 @@ bool line_intersects_bbox(const PointSequence& line,
     return false;
 }
 
+/**
+ * 射线法判断实数坐标点在环中的位置。
+ *
+ * 使用偶数奇偶性规则：射线从点向右水平发射，与环边的交点计数为奇数则在内。
+ * 处理边界情况（点在环上）和顶点处的水平边退化。
+ */
 PointRingLocation point_in_ring_xy(long double x, long double y,
                                    const RingModel& ring) {
     if (!ring.bbox.initialized || ring.points.size() < 3 ||
@@ -103,6 +121,7 @@ PointRingLocation point_in_ring_xy(long double x, long double y,
                   : PointRingLocation::Outside;
 }
 
+/** 在多边形中定位实数坐标点（外环/内环/边界/外部）。 */
 PointGeometryLocation locate_xy(const MultiPolygonModel& model,
                                 long double x, long double y) {
     for (const auto& polygon : model.polygons) {
@@ -136,6 +155,7 @@ PointGeometryLocation SpatialPredicate::locate_point(
                      static_cast<long double>(point.y));
 }
 
+/** 根据几何类型分派包围盒相交判断。 */
 bool SpatialPredicate::intersects_bbox(const GeometryModel& geometry,
                                        const QueryGridBbox& bbox) {
     if (!geometry.valid() || geometry.is_empty() ||
@@ -162,6 +182,7 @@ bool SpatialPredicate::intersects_bbox(const GeometryModel& geometry,
                 const auto& outer = geometry.multipolygon.rings.at(
                     polygon.exterior_ring);
                 if (bbox_disjoint(outer.bbox, bbox)) continue;
+                // 先检查外环线段是否穿过包围盒，再检查包围盒角点是否在面内。
                 if (line_intersects_bbox(outer.points, bbox, true))
                     return true;
                 for (size_t hole_index : polygon.interior_rings) {

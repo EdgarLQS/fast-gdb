@@ -15,6 +15,10 @@ struct ResolvedTable {
     std::string name;
     std::string table_path;
     std::string tablx_path;
+    // Set by CatalogResolver::resolve() from the already loaded system catalog.
+    // Manual/legacy aggregate construction leaves this unknown, in which case
+    // QueryEngine::open() retains the resolver fallback.
+    std::optional<bool> has_spatial_refs;
 };
 
 struct SystemCatalogRow {
@@ -43,4 +47,4 @@ private:
 
 } // namespace explorgdb
 
-#endif
+#endif // EXPLORGDB_CATALOG_RESOLVER_H

@@ -1,3 +1,8 @@
+// src/edgar/explorgdb/reader/curve_geometry.cpp
+// 曲线几何解码与线段化 — 将 Arc/CircularArc/Ellipse 描述符转为 PointSequence。
+//
+// 算法细节参见 curve_geometry.h 文件头说明和 QUERY_FLOW.md。
+
 #include "curve_geometry.h"
 #include "polygon_topology.h"
 

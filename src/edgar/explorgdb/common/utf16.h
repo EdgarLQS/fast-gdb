@@ -1,19 +1,5 @@
-// src/edgar/explorgdb/utf16.h
-// UTF-16LE 字符串转换 — FileGDB 中所有名称和 WKT 字符串的编码格式
-//
-// FileGDB 约定：
-//   - 字符串统一使用 UTF-16LE 编码（小端序，每字符 2 字节）
-//   - 名称长度以字符个数给出（不是字节数）
-//   - WKT 字符串长度以字节数给出（需要除以 2 才是字符数）
-//   - 支持 BMP 字符（U+0000 ~ U+FFFF），不含代理对（surrogate pairs）
-//
-// 转换函数:
-//   utf16le_to_utf8(data, char_count) — 将 UTF-16LE 字节流转为 UTF-8 std::string
-//   utf8_to_utf16(str)                — 将 UTF-8 std::string 转为 UTF-16 std::u16string
-//
-// 注意：当前实现仅支持 BMP 字符（最多 3 字节 UTF-8 编码），
-// 不处理代理对（surrogate pairs）。如果未来 GDB 数据包含 Emoji 等
-// 超出 BMP 的字符，需要补充代理对处理。
+// src/edgar/explorgdb/common/utf16.h
+// UTF-16LE 转换 — FileGDB 名称、别名和空间参考文本的编码边界。
 
 #ifndef EXPLORGDB_UTF16_H
 #define EXPLORGDB_UTF16_H
@@ -23,17 +9,28 @@
 
 namespace explorgdb {
 
-// 将 UTF-16LE 编码的字节序列转换为 UTF-8 字符串
-// data       — 指向 UTF-16LE 字节序列的指针（小端序）
-// char_count — 字符个数（不是字节数，每字符占 2 字节）
-// 返回       — UTF-8 编码的 std::string
-// 遇到 null 字符（U+0000）时提前终止
+/**
+ * 将 UTF-16LE 代码单元转换为 UTF-8。
+ *
+ * FileGDB 字段名称、别名和空间参考定义通常以 UTF-16LE 保存，调用方传入的
+ * char_count 是 16-bit 代码单元数量而不是字节数。当前实现只处理 BMP，遇到
+ * U+0000 提前结束，不组合代理对。
+ *
+ * @param data UTF-16LE 字节序列起始地址。
+ * @param char_count 可读取的 16-bit 代码单元数量。
+ * @return UTF-8 字符串。
+ */
 std::string utf16le_to_utf8(const uint8_t* data, int char_count);
 
-// 将 UTF-8 字符串转换为 UTF-16 std::u16string
-// str    — UTF-8 编码的字符串
-// 返回   — UTF-16 编码的 std::u16string
-// 当前实现仅支持 BMP 字符（U+0000 ~ U+FFFF），不处理代理对
+/**
+ * 将 UTF-8 字符串转换为 UTF-16 代码单元。
+ *
+ * 该函数服务于 Writer 的 FileGDB 元数据编码。当前只接受可表示为单个 BMP
+ * 代码单元的字符；4 字节 UTF-8 序列不会生成代理对。
+ *
+ * @param str UTF-8 输入。
+ * @return UTF-16 代码单元序列。
+ */
 std::u16string utf8_to_utf16(const std::string& str);
 
 } // namespace explorgdb

@@ -1,118 +1,212 @@
-# GDB 教程测试总览
+# GDB 教程与回归测试总览
 
-本目录包含 GDB 教程配套测试，**测试即教程**——每个测试文件头部的注释就是对应章节的教程内容。
+当前分支 `codex/spatial-attribute-query` 新增空间属性联合查询、完整 Feature 流式
+迭代、one-pass 完整对象读取、`.atx` direct 查询、自适应联合规划和融合候选扫描测试。
+2026-07-18 本地审核已取得 GDAL OFF/ON Release、并行 CTest、package consumer 和两项
+100K benchmark 证据；环境门控 SKIP、跨平台和真实数据仍单独记录。
 
-测试数据路径、生成方式、环境变量、跨平台命令和验收标准统一见
-[`docs/usage/03_测试数据准备与跨平台验证.md`](../docs/usage/03_测试数据准备与跨平台验证.md)。本页只维护测试目录、命名规则和入口，避免重复维护数据说明。
-
-功能覆盖和基准状态见
-[`docs/usage/04_功能与基准测试覆盖矩阵.md`](../docs/usage/04_功能与基准测试覆盖矩阵.md)。
+功能矩阵见 [`docs/usage/04_功能与基准测试覆盖矩阵.md`](../docs/usage/04_功能与基准测试覆盖矩阵.md)。
 
 ## 目录结构
 
-```
+```text
 tests/
-├── test_runner.cpp                       # Google Test 入口
-├── test_fixture.h                        # 共享 Fixture（GDAL 初始化 + 自动清理）
-├── benchmark_full_performance.cpp        # 完整性能基准测试（集成在 test_runner 中）
-│
-├── tutorials/                            # 基础教程测试（T001~T010，27 用例）
-│   ├── test_001_format.cpp              #   001 GDB 格式与内部结构
-│   ├── test_002_drivers.cpp             #   002 两套驱动对比与选择
-│   ├── test_003_readwrite.cpp           #   003 读写实战指南
-│   ├── test_004_raster.cpp              #   004 栅格图层读取
-│   ├── test_005_source_chain.cpp        #   005 源码深度解析与调用链
-│   ├── test_007_testdata.cpp            #   007 测试数据与验证
-│   ├── test_008_pitfalls.cpp            #   008 常见问题与陷阱
-│   └── test_010_experiments.cpp         #   010 最小实验
-│
-├── usegdal/                              # usegdal 组件测试（无单独维护用例数）
-│   ├── datasource_test.cpp              #   GdbDatasource 打开/关闭/事务能力
-│   ├── datasets_test.cpp                #   GdbDatasets 图层枚举/字段元数据
-│   ├── datasets_write_test.cpp          #   创建/删除图层
-│   ├── recordset_test.cpp               #   顺序游标/类型读取
-│   ├── recordset_write_test.cpp         #   写入操作
-│   ├── feature_test.cpp                 #   FID/Geometry/Fields 读写
-│   ├── field_test.cpp                   #   类型创建/转换/isNull
-│   ├── batch_writer_test.cpp            #   批量插入/flush/commit
-│   ├── transaction_test.cpp             #   begin/commit/rollback
-│   ├── query_builder_test.cpp           #   链式 where/spatial/limit
-│   ├── query_test.cpp                   #   属性+空间查询参数
-│   ├── pool_test.cpp                    #   连接池 acquire/release
-│   ├── connection_info_test.cpp         #   默认连接参数
-│   └── write_benchmark_test.cpp         #   写入性能基准
-│
-├── explorgdb/                            # explorgdb 纯 C++ 解析器测试
-│   ├── test_fixture_explorgdb.h         #   explorgdb 专用 Fixture
-│   ├── generate_large_gdb.cpp           #   大规模测试数据生成器（独立可执行文件）
-│   ├── common/                           #   common/ 模块测试
-│   │   ├── test_binary_reader.cpp       #     字节序/seek/整数读取
-│   │   ├── test_varint.cpp              #     varint 编解码往返
-│   │   ├── test_utf16.cpp               #     UTF-16LE → UTF-8 转换
-│   │   └── test_ole_date.cpp            #     OLE DATE → time_point
-│   ├── reader/                           #   reader/ 模块测试
-│   │   ├── test_catalog.cpp             #     目录扫描/magic 校验
-│   │   ├── test_gdbtable.cpp            #     .gdbtable 头/字段/记录
-│   │   ├── test_gdbtablx.cpp            #     .gdbtablx 偏移表/位图
-│   │   ├── test_gdbindexes.cpp          #     .gdbindexes 元数据解析
-│   │   ├── test_gdb_spatial_index.cpp   #     .spx 解析/query_bbox
-│   │   ├── test_gdb_attribute_index.cpp #     .atx 索引解析（合成数据）
-│   │   ├── test_geometry.cpp            #     几何 blob 解码（Point/Poly/Multi*）
-│   │   ├── test_spatial_benchmark.cpp   #     空间查询性能 vs GDAL
-│   │   ├── test_synthetic.cpp           #     合成数据自包含测试
-│   │   └── test_full_audit.cpp          #     端到端 spx.gdb 审计
-│   └── writer/                           #   writer/ 模块测试
-│       ├── test_writer.cpp              #     二进制写入正确性/交叉验证
-│       └── test_index_creator.cpp       #     CreateSpatialIndex/.spx 创建
-│
-└── tools/                                # 独立工具（不参与 test_runner 编译）
-    ├── benchmark_index_creation.cpp      #   索引创建性能基准
-    ├── generate_100k_polygons.cpp        #   10 万面数据生成器
-    ├── verify_arcgis_indexes.cpp         #   ArcGIS Pro 索引验证
-    ├── verify_binary_write_index.cpp     #   二进制写入后索引验证
-    └── verify_gdal_indexes.cpp           #   GDAL 兼容性验证
+├── test_runner.cpp
+├── test_fixture.h
+├── tutorials/
+├── usegdal/                           # GDAL 集成、cursor 和 benchmark
+├── edgar/explorgdb/
+│   ├── common/
+│   ├── reader/                        # 纯 C++ Reader 与 API 合同
+│   └── writer/
+├── package_consumer/
+└── tools/
 ```
 
-## 运行方式
+测试数量随构建选项变化，应使用 `--gtest_list_tests` 或 `ctest -N`。
 
-当前 `./build/bin/gdb_tutorial_test_runner --gtest_list_tests` 可枚举 369 个测试。为避免文档数字过期，本页只维护目录和命名规则，不单独维护各子目录的精确用例数。
+## 当前分支新增或增强的 GDAL OFF 测试
+
+| 文件 | 主要覆盖 |
+|---|---|
+| `edgar/explorgdb/reader/test_query_where_internal.cpp` | WHERE、NULL、NaN、字段绑定、FID 交集 |
+| `edgar/explorgdb/reader/test_gdbindexes_expression.cpp` | 裸字段、函数索引表达式分类 |
+| `edgar/explorgdb/reader/test_gdb_attribute_index_safety.cpp` | `.atx` fail-closed；direct 查询与旧物化结果等价；失败不发布半结果；page/entry/candidate 指标 |
+| `edgar/explorgdb/reader/test_catalog_index_metadata_cache.cpp` | `.gdbindexes` snapshot cache；catalog 复制/移动合同；单副本 rescan 不污染其他快照 |
+| `edgar/explorgdb/reader/test_catalog_resolver.cpp` | resolver 名称索引；`ResolvedTable::has_spatial_refs` 快照；旧四字段聚合构造兼容 |
+| `edgar/explorgdb/reader/test_gdb_spatial_index_merge.cpp` | full-height `.spx` 合并 raw-key 范围必须包含标准逐 X cell 候选 |
+| `edgar/explorgdb/reader/test_geometry_writer_exact.cpp` | Point ZM 精确 WKT 文本、ISO WKB 大小和类型码 |
+| `edgar/explorgdb/reader/test_geometry_contracts.cpp` | WKT/WKB、Polygon topology、曲线和 decoder safety 合同 |
+| `edgar/explorgdb/reader/test_feature_cursor.cpp` | cursor move-only、engine 可移动构造但不可复制/移动赋值、方法签名 |
+| `edgar/explorgdb/reader/test_catalog.cpp` | `.gdbindexes` Catalog 查找 |
+
+## 当前分支新增或增强的 GDAL ON 测试
+
+### 联合查询
+
+| 文件 | 主要覆盖 |
+|---|---|
+| `usegdal/test_spatial_where_integration.cpp` | `.spx + .atx`、复合 WHERE、空集、非法请求 |
+| `usegdal/test_spatial_where_adaptive.cpp` | 低覆盖必须融合扫描并绕过 `.atx`；高覆盖必须 direct `.atx`；详细指标；GDAL 等价 |
+| `usegdal/test_spatial_where_fused_geometry.cpp` | MultiPoint、Polyline、Polygon 的融合扫描路径与 GDAL 完整 FID 对照 |
+| `usegdal/test_spatial_where_geometry.cpp` | Polyline、Polygon 含洞、MultiPoint |
+| `usegdal/test_spatial_where_dimensions.cpp` | Point Z/M/ZM |
+| `usegdal/test_spatial_where_null.cpp` | NULL 与 `!=` |
+| `usegdal/test_spatial_where_unicode.cpp` | BMP/非 BMP |
+| `usegdal/test_spatial_where_functional_index.cpp` | `LOWER(field)` 回退 |
+| `usegdal/test_spatial_where_index_fallback.cpp` | `.spx/.atx` 缺失和损坏；高覆盖夹具继续实际读取并验证损坏 `.atx` |
+| `usegdal/test_spatial_where_benchmark.cpp` | 100K FID-only runner；自适应路径和 `.atx` 分段指标；默认跳过 |
+
+### FeatureCursor
+
+| 文件 | 主要覆盖 |
+|---|---|
+| `usegdal/test_feature_cursor_gdal.cpp` | 顺序流、全部 QueryKind、字段/Binary/WKB、move、守卫、`move_to` |
+| `usegdal/test_feature_cursor_empty_geometry.cpp` | NULL geometry 成功返回 Empty |
+| `usegdal/test_feature_cursor_zero_length.cpp` | ObjectID-only 零长度行 |
+| `usegdal/test_feature_cursor_reopen.cpp` | open generation、EOF reacquire、其他活动 cursor |
+| `usegdal/test_feature_cursor_one_pass.cpp` | one-pass 与 record 路径的字段、Binary、Geometry 空占位、ISO WKB 对照；NULL geometry；请求级 profile 开关 |
+| `usegdal/test_feature_cursor_one_pass_geometry.cpp` | MultiPoint、Polyline、Polygon 含洞的旧/新完整对象对照 |
+| `usegdal/test_feature_cursor_benchmark.cpp` | 100K WKB-first full-feature schema-v3；五样本轮换；显式 `to_wkt()`；默认跳过 |
+| `usegdal/spatial_where_test_utils.h` | 按 TEST 名隔离临时 GDB |
+
+## Package consumer
+
+Reader consumer 编译：
+
+- `<query_engine.h>`；
+- `SpatialWhere` 和 `CombinedQueryMetrics`；
+- `QueryFeature`；
+- `QueryEngine::open_cursor`；
+- `FeatureCursor::next/move_to/done/error`；
+- `QueryRequest::profile_feature_reads`；
+- `FeatureCursorMetrics` 和 `QueryResult::feature_cursor_metrics`；
+- move-only cursor 合同；
+- 不包含内部 WHERE 头。
+
+`ResolvedTable` 新增的 `has_spatial_refs` 位于结构末尾并有默认 `nullopt`，旧四字段聚合构造继续受测试约束。
+
+## 建议运行方式
+
+### 列出测试
 
 ```bash
-# 运行全部测试
-./bin/gdb_tutorial_test_runner
-
-# 按分类运行
-./bin/gdb_tutorial_test_runner --gtest_filter='T001_*:T002_*:T003_*:T004_*'  # 基础教程
-./bin/gdb_tutorial_test_runner --gtest_filter='T001_*'                         # 单个教程
-./bin/gdb_tutorial_test_runner --gtest_filter='*Datasource*'                   # 按类名筛选
-
-# CTest
-ctest --output-on-failure
-
-# 独立工具
-./bin/benchmark_index_creation <gdb_path>
-./bin/verify_gdal_indexes <gdb_path>
-./bin/generate_large_gdb --output <gdb_path>
-./bin/generate_100k_polygons <output_dir>
+./build/bin/gdb_tutorial_test_runner --gtest_list_tests
+ctest --test-dir build -N
 ```
 
-索引验证工具必须显式传入 `.gdb` 目录，不再隐式使用默认数据路径。
+### GDAL OFF
 
-## 测试命名规则
-
-| 前缀 | 目录 | 说明 |
-|------|------|------|
-| `T001_*` ~ `T010_*` | `tutorials/` | 教程测试（test_001 ~ test_010） |
-| `T011_*` ~ `T015_*` | `usegdal/` | usegdal 组件测试 |
-| 无前缀 | `explorgdb/` | explorgdb 解析器测试 |
-
-> 006（源码速查表）和 009（外部参考）是纯参考文档，不配测试。
-
-## 与 src/ 的对应关系
-
+```bash
+cmake -S . -B build-off \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DFAST_GDB_WITH_GDAL=OFF \
+  -DFAST_GDB_BUILD_TOOLS=OFF \
+  -DFAST_GDB_BUILD_FULL_TESTS=OFF \
+  -DBUILD_TESTING=ON
+cmake --build build-off --parallel
+ctest --test-dir build-off --output-on-failure
 ```
-src/edgar/usegdal/              →  tests/usegdal/
-src/edgar/explorgdb/common/     →  tests/edgar/explorgdb/common/
-src/edgar/explorgdb/reader/     →  tests/edgar/explorgdb/reader/
-src/edgar/explorgdb/writer/     →  tests/edgar/explorgdb/writer/
+
+### GDAL ON
+
+```bash
+cmake -S . -B build-on \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DFAST_GDB_WITH_GDAL=ON \
+  -DFAST_GDB_BUILD_TOOLS=OFF \
+  -DFAST_GDB_BUILD_FULL_TESTS=OFF \
+  -DBUILD_TESTING=ON
+cmake --build build-on --parallel
+ctest --test-dir build-on --output-on-failure
+ctest --test-dir build-on -j 8 --output-on-failure
 ```
+
+### 融合优化专项
+
+```bash
+ctest --test-dir build-on --output-on-failure \
+  -R 'AttributeIndexSafety|CatalogResolverTest|GdbCatalogIndexMetadataCache|GeometryOutputContract|GeometryCurveDecoder|GeometryWriterExactTest|SpatialIndexMerge|SpatialWhereAdaptive|SpatialWhereFusedGeometry|SpatialWhereIndexFallback|FeatureCursorOnePass'
+```
+
+### FID-only benchmark
+
+```bash
+FAST_GDB_RUN_SPATIAL_WHERE_BENCHMARKS=1 \
+FAST_GDB_BENCHMARK_OUTPUT_DIR="$PWD/evidence-local" \
+ctest --test-dir build-on --output-on-failure \
+  -R 'SpatialWhereBenchmarkTest.Point100KSchemaV2Evidence'
+```
+
+FID-only schema-v2 evidence 记录：
+
+- 自适应执行路径和 `attribute_index_bypassed`；
+- `.gdbindexes` metadata；
+- `.atx` file load、navigation、leaf scan、candidate order；
+- final WHERE recheck；
+- page count、pages visited、entries scanned；
+- combined、legacy、GDAL 的结果一致性；
+- benchmark 默认写外部目录或系统临时目录。
+
+### Full-feature benchmark
+
+```bash
+FAST_GDB_RUN_FEATURE_CURSOR_BENCHMARKS=1 \
+FAST_GDB_BENCHMARK_OUTPUT_DIR="$PWD/evidence-local" \
+ctest --test-dir build-on --output-on-failure \
+  -R 'FeatureCursorBenchmarkTest.Point100KWkbFirstEvidence'
+```
+
+Full-feature schema-v3 evidence 记录：
+
+- Cursor、record+geometry、GDAL 五样本轮换执行顺序；
+- fresh `QueryEngine` / fresh GDAL dataset，复用同一 catalog snapshot metadata cache，非 strict-cold；
+- 融合原始候选数、精确空间命中数、WHERE 复核数、融合扫描耗时和路径标志；
+- row lookup、字段物化、GeometryModel、WKB、checksum sink 和独立 `to_wkt()`；
+- profile 样本不进入 median/p95；
+- 未指定 evidence 目录时写系统临时目录，不写仓库。
+
+## 严格超越门禁
+
+Draft PR #15 使用 `.github/workflows/spatial-where-performance.yml`。在 benchmark 前运行全部融合专项；JSON 必须同时满足：
+
+```text
+correct == true
+result_count == 1000
+profile_fused_spatial_attribute_scan == true
+profile_spatial_match_count == 10000
+profile_attribute_tested == 10000
+cursor_median_ms < gdal_median_ms
+```
+
+任一条件失败都不得宣称超越。
+
+当前 GitHub Actions 在 checkout 前终止，job 没有 steps 和日志；本地环境也无法解析 `github.com`，因此尚无有效运行结果。
+
+## 审核注意事项
+
+- `next()==false` 后必须检查 `done()`；
+- `move_to` 按零基 FID 定位，不按结果序号；
+- 顺序 cursor 不得先物化全表 FID；
+- EOF cursor reacquire 前必须先取得 engine lease；
+- one-pass 必须保持完整字段、Binary、Geometry 空占位和 ISO WKB 与 record 路径一致；
+- profile 必须通过请求显式开启，普通路径不得调用 clock；
+- `.atx` direct 查询只有完整结构验证成功后才能发布 FID；
+- 融合路径只有完整候选扫描成功后才能发布结果，否则必须回到旧路径；
+- `.spx` X-range 合并只允许在 bbox 覆盖完整图层 Y extent 时启用；
+- adaptive bypass 只允许在候选不超过 65,536 且不超过活动对象数 12.5% 时发生；
+- bypass 路径不读取未使用 `.atx` 的数据页，结果正确性不得依赖索引健康；
+- 高覆盖和损坏索引专项必须继续实际进入 `.atx`；
+- catalog metadata cache 必须保持 `GdbCatalog` 复制/移动值语义；
+- 测试临时目录必须隔离，可安全 `ctest -j`；
+- GDAL 对照必须保留顺序，不能通过排序掩盖 cursor 顺序错误；
+- `SKIPPED` 不计通过；
+- benchmark 默认跳过；
+- 原始结果和生成 `.gdb` 不提交仓库；
+- `8f23001` 的 3.852 ms 是融合优化前对照，新性能必须由严格 JSON 复测后更新；
+- 当前状态为 `Local review passed / Formal acceptance blocked`。
+
+代码审核与自检见：
+
+- [`spatial-where-fused-overtake-self-review-2026-07-17.md`](../docs/evidence/spatial-where-fused-overtake-self-review-2026-07-17.md)
+- [`03_SpatialWhere融合扫描与超越门禁.md`](../docs/technical/03_SpatialWhere融合扫描与超越门禁.md)

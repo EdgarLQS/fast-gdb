@@ -1,3 +1,6 @@
+// src/edgar/explorgdb/curve_gdal/gdal_curve_backend.cpp
+// GDAL 曲线后端实现 — 通过 GDAL 读取曲线几何并回退 fast-gdb 无法处理的拓扑失败。
+
 #include "gdal_curve_backend.h"
 
 #include <gdal_priv.h>
@@ -14,6 +17,8 @@
 
 namespace explorgdb {
 namespace {
+
+// ========== GDAL 资源 RAII 封装 ==========
 
 struct DatasetCloser {
     void operator()(GDALDataset* dataset) const {
@@ -33,9 +38,11 @@ using FeaturePtr = std::unique_ptr<
     OGRFeature, decltype(&OGRFeature::DestroyFeature)>;
 using GeometryPtr = std::unique_ptr<OGRGeometry, GeometryCloser>;
 
+// ========== 线程本地缓存 ==========
+
 struct CacheEntry {
     DatasetPtr dataset;
-    OGRLayer* layer = nullptr;
+    OGRLayer* layer = nullptr;  // 非拥有指针，生命周期由 dataset 管理。
 };
 
 thread_local std::unordered_map<std::string, CacheEntry> g_cache;
@@ -45,6 +52,7 @@ std::string cache_key(const GdalCurveRequest& request) {
     return request.gdb_path + "\n" + request.layer_name;
 }
 
+/** 打开或获取缓存的 GDALDataset + OGRLayer。 */
 CacheEntry* open_cached(const GdalCurveRequest& request,
                         std::string& diagnostic) {
     std::call_once(gdal_register_once, [] { GDALAllRegister(); });
@@ -72,6 +80,7 @@ CacheEntry* open_cached(const GdalCurveRequest& request,
     return &inserted.first->second;
 }
 
+/** 按 FID 读取 GDAL 要素。 */
 FeaturePtr read_feature(CacheEntry& entry,
                         const GdalCurveRequest& request,
                         std::string& diagnostic) {
@@ -89,6 +98,12 @@ FeaturePtr read_feature(CacheEntry& entry,
     return FeaturePtr(raw, &OGRFeature::DestroyFeature);
 }
 
+/**
+ * 获取并可选线段化几何。
+ *
+ * 如果请求要求 native_curve_wkb 则保留原始曲线形式。
+ * 否则调用 getLinearGeometry 将曲线转为线段。
+ */
 const OGRGeometry* select_geometry(const OGRFeature& feature,
                                    const GdalCurveRequest& request,
                                    GeometryPtr& owned,
@@ -113,6 +128,7 @@ const OGRGeometry* select_geometry(const OGRFeature& feature,
     return owned.get();
 }
 
+/** 从 OGR 空间参考中提取 SRID（EPSG 编码）。 */
 int32_t geometry_srid(const OGRGeometry& geometry) {
     const OGRSpatialReference* spatial_ref =
         geometry.getSpatialReference();
@@ -130,6 +146,7 @@ int32_t geometry_srid(const OGRGeometry& geometry) {
     return static_cast<int32_t>(value);
 }
 
+/** 将 OGR 几何类型转为 ISO WKB 类型码（含 Z/M 偏移）。 */
 uint32_t iso_geometry_type(OGRwkbGeometryType type) {
     const uint32_t base = static_cast<uint32_t>(wkbFlatten(type));
     const bool has_z = OGR_GT_HasZ(type) != 0;
@@ -138,6 +155,7 @@ uint32_t iso_geometry_type(OGRwkbGeometryType type) {
                  : (has_z ? 1000u : (has_m ? 2000u : 0u)));
 }
 
+/** 构造失败状态的 GeometryValue。 */
 GeometryValue error_value(GeometryStatus status,
                           const std::string& diagnostic,
                           bool source_was_curve) {
@@ -150,6 +168,8 @@ GeometryValue error_value(GeometryStatus status,
 }
 
 } // namespace
+
+// ========== 公开接口 ==========
 
 GeometryValue GdalCurveBackendBridge::read_geometry(
     const GdalCurveRequest& request) const {
@@ -177,6 +197,7 @@ GeometryValue GdalCurveBackendBridge::read_geometry(
         return error_value(status, diagnostic, source_has_curve);
     }
 
+    // 填充 GeometryValue：SRID、维度、后端元数据，最后导出 ISO WKB。
     GeometryValue value;
     value.srid = geometry_srid(*geometry);
     value.has_z = OGR_GT_HasZ(geometry->getGeometryType()) != 0;
@@ -236,6 +257,7 @@ GdalSpatialResult GdalCurveBackendBridge::intersects_bbox(
         return result;
     }
 
+    // 两步空间判断：先包围盒快速排除，再精确 Intersects 判断。
     OGREnvelope envelope;
     geometry->getEnvelope(&envelope);
     if (envelope.MaxX < xmin || envelope.MinX > xmax ||

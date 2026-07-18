@@ -1,109 +1,71 @@
-// src/batch_writer.h — GdbBatchWriter 批量写入器
+// src/edgar/usegdal/batch_writer.h
+// GdbBatchWriter — GdbFeature 值对象到单个 OGRLayer 的有界缓冲写入器。
 
 #ifndef GDB_BATCH_WRITER_H
 #define GDB_BATCH_WRITER_H
 
 #include "feature.h"
+
 #include <string>
 #include <vector>
 
 class GdbDataset;
 
 /**
- * 线程安全模型：
- * - GdbBatchWriter 本身不线程安全，不持有全局锁。
- * - 多线程并发写入同一图层时，应为每个线程创建独立的
- *   GdbDatasource（通过 GdbConnectionPool acquire），
- *   各自持有独立的 GdbBatchWriter 实例。
- * - OGRLayer::CreateFeature 不线程安全，多线程不可共享
- *   同一个 OGRLayer 指针。
+ * 单图层批量写入辅助类。
  *
- * 正确用法：
- *   GdbConnectionPool pool(info, N);
- *   // 线程 A:
- *   auto connA = pool.acquire();
- *   GdbBatchWriter writerA(connA->getDatasets().get("layer"));
- *   // 线程 B:
- *   auto connB = pool.acquire();
- *   GdbBatchWriter writerB(connB->getDatasets().get("layer"));
+ * BatchWriter 只减少调用方逐条组织要素的开销，不提供数据库事务或原子发布：
+ * flush() 成功的记录已经进入 OGRLayer；rollback() 只能丢弃尚未 flush 的缓冲。
+ * 需要数据库级提交/回滚时，应在外层使用 GdbTransaction。
+ *
+ * 线程安全：
+ * - 实例本身不线程安全，也不持有全局锁；
+ * - OGRLayer::CreateFeature 不允许多个线程共享同一 layer；
+ * - 并发写入应通过 GdbConnectionPool 为每个线程获取独立 Datasource。
  */
 class GdbBatchWriter {
 public:
     /**
-     * 构造批量写入器。
-     *
-     * @param dataset 目标图层视图（非拥有，生命周期须超过 BatchWriter）
-     * @param batchSize 自动 flush 阈值。默认 1000，即缓冲区达到 1000 条时自动写入
+     * @param dataset 非拥有目标图层视图，生命周期必须超过 BatchWriter。
+     * @param batchSize 自动 flush 阈值；达到阈值时 addFeature() 同步写出。
      */
-    explicit GdbBatchWriter(GdbDataset& dataset, size_t batchSize = 1000);
+    explicit GdbBatchWriter(GdbDataset& dataset,
+                            size_t batchSize = 1000);
 
     /**
-     * 添加要素到缓冲区。
+     * 深拷贝要素到缓冲；达到阈值时自动 flush。
      *
-     * 实现策略：
-     * 1. 将要素追加到 m_buffer
-     * 2. 如果缓冲区大小 >= batchSize，自动调用 flush() 写入
-     *
-     * @param feature 要写入的要素（深拷贝到缓冲区）
-     * @return true 成功（或 auto-flush 成功），false flush 失败
+     * @return 缓冲或自动 flush 成功时为 true。
      */
     bool addFeature(const GdbFeature& feature);
 
     /**
-     * 将缓冲区中所有要素写入图层。
+     * 将当前缓冲逐条转换为 OGRFeature 并调用 CreateFeature。
      *
-     * 实现策略：
-     * 1. 遍历 m_buffer，每个 GdbFeature 调用 toNative() 转为 OGRFeature
-     * 2. 设置几何对象
-     * 3. CreateFeature 写入，DestroyFeature 释放原生要素
-     * 4. 清空缓冲区，累加 m_totalWritten
-     *
-     * @return 本次成功写入的要素数量
+     * @return 本次成功写入的要素数量。
      */
     size_t flush();
 
     /**
-     * 提交写入。
-     *
-     * 等价于 flush() + 返回总写入数。
-     * 不调用事务提交，如需在事务中批量写入，调用方应手动管理事务。
-     *
-     * @return 累计成功写入的要素总数
+     * flush 剩余缓冲并返回累计写入数；该名称不代表事务提交。
      */
     size_t commit();
 
     /**
-     * 回滚写入。
-     *
-     * 丢弃缓冲区中全部未写入要素，重置总写入计数为 0。
-     * 已写入图层的要素不受影响（不撤销）。
+     * 丢弃尚未 flush 的缓冲并重置本对象计数；不会撤销已写入图层的数据。
      */
     void rollback();
 
-    /** 当前缓冲区中的要素数量。 */
     size_t getBufferSize() const { return m_buffer.size(); }
-
-    /** 累计成功写入的要素总数（包含已 flush 的）。 */
     size_t getTotalWritten() const { return m_totalWritten; }
 
 private:
-    /** 目标图层视图（非拥有）。 */
-    GdbDataset& m_dataset;
-
-    /** 缓冲区，存储待写入的 GdbFeature 深拷贝。 */
-    std::vector<GdbFeature> m_buffer;
-
-    /** 自动 flush 阈值。 */
-    size_t m_batchSize;
-
-    /** 是否处于事务中（预留，当前未使用）。 */
-    bool m_inTransaction = false;
-
-    /** 累计成功写入的要素总数。 */
-    size_t m_totalWritten = 0;
-
-    /** 最新错误信息。 */
-    std::string m_lastError;
+    GdbDataset& m_dataset;             // 非拥有目标图层视图
+    std::vector<GdbFeature> m_buffer;  // 待写入要素的深拷贝
+    size_t m_batchSize;                // 自动 flush 阈值
+    bool m_inTransaction = false;      // 预留状态，当前不改变行为
+    size_t m_totalWritten = 0;         // 已成功 CreateFeature 的累计数量
+    std::string m_lastError;           // 最近一次写入错误文本
 };
 
 #endif // GDB_BATCH_WRITER_H

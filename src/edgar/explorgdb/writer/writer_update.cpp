@@ -1,9 +1,19 @@
+// src/edgar/explorgdb/writer/writer_update.cpp
+// 更新编辑会话 — 在 staging 副本中按 FID 修改字段/几何并经回读验证后发布。
+//
+// 更新模型：
+// - begin_update() 固定原始要素，setter 只记录本次显式修改，不重写未触碰字段。
+// - 字段类型、可空性、重复写入和几何维度在提交单条记录前完成严格校验。
+// - end_update() 使用 Clone 保留原值，应用 delta 后 SetFeature，并回读验证字段与几何。
+// - commit() 保证行数不变、source 未被外部修改，再执行 staging 的原子目录替换。
+
 #include "writer_update.h"
 
 #if defined(FAST_GDB_WITH_GDAL_ENABLED)
 
 #include "gdal_priv.h"
 #include "ogrsf_frmts.h"
+#include "explorgdb_constants.h"
 
 #include <algorithm>
 #include <chrono>
@@ -19,6 +29,8 @@ namespace writer {
 namespace fs = std::filesystem;
 
 namespace {
+
+// monostate 表示“未写入”；nullptr 表示调用方显式写入数据库 NULL。
 using Value = std::variant<std::monostate, std::nullptr_t, int32_t, int64_t,
                            double, std::string, std::vector<uint8_t>>;
 
@@ -29,17 +41,18 @@ std::string suffix() {
            std::to_string(std::random_device{}());
 }
 
+// 轻量目录指纹仅用于乐观并发检测，不替代 staging 重开验证。
 uint64_t fingerprint(const fs::path& root) {
-    uint64_t hash = 1469598103934665603ULL;
+    uint64_t hash = kFnv1aBasis;
     std::error_code error;
     for (fs::recursive_directory_iterator it(root, error), end;
          !error && it != end; it.increment(error)) {
         if (!it->is_regular_file(error)) continue;
         hash ^= it->file_size(error);
-        hash *= 1099511628211ULL;
+        hash *= kFnv1aPrime;
         hash ^= static_cast<uint64_t>(
             it->last_write_time(error).time_since_epoch().count());
-        hash *= 1099511628211ULL;
+        hash *= kFnv1aPrime;
         if (error) return 0;
     }
     return error ? 0 : hash;
@@ -56,6 +69,8 @@ bool finite(const WriterCoordinate& point, WriterGeometryType type) {
            (!has_z(type) || std::isfinite(point.z)) &&
            (!has_m(type) || std::isfinite(point.m));
 }
+
+// OGR 的 Point/Line/Polygon 类型共享相同维度写入分派。
 void append_point(OGRLineString& line, const WriterCoordinate& p,
                   WriterGeometryType type) {
     if (has_z(type) && has_m(type)) line.addPoint(p.x, p.y, p.z, p.m);
@@ -100,6 +115,8 @@ std::unique_ptr<OGRGeometry> make_polygon(
 }
 }  // namespace
 
+// ========== 会话状态、delta 缓冲与验证 ==========
+
 struct WriterUpdateSession::Impl {
     GDALDataset* dataset = nullptr;
     OGRLayer* layer = nullptr;
@@ -123,6 +140,7 @@ struct WriterUpdateSession::Impl {
     bool published = false;
     bool aborted = false;
 
+    // 首次失败冻结诊断并锁定会话，防止部分 delta 继续被提交。
     bool fail(WriterStage stage, const std::string& path,
               const std::string& reason, bool retryable = false) {
         if (!error) {
@@ -149,6 +167,8 @@ struct WriterUpdateSession::Impl {
         layer = nullptr;
         if (dataset) { GDALClose(dataset); dataset = nullptr; }
     }
+
+    // allow_null 只验证 nullable；非空 setter 同时校验精确 OGR 字段类型。
     bool validate_field(int index, OGRFieldType expected,
                         bool allow_null = false) {
         if (!usable(WriterStage::Row) || !active)
@@ -189,6 +209,8 @@ WriterUpdateSession::~WriterUpdateSession() {
 }
 WriterUpdateSession::WriterUpdateSession(WriterUpdateSession&&) noexcept = default;
 WriterUpdateSession& WriterUpdateSession::operator=(WriterUpdateSession&&) noexcept = default;
+
+// ========== staging 创建 ==========
 
 bool WriterUpdateSession::open(const std::string& source,
                                const std::string& layer_name) {
@@ -238,6 +260,8 @@ bool WriterUpdateSession::open(const std::string& source,
     return true;
 }
 
+// ========== 单条要素 delta 构造 ==========
+
 bool WriterUpdateSession::begin_update(int64_t fid) {
     if (!impl_->usable(WriterStage::Row)) return false;
     if (impl_->active)
@@ -277,6 +301,8 @@ bool WriterUpdateSession::set_string(int i, const std::string& v) {
 bool WriterUpdateSession::set_binary(int i, const std::vector<uint8_t>& v) {
     return impl_->validate_field(i, OFTBinary) && impl_->set(i, v);
 }
+
+// ========== 几何 delta ==========
 
 bool WriterUpdateSession::set_point(const WriterCoordinate& p,
                                     WriterGeometryType type) {
@@ -353,10 +379,13 @@ bool WriterUpdateSession::set_polygon(
     return true;
 }
 
+// ========== 应用 delta 与回读验证 ==========
+
 bool WriterUpdateSession::end_update() {
     if (!impl_->usable(WriterStage::Row) || !impl_->active)
         return impl_->fail(WriterStage::Row, impl_->staging,
                            "no update is active");
+    // Clone 保留未修改字段、样式等原始属性，再叠加显式 delta。
     auto feature = std::unique_ptr<OGRFeature, decltype(&OGRFeature::DestroyFeature)>(
         impl_->original->Clone(), &OGRFeature::DestroyFeature);
     OGRFeatureDefn* defn = impl_->layer->GetLayerDefn();
@@ -376,6 +405,8 @@ bool WriterUpdateSession::end_update() {
     if (impl_->layer->SetFeature(feature.get()) != OGRERR_NONE)
         return impl_->fail(WriterStage::Row, impl_->staging,
                            CPLGetLastErrorMsg());
+
+    // 写后读取验证驱动确实持久化了本次 delta，而非仅返回成功码。
     OGRFeature* reread = impl_->layer->GetFeature(impl_->active_fid);
     if (!reread)
         return impl_->fail(WriterStage::Row, impl_->staging,
@@ -405,6 +436,8 @@ bool WriterUpdateSession::end_update() {
     impl_->geometry.reset();
     return true;
 }
+
+// ========== staging 重开与原子发布 ==========
 
 bool WriterUpdateSession::commit() {
     if (!impl_->usable(WriterStage::Publish)) return false;
@@ -482,6 +515,7 @@ const WriterError& WriterUpdateSession::error() const noexcept { return impl_->e
 
 #else
 
+// 非 GDAL 构建提供稳定的依赖缺失诊断，保证不会意外创建 staging。
 namespace explorgdb {
 namespace writer {
 struct WriterUpdateSession::Impl {

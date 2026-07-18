@@ -1,3 +1,6 @@
+// src/edgar/explorgdb/curve_gdal/hybrid_geometry_reader.cpp
+// 混合几何读取器实现 — fast-gdb 精确空间谓词优先，必要时回退 GDAL。
+
 #include "hybrid_geometry_reader.h"
 
 #include "gdb_spatial_index.h"
@@ -12,6 +15,9 @@
 namespace explorgdb {
 namespace {
 
+// ========== 内部辅助 ==========
+
+/** 构造诊断信息中携带 fast-gdb 回退原因的失败 GeometryValue。 */
 GeometryValue geometry_error(GeometryStatus status,
                              const std::string& diagnostic,
                              bool source_was_curve = false) {
@@ -23,6 +29,7 @@ GeometryValue geometry_error(GeometryStatus status,
     return value;
 }
 
+/** 将查询包围盒转换为 FileGDB 整数网格坐标。 */
 bool make_query_grid(const GeometryModel& model,
                      double xmin, double ymin,
                      double xmax, double ymax,
@@ -44,6 +51,8 @@ bool make_query_grid(const GeometryModel& model,
 
 } // namespace
 
+// ========== HybridGeometryReader ==========
+
 HybridGeometryReader::HybridGeometryReader(
     GdbTableParser& parser, std::string gdb_path,
     std::string layer_name, HybridGeometryOptions options)
@@ -62,17 +71,20 @@ bool HybridGeometryReader::map_gdal_fid(
     return gdal_fid >= 0;
 }
 
+/** 判断是否应当为 model 的几何回退到 GDAL。 */
 bool HybridGeometryReader::should_fallback(
     const GeometryModel& model) const {
     if (model.valid())
         return options_.prefer_gdal_for_curves &&
                model.source_was_curve;
 
+    // 曲线几何或 GDAL 才能处理的类型，必须回退。
     if (model.source_was_curve ||
         model.status == GeometryStatus::UnsupportedCurve)
         return true;
     if (!options_.fallback_on_topology_error) return false;
 
+    // 拓扑校验失败的类型，由配置决定是否回退。
     switch (model.status) {
         case GeometryStatus::UnsupportedType:
         case GeometryStatus::InvalidTopology:
@@ -86,6 +98,7 @@ bool HybridGeometryReader::should_fallback(
     }
 }
 
+/** 构造 GDAL 曲线回退请求，包括 FID 映射。 */
 bool HybridGeometryReader::make_request(
     uint32_t fast_fid, bool source_was_curve,
     GdalCurveRequest& request, std::string& diagnostic) const {
@@ -105,12 +118,21 @@ bool HybridGeometryReader::make_request(
     return true;
 }
 
+/**
+ * 读取指定要素的几何。
+ *
+ * 优先使用 fast-gdb 解码 + WkbWriter 输出，仅在下列条件触发时回退 GDAL：
+ * - 曲线几何且 prefer_gdal_for_curves
+ * - fast-gdb 解码失败且 fallback_on_topology_error
+ * - 不支持的曲线类型（UnsupportedCurve）
+ */
 GeometryValue HybridGeometryReader::read_geometry(
     uint32_t fast_fid) const {
     GeometryModel model;
     const bool fast_valid = parser_.read_geometry_model(fast_fid, model);
     if (fast_valid && !should_fallback(model))
         return WkbWriter::write(model);
+    // fast-gdb 解码成功，但模型无效且不应回退时，仍然输出 WKB。
     if (!should_fallback(model))
         return WkbWriter::write(model);
 
@@ -124,6 +146,7 @@ GeometryValue HybridGeometryReader::read_geometry(
     }
 
     GeometryValue value = bridge_.read_geometry(request);
+    // 保留 fast-gdb 的诊断信息作为回退上下文。
     if (!model.diagnostic.empty()) {
         const std::string prefix = "fast-gdb fallback (" +
             model.diagnostic + ")";
@@ -133,6 +156,14 @@ GeometryValue HybridGeometryReader::read_geometry(
     return value;
 }
 
+/**
+ * 对单个要素做包围盒空间判断。
+ *
+ * 三条路径优先级：
+ * 1. fast-gdb 精确空间谓词（SpacialPredicate::intersects_bbox）
+ * 2. fast-gdb 解码失败但不应回退 → 返回模型状态
+ * 3. 应回退 → GDAL intersects_bbox
+ */
 GdalSpatialResult HybridGeometryReader::intersects_bbox(
     uint32_t fast_fid, double xmin, double ymin,
     double xmax, double ymax) const {
@@ -147,6 +178,7 @@ GdalSpatialResult HybridGeometryReader::intersects_bbox(
 
     GeometryModel model;
     const bool fast_valid = parser_.read_geometry_model(fast_fid, model);
+    // 路径 1：fast-gdb 精确空间谓词。
     if (fast_valid && !should_fallback(model)) {
         QueryGridBbox query;
         if (!make_query_grid(model, xmin, ymin, xmax, ymax, query)) {
@@ -160,6 +192,7 @@ GdalSpatialResult HybridGeometryReader::intersects_bbox(
         result.matched = SpatialPredicate::intersects_bbox(model, query);
         return result;
     }
+    // 路径 2：fast-gdb 解码失败，不应回退。
     if (!should_fallback(model)) {
         result.backend = model.backend;
         result.status = model.status;
@@ -167,6 +200,7 @@ GdalSpatialResult HybridGeometryReader::intersects_bbox(
         return result;
     }
 
+    // 路径 3：应回退 → GDAL 判断。
     GdalCurveRequest request;
     std::string mapping_error;
     if (!make_request(fast_fid, model.source_was_curve,
@@ -186,6 +220,8 @@ GdalSpatialResult HybridGeometryReader::intersects_bbox(
     return result;
 }
 
+// ========== HybridQueryEngine ==========
+
 HybridQueryEngine::HybridQueryEngine(
     const GdbCatalog& catalog, ResolvedTable table,
     HybridGeometryOptions options)
@@ -203,6 +239,15 @@ bool HybridQueryEngine::open() {
     return true;
 }
 
+/**
+ * 完成混合空间查询。
+ *
+ * 查询流程：
+ * 1. 边界校验 → 失败时返回 invalid
+ * 2. .spx 空间索引候选查找 → 索引缺失时退化为全表扫描
+ * 3. 对每个候选要素做 HybridGeometryReader::intersects_bbox
+ * 4. 去重排序后返回 matched_fids
+ */
 HybridQueryResult HybridQueryEngine::query_bbox(
     double xmin, double ymin, double xmax, double ymax) {
     HybridQueryResult result;
@@ -219,6 +264,7 @@ HybridQueryResult HybridQueryEngine::query_bbox(
         return result;
     }
 
+    // 查找 Geometry 字段以获取坐标变换参数。
     const FieldDescriptor* geometry_field = nullptr;
     for (const auto& field : parser_->fields()) {
         if (field.type == FieldType::Geometry) {
@@ -232,6 +278,7 @@ HybridQueryResult HybridQueryEngine::query_bbox(
         return result;
     }
 
+    // 第一步：.spx 空间索引候选查找（或全表扫描）。
     std::vector<uint32_t> candidates;
     const auto* spx = catalog_.find_spx(resolved_.id);
     bool spx_ok = false;
@@ -266,6 +313,7 @@ HybridQueryResult HybridQueryEngine::query_bbox(
         result.execution_path = "bbox:hybrid:spx";
     }
 
+    // 第二步：对每个候选做混合空间判断。
     HybridGeometryReader reader(
         *parser_, catalog_.path(), resolved_.name, options_);
     result.matched_fids.reserve(candidates.size());
@@ -281,6 +329,7 @@ HybridQueryResult HybridQueryEngine::query_bbox(
         if (spatial.matched) result.matched_fids.push_back(fid);
     }
 
+    // 第三步：去重排序（空间索引可能返回重复 FID）。
     std::sort(result.matched_fids.begin(),
               result.matched_fids.end());
     result.matched_fids.erase(

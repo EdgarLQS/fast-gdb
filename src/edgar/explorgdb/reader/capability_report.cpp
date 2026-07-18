@@ -1,5 +1,9 @@
+// src/edgar/explorgdb/reader/capability_report.cpp
+// 能力报告 — 对表 schema、空间参考、索引和字段类型做静态能力评估。
+
 #include "capability_report.h"
 #include "gdb_geometry.h"
+#include "explorgdb_constants.h"
 
 namespace explorgdb {
 
@@ -17,12 +21,24 @@ bool CapabilityReport::can_read_layer() const {
            multipatch.state != CapabilityState::Unsupported;
 }
 
-CapabilityReport CapabilityReport::inspect(const GdbCatalog& catalog,
-                                            const CatalogResolver& resolver,
-                                            uint32_t table_id,
-                                            const GdbTableParser& table) {
+/** 按目录名称解析 GDB_SpatialRefs 是否存在。 */
+CapabilityReport CapabilityReport::inspect(
+    const GdbCatalog& catalog,
+    const CatalogResolver& resolver,
+    uint32_t table_id,
+    const GdbTableParser& table) {
+    return inspect(
+        catalog, resolver.contains("GDB_SpatialRefs"), table_id, table);
+}
+
+/** 核心 inspect：逐项评估 SRS、曲线、MultiPatch、栅格、空间/属性索引。 */
+CapabilityReport CapabilityReport::inspect(
+    const GdbCatalog& catalog,
+    bool has_spatial_refs,
+    uint32_t table_id,
+    const GdbTableParser& table) {
     CapabilityReport report;
-    report.srs = resolver.contains("GDB_SpatialRefs")
+    report.srs = has_spatial_refs
         ? CapabilityItem{CapabilityState::Supported, "GDB_SpatialRefs resolved by name"}
         : CapabilityItem{CapabilityState::Degraded, "GDB_SpatialRefs not found; geometry remains readable without SRS metadata"};
 
@@ -30,6 +46,7 @@ CapabilityReport CapabilityReport::inspect(const GdbCatalog& catalog,
     report.multipatch = {CapabilityState::Supported, "schema is not MultiPatch"};
     report.raster = {CapabilityState::Supported, "no raster field detected"};
 
+    // 根据 schema 几何类型做精细化的能力降级判断。
     const uint8_t schema_geom_type = static_cast<uint8_t>(table.header().geom_type_full & 0xFFU);
     switch (static_cast<GdbGeomType>(schema_geom_type)) {
         case GdbGeomType::GeneralPolyline:

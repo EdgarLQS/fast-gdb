@@ -1,3 +1,6 @@
+// src/edgar/explorgdb/reader/metadata_reader.cpp
+// 元数据读取器 — 从 GDB_SystemCatalog 相关表解析图层元数据、空间参考、域、关系等。
+
 #include "metadata_reader.h"
 #include "gdb_table.h"
 #include <algorithm>
@@ -7,25 +10,33 @@
 
 namespace explorgdb {
 namespace {
+
+// ========== 内部记录表抽象 ==========
+
 struct ParsedTableRows {
-    std::unordered_map<std::string, size_t> columns;
+    std::unordered_map<std::string, size_t> columns;  // 小写列名 → 索引
     std::vector<FeatureRecord> rows;
 };
+
+// ========== 字段值辅助 ==========
 
 std::string lower(std::string value) {
     std::transform(value.begin(), value.end(), value.begin(),
                    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
     return value;
 }
+
 int as_int(const FieldValue& value) {
     if (const auto* v = std::get_if<int32_t>(&value)) return *v;
     if (const auto* v = std::get_if<int64_t>(&value)) return static_cast<int>(*v);
     return 0;
 }
+
 std::string as_string(const FieldValue& value) {
     if (const auto* v = std::get_if<std::string>(&value)) return *v;
     return {};
 }
+
 std::string as_text(const FieldValue& value) {
     if (const auto* v = std::get_if<std::string>(&value)) return *v;
     if (const auto* v = std::get_if<int32_t>(&value)) return std::to_string(*v);
@@ -33,6 +44,8 @@ std::string as_text(const FieldValue& value) {
     if (const auto* v = std::get_if<double>(&value)) return std::to_string(*v);
     return {};
 }
+
+/** 从行记录的指定列名查询文本值。 */
 std::string lookup_text(const std::unordered_map<std::string, size_t>& columns,
                         const FeatureRecord& row,
                         const char* name) {
@@ -40,15 +53,21 @@ std::string lookup_text(const std::unordered_map<std::string, size_t>& columns,
     if (it == columns.end() || it->second >= row.field_values.size()) return {};
     return as_text(row.field_values[it->second]);
 }
+
 bool matches_name(const std::string& candidate, const std::string& requested) {
     return !candidate.empty() && lower(candidate) == lower(requested);
 }
+
+// ========== XML 解析辅助 ==========
+
 std::string trim(std::string value) {
     const auto begin = value.find_first_not_of(" \t\r\n");
     if (begin == std::string::npos) return {};
     const auto end = value.find_last_not_of(" \t\r\n");
     return value.substr(begin, end - begin + 1);
 }
+
+/** 提取 XML 标签内的文本内容（如 <Name>xxx</Name> → "xxx"）。 */
 std::string extract_tag_text(const std::string& xml, const std::string& tag) {
     const std::string open = "<" + tag + ">";
     const std::string close = "</" + tag + ">";
@@ -59,6 +78,8 @@ std::string extract_tag_text(const std::string& xml, const std::string& tag) {
     if (end == std::string::npos) return {};
     return trim(xml.substr(value_start, end - value_start));
 }
+
+/** 提取 XML 属性值（如 xsi:type="..." → "..."）。 */
 std::string extract_attribute(const std::string& xml, const std::string& key) {
     const std::string token = key + "=\"";
     const auto start = xml.find(token);
@@ -68,6 +89,8 @@ std::string extract_attribute(const std::string& xml, const std::string& key) {
     if (end == std::string::npos) return {};
     return xml.substr(value_start, end - value_start);
 }
+
+/** 从 XML 中提取指定标签的多个块（如 <Domain ...> ... </Domain>）。 */
 std::vector<std::string> extract_blocks(const std::string& xml,
                                         const std::string& open_tag_prefix,
                                         const std::string& close_tag) {
@@ -85,6 +108,8 @@ std::vector<std::string> extract_blocks(const std::string& xml,
     }
     return blocks;
 }
+
+/** 从域 XML 定义中解析 CodedValue 列表。 */
 std::vector<DomainCodedValue> decode_coded_values(const std::string& xml) {
     std::vector<DomainCodedValue> values;
     for (const auto& block : extract_blocks(xml, "<CodedValue", "</CodedValue>")) {
@@ -95,6 +120,9 @@ std::vector<DomainCodedValue> decode_coded_values(const std::string& xml) {
     }
     return values;
 }
+
+// ========== 域名查找 ==========
+
 const DomainInfo* find_domain_by_name(const std::vector<DomainInfo>& domains,
                                       const std::string& domain_name) {
     for (const auto& domain : domains) {
@@ -102,6 +130,10 @@ const DomainInfo* find_domain_by_name(const std::vector<DomainInfo>& domains,
     }
     return nullptr;
 }
+
+// ========== 系统表读取 ==========
+
+/** 加载指定系统表的所有记录并建立列名索引。 */
 bool load_table_rows(const CatalogResolver& resolver,
                      const std::string& table_name,
                      ParsedTableRows& out) {
@@ -123,6 +155,8 @@ bool load_table_rows(const CatalogResolver& resolver,
     }
     return true;
 }
+
+/** 按 UUID 从 GDB_Items 表解码单行 LayerMetadata。 */
 std::optional<LayerMetadata> decode_layer_metadata_by_uuid(
         const std::unordered_map<std::string, size_t>& columns,
         const FeatureRecord& row,
@@ -146,13 +180,18 @@ std::optional<LayerMetadata> decode_layer_metadata_by_uuid(
     }
     return metadata;
 }
+
+/** 获取目录路径的父路径（\ 分隔）。 */
 std::string parent_catalog_path(const std::string& path) {
     if (path.empty() || path == "\\") return {};
     const auto pos = path.find_last_of('\\');
     if (pos == std::string::npos || pos == 0) return {};
     return path.substr(0, pos);
 }
+
 } // namespace
+
+// ========== 公开方法 ==========
 
 std::optional<SpatialReferenceInfo> MetadataReader::decode_spatial_reference_row(
         const std::unordered_map<std::string, size_t>& columns,
@@ -209,6 +248,11 @@ std::optional<LayerMetadata> MetadataReader::decode_layer_metadata_row(
     return metadata;
 }
 
+/**
+ * 从 GDB_SpatialRefs 表按 WKID 查询空间参考定义。
+ *
+ * 返回 WKT + LatestWKID（用于 WKB SRID 到最新 EPSG 编码的映射）。
+ */
 std::optional<SpatialReferenceInfo> MetadataReader::read_spatial_reference(int requested_wkid) const {
     const auto resolved = resolver_.resolve("GDB_SpatialRefs");
     if (!resolved || resolved->tablx_path.empty()) return std::nullopt;
@@ -229,6 +273,7 @@ std::optional<SpatialReferenceInfo> MetadataReader::read_spatial_reference(int r
     return std::nullopt;
 }
 
+/** 从 GDB_Items 表按图层名查找 LayerMetadata。 */
 std::optional<LayerMetadata> MetadataReader::read_layer_metadata(const std::string& layer_name) const {
     ParsedTableRows items;
     if (!load_table_rows(resolver_, "GDB_Items", items)) return std::nullopt;
@@ -240,6 +285,7 @@ std::optional<LayerMetadata> MetadataReader::read_layer_metadata(const std::stri
     return std::nullopt;
 }
 
+/** 从 GDB_Items 表查询指定图层的指定元数据项。 */
 std::optional<std::string> MetadataReader::read_metadata_item(const std::string& layer_name,
                                                               const std::string& key) const {
     const auto metadata = read_layer_metadata(layer_name);
@@ -250,6 +296,7 @@ std::optional<std::string> MetadataReader::read_metadata_item(const std::string&
     return it->second;
 }
 
+/** 从工作空间 XML Definition 中解析域（Domain）定义。 */
 std::vector<DomainInfo> MetadataReader::decode_workspace_domains_xml(const std::string& xml) {
     std::vector<DomainInfo> domains;
     auto blocks = extract_blocks(xml, "<Domain ", "</Domain>");
@@ -275,12 +322,14 @@ std::vector<DomainInfo> MetadataReader::decode_workspace_domains_xml(const std::
     return domains;
 }
 
+/** 读取工作空间层级的域定义。 */
 std::vector<DomainInfo> MetadataReader::read_workspace_domains() const {
     const auto workspace = read_layer_metadata("Workspace");
     if (!workspace) return {};
     return decode_workspace_domains_xml(workspace->definition);
 }
 
+/** 从图层 XML Definition 中解析字段-域绑定关系。 */
 std::vector<FieldDomainBinding> MetadataReader::decode_field_domain_bindings_xml(
         const std::string& xml,
         const std::vector<DomainInfo>& workspace_domains) {
@@ -302,6 +351,7 @@ std::vector<FieldDomainBinding> MetadataReader::decode_field_domain_bindings_xml
     return bindings;
 }
 
+/** 从关系类 XML Attributes 中解析基数、外键等定义。 */
 RelationshipClassDefinition MetadataReader::decode_relationship_class_attributes_xml(
         const std::string& xml) {
     RelationshipClassDefinition def;
@@ -320,6 +370,7 @@ RelationshipClassDefinition MetadataReader::decode_relationship_class_attributes
     return def;
 }
 
+/** 读取指定图层的字段-域绑定。 */
 std::vector<FieldDomainBinding> MetadataReader::read_field_domain_bindings(
         const std::string& layer_name) const {
     const auto metadata = read_layer_metadata(layer_name);
@@ -328,6 +379,10 @@ std::vector<FieldDomainBinding> MetadataReader::read_field_domain_bindings(
     return decode_field_domain_bindings_xml(metadata->definition, domains);
 }
 
+/**
+ * 读取 GDB_Items / GDB_ItemRelationships / GDB_ItemRelationshipTypes 三表
+ * 关联数据，生成关系摘要列表。
+ */
 std::vector<RelationshipSummary> MetadataReader::read_relationship_summaries() const {
     ParsedTableRows items;
     ParsedTableRows relationships;
@@ -396,6 +451,12 @@ std::vector<RelationshipSummary> MetadataReader::read_relationship_summaries() c
     return summaries;
 }
 
+/**
+ * 读取关系类定义（包括基数、外键映射、类型层级）。
+ *
+ * 联合 GDB_Items / GDB_ItemTypes / GDB_ItemRelationships / GDB_ItemRelationshipTypes
+ * 四表数据，构建完整的关系类信息。
+ */
 std::vector<RelationshipClassDefinition> MetadataReader::read_relationship_class_definitions() const {
     ParsedTableRows items;
     ParsedTableRows item_types;
@@ -512,6 +573,7 @@ std::vector<RelationshipClassDefinition> MetadataReader::read_relationship_class
     return definitions;
 }
 
+/** 对图层列表按目录路径分组，生成数据集组摘要。 */
 std::vector<DatasetGroupSummary> MetadataReader::summarize_dataset_groups(
         const std::vector<LayerMetadata>& layers) {
     std::map<std::string, DatasetGroupSummary> grouped;
@@ -534,6 +596,7 @@ std::vector<DatasetGroupSummary> MetadataReader::summarize_dataset_groups(
     return result;
 }
 
+/** 从 GDB_Items 表读取所有图层并按目录路径分组。 */
 std::vector<DatasetGroupSummary> MetadataReader::read_dataset_group_summaries() const {
     ParsedTableRows items;
     if (!load_table_rows(resolver_, "GDB_Items", items)) return {};

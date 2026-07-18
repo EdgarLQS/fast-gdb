@@ -1,3 +1,9 @@
+// src/edgar/explorgdb/writer/writer_update_checked.cpp
+// 带校验的更新会话 — 在基础 update 之上增加写后回读和二进制字段逐字节验证。
+//
+// 实现策略：通过宏替换将 writer_update.cpp 的 unchecked 实现展开为 checked 版本，
+// 并在 end_update / commit 阶段插入校验逻辑。
+
 #include "writer_update.h"
 
 #define end_update end_update_unchecked
@@ -25,6 +31,7 @@ fs::path validation_file(const WriterUpdateSession::Impl& impl) {
     return fs::path(impl.staging) / ".fast-gdb-update-fids";
 }
 
+/** 将已校验的 FID 持久化，供 commit 阶段二次验证。 */
 bool append_validated_fid(WriterUpdateSession::Impl& impl, int64_t fid) {
     std::ofstream output(validation_file(impl), std::ios::app);
     if (!output) {
@@ -35,6 +42,7 @@ bool append_validated_fid(WriterUpdateSession::Impl& impl, int64_t fid) {
     return static_cast<bool>(output);
 }
 
+/** 读取所有已校验的 FID，去重后返回。 */
 std::vector<int64_t> read_validated_fids(WriterUpdateSession::Impl& impl) {
     std::ifstream input(validation_file(impl));
     std::vector<int64_t> fids;
@@ -47,6 +55,12 @@ std::vector<int64_t> read_validated_fids(WriterUpdateSession::Impl& impl) {
 }
 }  // namespace
 
+/**
+ * 结束更新并校验二进制字段。
+ *
+ * 将写入的字段值缓存，在 end_update_unchecked 后重新读取要素进行逐字节比较。
+ * 校验失败时返回错误且不提交 FID 记录。
+ */
 bool WriterUpdateSession::end_update() {
     if (!impl_->active) return end_update_unchecked();
 
@@ -89,6 +103,12 @@ bool WriterUpdateSession::end_update() {
     return append_validated_fid(*impl_, fid);
 }
 
+/**
+ * 提交前对所有已校验 FID 做二次验证。
+ *
+ * 重新打开 staging 数据集，逐一检查每个已更新的 FID 是否存在且 FID 匹配。
+ * 验证通过后删除 validate 文件，重新打开可写数据集，再委托 commit_unchecked。
+ */
 bool WriterUpdateSession::commit() {
     if (!impl_->usable(WriterStage::Publish)) return false;
     if (impl_->active)

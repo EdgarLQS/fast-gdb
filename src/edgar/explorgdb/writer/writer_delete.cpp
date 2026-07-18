@@ -1,9 +1,18 @@
+// src/edgar/explorgdb/writer/writer_delete.cpp
+// 删除编辑会话 — 在 staging 副本中删除指定 FID，经重开验证后原子替换源 GDB。
+//
+// 安全边界：
+// - open() 复制完整 source 并记录轻量指纹，所有 DeleteFeature 调用只作用于副本。
+// - 每次删除后立即回读确认 FID 不再可见，commit() 再统一验证计数和空间范围。
+// - 发布采用 source→backup、staging→source；第二步失败时恢复 backup。
+
 #include "writer_delete.h"
 
 #if defined(FAST_GDB_WITH_GDAL_ENABLED)
 
 #include "gdal_priv.h"
 #include "ogrsf_frmts.h"
+#include "explorgdb_constants.h"
 
 #include <algorithm>
 #include <chrono>
@@ -18,6 +27,7 @@ namespace writer {
 namespace fs = std::filesystem;
 
 namespace {
+
 std::string suffix() {
     const auto ticks = std::chrono::high_resolution_clock::now()
                            .time_since_epoch().count();
@@ -25,22 +35,25 @@ std::string suffix() {
            std::to_string(std::random_device{}());
 }
 
+// 指纹只用于发布前检测外部修改，不替代内容完整性校验。
 uint64_t fingerprint(const fs::path& root) {
-    uint64_t hash = 1469598103934665603ULL;
+    uint64_t hash = kFnv1aBasis;
     std::error_code error;
     for (fs::recursive_directory_iterator it(root, error), end;
          !error && it != end; it.increment(error)) {
         if (!it->is_regular_file(error)) continue;
         hash ^= it->file_size(error);
-        hash *= 1099511628211ULL;
+        hash *= kFnv1aPrime;
         hash ^= static_cast<uint64_t>(
             it->last_write_time(error).time_since_epoch().count());
-        hash *= 1099511628211ULL;
+        hash *= kFnv1aPrime;
         if (error) return 0;
     }
     return error ? 0 : hash;
 }
 }  // namespace
+
+// ========== 会话状态与错误冻结 ==========
 
 struct WriterDeleteSession::Impl {
     GDALDataset* dataset = nullptr;
@@ -81,6 +94,7 @@ struct WriterDeleteSession::Impl {
         return true;
     }
 
+    // OGRLayer 由 dataset 所有，关闭时先清空非拥有指针。
     void close() {
         layer = nullptr;
         if (dataset) {
@@ -98,6 +112,8 @@ WriterDeleteSession::~WriterDeleteSession() {
 }
 WriterDeleteSession::WriterDeleteSession(WriterDeleteSession&&) noexcept = default;
 WriterDeleteSession& WriterDeleteSession::operator=(WriterDeleteSession&&) noexcept = default;
+
+// ========== 打开 staging 副本 ==========
 
 bool WriterDeleteSession::open(const std::string& source,
                                const std::string& layer_name) {
@@ -159,6 +175,8 @@ bool WriterDeleteSession::open(const std::string& source,
     return true;
 }
 
+// ========== 删除与即时验证 ==========
+
 bool WriterDeleteSession::delete_feature(int64_t fid) {
     if (!impl_->usable(WriterStage::Row)) return false;
     if (std::find(impl_->deleted_fids.begin(), impl_->deleted_fids.end(), fid) !=
@@ -177,6 +195,7 @@ bool WriterDeleteSession::delete_feature(int64_t fid) {
         return impl_->fail(WriterStage::Row, impl_->staging,
                            CPLGetLastErrorMsg());
     }
+    // 立即回读是驱动合同检查；只有确认不可见后才计入 deleted_fids。
     std::unique_ptr<OGRFeature, decltype(&OGRFeature::DestroyFeature)> reread(
         impl_->layer->GetFeature(fid), &OGRFeature::DestroyFeature);
     if (reread) {
@@ -186,6 +205,8 @@ bool WriterDeleteSession::delete_feature(int64_t fid) {
     impl_->deleted_fids.push_back(fid);
     return true;
 }
+
+// ========== 重开验证与发布 ==========
 
 bool WriterDeleteSession::commit() {
     if (!impl_->usable(WriterStage::Publish)) return false;
@@ -240,6 +261,7 @@ bool WriterDeleteSession::commit() {
     }
     fs::rename(impl_->staging, impl_->source, error);
     if (error) {
+        // staging 提升失败时，backup 是唯一已知完整源，优先恢复。
         std::error_code rollback;
         fs::rename(impl_->backup, impl_->source, rollback);
         return impl_->fail(
@@ -307,6 +329,7 @@ const WriterError& WriterDeleteSession::error() const noexcept {
 
 #else
 
+// 纯 C++ 构建保持 API 可链接，但明确拒绝依赖 GDAL 的非空表删除。
 namespace explorgdb {
 namespace writer {
 struct WriterDeleteSession::Impl {

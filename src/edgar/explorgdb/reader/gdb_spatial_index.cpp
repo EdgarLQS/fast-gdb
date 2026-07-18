@@ -6,13 +6,13 @@
 //     bytes 0-3:   next_page_id
 //     bytes 4-7:   entry_count
 //     bytes 8..8+N*4:     child_page_id 数组 (N+1 × 4)
-//     bytes 12+mpp*4..:   值数组 (N × 8) — 固定偏移
+//     bytes kPageHeaderSize+mpp*4..:   值数组 (N × 8) — 固定偏移
 //   叶子页面：
 //     bytes 0-3:   next_page_id
 //     bytes 4-7:   entry_count
 //     bytes 8-11:  UNUSED (padding)
-//     bytes 12..12+N*4:     fid 数组 (N × 4)
-//     bytes 12+mpp*4..:     值数组 (N × 8) — 固定偏移
+//     bytes kPageHeaderSize..kPageHeaderSize+N*4:     fid 数组 (N × 4)
+//     bytes kPageHeaderSize+mpp*4..:     值数组 (N × 8) — 固定偏移
 //
 // B+ 树语义（GDAL FindPages）：
 //   - entry[i] 是分隔符，entry[i].raw 是 child[i] 范围的上界参考
@@ -23,6 +23,7 @@
 
 #include "gdb_spatial_index.h"
 #include "binary_reader.h"
+#include "explorgdb_constants.h"
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -34,7 +35,7 @@
 namespace explorgdb {
 
 static inline int calc_max_per_page(uint8_t value_size) {
-    return static_cast<int>((GdbSpatialIndexParser::kPageSize - 12) / (4 + value_size));
+    return static_cast<int>((GdbSpatialIndexParser::kPageSize - kPageHeaderSize) / (4 + value_size));
 }
 
 GdbSpatialIndexParser::GdbSpatialIndexParser(const std::string& file_path)
@@ -61,7 +62,7 @@ bool GdbSpatialIndexParser::parse() {
     if (!parse_trailer()) { close(fd_); fd_ = -1; return false; }
 
     max_per_page_ = calc_max_per_page(trailer_.value_size);
-    values_offset_ = 12 + max_per_page_ * 4;
+    values_offset_ = kPageHeaderSize + max_per_page_ * 4;
     void* mapping = mmap(nullptr, mapped_size_, PROT_READ, MAP_PRIVATE, fd_, 0);
     if (mapping != MAP_FAILED) {
         mapped_data_ = static_cast<const uint8_t*>(mapping);
@@ -95,13 +96,10 @@ const uint8_t* GdbSpatialIndexParser::read_page(uint32_t page_id, int depth) con
     if (page_id == 0 || off + kPageSize > mapped_size_) return nullptr;
     if (mapped_data_) return mapped_data_ + off;
 
-    // 计算当前 depth 对应的 slot 范围
-    // depth 1 = 叶子层，depth tree_depth = 根节点层
-    int depth_idx = (depth - 1) % kMaxDepth;  // 0..3
+    int depth_idx = (depth - 1) % kMaxDepth;
     int slot_start = depth_idx * kCacheSlotsPerLevel;
     int slot_end = slot_start + kCacheSlotsPerLevel;
 
-    // 在当前 depth 的 slot 中查找缓存命中
     for (int i = slot_start; i < slot_end; i++) {
         if (page_cache_[i].valid && page_cache_[i].page_id == page_id) {
             page_cache_[i].last_used = ++cache_counter_;
@@ -109,7 +107,6 @@ const uint8_t* GdbSpatialIndexParser::read_page(uint32_t page_id, int depth) con
         }
     }
 
-    // 缓存未命中，在当前 depth 的 slot 中找 LRU 或空 slot
     int slot = slot_start;
     uint64_t min_ts = page_cache_[slot_start].last_used;
     bool found_empty = false;
@@ -125,10 +122,7 @@ const uint8_t* GdbSpatialIndexParser::read_page(uint32_t page_id, int depth) con
         }
     }
 
-    if (!found_empty) {
-        page_cache_[slot].valid = false;
-    }
-
+    if (!found_empty) page_cache_[slot].valid = false;
     page_cache_[slot].page_id = page_id;
     page_cache_[slot].valid = true;
     page_cache_[slot].last_used = ++cache_counter_;
@@ -150,18 +144,12 @@ void GdbSpatialIndexParser::clear_cache() const {
     cache_counter_ = 0;
 }
 
-// GDAL FindMinMaxIdx: 完整 64-bit 二分查找（仅用于叶子页面）
-//
-// 关键：GDAL 在步骤 1 后保存 maxIdxOut，步骤 2 修改 nMaxIdx 但不影响输出。
-// 我们必须保存步骤 1 的结果，否则步骤 2 会覆盖它。
 bool GdbSpatialIndexParser::find_minmax_idx(
     const uint8_t* page, int n_vals,
     uint64_t min_val, uint64_t max_val,
     int& min_idx, int& max_idx) const {
 
     const uint8_t* base = page + values_offset_;
-
-    // 步骤 1: 找最大索引使得值 <= max_val
     int lo = 0, hi = n_vals - 1;
     while (hi - lo >= 2) {
         int mid = (lo + hi) / 2;
@@ -174,10 +162,8 @@ bool GdbSpatialIndexParser::find_minmax_idx(
         hi--;
         if (hi < 0) return false;
     }
-    max_idx = hi;  // 保存步骤 1 结果（GDAL 的 maxIdxOut）
+    max_idx = hi;
 
-    // 步骤 2: 找最小索引使得值 >= min_val
-    // 使用 step1_max 作为上界，避免被覆盖
     int step1_max = max_idx;
     lo = 0;
     while (step1_max - lo >= 2) {
@@ -192,29 +178,15 @@ bool GdbSpatialIndexParser::find_minmax_idx(
         if (lo == n_vals) return false;
     }
     min_idx = lo;
-    // max_idx 保持步骤 1 的结果不变
     return true;
 }
 
-// B+ 树递归导航 — GDAL FindPages
-//
-// 分支页面语义（关键！）：
-//   entry[i].raw 不是 child[i] 的最小值
-//   child[i] 的 cx 范围：entry[i-1].cx < cx <= entry[i].cx
-//   child[0] 的 cx 范围：cx <= entry[0].cx
-//
-// 匹配规则（GDAL FindPages）：
-//   - 找到第一个 entry[i].cx > q_max_cx → 停止（iLastPageIdx）
-//   - 如果所有 entry.cx > q_min_cx → 从 child[0] 开始（iFirstPageIdx = 0）
-//   - 否则找到第一个 entry[i].cx >= q_min_cx → 从 child[i-1] 开始
-//   - 遍历 [iFirstPageIdx, iLastPageIdx] 范围的 child
 void GdbSpatialIndexParser::collect_fids_btree(
     uint32_t page_id, int depth,
     uint64_t start_raw, uint64_t end_raw,
     std::vector<uint32_t>& out_fids) const {
 
     if (page_id == 0 || depth <= 0) return;
-
     const uint8_t* page = read_page(page_id, depth);
     if (!page) return;
 
@@ -228,29 +200,25 @@ void GdbSpatialIndexParser::collect_fids_btree(
     uint32_t q_max_cx = static_cast<uint32_t>((end_raw >> 31) & 0x7FFFFFFF);
 
     if (depth == 1) {
-        // 叶子页面：FindMinMaxIdx 完整 64-bit 比较
         int min_idx, max_idx;
-        if (!find_minmax_idx(page, entry_count, start_raw, end_raw, min_idx, max_idx)) {
+        if (!find_minmax_idx(page, entry_count, start_raw, end_raw, min_idx, max_idx))
             return;
-        }
         for (int i = min_idx; i <= max_idx; i++) {
             uint64_t v; std::memcpy(&v, page + values_offset_ + i * 8, 8);
             if (v >= start_raw && v <= end_raw) {
-                uint32_t fid; std::memcpy(&fid, (uint8_t*)page + 12 + i * 4, 4);
+                uint32_t fid;
+                std::memcpy(&fid, (uint8_t*)page + kPageHeaderSize + i * 4, 4);
                 if (fid != 0) out_fids.push_back(fid - 1);
             }
         }
     } else {
-        // 分支页面：GDAL FindPages 逻辑
-        // Find iLastPageIdx: first entry where cx > q_max_cx
-        int i_last = static_cast<int>(entry_count);  // default: past end
+        int i_last = static_cast<int>(entry_count);
         for (int i = 0; i < static_cast<int>(entry_count); i++) {
             uint64_t v; std::memcpy(&v, page + values_offset_ + i * 8, 8);
             uint32_t cx = static_cast<uint32_t>((v >> 31) & 0x7FFFFFFF);
             if (cx > q_max_cx) { i_last = i; break; }
         }
 
-        // Find iFirstPageIdx: first entry where cx >= q_min_cx, then use child[i-1]
         int i_first = 0;
         for (int i = 0; i < static_cast<int>(entry_count); i++) {
             uint64_t v; std::memcpy(&v, page + values_offset_ + i * 8, 8);
@@ -258,25 +226,17 @@ void GdbSpatialIndexParser::collect_fids_btree(
             if (cx >= q_min_cx) { i_first = (i > 0) ? i - 1 : 0; break; }
         }
 
-        // B+ 树有 N 个 entries（分隔符）和 N+1 个 children。
-        // child[N] 是最右侧子节点，包含所有 > entry[N-1] 的值。
-        // GDAL 的 iLastPageIdx 上限是 nEntries（即 entry_count），
-        // 所以 visit_end 最大为 entry_count（而非 entry_count - 1）。
         int visit_end = std::min(i_last, static_cast<int>(entry_count));
-
         if (i_first > visit_end) return;
 
-        // 保存 child IDs 再递归调用。
-        // 原因：page 指针指向 LRU 缓存 slot，递归调用可能驱逐该 slot，
-        // 导致后续迭代从过期数据中读取 child_id。
         int num_children = visit_end - i_first + 1;
-        uint32_t children[342];  // mpp 最大 340，分支页有 N+1=341 个 children，留余量
+        uint32_t children[342];
         for (int j = 0; j < num_children; j++) {
             std::memcpy(&children[j], (uint8_t*)page + 8 + (i_first + j) * 4, 4);
         }
-
         for (int j = 0; j < num_children; j++) {
-            collect_fids_btree(children[j], depth - 1, start_raw, end_raw, out_fids);
+            collect_fids_btree(children[j], depth - 1,
+                               start_raw, end_raw, out_fids);
         }
     }
 }
@@ -285,10 +245,10 @@ std::vector<uint32_t> GdbSpatialIndexParser::query_bbox(
     double xmin, double ymin, double xmax, double ymax,
     double /*xorig*/, double /*yorig*/, double /*xyscale*/,
     const std::vector<double>& grid_resolutions,
-    uint32_t max_fid) const {
+    uint32_t max_fid,
+    bool merge_x_ranges) const {
 
     clear_cache();
-
     std::vector<uint32_t> result_fids;
     if (mapped_size_ == 0 || grid_resolutions.empty() ||
         grid_resolutions.size() > kMaxDepth || trailer_.tree_depth == 0 ||
@@ -312,13 +272,6 @@ std::vector<uint32_t> GdbSpatialIndexParser::query_bbox(
                 return 0x7FFFFFFF;
             return static_cast<int64_t>(value);
         };
-
-        // Cell computation matching GDAL GetScaledCoord:
-        //   1. raw = floor(coord / grid_res[0])         — base level cell index
-        //   2. scaled = floor(raw / scale_factor)       — level scaling
-        //   3. biased = scaled + (1 << 29)              — bias AFTER scaling
-        // For max boundaries, add +1 to catch features whose geometry extends
-        // into the query bbox but whose cell index is just outside.
         auto cell_for_min = [&](double coord) -> int64_t {
             const long double raw = std::floor(
                 static_cast<long double>(coord) / grid_resolutions[0]);
@@ -337,6 +290,20 @@ std::vector<uint32_t> GdbSpatialIndexParser::query_bbox(
         int64_t cell_min_y = cell_for_min(ymin);
         int64_t cell_max_y = cell_for_max(ymax);
 
+        if (merge_x_ranges) {
+            const uint64_t start_raw =
+                (static_cast<uint64_t>(level) << 62) |
+                (static_cast<uint64_t>(cell_min_x) << 31) |
+                static_cast<uint64_t>(cell_min_y);
+            const uint64_t end_raw =
+                (static_cast<uint64_t>(level) << 62) |
+                (static_cast<uint64_t>(cell_max_x) << 31) |
+                static_cast<uint64_t>(cell_max_y);
+            collect_fids_btree(
+                1, trailer_.tree_depth, start_raw, end_raw, result_fids);
+            continue;
+        }
+
         for (int64_t cx = cell_min_x; cx <= cell_max_x; cx++) {
             uint64_t start_raw = (static_cast<uint64_t>(level) << 62)
                                | (static_cast<uint64_t>(cx) << 31)
@@ -344,31 +311,48 @@ std::vector<uint32_t> GdbSpatialIndexParser::query_bbox(
             uint64_t end_raw = (static_cast<uint64_t>(level) << 62)
                              | (static_cast<uint64_t>(cx) << 31)
                              | static_cast<uint64_t>(cell_max_y);
-
-            collect_fids_btree(1, trailer_.tree_depth, start_raw, end_raw, result_fids);
+            collect_fids_btree(1, trailer_.tree_depth,
+                               start_raw, end_raw, result_fids);
         }
     }
 
-    // Bitset 去重优化：O(N) 去重 + O(N log N) 排序（恢复空间局部性）
-    if (max_fid > 0 && max_fid < 100000000) {  // 限制最大内存占用（100M bits = 12.5MB）
+    if (max_fid > 0 && max_fid < 100000000) {
         std::vector<bool> seen(max_fid + 1, false);
-        std::vector<uint32_t> unique_fids;
-        unique_fids.reserve(result_fids.size());
+        size_t unique_count = 0;
         for (uint32_t fid : result_fids) {
             if (fid <= max_fid && !seen[fid]) {
                 seen[fid] = true;
-                unique_fids.push_back(fid);
+                ++unique_count;
             }
         }
-        // 排序恢复空间局部性（对 peek_geometry_blob 的 mmap 预取至关重要）
-        std::sort(unique_fids.begin(), unique_fids.end());
+
+        std::vector<uint32_t> unique_fids;
+        unique_fids.reserve(unique_count);
+        const size_t fid_domain = static_cast<size_t>(max_fid) + 1U;
+        const bool dense_enough_to_enumerate =
+            unique_count != 0 && fid_domain / unique_count <= 16U;
+        if (dense_enough_to_enumerate) {
+            for (uint32_t fid = 0; fid <= max_fid; ++fid) {
+                if (seen[fid]) unique_fids.push_back(fid);
+                if (fid == max_fid) break;
+            }
+        } else {
+            for (uint32_t fid : result_fids) {
+                if (fid <= max_fid && seen[fid]) {
+                    unique_fids.push_back(fid);
+                    seen[fid] = false;
+                }
+            }
+            std::sort(unique_fids.begin(), unique_fids.end());
+        }
         return unique_fids;
-    } else {
-        // 降级到 sort+unique（兼容旧调用或 max_fid 未知）
-        std::sort(result_fids.begin(), result_fids.end());
-        result_fids.erase(std::unique(result_fids.begin(), result_fids.end()), result_fids.end());
-        return result_fids;
     }
+
+    std::sort(result_fids.begin(), result_fids.end());
+    result_fids.erase(
+        std::unique(result_fids.begin(), result_fids.end()),
+        result_fids.end());
+    return result_fids;
 }
 
 } // namespace explorgdb

@@ -1,12 +1,17 @@
+// src/edgar/explorgdb/writer/writer_append.cpp
+// 追加编辑会话后端选择 — GDAL 构建接入真实实现，纯 C++ 构建提供可诊断的拒绝路径。
+
 #include "writer_append.h"
 
 #if defined(FAST_GDB_WITH_GDAL_ENABLED)
+// GDAL 版本包含完整 staging、行构造与原子发布实现。
 #include "writer_append_dispatch.inc"
 #else
 
 namespace explorgdb {
 namespace writer {
 
+// 无 GDAL 构建仍保留稳定 ABI 和状态查询能力，但不执行任何数据修改。
 struct WriterAppendSession::Impl {
     WriterError error;
     std::string staging;
@@ -15,6 +20,12 @@ struct WriterAppendSession::Impl {
 
 namespace {
 
+/**
+ * 统一生成“当前构建不支持追加”的稳定错误。
+ *
+ * 首次失败保留最早阶段，避免后续 setter 覆盖真正的失败入口；调用方因此可以
+ * 使用同一套 WriterError 诊断 GDAL 与非 GDAL 产品。
+ */
 bool unavailable(WriterAppendSession::Impl& impl,
                  WriterStage stage = WriterStage::Open) {
     if (!impl.error) {
@@ -34,6 +45,7 @@ WriterAppendSession::~WriterAppendSession() = default;
 WriterAppendSession::WriterAppendSession(WriterAppendSession&&) noexcept = default;
 WriterAppendSession& WriterAppendSession::operator=(WriterAppendSession&&) noexcept = default;
 
+// 公开编辑入口均汇聚到 unavailable()，保证非 GDAL 构建不会产生半成品 staging。
 bool WriterAppendSession::open(const std::string&, const std::string&) {
     return unavailable(*impl_);
 }
@@ -49,6 +61,8 @@ bool WriterAppendSession::set_polyline(const std::vector<std::vector<WriterCoord
 bool WriterAppendSession::set_polygon(const std::vector<std::vector<WriterCoordinate>>&, WriterGeometryType) { return unavailable(*impl_, WriterStage::Geometry); }
 bool WriterAppendSession::end_row() { return unavailable(*impl_, WriterStage::Row); }
 bool WriterAppendSession::commit() { return unavailable(*impl_, WriterStage::Publish); }
+
+// abort() 在降级实现中仍是成功且幂等的清理操作，便于通用 RAII 调用路径复用。
 bool WriterAppendSession::abort() { impl_->aborted = true; impl_->error = WriterError{}; return true; }
 uint64_t WriterAppendSession::original_row_count() const noexcept { return 0; }
 uint64_t WriterAppendSession::appended_row_count() const noexcept { return 0; }

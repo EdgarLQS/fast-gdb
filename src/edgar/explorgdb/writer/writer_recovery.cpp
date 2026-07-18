@@ -1,3 +1,11 @@
+// src/edgar/explorgdb/writer/writer_recovery.cpp
+// Writer 事务恢复 — 识别 source/working/backup 目录组合并执行受限恢复动作。
+//
+// 恢复逻辑采用保守策略：
+// - 只接受唯一且可验证的候选目录，多候选或扫描错误统一视为 Ambiguous。
+// - 执行动作前重新扫描并比较快照，防止目录状态在检查与恢复之间发生变化。
+// - 任何删除或重命名前都验证可保留副本能被纯 C++ Reader 打开。
+
 #include "writer_recovery.h"
 
 #include "gdb_catalog.h"
@@ -12,6 +20,13 @@ namespace writer {
 namespace fs = std::filesystem;
 
 namespace {
+
+/**
+ * 验证目录是否至少具备可恢复的 FileGDB 基本结构。
+ *
+ * 这里不只检查目录存在性，还验证 catalog magic、核心系统表以及 table/tablx
+ * 能够被 Reader 打开，避免把损坏备份恢复为正式数据源。
+ */
 bool source_is_usable(const fs::path& source, std::error_code& error) {
     if (!fs::is_directory(source, error) || error) return false;
     explorgdb::GdbCatalog catalog;
@@ -35,6 +50,8 @@ bool source_is_usable(const fs::path& source, std::error_code& error) {
     error.clear();
     return true;
 }
+
+// 恢复错误固定归入 Publish 阶段，因为它处理的是发布后的目录状态修复。
 void set_error(WriterError* error, WriterErrorCode code,
                const std::string& path, const std::string& reason,
                bool retryable = false) {
@@ -52,6 +69,8 @@ bool has_prefix(const std::string& value, const std::string& prefix) {
            value.compare(0, prefix.size(), prefix) == 0;
 }
 }  // namespace
+
+// ========== 恢复现场识别 ==========
 
 WriterRecoveryInfo inspect_writer_recovery(const std::string& source_gdb_path) {
     WriterRecoveryInfo info;
@@ -93,6 +112,7 @@ WriterRecoveryInfo inspect_writer_recovery(const std::string& source_gdb_path) {
         scan_error = true;
     }
 
+    // 排序让快照比较与诊断输出在不同文件系统枚举顺序下保持稳定。
     std::sort(info.working_paths.begin(), info.working_paths.end());
     std::sort(info.backup_paths.begin(), info.backup_paths.end());
     error.clear();
@@ -126,10 +146,14 @@ WriterRecoveryInfo inspect_writer_recovery(const std::string& source_gdb_path) {
     return info;
 }
 
+// ========== 恢复动作 ==========
+
 bool recover_writer_transaction(const WriterRecoveryInfo& info,
                                 WriterRecoveryAction action,
                                 WriterError* error) {
     if (error) *error = WriterError{};
+
+    // 恢复快照不是授权令牌；操作前必须重新检查现场，抵御 TOCTOU 变化。
     const WriterRecoveryInfo current =
         inspect_writer_recovery(info.source_path);
     if (current.state != info.state ||
@@ -155,6 +179,7 @@ bool recover_writer_transaction(const WriterRecoveryInfo& info,
     std::error_code filesystem_error;
     switch (action) {
         case WriterRecoveryAction::DiscardWorking:
+            // 只有正式 source 健康时，孤立 working 才能安全删除。
             if (info.working_paths.size() != 1 ||
                 !source_is_usable(info.source_path, filesystem_error)) {
                 set_error(error, WriterErrorCode::InvalidState, info.source_path,
@@ -164,6 +189,7 @@ bool recover_writer_transaction(const WriterRecoveryInfo& info,
             fs::remove_all(info.working_paths.front(), filesystem_error);
             break;
         case WriterRecoveryAction::RestoreBackupIfSourceMissing:
+            // source 缺失且 backup 可读时才允许提升 backup；提升后再次验证。
             if (info.backup_paths.size() != 1 ||
                 fs::exists(info.source_path, filesystem_error) ||
                 filesystem_error ||
@@ -176,6 +202,7 @@ bool recover_writer_transaction(const WriterRecoveryInfo& info,
                        filesystem_error);
             if (!filesystem_error &&
                 !source_is_usable(info.source_path, filesystem_error)) {
+                // 提升后的 source 若不可用，尽力恢复原 backup 名称。
                 std::error_code rollback_error;
                 fs::rename(info.source_path, info.backup_paths.front(),
                            rollback_error);
