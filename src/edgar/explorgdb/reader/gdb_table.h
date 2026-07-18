@@ -1,5 +1,5 @@
-// src/edgar/explorgdb/gdb_table.h
-// .gdbtable 解析器 — FileGDB 表的核心二进制解析
+// src/edgar/explorgdb/reader/gdb_table.h
+// .gdbtable 解析器 — FileGDB 表的核心二进制读取与候选扫描接口。
 
 #ifndef EXPLORGDB_GDB_TABLE_H
 #define EXPLORGDB_GDB_TABLE_H
@@ -17,18 +17,29 @@
 #include <string>
 #include <vector>
 
+// gdb_table.cpp 使用源文件级宏把尚未发布的 eager WKT 实现改名为
+// 私有基准符号。类定义本身必须在所有翻译单元保持一致，因此在声明区临时屏蔽宏。
+#ifdef read_record_by_fid
+#define FAST_GDB_RESTORE_READ_RECORD_BY_FID_MACRO
+#undef read_record_by_fid
+#endif
+
 namespace explorgdb {
 
-// Optional per-feature timings for the one-pass full-object path. Callers pass
-// nullptr to avoid clock reads in normal operation. All values are milliseconds.
+/**
+ * 单条完整要素读取的可选阶段耗时。
+ *
+ * 调用方传 nullptr 时不读取时钟；所有值单位为毫秒。WKB-first 路径不再
+ * 暴露 WKT 序列化阶段，因为 WKT 只由 GeometryValue::to_wkt() 显式产生。
+ */
 struct FeatureReadMetrics {
     double row_lookup_ms = 0.0;
     double field_materialization_ms = 0.0;
     double geometry_decode_ms = 0.0;
-    double wkt_write_ms = 0.0;
     double wkb_write_ms = 0.0;
 };
 
+/** FileGDB 表文件、字段布局和行偏移的统一读取器。 */
 class GdbTableParser {
 public:
     explicit GdbTableParser(const std::string& file_path);
@@ -46,9 +57,11 @@ public:
     const TableHeader& header() const { return header_; }
     const std::vector<FieldDescriptor>& fields() const { return fields_; }
     const std::vector<FeatureRecord>& records() const { return records_; }
-    // Physical .gdbtablx slot count. It is the exclusive upper bound for FIDs,
-    // and can exceed the number of live records because the index is block-sized.
+
+    /** .gdbtablx 物理槽位数，也是 FID 的排他上界。 */
     size_t feature_count() const { return feature_offsets_.size(); }
+
+    /** 返回活动记录数；缓存未知时根据非零偏移计算。 */
     size_t active_feature_count() const {
         if (active_feature_count_known_) return active_feature_count_;
         size_t count = 0;
@@ -57,32 +70,45 @@ public:
         }
         return count;
     }
+
     bool has_feature(uint32_t fid) const {
         return fid < feature_offsets_.size() && feature_offsets_[fid] != 0;
     }
 
     bool load_file();
     bool load_tablx(const std::string& tablx_path);
+
+    /**
+     * 按 FID 物化普通字段，不解码几何。
+     *
+     * field_values 与字段描述符顺序一致；Geometry 槽固定写入空字符串占位，
+     * 不表示 NULL 或 Empty。需要几何及其状态时调用 read_geometry_value() 或
+     * read_feature_by_fid()。
+     */
     bool read_record_by_fid(uint32_t fid, FeatureRecord& record);
 
-    // FeatureCursor fast path. The row is located once; fields are materialized
-    // once; the winning geometry blob is decoded to one GeometryModel, which is
-    // then serialized to both compatibility WKT and ISO WKB. Existing per-record
-    // and geometry APIs remain unchanged for compatibility and benchmark control.
+    /**
+     * 一次定位并返回完整普通字段与独立 GeometryValue。
+     *
+     * 行字段只物化一次，几何 blob 只解码一次，并且默认只生成 ISO WKB；
+     * record 的 Geometry 槽仍为空字符串占位。
+     */
     bool read_feature_by_fid(uint32_t fid,
                              FeatureRecord& record,
                              GeometryValue& geometry,
                              FeatureReadMetrics* metrics = nullptr);
 
-    // Canonical geometry locator. Non-geometry fields are consumed through
-    // field_layout.h::skip_field_value(), including the 10-byte
-    // DateTimeWithOffset physical representation.
+    /**
+     * 定位一行中的规范几何 blob。
+     *
+     * 非几何字段通过 field_layout.h::skip_field_value() 消耗，包括 10 字节
+     * DateTimeWithOffset 物理表示。返回指针仅在解析器当前映射/缓冲有效期内有效。
+     */
     bool peek_geometry_blob(uint32_t fid,
                             const uint8_t*& blob_data,
                             size_t& blob_size);
 
-    // WKB-first geometry APIs. They decode directly from the row geometry
-    // blob and do not round-trip through the legacy WKT FieldValue.
+    /** WKB-first 几何接口，不经过 record 的几何占位字段。 */
     bool read_geometry_model(uint32_t fid, GeometryModel& model);
     bool read_geometry_value(uint32_t fid, GeometryValue& value);
 
@@ -92,13 +118,16 @@ public:
         std::function<bool(uint32_t fid,
                            const FieldRef* fields,
                            int field_count)>;
+
+    /** 顺序扫描活动记录，以零拷贝 FieldRef 暴露当前行。 */
     uint64_t sequential_scan(ScanCallback callback);
 
-    // Dedicated high-density spatial-query scanner. It validates the complete
-    // physical row layout but never materializes FieldRef arrays and never
-    // exposes unrelated attribute columns. mmap uses a stable zero-copy view;
-    // fd fallback uses bounded physical windows and P3 may prefetch a bounded
-    // number of those windows with ReadFile + OVERLAPPED.
+    /**
+     * 高密度几何扫描器。
+     *
+     * 验证完整物理行布局，但不物化 FieldRef 数组，也不暴露无关属性列；
+     * mmap 路径使用稳定零拷贝视图，fd 路径使用有界物理窗口。
+     */
     using GeometryScanCallback =
         std::function<bool(uint32_t fid,
                            const uint8_t* geometry_blob,
@@ -106,20 +135,22 @@ public:
                            bool is_null)>;
     uint64_t scan_geometry_blobs(GeometryScanCallback callback);
 
-    // P2 sparse-candidate scanner. It resolves candidate FIDs through .gdbtablx,
-    // sorts by physical offset, merges nearby records into bounded read ranges,
-    // and invokes the callback in physical order. QueryEngine restores ascending
-    // FID order before exposing the final result set. A zero return means the
-    // caller should retain the canonical exact-read fallback.
+    /**
+     * 稀疏几何候选扫描器。
+     *
+     * 候选通过 .gdbtablx 转换为物理偏移并合并相邻读取范围；回调顺序是物理
+     * 顺序，QueryEngine 在发布结果前恢复 FID 升序。返回 0 表示应走规范回退。
+     */
     uint64_t scan_geometry_candidates(
         const std::vector<uint32_t>& candidates,
         GeometryScanCallback callback);
 
-    // Sparse attribute candidate scanner. Candidate FIDs are read in physical
-    // row order and exposed as zero-copy FieldRef values for the callback.
-    // The callback may collect results in any order; QueryEngine restores
-    // ascending FID order before publishing a result. A zero return means the
-    // caller should use the canonical read_record_by_fid fallback.
+    /**
+     * 稀疏属性候选扫描器。
+     *
+     * FieldRef 只在回调期间有效；调用方负责复制所需值。返回 0 表示应走
+     * read_record_by_fid() 规范回退。
+     */
     uint64_t scan_field_candidates(
         const std::vector<uint32_t>& candidates,
         ScanCallback callback);
@@ -137,6 +168,9 @@ private:
     GdbGeomDecoder make_geom_decoder(const FieldDescriptor& field) const;
     const FieldDescriptor* geometry_field_descriptor() const;
 
+    // 仅用于未发布 API 的性能对照；产品调用路径不引用该符号。
+    bool read_record_by_fid_eager_wkt(uint32_t fid, FeatureRecord& record);
+
     std::string file_path_;
     std::vector<uint8_t> file_data_;
 
@@ -146,9 +180,7 @@ private:
     std::vector<uint8_t> row_buffer_;
 
 #ifdef _WIN32
-    // P0 parser-owned mapping state. The object owns the mapping handle, current
-    // aligned view base/length, and logical pointer. Scanner scope guards reset
-    // it before the CRT file descriptor is closed.
+    // 解析器拥有映射句柄、当前对齐视图和逻辑指针；扫描结束前必须先重置视图。
     FastGdbSlidingMap sliding_map_;
 #endif
 
@@ -166,5 +198,10 @@ private:
 };
 
 } // namespace explorgdb
+
+#ifdef FAST_GDB_RESTORE_READ_RECORD_BY_FID_MACRO
+#define read_record_by_fid read_record_by_fid_eager_wkt
+#undef FAST_GDB_RESTORE_READ_RECORD_BY_FID_MACRO
+#endif
 
 #endif // EXPLORGDB_GDB_TABLE_H
