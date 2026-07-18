@@ -13,6 +13,29 @@ set_source_files_properties(
     PROPERTIES COMPILE_DEFINITIONS
         "read_feature_by_fid=read_feature_by_fid_wkb_internal")
 
+# GeometryValue::to_wkt() 属于可移植几何值对象的公开能力，必须由最小
+# geometry_core 直接提供。reader 使用 GLOB 收集源文件，因此先从 reader
+# 目标移除该翻译单元，再加入 geometry_core，避免两个静态库重复定义符号。
+set(_fast_gdb_wkb_reader_source
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader/wkb_reader.cpp")
+get_target_property(_fast_gdb_reader_sources explorgdb_reader_lib SOURCES)
+list(REMOVE_ITEM _fast_gdb_reader_sources
+    "${_fast_gdb_wkb_reader_source}"
+    "src/edgar/explorgdb/reader/wkb_reader.cpp")
+set_property(TARGET explorgdb_reader_lib PROPERTY SOURCES
+    "${_fast_gdb_reader_sources}")
+target_sources(fast_gdb_geometry_core PRIVATE
+    "${_fast_gdb_wkb_reader_source}")
+
+# 最小 geometry 测试只链接 fast_gdb_geometry_core；将按需 WKT 测试放入该
+# 目标，可直接捕获漏源文件导致的 undefined reference，而不是依赖全量 reader。
+if(TARGET fast_gdb_geometry_test_runner)
+    target_sources(fast_gdb_geometry_test_runner PRIVATE
+        tests/edgar/explorgdb/reader/test_wkb_to_wkt.cpp)
+endif()
+unset(_fast_gdb_reader_sources)
+unset(_fast_gdb_wkb_reader_source)
+
 option(FAST_GDB_INSTALL_LEGACY_WRITER_API
        "Install the deprecated experimental Writer compatibility target" ON)
 
