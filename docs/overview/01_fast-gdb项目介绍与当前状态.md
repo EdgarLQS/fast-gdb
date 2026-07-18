@@ -2,20 +2,11 @@
 
 **面向读者**：需要理解项目目标、代码结构、性能依据和验收边界的开发人员
 **最后更新**：2026-07-18
-**当前分支**：`codex/spatial-attribute-query`
-**分支基线**：`main@d8784e7`
-
-**当前结论**：既有 Reader/Hybrid 发布范围保持不变。当前分支新增空间属性联合查询、
-完整 Feature 流式迭代和 `move_to(fid)`，已通过本地审核、Release 构建、并行 CTest、
-package consumer 和 100K 基准，状态为 **Local review passed / Formal acceptance blocked**。
-该能力尚未进入 `main`，跨平台、真实数据和大规模性能证据仍未完成。
-
-审核入口：
-
-- [规划状态索引](../planning/00_规划文档状态索引.md)
-- [实现计划](../planning/21_空间属性联合查询实现计划.md)
-- [代码审核指南](../usage/10_空间属性联合查询代码审核指南.md)
-- [FeatureCursor 自检](../evidence/feature-cursor-self-review-2026-07-17.md)
+**当前基线**：`main@6274f00`
+**当前结论**：`codex/spatial-attribute-query` 分支已完成合并。空间属性联合查询、
+FeatureCursor 流式迭代、融合扫描优化和 WKB-first 完整对象读取已进入 `main`。
+性能超越 GDAL：100K 全要素基准 Cursor 0.567ms vs GDAL 1.083ms（1.91× 快），
+联合查询 FID 匹配 0.314ms vs GDAL 0.700ms（2.23× 快）。详见[综合汇报](02_fast-gdb项目综合汇报.md)。
 
 ## 1. 项目目标
 
@@ -25,7 +16,7 @@ fast-gdb 是围绕 ESRI File Geodatabase 的 C++17 项目：
 - 提供纯 C++ Reader/Writer 和 GDAL 高层组件；
 - 统一 GeometryModel、ISO WKB-first 和精确空间判断；
 - 提供 FID、顺序、bbox、属性、WHERE 和 bbox+WHERE 查询；
-- 当前分支提供逐条完整 Feature cursor；
+- 提供逐条完整 Feature cursor；
 - 用合成数据、真实 FileGDB 和 GDAL 对照建立证据。
 
 当前不承诺完整 SQL/JOIN/聚合、Raster 像素、Annotation/Dimension 或完整 MultiPatch
@@ -38,12 +29,12 @@ fast-gdb 是围绕 ESRI File Geodatabase 的 C++17 项目：
 | `fast_gdb_linear` | 无 GDAL Reader、几何和查询 | 既有范围已完成历史验收 |
 | `fast_gdb_hybrid` | fast-gdb 主路径 + 显式 GDAL 回退 | 既有范围已完成历史验收 |
 | `usegdal` | GDAL Datasource/Dataset/Recordset | 既定阶段已实现 |
-| `explorgdb reader` | 二进制解析、索引、查询、完整对象 | 既有能力已验收；本分支本地审核通过 |
-| `explorgdb writer` | Writer 专项 | 本分支不修改 |
+| `explorgdb reader` | 二进制解析、索引、查询、完整对象 | 查询、游标、WKB 已合入 `main` |
+| `explorgdb writer` | Writer 专项 | 本报告不展开 |
 
 `Local review passed` 表示本地提交门禁通过；`Formal acceptance blocked` 表示跨平台和发布证据未齐。
 
-## 3. Reader 当前分支能力
+## 3. Reader 能力
 
 ### FID-only
 
@@ -135,4 +126,4 @@ GDAL 完整对象对等和 100K full-feature。尚未形成正式证据：
 - current/main 和 5% 门禁；
 - 正式 artifact。
 
-因此当前分支达到本地提交要求，但不能作为正式发布能力声明。
+上述能力已合入 `main`，通过本地 479 测试验证。综合性能数据见[项目综合汇报](02_fast-gdb项目综合汇报.md)。
