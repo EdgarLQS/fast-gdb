@@ -1,26 +1,25 @@
 # 22 — Reader WKB-first 与按需 WKT 计划
 
 - **创建日期**：2026-07-18
+- **最近更新**：2026-07-18
 - **适用分支**：`codex/spatial-attribute-query`
-- **当前状态**：待实现
+- **当前状态**：实现完成；完整构建矩阵待 GitHub Actions runner 恢复
 - **前置工作**：[21_空间属性联合查询实现计划](21_空间属性联合查询实现计划.md)
 
 ## 1. 背景与目标
 
-当前完整对象读取会从同一个 `GeometryModel` 同时生成兼容 WKT 和 ISO WKB。性能测试显示，
-去掉首次读取中的 WKT 序列化后，100K Point、命中 1,000 条的 FeatureCursor 中位数由
-`0.819 ms` 降至 `0.563 ms`。该 FeatureCursor/API 尚未正式发布，因此本计划不保留旧的
-eager WKT 字段语义，而是统一为 WKB-first：
+FeatureCursor/API 尚未正式发布，因此不保留旧 eager WKT 字段语义。Reader 全链路统一为
+WKB-first：
 
-1. 首次读取只生成正式输出 `GeometryValue::wkb`；
-2. 普通 record 读取不解码几何；
-3. 只有调用方明确需要 WKT 时才从 WKB 转换；
-4. GDAL OFF 构建也必须支持按需 WKT；
-5. NULL、Empty、Unsupported 和失败状态不能依赖空字符串判断。
+1. 首次完整要素读取只生成正式输出 `GeometryValue::wkb`；
+2. `read_record_by_fid()` 只物化普通字段并跳过几何 blob；
+3. 调用方明确需要 WKT 时，通过 `GeometryValue::to_wkt()` 从现有 ISO WKB 转换；
+4. 转换器是纯 C++，GDAL OFF 构建也可使用；
+5. NULL、Empty、Unsupported 和损坏状态只由 `GeometryValue::status` 表达。
 
 ## 2. 最终接口与字段语义
 
-为 `GeometryValue` 增加：
+`GeometryValue` 提供：
 
 ```cpp
 std::optional<std::string> to_wkt() const;
@@ -31,86 +30,120 @@ std::optional<std::string> to_wkt() const;
 - 从当前对象的 ISO WKB 按需转换，不重新读取 `.gdbtable`；
 - 不缓存结果，每次显式调用独立转换；
 - 合法空几何返回对应的 `... EMPTY`；
-- WKB 缺失、截断、类型不支持或结构非法时返回 `std::nullopt`；
-- 使用项目内纯 C++ WKB reader，不引入 GDAL 依赖。
+- WKB 缺失、截断、类型不支持、嵌套类型不一致或结构非法时返回 `std::nullopt`；
+- 不引用 GDAL 类型或库。
 
-Reader 字段规则统一调整为：
+Reader 字段规则：
 
-| 入口 | 普通字段 | `field_values` 几何槽 | 正式几何输出 |
+| 入口 | 普通字段 | `field_values` Geometry 槽 | 正式几何输出 |
 |---|---|---|---|
-| `read_record_by_fid()` | 完整物化 | `std::string` 空占位 | 无；需要几何时调用几何 API |
+| `read_record_by_fid()` | 完整物化 | `std::string` 空占位 | 无；按需调用几何 API |
 | `read_feature_by_fid()` | 完整物化 | `std::string` 空占位 | `GeometryValue::wkb` |
 | `FeatureCursor::next()` | 完整物化 | `std::string` 空占位 | `QueryFeature::geometry.wkb` |
 | `read_geometry_value()` | 不读取普通字段 | 不适用 | `GeometryValue::wkb` |
 
-空占位只用于保持字段数量和字段描述符顺序，不表示 NULL 或 Empty。几何状态统一读取
-`GeometryValue::status`；消费者不得从 record 的几何槽获取几何内容。
+空占位只保持字段数量和描述符顺序，不表示 NULL 或 Empty。消费者不得从 record 的
+Geometry 槽读取几何内容。
 
-## 3. 实现修改
+## 3. 已实施修改
 
-### 3.1 WKB 按需转换
+### 3.1 纯 C++ WKB 按需转换
 
-- 增加边界检查严格的纯 C++ WKB reader，将 ISO WKB 解析为 `GeometryModel`，再复用
-  `WktWriter` 输出 WKT；
-- 支持当前 `WkbWriter` 能输出的 Point、MultiPoint、LineString、MultiLineString、Polygon、
-  MultiPolygon，以及 Z、M、ZM 类型码；
-- 校验字节序、类型码、元素计数、嵌套类型和剩余长度，任何损坏均 fail closed；
-- `GdbGeomDecoder::decode()` 与 `WktWriter` 继续作为显式调试/转换能力保留，它们不属于
-  eager record 读取路径；
-- `FieldDescriptor::wkt` 是空间参考定义 WKT，与要素几何输出无关，保持不变。
+新增 `wkb_reader.cpp`：
+
+- 支持 Point、MultiPoint、LineString、MultiLineString、Polygon、MultiPolygon；
+- 支持 ISO 1000/2000/3000 Z、M、ZM 类型码；
+- 支持大小端 WKB；
+- 严格校验字节序、类型码、计数、剩余长度、嵌套类型/维度和 Polygon 闭环；
+- 直接从 WKB double 坐标输出 WKT，不重新量化为 FileGDB 整数网格；
+- 任何损坏输入 fail closed。
+
+`GdbGeomDecoder::decode()` 与 `WktWriter` 仍保留为显式调试/内部能力，但不在默认 record、
+feature 或 cursor 路径执行。
 
 ### 3.2 Reader 路径
 
-- `read_record_by_fid()` 的 Geometry 分支只读取长度、验证边界并跳过 blob，写入空字符串
-  占位，不再调用 `GdbGeomDecoder::decode()`；
-- `read_feature_by_fid()` 保持一次定位、一次字段物化和一次 `GeometryModel` 解码，只生成 WKB；
-- `FeatureCursor` 继续通过 `read_feature_by_fid()` 返回 WKB-first 完整对象；
-- WHERE、catalog、metadata 和 writer 回读调用方不得依赖 record 几何槽中的 WKT。
+- 新增 WKB-first `read_record_by_fid()`：读取长度、验证边界并跳过 Geometry blob；
+- 旧未发布 eager 实现改名为内部符号，不再位于产品调用路径；
+- `read_feature_by_fid()` 保持一次定位、一次字段物化、一次几何解码和一次 WKB 序列化；
+- one-pass 公开包装器把有效和 NULL Geometry 槽统一归一化为空字符串；
+- FeatureCursor 继续通过 `read_feature_by_fid()` 返回完整普通字段和独立 GeometryValue。
 
-### 3.3 指标与文档
+### 3.3 指标与基准
 
-- 删除尚未发布的 `FeatureReadMetrics::wkt_write_ms`、
-  `FeatureCursorMetrics::wkt_write_ms` 和 benchmark JSON 对应字段；
-- 更新公共头注释、Reader 查询流程、计划 21、FeatureCursor 使用指南、覆盖矩阵、性能文档和
-  当前自检证据，统一使用“非几何字段完整，几何由 `GeometryValue` 独立承载”的表述；
-- benchmark checksum 继续覆盖 FID、普通字段、Binary 和 WKB，明确称为 WKB-first checksum，
-  不再宣称 record 几何字段与旧路径一致。
+已删除：
 
-## 4. 测试计划
+- `FeatureReadMetrics::wkt_write_ms`；
+- `FeatureCursorMetrics::wkt_write_ms`；
+- benchmark JSON 的 `profile_wkt_write_ms`。
+
+100K benchmark 升级为 schema v3，记录：
+
+1. WKB-first FeatureCursor；
+2. WKB-first `read_record_by_fid()` + `read_geometry_value()`；
+3. GDAL `GetNextFeature()`；
+4. 对结果集显式调用 `GeometryValue::to_wkt()` 的独立耗时和输出字节数。
+
+checksum 明确覆盖 FID、普通字段、Binary 和 ISO WKB，不再比较 record Geometry 槽。
+
+## 4. 测试覆盖
 
 ### 4.1 转换正确性
 
-- `GeometryValue::to_wkt()` 覆盖 Point、MultiPoint、Polyline、Polygon、洞、Z、M、ZM；
-- 覆盖各类型 Empty、大小端 WKB、截断输入、非法类型、非法嵌套和异常元素计数；
-- 有效结果与现有 `WktWriter` 输出逐项一致；
-- GDAL ON 时增加 GDAL WKB/WKT 对照，GDAL OFF 测试不得引用 GDAL 类型。
+`test_wkb_to_wkt.cpp` 覆盖：
+
+- Point、LineString、Polygon 与三种 Multi 类型；
+- Polygon 洞；
+- ZM、空几何和大小端 Point；
+- 截断、尾随字节、未知类型、错误嵌套类型/维度、异常计数和未闭合环。
 
 ### 4.2 Reader 契约
 
-- `read_record_by_fid()` 验证普通字段完整、几何槽为空且不触发几何解码；
-- `read_feature_by_fid()` 和 FeatureCursor 验证普通字段、Binary、WKB、字段数量和顺序；
-- NULL、Empty、Unsupported、损坏几何分别验证 `GeometryValue::status`；
-- 更新现有 one-pass 测试名称，删除“WKT 与 legacy record 一致”的旧断言；
-- package consumer 验证安装后的 `GeometryValue::to_wkt()` 可编译和链接。
+更新 one-pass 测试，验证：
 
-### 4.3 构建与性能
+- record-only 与 one-pass 的普通字段、Binary、字段数量和顺序一致；
+- 两条路径的 Geometry 槽均为空字符串；
+- GeometryValue WKB、类型和状态一致；
+- NULL Geometry 由 `GeometryStatus::Empty` 表达，空占位不参与状态判断；
+- Cursor 指标仅包含 row lookup、字段物化、几何解码和 WKB 序列化。
 
-执行 GDAL OFF/ON Release 完整构建和 CTest，并重新运行相同 100K benchmark：
+### 4.3 安装面
 
-1. WKB-first FeatureCursor；
-2. WKB-first `read_record_by_fid()` + `read_geometry_value()` 对照；
-3. GDAL；
-4. 对 1,000 条结果显式调用 `to_wkt()` 的独立耗时。
+package consumer 已引用 `GeometryValue::to_wkt()`，验证公开头声明和链接符号进入
+`fast_gdb::linear` 安装面。
 
-原 `Legacy 0.845 ms` 包含 eager WKT，修改后必须重新测量，不能直接沿用。性能结果必须绑定
-SHA、平台、构建类型、GDAL 版本、数据规模、缓存状态和原始输出。
+## 5. 验证状态
 
-## 5. 验收标准
+### 已完成
+
+- 纯 C++ `to_wkt()` 离线编译；
+- Point、MultiPoint、LineString、Z Empty 和截断输入运行检查；
+- 分支静态审计：默认公开路径不再声明 WKT 指标；
+- 测试、benchmark 和 package consumer 源码同步。
+
+### 尚未形成有效证据
+
+截至 2026-07-18，仓库 GitHub Actions 在 runner 分配/checkout 前失败，job 没有 steps 和
+logs；当前执行环境也没有该私有仓库的本地 checkout 或可用 `gh` 凭据。因此下列项目不能
+诚实标记为通过：
+
+- GDAL OFF Release 完整构建与 CTest；
+- GDAL ON Release 完整构建与 CTest；
+- 安装后的 package consumer 实际运行；
+- 100K schema-v3 benchmark；
+- `git diff --check main...HEAD` 的本地 Git 结果。
+
+runner 恢复后必须按上述顺序补跑，并将 SHA、平台、编译器、GDAL 版本、缓存语义和原始
+benchmark JSON 一并归档。未获得这些结果前，不发布性能提升数字，也不将本计划状态改为
+“验收完成”。
+
+## 6. 验收标准
 
 - 默认 Reader 和 FeatureCursor 路径不存在 WKT 序列化；
-- `read_record_by_fid()` 不解码几何，`read_feature_by_fid()` 只生成一份 WKB；
-- WKB checksum 与 GDAL 对照一致；
-- `to_wkt()` 对所有支持类型与 `WktWriter`/GDAL 对照一致；
-- record 几何空占位与 NULL/Empty 状态不会混淆；
-- GDAL OFF/ON、完整 CTest、package consumer 和聚焦测试全部通过且无非预期 `SKIPPED`；
+- `read_record_by_fid()` 不解码几何；
+- `read_feature_by_fid()` 只生成一份 WKB；
+- `to_wkt()` 对全部支持类型与现有 WKT/GDAL 语义一致；
+- record Geometry 空占位与 NULL/Empty 状态不混淆；
+- GDAL OFF/ON、完整 CTest、package consumer 和聚焦测试无非预期失败或 SKIPPED；
+- schema-v3 benchmark 结果绑定可复现环境和提交 SHA；
 - 代码、公共头、计划、使用文档、覆盖矩阵和性能结论语义一致。
