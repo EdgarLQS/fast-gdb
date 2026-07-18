@@ -77,6 +77,9 @@ int main() {
     explorgdb::GeometryModel geometry;
     if (!geometry.is_empty()) return 1;
 
+    explorgdb::GeometryValue empty_geometry;
+    if (empty_geometry.to_wkt().has_value()) return 1;
+
     explorgdb::QueryRequest request;
     request.kind = explorgdb::QueryKind::SpatialWhere;
     request.xmin = 0.0;
@@ -94,6 +97,7 @@ int main() {
     auto move_to = &explorgdb::FeatureCursor::move_to;
     auto done = &explorgdb::FeatureCursor::done;
     auto error = &explorgdb::FeatureCursor::error;
+    auto to_wkt = &explorgdb::GeometryValue::to_wkt;
 
     if (request.kind != explorgdb::QueryKind::SpatialWhere ||
         !request.profile_feature_reads ||
@@ -102,7 +106,7 @@ int main() {
         result.feature_cursor_metrics.feature_count != 0 ||
         profile.feature_count != 0 || feature.fid != 0 ||
         open_cursor == nullptr || next == nullptr || move_to == nullptr ||
-        done == nullptr || error == nullptr) {
+        done == nullptr || error == nullptr || to_wkt == nullptr) {
         return 1;
     }
     return 0;
