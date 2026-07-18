@@ -17,11 +17,15 @@
 #include <string>
 #include <vector>
 
-// gdb_table.cpp 使用源文件级宏把尚未发布的 eager WKT 实现改名为
-// 私有基准符号。类定义本身必须在所有翻译单元保持一致，因此在声明区临时屏蔽宏。
+// 旧实现通过源文件级宏改名为内部符号。类定义必须在所有翻译单元保持
+// 一致，因此声明区临时屏蔽宏，并在文件尾恢复给对应实现文件。
 #ifdef read_record_by_fid
 #define FAST_GDB_RESTORE_READ_RECORD_BY_FID_MACRO
 #undef read_record_by_fid
+#endif
+#ifdef read_feature_by_fid
+#define FAST_GDB_RESTORE_READ_FEATURE_BY_FID_MACRO
+#undef read_feature_by_fid
 #endif
 
 namespace explorgdb {
@@ -168,8 +172,13 @@ private:
     GdbGeomDecoder make_geom_decoder(const FieldDescriptor& field) const;
     const FieldDescriptor* geometry_field_descriptor() const;
 
-    // 仅用于未发布 API 的性能对照；产品调用路径不引用该符号。
+    // 未发布实现保留为内部符号，公开包装器统一 WKB-first 字段契约。
     bool read_record_by_fid_eager_wkt(uint32_t fid, FeatureRecord& record);
+    bool read_feature_by_fid_wkb_internal(
+        uint32_t fid,
+        FeatureRecord& record,
+        GeometryValue& geometry,
+        FeatureReadMetrics* metrics);
 
     std::string file_path_;
     std::vector<uint8_t> file_data_;
@@ -202,6 +211,10 @@ private:
 #ifdef FAST_GDB_RESTORE_READ_RECORD_BY_FID_MACRO
 #define read_record_by_fid read_record_by_fid_eager_wkt
 #undef FAST_GDB_RESTORE_READ_RECORD_BY_FID_MACRO
+#endif
+#ifdef FAST_GDB_RESTORE_READ_FEATURE_BY_FID_MACRO
+#define read_feature_by_fid read_feature_by_fid_wkb_internal
+#undef FAST_GDB_RESTORE_READ_FEATURE_BY_FID_MACRO
 #endif
 
 #endif // EXPLORGDB_GDB_TABLE_H
