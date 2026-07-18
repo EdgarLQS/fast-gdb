@@ -30,7 +30,9 @@ public:
     std::optional<std::string> read() {
         std::string text;
         WkbType type;
-        if (!read_geometry(text, type) || offset_ != size_) return std::nullopt;
+        if (!read_geometry(text, type) || offset_ != size_) {
+            return std::nullopt;
+        }
         return text;
     }
 
@@ -57,7 +59,8 @@ private:
                 return read_collection(text, type, GeometryKind::Point,
                                        "MULTIPOINT", little_endian);
             case GeometryKind::MultiLineString:
-                return read_collection(text, type, GeometryKind::LineString,
+                return read_collection(text, type,
+                                       GeometryKind::LineString,
                                        "MULTILINESTRING", little_endian);
             case GeometryKind::MultiPolygon:
                 return read_collection(text, type, GeometryKind::Polygon,
@@ -72,7 +75,9 @@ private:
                     bool little_endian) {
         std::vector<double> ordinates;
         if (!read_position(ordinates, type, little_endian)) return false;
-        if (std::isnan(ordinates[0]) != std::isnan(ordinates[1])) return false;
+        if (std::isnan(ordinates[0]) != std::isnan(ordinates[1])) {
+            return false;
+        }
 
         std::ostringstream out;
         out << "POINT" << dimension_suffix(type);
@@ -134,7 +139,8 @@ private:
         out << " (";
         for (uint32_t ring = 0; ring < ring_count; ++ring) {
             uint32_t point_count = 0;
-            if (!read_u32(little_endian, point_count) || point_count < 4 ||
+            if (!read_u32(little_endian, point_count) ||
+                point_count < 4 ||
                 !count_fits(point_count, coordinate_width(type))) {
                 return false;
             }
@@ -144,7 +150,9 @@ private:
             out << '(';
             for (uint32_t point = 0; point < point_count; ++point) {
                 std::vector<double> position;
-                if (!read_position(position, type, little_endian)) return false;
+                if (!read_position(position, type, little_endian)) {
+                    return false;
+                }
                 if (point == 0) first = position;
                 if (point + 1 == point_count) last = position;
                 if (point != 0) out << ", ";
@@ -180,8 +188,10 @@ private:
         for (uint32_t index = 0; index < count; ++index) {
             std::string child_text;
             WkbType child;
-            if (!read_geometry(child_text, child) || child.kind != child_kind ||
-                child.has_z != parent.has_z || child.has_m != parent.has_m) {
+            if (!read_geometry(child_text, child) ||
+                child.kind != child_kind ||
+                child.has_z != parent.has_z ||
+                child.has_m != parent.has_m) {
                 return false;
             }
             const std::string prefix = geometry_prefix(child);
@@ -190,13 +200,12 @@ private:
                 return false;
             }
             const std::string body = child_text.substr(prefix.size());
-            if (body == " EMPTY") return false;
-            if (index != 0) out << ", ";
-            if (child_kind == GeometryKind::Point) {
-                out << body;
-            } else {
-                out << body.substr(1);
+            if (body == " EMPTY" || body.empty() || body.front() != ' ') {
+                return false;
             }
+            if (index != 0) out << ", ";
+            // 子几何名称和维度标记由父集合提供，只嵌入括号体。
+            out << body.substr(1);
         }
         out << ')';
         text = out.str();
@@ -224,8 +233,9 @@ private:
     bool read_position(std::vector<double>& ordinates,
                        const WkbType& type,
                        bool little_endian) {
-        const size_t dimensions = 2U + (type.has_z ? 1U : 0U) +
-                                  (type.has_m ? 1U : 0U);
+        const size_t dimensions =
+            2U + (type.has_z ? 1U : 0U) +
+            (type.has_m ? 1U : 0U);
         ordinates.resize(dimensions);
         for (double& value : ordinates) {
             if (!read_f64(little_endian, value)) return false;
@@ -243,11 +253,13 @@ private:
         if (remaining() < sizeof(uint32_t)) return false;
         value = 0;
         if (little_endian) {
-            for (int shift = 0; shift < 32; shift += 8)
+            for (int shift = 0; shift < 32; shift += 8) {
                 value |= static_cast<uint32_t>(data_[offset_++]) << shift;
+            }
         } else {
-            for (int shift = 24; shift >= 0; shift -= 8)
+            for (int shift = 24; shift >= 0; shift -= 8) {
                 value |= static_cast<uint32_t>(data_[offset_++]) << shift;
+            }
         }
         return true;
     }
@@ -256,13 +268,16 @@ private:
         if (remaining() < sizeof(double)) return false;
         uint64_t raw = 0;
         if (little_endian) {
-            for (int shift = 0; shift < 64; shift += 8)
+            for (int shift = 0; shift < 64; shift += 8) {
                 raw |= static_cast<uint64_t>(data_[offset_++]) << shift;
+            }
         } else {
-            for (int shift = 56; shift >= 0; shift -= 8)
+            for (int shift = 56; shift >= 0; shift -= 8) {
                 raw |= static_cast<uint64_t>(data_[offset_++]) << shift;
+            }
         }
-        static_assert(sizeof(raw) == sizeof(value), "unexpected double size");
+        static_assert(sizeof(raw) == sizeof(value),
+                      "unexpected double size");
         std::memcpy(&value, &raw, sizeof(value));
         return true;
     }
@@ -270,7 +285,8 @@ private:
     bool count_fits(uint32_t count, size_t minimum_item_bytes) const {
         return minimum_item_bytes != 0U &&
                static_cast<uint64_t>(count) <=
-                   static_cast<uint64_t>(remaining() / minimum_item_bytes);
+                   static_cast<uint64_t>(
+                       remaining() / minimum_item_bytes);
     }
 
     size_t remaining() const { return size_ - offset_; }
@@ -290,10 +306,17 @@ private:
     static std::string geometry_prefix(const WkbType& type) {
         const char* name = nullptr;
         switch (type.kind) {
-            case GeometryKind::Point: name = "POINT"; break;
-            case GeometryKind::LineString: name = "LINESTRING"; break;
-            case GeometryKind::Polygon: name = "POLYGON"; break;
-            default: return {};
+            case GeometryKind::Point:
+                name = "POINT";
+                break;
+            case GeometryKind::LineString:
+                name = "LINESTRING";
+                break;
+            case GeometryKind::Polygon:
+                name = "POLYGON";
+                break;
+            default:
+                return {};
         }
         return std::string(name) + dimension_suffix(type);
     }
@@ -303,8 +326,9 @@ private:
         else out << std::setprecision(15) << value;
     }
 
-    static void write_position(std::ostream& out,
-                               const std::vector<double>& ordinates) {
+    static void write_position(
+        std::ostream& out,
+        const std::vector<double>& ordinates) {
         for (size_t index = 0; index < ordinates.size(); ++index) {
             if (index != 0) out << ' ';
             write_number(out, ordinates[index]);
