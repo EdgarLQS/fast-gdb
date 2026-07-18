@@ -1,3 +1,11 @@
+// src/edgar/explorgdb/writer/atomic_gdb_write_session.cpp
+// 原子 GDB 发布会话 — 接管已打开 Writer，关闭验证后以“不覆盖”目录重命名发布。
+//
+// 发布合同：
+// - staging 与 final 必须位于同一父目录，确保重命名使用同一文件系统的原子语义。
+// - final 已存在时必须失败，绝不覆盖调用方已有数据。
+// - Writer 关闭前出现过任何错误都禁止发布，即使 close() 本身成功。
+
 #include "atomic_gdb_write_session.h"
 
 #include <cerrno>
@@ -22,6 +30,12 @@ namespace fs = std::filesystem;
 
 namespace {
 
+/**
+ * 在目标不存在时原子重命名目录。
+ *
+ * 不使用 exists()+rename 的组合，因为检查与修改之间存在竞态窗口；各平台均选择
+ * 原生“不替换”接口，将目标已存在作为单个系统调用的确定失败结果。
+ */
 bool rename_exclusive(const fs::path& source, const fs::path& destination,
                       std::error_code& error) {
 #if defined(__APPLE__)
@@ -62,6 +76,7 @@ bool rename_exclusive(const fs::path& source, const fs::path& destination,
 }  // namespace
 
 AtomicGdbWriteSession::~AtomicGdbWriteSession() {
+    // 未提交会话只负责关闭 writer，不隐式发布 staging。
     if (writer_.is_open()) writer_.close();
 }
 
@@ -111,6 +126,7 @@ bool AtomicGdbWriteSession::commit(const std::string& final_gdb_path) {
     if (committed_) return fail("session is already committed");
     if (!writer_.is_open()) return fail("Writer was closed outside the session");
 
+    // 先记录历史错误再 close，避免 close() 清理状态后掩盖早期写入失败。
     const bool had_earlier_error = !writer_.last_error().empty();
     const bool closed = writer_.close();
     if (had_earlier_error) {
