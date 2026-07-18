@@ -100,7 +100,7 @@ flowchart LR
 | 自交/退化/重复/相切环 | ✅ | 明确拓扑状态，不静默修复 |
 | CircularArc/Bezier/EllipticArc | ⚠️ | 纯 C++ 折线化或 Hybrid 回退 |
 | ISO WKB-first | ✅ | 正式几何输出 |
-| WKT | ✅ | 兼容/调试输出 |
+| WKT | ✅ | 从 `GeometryValue::wkb` 按需转换或显式调试输出 |
 | MultiPatch | ⚠️ | 有限坐标/WKT，无完整表面拓扑 |
 
 ### 3.3 查询
@@ -109,11 +109,11 @@ flowchart LR
 |---|:---:|---|
 | Read by FID | ✅ | Tablx 定位 |
 | 顺序扫描 | ✅ | mmap 主路径，Windows 有 fd 回退 |
-| `GetNextFeature` 式完整对象 Cursor | ❌ | 当前只有 `read_by_fid()` 和回调式 `scan()`；已列入计划 21 |
+| `GetNextFeature` 式完整对象 Cursor | 分支 ✅ | FeatureCursor 流式字段 + GeometryValue，本地审核通过 |
 | bbox 空间查询 | ✅ | `.spx` 候选或 geometry-only scan + 精确判断 |
 | 属性索引查询 | ✅ | `.atx`，数值/字符串六种比较 |
 | WHERE 子集 | ✅ | 比较、`AND`、`OR`、`IN`、括号；当前顺序扫描 |
-| 空间+属性联合查询 | ❌ | 当前需调用方对 FID 求交集；见 [计划 21](../planning/21_空间属性联合查询实现计划.md) |
+| 空间+属性联合查询 | 分支 ✅ | `SpatialWhere` 精确空间 + 完整 WHERE，本地审核通过 |
 | 完整 SQL/JOIN/聚合/重投影 | ❌ | 不在当前 Reader 范围 |
 
 ## 4. Reader 性能证据
@@ -222,9 +222,8 @@ fresh-open、非 strict-cold；Point、MultiPoint、Polyline 各 10M：
 
 | 优先级 | 缺口 | 影响/计划 |
 |:---:|---|---|
-| P1 | 空间+属性联合查询 | 当前调用方求 FID 交集；按 [计划 21](../planning/21_空间属性联合查询实现计划.md) 实施 |
-| P1 | `FeatureCursor::next()` 流式完整对象读取 | 统一顺序/FID/空间/属性/联合查询的逐条消费接口；按计划 21 实施 |
-| P1 | 空间查询完整对象基准 | 补齐全字段 + ISO WKB + 流式 sink 的 fast-gdb/GDAL 对称测量 |
+| P1 | 空间+属性联合查询跨平台验收 | 分支本地完成，待 Windows/Linux 与真实数据 |
+| P1 | FeatureCursor 大规模证据 | 100K 已完成，待 10M、strict-cold 和 peak RSS |
 | P1 | Reader profile 分段粒度不足 | 补齐 open/候选/FID/blob/decode/predicate/结果耗时 |
 | P1 | 严格冷打开小窗口 | Tablx 打开成本仍可优化 |
 | P2 | MultiPatch 完整表面拓扑 | 当前只有限读取或 Hybrid 降级 |
@@ -234,9 +233,9 @@ fresh-open、非 strict-cold；Point、MultiPoint、Polyline 各 10M：
 
 ## 7. 下一步
 
-1. 新增空间查询完整对象端到端基准，先补齐 fast-gdb/GDAL 输出对称性。
-2. 实现空间+属性联合查询，建立 GDAL 完整 FID 等价和性能基线。
-3. 拆分 Reader profile 阶段，定位冷打开和候选读取热点。
+1. 在 Windows/Linux 重复本地 Release、CTest 和 package consumer 门禁。
+2. 使用正式真实数据执行 SpatialWhere 与 FeatureCursor release contract。
+3. 补齐 10M、strict-cold 和 peak RSS。
 4. 以实际业务 GDB 运行 linear/hybrid/GDAL A/B，根据读取模式选型。
 5. 同步 README 和功能覆盖矩阵的 Reader 当前结论。
 

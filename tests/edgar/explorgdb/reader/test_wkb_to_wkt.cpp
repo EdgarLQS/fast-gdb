@@ -189,6 +189,36 @@ TEST(GeometryValueToWkt, ConvertsEmptyNonPointTypes) {
               "MULTIPOLYGON EMPTY");
 }
 
+TEST(GeometryValueToWkt, ConvertsEmptyMembersInCollections) {
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const auto empty_point =
+        WkbBuilder().header(1U).f64(nan).f64(nan).take();
+    const auto multipoint = value(
+        WkbBuilder().header(4U).u32(2U)
+            .append(empty_point).append(point(1, 2)).take())
+        .to_wkt();
+    ASSERT_TRUE(multipoint.has_value());
+    EXPECT_EQ(*multipoint, "MULTIPOINT (EMPTY, (1 2))");
+
+    const auto multiline = value(
+        WkbBuilder().header(5U).u32(2U)
+            .append(WkbBuilder().header(2U).u32(0U).take())
+            .append(line({0, 0, 1, 1})).take())
+        .to_wkt();
+    ASSERT_TRUE(multiline.has_value());
+    EXPECT_EQ(*multiline, "MULTILINESTRING (EMPTY, (0 0, 1 1))");
+
+    const auto multipolygon = value(
+        WkbBuilder().header(6U).u32(2U)
+            .append(WkbBuilder().header(3U).u32(0U).take())
+            .append(polygon()).take())
+        .to_wkt();
+    ASSERT_TRUE(multipolygon.has_value());
+    EXPECT_EQ(*multipolygon,
+              "MULTIPOLYGON (EMPTY, ((0 0, 10 0, 10 10, 0 10, 0 0), "
+              "(2 2, 2 4, 4 4, 4 2, 2 2)))");
+}
+
 TEST(GeometryValueToWkt, RejectsMissingTruncatedAndUnsupportedWkb) {
     EXPECT_FALSE(GeometryValue{}.to_wkt().has_value());
     EXPECT_FALSE(value({1U, 1U, 0U}).to_wkt().has_value());

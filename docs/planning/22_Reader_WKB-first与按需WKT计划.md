@@ -3,7 +3,7 @@
 - **创建日期**：2026-07-18
 - **最近更新**：2026-07-18
 - **适用分支**：`codex/spatial-attribute-query`
-- **当前状态**：实现完成；完整构建矩阵待 GitHub Actions runner 恢复
+- **当前状态**：本地审核与提交门禁通过；跨平台正式验收待完成
 - **前置工作**：[21_空间属性联合查询实现计划](21_空间属性联合查询实现计划.md)
 
 ## 1. 背景与目标
@@ -51,7 +51,7 @@ Geometry 槽读取几何内容。
 
 新增 `wkb_reader.cpp`：
 
-- 支持 Point、MultiPoint、LineString、MultiLineString、Polygon、MultiPolygon；
+- 支持 Point、MultiPoint、LineString、MultiLineString、Polygon、MultiPolygon，包括 Multi 内合法 EMPTY 子几何；
 - 支持 ISO 1000/2000/3000 Z、M、ZM 类型码；
 - 支持大小端 WKB；
 - 严格校验字节序、类型码、计数、剩余长度、嵌套类型/维度和 Polygon 闭环；
@@ -64,7 +64,7 @@ feature 或 cursor 路径执行。
 ### 3.2 Reader 路径
 
 - 新增 WKB-first `read_record_by_fid()`：读取长度、验证边界并跳过 Geometry blob；
-- 旧未发布 eager 实现改名为内部符号，不再位于产品调用路径；
+- 旧未发布 eager record 实现及 CMake 宏改名桥已删除；
 - `read_feature_by_fid()` 保持一次定位、一次字段物化、一次几何解码和一次 WKB 序列化；
 - one-pass 公开包装器把有效和 NULL Geometry 槽统一归一化为空字符串；
 - FeatureCursor 继续通过 `read_feature_by_fid()` 返回完整普通字段和独立 GeometryValue。
@@ -121,21 +121,17 @@ package consumer 已引用 `GeometryValue::to_wkt()`，验证公开头声明和�
 - 分支静态审计：默认公开路径不再声明 WKT 指标；
 - 测试、benchmark 和 package consumer 源码同步。
 
-### 尚未形成有效证据
+### 2026-07-18 本地有效证据
 
-截至 2026-07-18，仓库 GitHub Actions 在 runner 分配/checkout 前失败，job 没有 steps 和
-logs；当前执行环境也没有该私有仓库的本地 checkout 或可用 `gh` 凭据。因此下列项目不能
-诚实标记为通过：
+- GDAL OFF Release + `ctest -j 8`：310/310；
+- GDAL ON Release + `ctest -j 8`：653/653；
+- 两套安装包的 package consumer 编译、链接、运行通过；
+- schema-v3 100K benchmark `correct=true`，显式 1,000 次 `to_wkt()` 为 0.224 ms；
+- `git diff --check` 通过。
 
-- GDAL OFF Release 完整构建与 CTest；
-- GDAL ON Release 完整构建与 CTest；
-- 安装后的 package consumer 实际运行；
-- 100K schema-v3 benchmark；
-- `git diff --check main...HEAD` 的本地 Git 结果。
-
-runner 恢复后必须按上述顺序补跑，并将 SHA、平台、编译器、GDAL 版本、缓存语义和原始
-benchmark JSON 一并归档。未获得这些结果前，不发布性能提升数字，也不将本计划状态改为
-“验收完成”。
+完整命令、环境和边界见
+[2026-07-18 审核与验证证据](../evidence/branch-review-and-validation-2026-07-18.md)。
+Windows/Linux、真实数据、10M、strict-cold 和 peak RSS 仍未完成，因此不标记正式验收完成。
 
 ## 6. 验收标准
 

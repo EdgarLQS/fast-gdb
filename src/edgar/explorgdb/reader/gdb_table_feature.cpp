@@ -148,7 +148,7 @@ bool materialize_zero_length_record(
 
 } // namespace
 
-bool GdbTableParser::read_feature_by_fid(
+bool GdbTableParser::read_feature_by_fid_wkb_internal(
     uint32_t fid,
     FeatureRecord& record,
     GeometryValue& geometry,

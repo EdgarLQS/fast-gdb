@@ -2,17 +2,6 @@ include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 include(${CMAKE_CURRENT_LIST_DIR}/FastGdbPlatform.cmake)
 
-# 旧实现通过源文件级宏改名为内部符号；公开包装器位于新增翻译单元，
-# 统一批量 record、单条 record 和 one-pass feature 的 WKB-first 字段契约。
-set_source_files_properties(
-    src/edgar/explorgdb/reader/gdb_table.cpp
-    PROPERTIES COMPILE_DEFINITIONS
-        "parse_records=parse_records_eager_wkt;read_record_by_fid=read_record_by_fid_eager_wkt")
-set_source_files_properties(
-    src/edgar/explorgdb/reader/gdb_table_feature.cpp
-    PROPERTIES COMPILE_DEFINITIONS
-        "read_feature_by_fid=read_feature_by_fid_wkb_internal")
-
 # GeometryValue::to_wkt() 属于可移植几何值对象的公开能力，必须由最小
 # geometry_core 直接提供。reader 使用 GLOB 收集源文件，因此先从 reader
 # 目标移除该翻译单元，再加入 geometry_core，避免两个静态库重复定义符号。
@@ -106,7 +95,8 @@ install(TARGETS ${FAST_GDB_INSTALL_TARGETS}
 
 install(DIRECTORY src/edgar/explorgdb/common/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/common
-    FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp")
+    FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp"
+    PATTERN "explorgdb_constants.h" EXCLUDE)
 install(DIRECTORY src/edgar/explorgdb/reader/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/reader
     FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp"

@@ -53,7 +53,7 @@ TEST(CatalogResolverTest, ResolvedTableCarriesSpatialRefsSnapshot) {
     ASSERT_TRUE(resolved->has_spatial_refs.has_value());
     EXPECT_TRUE(*resolved->has_spatial_refs);
 
-    ResolvedTable legacy{99, "Roads", "table", "tablx"};
+    ResolvedTable legacy{99, "Roads", "table", "tablx", std::nullopt};
     EXPECT_FALSE(legacy.has_spatial_refs.has_value());
 
     fs::remove_all(directory);

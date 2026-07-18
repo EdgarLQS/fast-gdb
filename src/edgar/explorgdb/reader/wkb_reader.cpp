@@ -200,12 +200,12 @@ private:
                 return false;
             }
             const std::string body = child_text.substr(prefix.size());
-            if (body == " EMPTY" || body.empty() || body.front() != ' ') {
+            if (body.empty() || body.front() != ' ') {
                 return false;
             }
             if (index != 0) out << ", ";
             // 子几何名称和维度标记由父集合提供，只嵌入括号体。
-            out << body.substr(1);
+            out << (body == " EMPTY" ? "EMPTY" : body.substr(1));
         }
         out << ')';
         text = out.str();

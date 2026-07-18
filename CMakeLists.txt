@@ -337,7 +337,10 @@ if(BUILD_TESTING)
                 ${FAST_GDB_GDAL_TARGET} gdb_component fast_gdb_curve_gdal)
         endif()
         fast_gdb_enable_warnings(gdb_tutorial_test_runner)
-        gtest_discover_tests(gdb_tutorial_test_runner TEST_PREFIX "full.")
+        gtest_discover_tests(
+            gdb_tutorial_test_runner
+            TEST_PREFIX "full."
+            PROPERTIES RESOURCE_LOCK fast_gdb_full_test_fixture)
     endif()
 endif()
 

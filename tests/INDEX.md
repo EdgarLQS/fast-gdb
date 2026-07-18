@@ -2,7 +2,8 @@
 
 当前分支 `codex/spatial-attribute-query` 新增空间属性联合查询、完整 Feature 流式
 迭代、one-pass 完整对象读取、`.atx` direct 查询、自适应联合规划和融合候选扫描测试。
-测试代码与静态自检完成，但尚未获得有效的 Release/CTest/benchmark 运行证据；文件存在不代表通过。
+2026-07-18 本地审核已取得 GDAL OFF/ON Release、并行 CTest、package consumer 和两项
+100K benchmark 证据；环境门控 SKIP、跨平台和真实数据仍单独记录。
 
 功能矩阵见 [`docs/usage/04_功能与基准测试覆盖矩阵.md`](../docs/usage/04_功能与基准测试覆盖矩阵.md)。
 
@@ -64,9 +65,9 @@ tests/
 | `usegdal/test_feature_cursor_empty_geometry.cpp` | NULL geometry 成功返回 Empty |
 | `usegdal/test_feature_cursor_zero_length.cpp` | ObjectID-only 零长度行 |
 | `usegdal/test_feature_cursor_reopen.cpp` | open generation、EOF reacquire、其他活动 cursor |
-| `usegdal/test_feature_cursor_one_pass.cpp` | one-pass 与 legacy 的字段、Binary、兼容 WKT、ISO WKB 对照；NULL geometry；请求级 profile 开关 |
+| `usegdal/test_feature_cursor_one_pass.cpp` | one-pass 与 record 路径的字段、Binary、Geometry 空占位、ISO WKB 对照；NULL geometry；请求级 profile 开关 |
 | `usegdal/test_feature_cursor_one_pass_geometry.cpp` | MultiPoint、Polyline、Polygon 含洞的旧/新完整对象对照 |
-| `usegdal/test_feature_cursor_benchmark.cpp` | 100K full-feature schema-v2；五样本轮换；独立 profile；融合路径和计数硬断言；默认跳过 |
+| `usegdal/test_feature_cursor_benchmark.cpp` | 100K WKB-first full-feature schema-v3；五样本轮换；显式 `to_wkt()`；默认跳过 |
 | `usegdal/spatial_where_test_utils.h` | 按 TEST 名隔离临时 GDB |
 
 ## Package consumer
@@ -153,15 +154,15 @@ FID-only schema-v2 evidence 记录：
 FAST_GDB_RUN_FEATURE_CURSOR_BENCHMARKS=1 \
 FAST_GDB_BENCHMARK_OUTPUT_DIR="$PWD/evidence-local" \
 ctest --test-dir build-on --output-on-failure \
-  -R 'FeatureCursorBenchmarkTest.Point100KFullFeatureEvidence'
+  -R 'FeatureCursorBenchmarkTest.Point100KWkbFirstEvidence'
 ```
 
-Full-feature schema-v2 evidence 记录：
+Full-feature schema-v3 evidence 记录：
 
-- Cursor、legacy、GDAL 五样本轮换执行顺序；
+- Cursor、record+geometry、GDAL 五样本轮换执行顺序；
 - fresh `QueryEngine` / fresh GDAL dataset，复用同一 catalog snapshot metadata cache，非 strict-cold；
 - 融合原始候选数、精确空间命中数、WHERE 复核数、融合扫描耗时和路径标志；
-- row lookup、字段物化、GeometryModel、WKT、WKB 和 checksum sink；
+- row lookup、字段物化、GeometryModel、WKB、checksum sink 和独立 `to_wkt()`；
 - profile 样本不进入 median/p95；
 - 未指定 evidence 目录时写系统临时目录，不写仓库。
 
@@ -188,7 +189,7 @@ cursor_median_ms < gdal_median_ms
 - `move_to` 按零基 FID 定位，不按结果序号；
 - 顺序 cursor 不得先物化全表 FID；
 - EOF cursor reacquire 前必须先取得 engine lease；
-- one-pass 必须保持完整字段、Binary、兼容 WKT 和 ISO WKB 与 legacy 一致；
+- one-pass 必须保持完整字段、Binary、Geometry 空占位和 ISO WKB 与 record 路径一致；
 - profile 必须通过请求显式开启，普通路径不得调用 clock；
 - `.atx` direct 查询只有完整结构验证成功后才能发布 FID；
 - 融合路径只有完整候选扫描成功后才能发布结果，否则必须回到旧路径；
@@ -203,7 +204,7 @@ cursor_median_ms < gdal_median_ms
 - benchmark 默认跳过；
 - 原始结果和生成 `.gdb` 不提交仓库；
 - `8f23001` 的 3.852 ms 是融合优化前对照，新性能必须由严格 JSON 复测后更新；
-- 当前正式状态仍为 `Code review ready / Formal acceptance blocked`。
+- 当前状态为 `Local review passed / Formal acceptance blocked`。
 
 代码审核与自检见：
 

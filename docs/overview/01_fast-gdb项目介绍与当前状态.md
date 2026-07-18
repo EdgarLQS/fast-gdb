@@ -1,14 +1,14 @@
 # fast-gdb 项目介绍与当前状态
 
 **面向读者**：需要理解项目目标、代码结构、性能依据和验收边界的开发人员
-**最后更新**：2026-07-17
+**最后更新**：2026-07-18
 **当前分支**：`codex/spatial-attribute-query`
 **分支基线**：`main@d8784e7`
 
 **当前结论**：既有 Reader/Hybrid 发布范围保持不变。当前分支新增空间属性联合查询、
-完整 Feature 流式迭代和 `move_to(fid)`，实现、测试代码和三轮静态自检已完成，状态为
-**Code review ready / Formal acceptance blocked**。该能力尚未进入 `main`，也没有正式
-构建、CTest、consumer 或性能证据。
+完整 Feature 流式迭代和 `move_to(fid)`，已通过本地审核、Release 构建、并行 CTest、
+package consumer 和 100K 基准，状态为 **Local review passed / Formal acceptance blocked**。
+该能力尚未进入 `main`，跨平台、真实数据和大规模性能证据仍未完成。
 
 审核入口：
 
@@ -38,10 +38,10 @@ fast-gdb 是围绕 ESRI File Geodatabase 的 C++17 项目：
 | `fast_gdb_linear` | 无 GDAL Reader、几何和查询 | 既有范围已完成历史验收 |
 | `fast_gdb_hybrid` | fast-gdb 主路径 + 显式 GDAL 回退 | 既有范围已完成历史验收 |
 | `usegdal` | GDAL Datasource/Dataset/Recordset | 既定阶段已实现 |
-| `explorgdb reader` | 二进制解析、索引、查询、完整对象 | 既有能力已验收；本分支能力待审 |
+| `explorgdb reader` | 二进制解析、索引、查询、完整对象 | 既有能力已验收；本分支本地审核通过 |
 | `explorgdb writer` | Writer 专项 | 本分支不修改 |
 
-`Code review ready` 表示代码和测试入口可审核；`Formal acceptance blocked` 表示实际证据未齐。
+`Local review passed` 表示本地提交门禁通过；`Formal acceptance blocked` 表示跨平台和发布证据未齐。
 
 ## 3. Reader 当前分支能力
 
@@ -126,15 +126,13 @@ flowchart TB
 - 100K full-feature benchmark runner；
 - 联合查询和 cursor 三轮静态自检。
 
-尚未形成实际证据：
+本地已完成 GDAL ON/OFF Release、310/310 与 653/653 并行 CTest、两套 package consumer、
+GDAL 完整对象对等和 100K full-feature。尚未形成正式证据：
 
-- GDAL ON/OFF Release；
-- 完整和并行 CTest；
-- package consumer；
-- GDAL 完整对象逐条对等；
-- 100K/10M full-feature；
+- Windows/Linux 和真实数据 release contract；
+- 10M full-feature；
 - peak RSS；
 - current/main 和 5% 门禁；
-- `git diff --check`。
+- 正式 artifact。
 
-因此当前分支可以开始独立代码审核，但不能作为正式发布能力声明。
+因此当前分支达到本地提交要求，但不能作为正式发布能力声明。

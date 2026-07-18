@@ -444,7 +444,7 @@ QueryResult QueryEngine::query_spatial_where(const QueryRequest& request) {
                             candidates.size(), feature_count)) {
                         QueryResult fused;
                         fused.execution_path =
-                            "spatial-where:spatial-candidates";
+                            kPathSpatialWhereSpatialCandidates;
                         fused.combined_metrics.used_spatial_index = true;
                         fused.combined_metrics.attribute_index_bypassed = true;
                         fused.combined_metrics.fused_spatial_attribute_scan =
@@ -619,11 +619,11 @@ QueryResult QueryEngine::query_spatial_where(const QueryRequest& request) {
 
     if (attribute_index_used &&
         result.combined_metrics.used_spatial_index) {
-        result.execution_path = "spatial-where:spx+atx";
+        result.execution_path = kPathSpatialWhereSpxAtx;
     } else if (result.combined_metrics.used_spatial_index) {
-        result.execution_path = "spatial-where:spatial-candidates";
+        result.execution_path = kPathSpatialWhereSpatialCandidates;
     } else {
-        result.execution_path = "spatial-where:sequential";
+        result.execution_path = kPathSpatialWhereSequential;
     }
 
     if (evaluation_candidates.empty()) {

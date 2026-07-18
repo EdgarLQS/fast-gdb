@@ -1,6 +1,6 @@
 # fast_gdb 文档索引
 
-本文档是 `docs/` 的分类入口。当前分支为 `codex/spatial-attribute-query`，空间与属性联合查询已完成实现、测试代码、三轮静态自审和文档自检，状态为 **Code review ready / Formal acceptance blocked**。分支内容尚未进入 `main`，不得作为正式发布声明。
+本文档是 `docs/` 的分类入口。当前分支为 `codex/spatial-attribute-query`，空间与属性联合查询、FeatureCursor 和 WKB-first Reader 已通过本地代码审核、Release 构建、并行 CTest、package consumer 与 100K 基准。分支内容尚未进入 `main`，跨平台和正式发布验收仍阻塞。
 
 ## 当前分支审核入口
 
@@ -10,6 +10,7 @@
 | [10_空间属性联合查询代码审核指南.md](usage/10_空间属性联合查询代码审核指南.md) | 审核顺序、重点文件、P0/P1 检查点、建议命令和报告格式 |
 | [spatial-attribute-query-self-review-2026-07-17.md](evidence/spatial-attribute-query-self-review-2026-07-17.md) | 三轮静态代码审核发现和修复记录 |
 | [spatial-attribute-query-document-audit-2026-07-17.md](evidence/spatial-attribute-query-document-audit-2026-07-17.md) | 文档一致性自检、冲突和修复记录 |
+| [branch-review-and-validation-2026-07-18.md](evidence/branch-review-and-validation-2026-07-18.md) | 独立审核、修复、本地构建/CTest/consumer/100K 证据 |
 | [04_功能与基准测试覆盖矩阵.md](usage/04_功能与基准测试覆盖矩阵.md) | 当前自动化、性能和正式验证缺口 |
 | [Reader QUERY_FLOW](../src/edgar/explorgdb/reader/QUERY_FLOW.md) | 联合查询源码执行链和回退语义 |
 
@@ -65,6 +66,6 @@
 - `SpatialWhere` 在当前分支组合精确 bbox 与现有 WHERE 子集；
 - 所有 `.atx` 快速路径都执行最终 WHERE 复核；
 - 损坏索引必须 fail closed；
-- 当前可以进行代码审核，但构建、CTest、consumer 和性能证据未完成；
+- 当前分支本地代码审核和提交门禁已通过；跨平台、真实数据和大规模性能证据未完成；
 - MultiPatch 仍为 degraded；
 - 合成自动化、真实数据和正式 artifact 必须分开记录。

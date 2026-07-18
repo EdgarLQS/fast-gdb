@@ -164,7 +164,7 @@ QueryResult QueryEngine::query_bbox_unified(
                 } else {
                     capabilities_.spatial_index = {
                         CapabilityState::Degraded,
-                        
+
                         kDiagnosticSpxParseFail};
                 }
             }

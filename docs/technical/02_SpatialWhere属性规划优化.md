@@ -189,7 +189,7 @@ ctest --test-dir build-on --output-on-failure \
 FAST_GDB_RUN_FEATURE_CURSOR_BENCHMARKS=1 \
 FAST_GDB_BENCHMARK_OUTPUT_DIR=<external-dir> \
 ctest --test-dir build-on --output-on-failure \
-  -R FeatureCursorBenchmarkTest.Point100KFullFeatureEvidence
+  -R FeatureCursorBenchmarkTest.Point100KWkbFirstEvidence
 ```
 
 ## 8. 复测判定

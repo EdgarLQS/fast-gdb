@@ -142,10 +142,13 @@ if (table.read_geometry_value(fid, value) && value.valid()) {
     // value.has_z / has_m
     // value.source_was_curve / linearized
     // value.backend / status / diagnostic
+    const auto wkt = value.to_wkt(); // 仅在调用方明确需要时转换
 }
 ```
 
-需要内部拓扑或自定义空间判断时使用 `read_geometry_model()`。原有 `GdbGeomDecoder::decode()` WKT 接口保留为兼容层，但新代码应优先使用 `GeometryValue`。
+`read_record_by_fid()` 和 FeatureCursor 的 Geometry 字段槽是空字符串占位；正式几何只从
+`GeometryValue::wkb/status` 读取。需要内部拓扑或自定义空间判断时使用
+`read_geometry_model()`；`GdbGeomDecoder::decode()` 只作为显式调试接口。
 
 ## Hybrid FID 映射
 

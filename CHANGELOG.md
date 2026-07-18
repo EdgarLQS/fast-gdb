@@ -19,12 +19,13 @@ All notable changes to fast-gdb are documented in this file.
 - `FeatureCursor::move_to(fid)` for forward, backward, rewind and arbitrary zero-based FID jumps.
 - Cursor EOF/error diagnostics through `done()`, `query_result()` and `error()`.
 - Cursor and engine generations for single-active-cursor ownership and reopen invalidation.
-- One-pass `GdbTableParser::read_feature_by_fid()` that locates a row once, materializes fields once, decodes one `GeometryModel`, and writes compatibility WKT plus ISO WKB from that model.
-- Request-scoped `profile_feature_reads` and `FeatureCursorMetrics` for row lookup, field materialization, geometry decode, WKT and WKB stages.
+- One-pass `GdbTableParser::read_feature_by_fid()` that locates a row once, materializes fields once, decodes one `GeometryModel`, and writes ISO WKB without eager WKT.
+- Pure C++ `GeometryValue::to_wkt()` for explicit on-demand WKB conversion, including EMPTY members in Multi geometries.
+- Request-scoped `profile_feature_reads` and `FeatureCursorMetrics` for row lookup, field materialization, geometry decode and WKB stages.
 - Direct `.atx` query APIs that validate the complete leaf chain but materialize only matching FIDs instead of all index entries.
 - Snapshot-scoped `.gdbindexes` metadata cache on `GdbCatalog` without removing catalog copy/move value semantics.
 - Full-object GDAL tests for fields, NULL, Binary and ISO WKB.
-- One-pass parity tests against the retained legacy path for Point, MultiPoint, Polyline and Polygon with a hole.
+- WKB-first parity tests for Point, MultiPoint, Polyline and Polygon with a hole.
 - Adaptive SpatialWhere tests for low-coverage `.atx` bypass and high-coverage direct-index execution.
 - Fused SpatialWhere GDAL parity tests for MultiPoint, Polyline and Polygon.
 - Exact Point ZM WKT/WKB writer contract and `.spx` merged-range candidate-superset tests.
@@ -54,7 +55,7 @@ All notable changes to fast-gdb are documented in this file.
 - Reopening QueryEngine invalidates exhausted cursors and resets cached spatial-index state.
 - Zero-length legal rows are normalized into ObjectID and nullable NULL values.
 - FeatureCursor now uses the one-pass full-object reader instead of `read_record_by_fid()` followed by `read_geometry_value()`.
-- Full-feature benchmark schema v2 rotates Cursor/legacy/GDAL order across five samples, keeps profile outside median/p95, records fused query/row/field/model/WKT/WKB/checksum stages, and writes default evidence to the system temporary directory.
+- Full-feature benchmark schema v3 rotates Cursor/record+geometry/GDAL order across five samples, keeps profile outside median/p95, records WKB-first stages and measures explicit `to_wkt()` separately.
 - FID-only benchmark records the adaptive execution path and detailed attribute-planning stages; default evidence is written outside the repository.
 - Feature profiling is bound to each `QueryRequest`; normal reads do not call the profile clock or depend on process-global state.
 - Combined-query and full-feature evidence records observed paths and computed correctness rather than hard-coded claims.
@@ -65,9 +66,9 @@ All notable changes to fast-gdb are documented in this file.
 
 - Combined-query, FeatureCursor, one-pass and performance optimization work exists only on `codex/spatial-attribute-query`; it has not entered `main` or a release.
 - Combined-query static review, FeatureCursor review, one-pass review, `.atx` planner review and fused-overtake static review are complete.
-- `8f23001` measured FeatureCursor at 3.852 ms, legacy at 3.857 ms and GDAL at 1.306 ms before the current fused optimization; no performance number is claimed for the current head until the strict workflow produces a valid JSON artifact.
-- GitHub Actions currently terminates jobs before checkout with no steps or logs, and the local environment cannot resolve `github.com`; this is an evidence-infrastructure blocker, not a passing or failing code result.
-- Status is **Code review ready / Formal acceptance blocked** pending GDAL ON/OFF Release, full and parallel CTest, package consumers, fused/direct-index tests, one-pass and GDAL parity, the strict 100K overtake gate, schema-v2 10M performance, strict-cold, peak RSS and the 5% gate.
+- 2026-07-18 local review passed GDAL OFF 310/310 and GDAL ON 653/653 parallel CTest, both installed package consumers, and both explicit 100K evidence runners.
+- Local FeatureCursor schema-v3 measured 0.630 ms versus GDAL 1.300 ms with `correct=true`; this is a single M5 fresh-open-not-strict-cold scenario, not a product-wide claim.
+- Status is **local code review and commit gates passed / formal acceptance blocked** pending cross-platform CI, real-data contracts, 10M performance, strict-cold and peak RSS.
 
 ## [0.1.0] - 2026-07-13
 

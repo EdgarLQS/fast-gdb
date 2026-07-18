@@ -37,8 +37,7 @@ bool add_geometry_feature(OGRLayer* layer, OGRGeometry* geometry) {
     return create_error == OGRERR_NONE;
 }
 
-void expect_one_pass_matches_legacy(
-    const GdbCatalog& catalog,
+void expect_one_pass_matches_record(
     const CatalogResolver& resolver,
     const char* layer_name) {
     const auto resolved = resolver.resolve(layer_name);
@@ -83,7 +82,7 @@ void expect_one_pass_matches_legacy(
 class FeatureCursorOnePassGeometryTest : public GdbTutorialFixture {};
 
 TEST_F(FeatureCursorOnePassGeometryTest,
-       MultiPointPolylineAndPolygonMatchLegacy) {
+       MultiPointPolylineAndPolygonMatchRecordPath) {
     const std::string path =
         spatial_where_test_utils::fixture_path(
             "fast_gdb_feature_cursor_one_pass_geometry").string();
@@ -139,10 +138,7 @@ TEST_F(FeatureCursorOnePassGeometryTest,
     CatalogResolver resolver(catalog);
     ASSERT_TRUE(resolver.load());
 
-    expect_one_pass_matches_legacy(
-        catalog, resolver, "one_pass_multipoint");
-    expect_one_pass_matches_legacy(
-        catalog, resolver, "one_pass_polyline");
-    expect_one_pass_matches_legacy(
-        catalog, resolver, "one_pass_polygon");
+    expect_one_pass_matches_record(resolver, "one_pass_multipoint");
+    expect_one_pass_matches_record(resolver, "one_pass_polyline");
+    expect_one_pass_matches_record(resolver, "one_pass_polygon");
 }
