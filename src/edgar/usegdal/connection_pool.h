@@ -1,4 +1,8 @@
 // src/connection_pool.h — GdbConnectionPool 连接池（线程安全）
+//
+// 该池只管理 usegdal 产品线中的 GdbDatasource 对象，不参与纯 C++ Reader 的
+// 文件映射、索引缓存或 FeatureCursor 生命周期。连接池本身线程安全，但借出的
+// GdbDatasource 仍按 GDAL/OGR 约束由单个调用方独占使用。
 
 #ifndef GDB_CONNECTION_POOL_H
 #define GDB_CONNECTION_POOL_H
