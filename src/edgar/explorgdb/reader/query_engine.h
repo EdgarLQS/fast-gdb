@@ -1,3 +1,6 @@
+// src/edgar/explorgdb/reader/query_engine.h
+// 查询引擎公开接口 — 统一 FID 查询、联合查询与 WKB-first FeatureCursor。
+
 #ifndef EXPLORGDB_QUERY_ENGINE_H
 #define EXPLORGDB_QUERY_ENGINE_H
 
@@ -5,6 +8,7 @@
 #include "gdb_attribute_index.h"
 #include "gdb_spatial_index.h"
 #include "gdb_table.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -14,6 +18,7 @@
 
 namespace explorgdb {
 
+/** QueryRequest 的执行类型。 */
 enum class QueryKind {
     ReadByFid,
     SequentialScan,
@@ -24,6 +29,7 @@ enum class QueryKind {
     SpatialWhere
 };
 
+/** 查询参数；不同 QueryKind 只读取与自身相关的字段。 */
 struct QueryRequest {
     QueryKind kind = QueryKind::SequentialScan;
     uint32_t fid = 0;
@@ -36,11 +42,12 @@ struct QueryRequest {
     std::string string_value;
     std::string where_clause;
     AttrOp attr_op = AttrOp::Eq;
-    // Opt-in cursor stage timings. Default false keeps normal reads free of
-    // steady_clock calls and avoids process-global profiling state.
+
+    // 显式启用 Cursor 阶段计时；默认关闭以避免 steady_clock 热路径开销。
     bool profile_feature_reads = false;
 };
 
+/** 空间查询候选、精确过滤和回退路径的诊断指标。 */
 struct SpatialQueryMetrics {
     size_t feature_count = 0;
     size_t candidate_count = 0;
@@ -60,6 +67,7 @@ struct SpatialQueryMetrics {
     double total_ms = 0.0;
 };
 
+/** SpatialWhere 规划、索引和融合扫描的诊断指标。 */
 struct CombinedQueryMetrics {
     size_t spatial_candidate_count = 0;
     size_t spatial_match_count = 0;
@@ -91,16 +99,16 @@ struct CombinedQueryMetrics {
     bool fused_spatial_attribute_scan = false;
 };
 
-// Aggregated only when QueryRequest::profile_feature_reads is true.
+/** 仅在 QueryRequest::profile_feature_reads=true 时累计。 */
 struct FeatureCursorMetrics {
     size_t feature_count = 0;
     double row_lookup_ms = 0.0;
     double field_materialization_ms = 0.0;
     double geometry_decode_ms = 0.0;
-    double wkt_write_ms = 0.0;
     double wkb_write_ms = 0.0;
 };
 
+/** 查询结果、执行路径和可选完整记录。 */
 struct QueryResult {
     std::vector<uint32_t> matched_fids;
     std::optional<FeatureRecord> record;
@@ -111,6 +119,7 @@ struct QueryResult {
     FeatureCursorMetrics feature_cursor_metrics;
 };
 
+/** FeatureCursor 返回的完整对象；几何独立由 WKB-first GeometryValue 承载。 */
 struct QueryFeature {
     uint32_t fid = 0;
     FeatureRecord record;
@@ -119,6 +128,12 @@ struct QueryFeature {
 
 class QueryEngine;
 
+/**
+ * QueryEngine 的单活动游标。
+ *
+ * 游标可移动但不可复制；其生命周期占用 QueryEngine 的独占游标租约，避免
+ * reopen 或另一个游标改变底层映射状态。
+ */
 class FeatureCursor {
 public:
     FeatureCursor(FeatureCursor&& other) noexcept;
@@ -128,10 +143,13 @@ public:
     ~FeatureCursor();
 
     bool next(QueryFeature& feature);
-    // Reposition by zero-based FID. The next successful next() returns the
-    // first result whose FID is greater than or equal to the requested value.
-    // This supports forward, backward and arbitrary jumps; move_to(0) rewinds.
+
+    /**
+     * 按零基 FID 重定位；下一次成功 next() 返回 FID >= 请求值的首条结果。
+     * 支持前进、后退和任意跳转，move_to(0) 等价于回绕。
+     */
     bool move_to(uint32_t fid);
+
     bool done() const noexcept;
     const QueryResult& query_result() const noexcept;
     const std::string& error() const noexcept;
@@ -144,6 +162,7 @@ private:
     friend class QueryEngine;
 };
 
+/** FileGDB 表上的查询规划与执行入口。 */
 class QueryEngine {
 public:
     QueryEngine(const GdbCatalog& catalog, const ResolvedTable& table);
@@ -199,6 +218,7 @@ private:
     void release_feature_cursor(uint64_t generation) noexcept;
     bool feature_cursor_active() const noexcept;
 
+    /** 引擎重开代次与单游标租约状态。 */
     struct CursorControl {
         uint64_t open_generation = 0;
         uint64_t next_cursor_generation = 0;
