@@ -1,19 +1,20 @@
-# Reader 查询与完整 Feature 流程
+# Reader 查询、WKB-first 完整 Feature 与按需 WKT 流程
 
-当前分支同时提供：
+当前分支提供：
 
 - `QueryEngine::query()`：FID-only 查询；
-- `QueryEngine::open_cursor()`：完整 Feature 流式迭代；
-- `FeatureCursor::move_to(fid)`：按零基 FID 前后和跳跃定位。
+- `QueryEngine::open_cursor()`：WKB-first 完整 Feature 流式迭代；
+- `FeatureCursor::move_to(fid)`：按零基 FID 前后和跳跃定位；
+- `GeometryValue::to_wkt()`：从已读取 ISO WKB 显式转换 WKT。
 
-状态：**Code review ready / Formal acceptance blocked**。
+状态：**代码实现完成；正式构建/性能验收受 Actions runner 基础设施阻塞**。
 
 ## 1. FID-only 查询分派
 
 ```mermaid
 flowchart TD
     Q["QueryEngine::query(request)"] --> K{request.kind}
-    K -->|ReadByFid| FID["read_record_by_fid"]
+    K -->|ReadByFid| FID["read_record_by_fid: 普通字段 + Geometry 空占位"]
     K -->|SequentialScan| SEQ["sequential_scan -> FID vector"]
     K -->|SpatialBbox| SP["query_bbox_unified"]
     K -->|AttributeDouble/String| AT["query_attribute_*"]
@@ -21,7 +22,8 @@ flowchart TD
     K -->|SpatialWhere| SW["query_spatial_where"]
 ```
 
-`query()` 保持既有返回 FID 集语义。`SpatialWhere` 追加在枚举末尾。
+`query()` 保持既有 FID 集语义。`ReadByFid` 返回的 record 不包含几何文本或 WKB；
+Geometry 槽是字段顺序占位。
 
 ## 2. SpatialWhere
 
@@ -53,17 +55,37 @@ flowchart TD
 最终结果 = 精确空间相交 FID ∩ 完整 WHERE 命中 FID
 ```
 
-`.spx/.atx` 都不能代替最终判断。损坏索引必须 fail closed。
+`.spx/.atx` 只缩小候选，不能替代最终语义判断；损坏索引 fail closed。
 
-## 3. open_cursor 规划
+## 3. record-only 路径
+
+```mermaid
+flowchart TD
+    R["read_record_by_fid(fid)"] --> LOOKUP[".gdbtablx 定位 row"]
+    LOOKUP --> LAYOUT["尝试兼容 nullable bitmap 布局"]
+    LAYOUT --> FIELD{字段类型}
+    FIELD -->|普通定长/变长| MATERIALIZE["物化 FieldValue"]
+    FIELD -->|Geometry 非 NULL| SKIP["读取 varuint 长度 + 边界校验 + skip blob"]
+    FIELD -->|Geometry NULL| PLACEHOLDER["不读取 blob"]
+    SKIP --> PLACEHOLDER
+    PLACEHOLDER --> STRING["field_values 槽写 std::string{}"]
+    MATERIALIZE --> CHECK["验证尾部仅零填充"]
+    STRING --> CHECK
+    CHECK --> COMMIT["选择最少 padding 的合法布局"]
+```
+
+该路径不创建 `GdbGeomDecoder`，不生成 `GeometryModel`、WKT 或 WKB。Geometry 空字符串
+只保持字段数量和描述符顺序；调用方需要几何时另行调用 `read_geometry_value()`。
+
+## 4. open_cursor 规划
 
 ```mermaid
 flowchart TD
     OPEN["QueryEngine::open_cursor(request)"] --> ENGINE{"engine 已打开且无活动 cursor?"}
     ENGINE -->|否| FAILED["Failed cursor"]
     ENGINE -->|是| KIND{"SequentialScan?"}
-    KIND -->|是| STREAM["Sequential 模式: 保存 feature_limit"]
-    KIND -->|否| PLAN["调用既有 query(request)"]
+    KIND -->|是| STREAM["Sequential: 保存 feature_limit"]
+    KIND -->|否| PLAN["调用 query(request)"]
     PLAN --> INVALID{"语义错误?"}
     INVALID -->|是| FAILED
     INVALID -->|否| FIDS["FID sort + unique; record reset"]
@@ -74,9 +96,9 @@ flowchart TD
     LEASE --> READY["Ready cursor"]
 ```
 
-候选模式只保存最终 FID vector。SequentialScan 不先生成全表 FID。
+候选模式只保存最终 FID vector；SequentialScan 不预先物化全表 FID。
 
-## 4. next() 完整对象
+## 5. next() WKB-first 完整对象
 
 ```mermaid
 flowchart TD
@@ -86,45 +108,40 @@ flowchart TD
     GEN -->|否| FAIL["Failed"]
     GEN -->|是| FID["取得下一 FID / live slot"]
     FID -->|耗尽| EOF["Exhausted + release lease"]
-    FID --> ROW["read_record_by_fid"]
-    ROW -->|失败| FAIL
-    ROW --> ZERO{"零长度但字段不完整?"}
-    ZERO -->|是| NORMALIZE["ObjectID + nullable NULL"]
-    ZERO -->|无法恢复非空字段| FAIL
-    NORMALIZE --> GEOM
-    ZERO -->|否| GEOM{"有几何字段?"}
-    GEOM -->|无| NOGEOM["UnsupportedType 成功对象"]
-    GEOM -->|NULL| EMPTY["Empty 成功对象"]
-    GEOM -->|非空| WKB["read_geometry_value -> ISO WKB"]
-    WKB -->|失败| FAIL
-    NOGEOM --> COMMIT["move candidate 到 output"]
-    EMPTY --> COMMIT
-    WKB --> COMMIT
-    COMMIT --> TRUE["true"]
+    FID --> ONEPASS["read_feature_by_fid"]
+    ONEPASS --> FIELDS["一次物化普通字段"]
+    FIELDS --> GEOM{"Geometry 状态"}
+    GEOM -->|无字段| NOGEOM["UnsupportedType"]
+    GEOM -->|NULL| EMPTY["Empty; WKB 为空"]
+    GEOM -->|非空| MODEL["一次解码 GeometryModel"]
+    MODEL --> WKB["一次序列化 ISO WKB"]
+    NOGEOM --> NORMALIZE["Geometry 槽归一化为空字符串"]
+    EMPTY --> NORMALIZE
+    WKB --> NORMALIZE
+    NORMALIZE --> COMMIT["成功后 move 到 output"]
 ```
 
-输出只在完整读取成功后覆盖；失败不会留下半更新对象。
+输出只在完整读取成功后覆盖；失败不会留下半更新对象。默认路径没有 WKT writer。
 
-## 5. move_to(fid)
-
-语义：下一次 `next()` 返回当前查询结果中第一个 `FID >= target` 的对象。
+## 6. 按需 WKT
 
 ```mermaid
 flowchart TD
-    MOVE["move_to(target)"] --> VALID{"非 Failed/moved-from 且 engine 未重开?"}
-    VALID -->|否| FALSE["false"]
-    VALID --> LEASE["先取得 engine lease"]
-    LEASE -->|其他 cursor 活动| FAIL["Failed: another cursor active"]
-    LEASE --> MODE{"执行模式"}
-    MODE -->|CandidateFids| LOWER["lower_bound(target)"]
-    MODE -->|Sequential| SLOT["next slot = target; 跳过删除槽"]
-    LOWER --> FOUND{"存在 FID >= target?"}
-    SLOT --> FOUND
-    FOUND -->|否| EOF["Exhausted + release lease"]
-    FOUND -->|是| READY["Ready; 下一次 next 返回该对象"]
+    CALL["geometry.to_wkt()"] --> HAS{"WKB 非空?"}
+    HAS -->|否| NONE["std::nullopt"]
+    HAS -->|是| HEADER["读取字节序 + ISO 类型码"]
+    HEADER --> VALIDATE["校验计数、长度、嵌套类型/维度、Polygon 闭环"]
+    VALIDATE -->|失败| NONE
+    VALIDATE --> WRITE["直接从 double 坐标写 WKT"]
+    WRITE --> RESULT["std::optional<string>"]
 ```
 
-行为：
+转换不重新读取 `.gdbtable`，不调用 GDAL，也不缓存结果。NULL 几何因没有 WKB 返回
+`std::nullopt`；合法 WKB Empty 返回 `... EMPTY`。
+
+## 7. move_to(fid)
+
+下一次 `next()` 返回当前查询结果中第一个 `FID >= target` 的对象。
 
 - 支持向前、向后和任意跳跃；
 - `move_to(0)` rewind；
@@ -134,7 +151,7 @@ flowchart TD
 - engine 重开后旧 cursor Failed；
 - 其他 cursor 活动时先拒绝 lease，不访问 parser/tablx。
 
-## 6. 状态与生命周期
+## 8. 状态与生命周期
 
 | 状态 | `next()` | `move_to()` | `done()` | `error()` |
 |---|---|---|---:|---|
@@ -146,7 +163,7 @@ flowchart TD
 规则：
 
 - FeatureCursor move-only；
-- QueryEngine 不可复制、可移动构造但不可移动赋值；cursor 依赖的控制块和 table 对象位于稳定堆地址，移动后的源 engine 安全不可用；
+- QueryEngine 不可复制、可移动构造但不可移动赋值；
 - QueryEngine、Catalog、ResolvedTable 必须比 cursor 活得更久；
 - 同一 engine 同时一个活动 cursor；
 - cursor generation 防迟到析构；
@@ -154,43 +171,43 @@ flowchart TD
 - 活动 cursor 期间 engine 的 open/query/read/scan/直接空间读入口拒绝；
 - 不声明同一 QueryEngine 线程安全。
 
-## 7. WHERE 与索引安全
+## 9. WHERE 与索引安全
 
 WHERE 支持比较、AND、OR、IN 和括号。字段名大小写不敏感，字符串支持 `''` 转义。
 
 当前 `.atx` 快速路径边界：
 
 - 字符串仅安全 `=`、`>=`；
-- 非 BMP 回退；
-- `!=` 回退；
-- 函数索引回退；
-- 不明确数值物理类型回退；
+- 非 BMP、`!=`、函数索引和不明确数值物理类型回退；
 - 任意文件、页面、页链、计数或 FID 损坏均 parse=false。
 
-## 8. 主要源码
+## 10. 主要源码
 
 | 组件 | 文件 |
 |---|---|
-| 公开接口和 engine 状态 | `query_engine.h` |
-| 查询分派和 engine guard | `query_engine.cpp` |
+| 公开接口和状态 | `query_engine.h`、`geometry_model.h` |
+| 查询分派和 guard | `query_engine.cpp` |
 | FeatureCursor PImpl | `feature_cursor.cpp` |
 | 联合查询 | `query_engine_combined.cpp` |
 | 空间 planner | `query_engine_geometry.cpp` |
 | WHERE | `query_where_internal.h/.cpp` |
 | 属性索引 | `gdb_indexes.*`、`gdb_attribute_index.*` |
-| 完整记录 | `gdb_table.cpp` |
-| GeometryValue | `gdb_table_geometry.cpp` |
+| record WKB-first 读取 | `gdb_table_record.cpp` |
+| one-pass 读取和契约包装 | `gdb_table_feature.cpp`、`gdb_table_feature_contract.cpp` |
+| 几何 WKB 输出 | `wkb_writer.cpp` |
+| 按需 WKT | `wkb_reader.cpp` |
 
-## 9. 测试入口
+## 11. 测试入口
 
 | 能力 | 测试 |
 |---|---|
+| WKB→WKT 纯 C++ | `GeometryValueToWkt.*` |
+| record/one-pass 占位 | `FeatureCursorOnePassTest.*` |
 | cursor 公开合同 | `FeatureCursorApiTest.*` |
 | 顺序、候选、move、GDAL 对等 | `FeatureCursorGdalTest.*` |
 | NULL geometry | `FeatureCursorEmptyGeometryTest.*` |
-| ObjectID-only | `FeatureCursorZeroLengthTest.*` |
 | reopen/reacquire | `FeatureCursorReopenTest.*` |
-| full-feature 100K | `FeatureCursorBenchmarkTest.*` |
+| WKB-first 100K 基准 | `FeatureCursorBenchmarkTest.*` |
 | 联合查询 | `SpatialWhere*Test.*` |
 | package consumer | `tests/package_consumer/main.cpp` |
 
