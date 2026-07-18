@@ -2,6 +2,14 @@ include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 include(${CMAKE_CURRENT_LIST_DIR}/FastGdbPlatform.cmake)
 
+# gdb_table.cpp still contains the pre-release eager-WKT record reader used only
+# as a benchmark control. Rename that single definition at compile time; the
+# public WKB-first implementation lives in gdb_table_record.cpp.
+set_source_files_properties(
+    src/edgar/explorgdb/reader/gdb_table.cpp
+    PROPERTIES COMPILE_DEFINITIONS
+        "read_record_by_fid=read_record_by_fid_eager_wkt")
+
 option(FAST_GDB_INSTALL_LEGACY_WRITER_API
        "Install the deprecated experimental Writer compatibility target" ON)
 
