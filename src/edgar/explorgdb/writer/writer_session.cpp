@@ -1,3 +1,12 @@
+// src/edgar/explorgdb/writer/writer_session.cpp
+// WriterSession 实现 — 将字段写入、几何序列化和原子发布组合为单次编辑会话。
+//
+// 设计要点：
+// - 会话只接管一个已打开的 staging writer，所有公开入口先验证单次会话状态。
+// - 字段 setter 统一委托给 GdbTableWriter，并把底层错误转换为稳定 WriterError。
+// - 几何先拆分 XY 与 Z/M 维度，再由 GeometrySerializer 生成 FileGDB 编码。
+// - commit() 交给 AtomicGdbWriteSession 发布；析构时未提交会话自动 abort。
+
 #include "writer_session.h"
 
 #include "atomic_gdb_write_session.h"
@@ -13,6 +22,8 @@ namespace writer {
 namespace fs = std::filesystem;
 
 namespace {
+
+// ========== WriterGeometryType 位编码辅助 ==========
 
 uint32_t geometry_value(WriterGeometryType type) {
     return static_cast<uint32_t>(type);
@@ -34,6 +45,7 @@ GeomType to_internal_geometry_type(WriterGeometryType type) {
     return static_cast<GeomType>(geometry_value(type));
 }
 
+// GeometrySerializer 分别接收 XY 拓扑和可选维度数组，因此这里保持相同遍历顺序。
 std::vector<GeomPoint> xy_points(
     const std::vector<WriterCoordinate>& input) {
     std::vector<GeomPoint> result;
@@ -90,6 +102,8 @@ const char* writer_stage_name(WriterStage stage) noexcept {
     return "unknown";
 }
 
+// ========== 私有状态与错误归一化 ==========
+
 struct WriterSession::Impl {
     AtomicGdbWriteSession atomic;
     std::string staging_gdb_path;
@@ -107,6 +121,7 @@ struct WriterSession::Impl {
 
     void clear_error() { error = WriterError{}; }
 
+    // 所有失败都在此处冻结为结构化错误，避免不同 setter 形成不同诊断格式。
     bool fail(WriterStage stage, const std::string& path,
               const std::string& system_reason, bool retryable = false) {
         failed = true;
@@ -126,6 +141,7 @@ struct WriterSession::Impl {
         return fail(stage, staging_gdb_path, writer().last_error(), false);
     }
 
+    // WriterSession 是 single-use；任一失败或终态都会拒绝后续写入。
     bool ensure_active(WriterStage stage) {
         if (failed) return false;
         if (!adopted || committed || aborted || !writer().is_open()) {
@@ -164,9 +180,12 @@ struct WriterSession::Impl {
     }
 };
 
+// ========== 生命周期与打开 ==========
+
 WriterSession::WriterSession() : impl_(std::make_unique<Impl>()) {}
 
 WriterSession::~WriterSession() {
+    // RAII 防线：未进入明确终态的 staging 不能遗留到调用方工作目录。
     if (impl_ && impl_->adopted && !impl_->committed && !impl_->aborted) {
         abort();
     }
@@ -199,6 +218,9 @@ bool WriterSession::open(const std::string& staging_gdb_path,
     return true;
 }
 
+// ========== 行字段委托 ==========
+
+// 简单字段操作共享完全相同的 guard、错误捕获和成功清理逻辑。
 #define FAST_GDB_SESSION_DELEGATE(method, stage, ...) \
     do { \
         if (!impl_->ensure_active(stage)) return false; \
@@ -303,6 +325,8 @@ bool WriterSession::flush() {
 
 #undef FAST_GDB_SESSION_DELEGATE
 
+// ========== 几何输入 ==========
+
 bool WriterSession::set_point(const WriterCoordinate& point,
                               WriterGeometryType type) {
     if (!impl_->ensure_active(WriterStage::Geometry)) return false;
@@ -364,10 +388,13 @@ bool WriterSession::set_polygon(
     return impl_->serialize(type);
 }
 
+// ========== 发布、放弃与状态查询 ==========
+
 bool WriterSession::commit(const std::string& final_gdb_path) {
     if (!impl_->ensure_active(WriterStage::Publish)) return false;
     if (!impl_->atomic.commit(final_gdb_path)) {
         const std::string reason = impl_->atomic.last_error();
+        // Atomic session 的 close 类错误要保留阶段语义，便于调用方区分重试策略。
         const WriterStage stage =
             reason.find("close") != std::string::npos ||
             reason.find("earlier error") != std::string::npos
