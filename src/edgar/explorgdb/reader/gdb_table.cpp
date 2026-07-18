@@ -6,6 +6,7 @@
 #include "field_layout.h"
 #include "gdb_tablx.h"
 #include "gdb_tablx_cache.h"
+#include "explorgdb_constants.h"
 
 #include <algorithm>
 #include <cstdio>

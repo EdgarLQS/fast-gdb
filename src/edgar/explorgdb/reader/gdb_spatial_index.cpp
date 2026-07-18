@@ -6,13 +6,13 @@
 //     bytes 0-3:   next_page_id
 //     bytes 4-7:   entry_count
 //     bytes 8..8+N*4:     child_page_id 数组 (N+1 × 4)
-//     bytes 12+mpp*4..:   值数组 (N × 8) — 固定偏移
+//     bytes kPageHeaderSize+mpp*4..:   值数组 (N × 8) — 固定偏移
 //   叶子页面：
 //     bytes 0-3:   next_page_id
 //     bytes 4-7:   entry_count
 //     bytes 8-11:  UNUSED (padding)
-//     bytes 12..12+N*4:     fid 数组 (N × 4)
-//     bytes 12+mpp*4..:     值数组 (N × 8) — 固定偏移
+//     bytes kPageHeaderSize..kPageHeaderSize+N*4:     fid 数组 (N × 4)
+//     bytes kPageHeaderSize+mpp*4..:     值数组 (N × 8) — 固定偏移
 //
 // B+ 树语义（GDAL FindPages）：
 //   - entry[i] 是分隔符，entry[i].raw 是 child[i] 范围的上界参考
@@ -23,6 +23,7 @@
 
 #include "gdb_spatial_index.h"
 #include "binary_reader.h"
+#include "explorgdb_constants.h"
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -34,7 +35,7 @@
 namespace explorgdb {
 
 static inline int calc_max_per_page(uint8_t value_size) {
-    return static_cast<int>((GdbSpatialIndexParser::kPageSize - 12) / (4 + value_size));
+    return static_cast<int>((GdbSpatialIndexParser::kPageSize - kPageHeaderSize) / (4 + value_size));
 }
 
 GdbSpatialIndexParser::GdbSpatialIndexParser(const std::string& file_path)
@@ -61,7 +62,7 @@ bool GdbSpatialIndexParser::parse() {
     if (!parse_trailer()) { close(fd_); fd_ = -1; return false; }
 
     max_per_page_ = calc_max_per_page(trailer_.value_size);
-    values_offset_ = 12 + max_per_page_ * 4;
+    values_offset_ = kPageHeaderSize + max_per_page_ * 4;
     void* mapping = mmap(nullptr, mapped_size_, PROT_READ, MAP_PRIVATE, fd_, 0);
     if (mapping != MAP_FAILED) {
         mapped_data_ = static_cast<const uint8_t*>(mapping);
@@ -206,7 +207,7 @@ void GdbSpatialIndexParser::collect_fids_btree(
             uint64_t v; std::memcpy(&v, page + values_offset_ + i * 8, 8);
             if (v >= start_raw && v <= end_raw) {
                 uint32_t fid;
-                std::memcpy(&fid, (uint8_t*)page + 12 + i * 4, 4);
+                std::memcpy(&fid, (uint8_t*)page + kPageHeaderSize + i * 4, 4);
                 if (fid != 0) out_fids.push_back(fid - 1);
             }
         }

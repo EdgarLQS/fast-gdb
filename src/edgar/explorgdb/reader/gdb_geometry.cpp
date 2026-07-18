@@ -7,6 +7,7 @@
 
 #include "gdb_geometry.h"
 #include "wkt_writer.h"
+#include "explorgdb_constants.h"
 
 #include <algorithm>
 #include <cmath>
@@ -30,7 +31,7 @@ public:
     bool read_varuint(uint64_t& value) {
         value = 0;
         unsigned shift = 0;
-        for (unsigned count = 0; count < 10; ++count) {
+        for (unsigned count = 0; count < kMaxVarintLen; ++count) {
             if (current_ == nullptr || current_ >= end_) return false;
             const uint8_t byte = *current_++;
             const uint64_t payload = byte & 0x7f;

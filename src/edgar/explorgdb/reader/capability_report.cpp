@@ -3,6 +3,7 @@
 
 #include "capability_report.h"
 #include "gdb_geometry.h"
+#include "explorgdb_constants.h"
 
 namespace explorgdb {
 

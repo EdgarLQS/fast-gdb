@@ -5,6 +5,7 @@
 
 #include "gdb_attribute_index.h"
 #include "binary_reader.h"
+#include "explorgdb_constants.h"
 #include <algorithm>
 #include <cmath>
 #include <cstring>

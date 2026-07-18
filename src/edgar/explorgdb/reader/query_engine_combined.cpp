@@ -2,6 +2,7 @@
 #include "gdb_indexes.h"
 #include "query_where_internal.h"
 #include "spatial_predicate.h"
+#include "explorgdb_constants.h"
 
 #include <algorithm>
 #include <chrono>
@@ -19,7 +20,6 @@ using CombinedClock = std::chrono::steady_clock;
 
 constexpr size_t kAtxBypassMaxCandidates = 65536U;
 constexpr size_t kAtxBypassRatioDenominator = 8U;
-constexpr double kFusedCoverageThreshold = 0.125;
 
 double elapsed_ms(CombinedClock::time_point start) {
     return std::chrono::duration<double, std::milli>(
@@ -346,7 +346,7 @@ void record_attribute_index_metrics(
 QueryResult QueryEngine::query_spatial_where(const QueryRequest& request) {
     QueryResult result;
     const auto total_start = CombinedClock::now();
-    result.execution_path = "spatial-where:invalid";
+    result.execution_path = kPathSpatialWhereInvalid;
 
     if (!parser_) {
         result.fallback_reason = "table not open";

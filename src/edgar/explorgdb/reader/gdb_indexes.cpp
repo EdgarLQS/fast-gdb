@@ -7,6 +7,7 @@
 
 #include "gdb_indexes.h"
 #include "binary_reader.h"
+#include "explorgdb_constants.h"
 #include <algorithm>
 #include <cctype>
 #include <cstdint>

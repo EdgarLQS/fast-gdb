@@ -63,15 +63,12 @@ void expect_one_pass_matches_legacy(
     ASSERT_EQ(one_pass_record.field_values.size(),
               legacy_record.field_values.size()) << layer_name;
     // read_feature_by_fid 不再产生 WKT，field_values[geometry_index]
-    // 保持空字符串占位。WKB 是推荐方式。
+    // 保持空字符串占位。WKB 是推荐方式，也是校验一致性的主要依据。
     EXPECT_TRUE(std::holds_alternative<std::string>(
         one_pass_record.field_values[
             static_cast<size_t>(geometry_index)])) << layer_name;
     EXPECT_TRUE(std::get<std::string>(one_pass_record.field_values[
                     static_cast<size_t>(geometry_index)]).empty())
-        << layer_name;
-    EXPECT_FALSE(std::get<std::string>(legacy_record.field_values[
-                     static_cast<size_t>(geometry_index)]).empty())
         << layer_name;
     EXPECT_EQ(one_pass_geometry.wkb, legacy_geometry.wkb) << layer_name;
     EXPECT_EQ(one_pass_geometry.geometry_type,

@@ -8,6 +8,7 @@
 // - 不支持运算符优先级（所有 AND/OR 左结合，同优先级）
 
 #include "query_where_internal.h"
+#include "explorgdb_constants.h"
 
 #include <algorithm>
 #include <cctype>

@@ -4,6 +4,7 @@
 #include "query_engine.h"
 
 #include "catalog_resolver.h"
+#include "explorgdb_constants.h"
 #include "gdb_geometry.h"
 #include "query_where_internal.h"
 
@@ -96,21 +97,21 @@ QueryResult QueryEngine::query(const QueryRequest& request) {
     // FeatureCursor 依赖底层映射和共享扫描状态，活动期间阻止旁路查询。
     if (feature_cursor_active()) {
         QueryResult result;
-        result.execution_path = "query:blocked";
-        result.fallback_reason = "feature cursor is active";
+        result.execution_path = kPathQueryBlocked;
+        result.fallback_reason = kFallbackCursorActive;
         return result;
     }
 
     switch (request.kind) {
         case QueryKind::ReadByFid: {
             QueryResult result;
-            result.execution_path = "fid";
+            result.execution_path = kPathReadByFid;
             FeatureRecord record;
             if (read_by_fid(request.fid, record)) {
                 result.record = record;
                 result.matched_fids.push_back(request.fid);
             } else {
-                result.fallback_reason = "fid not found";
+                result.fallback_reason = kFallbackFidNotFound;
             }
             return result;
         }
@@ -128,7 +129,7 @@ QueryResult QueryEngine::query(const QueryRequest& request) {
     }
 
     QueryResult result;
-    result.fallback_reason = "unsupported query kind";
+    result.fallback_reason = kFallbackInvalidQueryKind;
     return result;
 }
 
@@ -144,9 +145,9 @@ uint64_t QueryEngine::scan(GdbTableParser::ScanCallback callback) {
 
 QueryResult QueryEngine::query_sequential_scan() const {
     QueryResult result;
-    result.execution_path = "scan:sequential";
+    result.execution_path = kPathScanSequential;
     if (!parser_) {
-        result.fallback_reason = "table not open";
+        result.fallback_reason = kFallbackTableNotOpen;
         return result;
     }
 
@@ -228,10 +229,10 @@ QueryResult QueryEngine::query_spatial(const QueryRequest& request) {
         request.xmin, request.ymin, request.xmax, request.ymax);
 
     // 对外保留历史 SpatialBbox execution_path 名称，内部 model 路径不泄露。
-    if (result.execution_path == "bbox:model:invalid") {
-        result.execution_path = "bbox:invalid";
-    } else if (result.execution_path == "bbox:model:unavailable") {
-        result.execution_path = "bbox:unavailable";
+    if (result.execution_path == kPathBboxModelInvalid) {
+        result.execution_path = kPathBboxInvalid;
+    } else if (result.execution_path == kPathBboxModelUnavailable) {
+        result.execution_path = kPathBboxUnavailable;
     }
     return result;
 }
@@ -272,7 +273,7 @@ std::vector<uint32_t> QueryEngine::query_attribute_string(
 
 QueryResult QueryEngine::query_attribute(const QueryRequest& request) {
     QueryResult result;
-    result.execution_path = "attribute:atx";
+    result.execution_path = kPathAttributeAtx;
     if (request.kind == QueryKind::AttributeDouble) {
         result.matched_fids = query_attribute_double(
             request.index_name, request.double_value, request.attr_op);
@@ -285,8 +286,8 @@ QueryResult QueryEngine::query_attribute(const QueryRequest& request) {
         catalog_.find_atx(resolved_.id, request.index_name);
     if (!atx) {
         // 该兼容入口只报告缺索引，不在此处重复实现通用 WHERE 扫描。
-        result.execution_path = "attribute:sequential";
-        result.fallback_reason = "attribute index missing";
+        result.execution_path = kPathAttributeSequential;
+        result.fallback_reason = kFallbackAttributeIndexMissing;
     } else if (result.matched_fids.empty()) {
         // 合法空结果不是错误，不保留 fallback 原因。
         result.fallback_reason.clear();
@@ -296,9 +297,9 @@ QueryResult QueryEngine::query_attribute(const QueryRequest& request) {
 
 QueryResult QueryEngine::query_where(const QueryRequest& request) {
     QueryResult result;
-    result.execution_path = "where:sequential";
+    result.execution_path = kPathWhereSequential;
     if (!parser_) {
-        result.fallback_reason = "table not open";
+        result.fallback_reason = kFallbackTableNotOpen;
         return result;
     }
 

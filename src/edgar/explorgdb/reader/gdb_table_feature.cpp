@@ -2,6 +2,7 @@
 
 #include "field_layout.h"
 #include "wkb_writer.h"
+#include "explorgdb_constants.h"
 
 #include <algorithm>
 #include <chrono>
@@ -40,13 +41,13 @@ void metric_add(FeatureReadMetrics* metrics,
 }
 
 size_t nullable_bitmap_bytes_for(int nullable_count) {
-    return static_cast<size_t>((nullable_count + 7) / 8);
+    return static_cast<size_t>((nullable_count + kBitsPerByteMinusOne) / kBitsPerByte);
 }
 
 bool nullable_bit_is_set(const std::vector<uint8_t>& bitmap,
                          int nullable_bit) {
-    const int byte_index = nullable_bit / 8;
-    const int bit_index = nullable_bit % 8;
+    const int byte_index = nullable_bit / kBitsPerByte;
+    const int bit_index = nullable_bit % kBitsPerByte;
     return byte_index < static_cast<int>(bitmap.size()) &&
            ((bitmap[static_cast<size_t>(byte_index)] >> bit_index) & 1U) != 0;
 }
@@ -95,10 +96,10 @@ bool read_fixed_field_value(BinaryReader& reader,
         case FieldType::UUID_1:
         case FieldType::UUID_2: {
             auto bytes = reader.read_bytes(width);
-            std::reverse(bytes.begin(), bytes.begin() + 4);
-            std::reverse(bytes.begin() + 4, bytes.begin() + 6);
-            std::reverse(bytes.begin() + 6, bytes.begin() + 8);
-            char uuid[37];
+            std::reverse(bytes.begin(), bytes.begin() + kUuidByteReversalStart);
+            std::reverse(bytes.begin() + kUuidByteReversalStart, bytes.begin() + kUuidByteReversalMid);
+            std::reverse(bytes.begin() + kUuidByteReversalMid, bytes.begin() + kUuidByteReversalEnd);
+            char uuid[kUuidStringLength];
             std::snprintf(
                 uuid, sizeof(uuid),
                 "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-"
@@ -122,7 +123,7 @@ bool materialize_zero_length_record(
     for (const FieldDescriptor& field : fields) {
         if ((field.flag & 1U) != 0) ++nullable_count;
     }
-    record.nullable_flags.assign((nullable_count + 7U) / 8U, 0U);
+    record.nullable_flags.assign((nullable_count + 7U)  / kBitsPerByte, 0U);
     record.field_values.reserve(fields.size());
 
     size_t nullable_bit = 0;
@@ -133,13 +134,13 @@ bool materialize_zero_length_record(
 
         if (field.type == FieldType::ObjectId) {
             record.field_values.push_back(
-                static_cast<int32_t>(record.fid + 1U));
+                static_cast<int32_t>(record.fid + kFidBaseOffset));
             continue;
         }
         if (!nullable) return false;
 
-        record.nullable_flags[current_nullable_bit / 8U] |=
-            static_cast<uint8_t>(1U << (current_nullable_bit % 8U));
+        record.nullable_flags[current_nullable_bit / kBitsPerByte] |=
+            static_cast<uint8_t>(1U << (current_nullable_bit % kBitsPerByte));
         record.field_values.push_back(nullptr);
     }
     return true;
@@ -288,7 +289,7 @@ bool GdbTableParser::read_feature_by_fid(
                             fixed_physical_width(field.type) != 0) {
                             FieldValue value;
                             if (!read_fixed_field_value(
-                                    reader, field.type, fid + 1U, value)) {
+                                    reader, field.type, fid + kFidBaseOffset, value)) {
                                 valid = false;
                                 break;
                             }

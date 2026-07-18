@@ -12,6 +12,7 @@
 
 #include "gdal_priv.h"
 #include "ogrsf_frmts.h"
+#include "explorgdb_constants.h"
 
 #include <algorithm>
 #include <chrono>
@@ -36,16 +37,16 @@ std::string suffix() {
 
 // 指纹只用于发布前检测外部修改，不替代内容完整性校验。
 uint64_t fingerprint(const fs::path& root) {
-    uint64_t hash = 1469598103934665603ULL;
+    uint64_t hash = kFnv1aBasis;
     std::error_code error;
     for (fs::recursive_directory_iterator it(root, error), end;
          !error && it != end; it.increment(error)) {
         if (!it->is_regular_file(error)) continue;
         hash ^= it->file_size(error);
-        hash *= 1099511628211ULL;
+        hash *= kFnv1aPrime;
         hash ^= static_cast<uint64_t>(
             it->last_write_time(error).time_since_epoch().count());
-        hash *= 1099511628211ULL;
+        hash *= kFnv1aPrime;
         if (error) return 0;
     }
     return error ? 0 : hash;

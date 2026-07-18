@@ -5,6 +5,7 @@
 #include "gdb_table.h"
 #include <algorithm>
 #include <cctype>
+#include "explorgdb_constants.h"
 
 namespace explorgdb {
 

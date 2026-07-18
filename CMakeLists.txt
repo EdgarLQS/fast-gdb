@@ -120,6 +120,8 @@ set(FAST_GDB_GEOMETRY_SOURCES
 add_library(fast_gdb_geometry_core STATIC ${FAST_GDB_GEOMETRY_SOURCES})
 target_include_directories(fast_gdb_geometry_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader)
+target_include_directories(fast_gdb_geometry_core PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/common)
 target_compile_features(fast_gdb_geometry_core PUBLIC cxx_std_17)
 fast_gdb_apply_geometry_configuration(fast_gdb_geometry_core)
 fast_gdb_enable_warnings(fast_gdb_geometry_core)

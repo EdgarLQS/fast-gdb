@@ -3,6 +3,8 @@
 
 #include "query_engine.h"
 
+#include "explorgdb_constants.h"
+
 #include <algorithm>
 #include <functional>
 #include <limits>
@@ -23,8 +25,8 @@ bool has_invalid_execution_path(const QueryResult& result) {
 bool query_result_is_error(const QueryRequest& request,
                            const QueryResult& result) {
     if (has_invalid_execution_path(result) ||
-        result.execution_path == "query:blocked" ||
-        result.fallback_reason == "unsupported query kind") {
+        result.execution_path == kPathQueryBlocked ||
+        result.fallback_reason == kFallbackInvalidQueryKind) {
         return true;
     }
     if (request.kind == QueryKind::WhereClause &&
@@ -32,8 +34,8 @@ bool query_result_is_error(const QueryRequest& request,
         return true;
     }
     if (request.kind == QueryKind::SpatialBbox &&
-        (result.execution_path == "bbox:unavailable" ||
-         result.execution_path == "bbox:model:unavailable")) {
+        (result.execution_path == kPathBboxUnavailable ||
+         result.execution_path == kPathBboxModelUnavailable)) {
         return true;
     }
     return result.execution_path.empty() &&
@@ -45,6 +47,12 @@ std::string fid_error(const char* prefix, uint32_t fid) {
     stream << prefix << " " << fid;
     return stream.str();
 }
+
+// Predefined fid error prefixes
+constexpr const char* kErrReadFailed = "failed to read full feature for fid";
+constexpr const char* kErrDecodeFailed = "failed to decode geometry for fid";
+constexpr const char* kErrFidMismatch = "feature record fid mismatch for fid";
+constexpr const char* kErrFieldCountMismatch = "feature field count mismatch for fid";
 
 } // namespace
 
@@ -137,7 +145,7 @@ public:
         candidate.fid = fid;
         GdbTableParser* parser = table_;
         if (parser == nullptr) {
-            fail("query engine table is unavailable");
+            fail(kFallbackTableUnavailable);
             return false;
         }
 
@@ -147,18 +155,18 @@ public:
         if (!parser->read_feature_by_fid(
                 fid, candidate.record, candidate.geometry, metrics_ptr)) {
             std::string message = candidate.geometry.diagnostic.empty()
-                ? fid_error("failed to read full feature for fid", fid)
-                : fid_error("failed to decode geometry for fid", fid) +
-                    ": " + candidate.geometry.diagnostic;
+                ? fid_error(kErrReadFailed, fid)
+                : fid_error(kErrDecodeFailed, fid) +
+                    kErrorMessageSeparator + candidate.geometry.diagnostic;
             fail(std::move(message));
             return false;
         }
         if (candidate.record.fid != fid) {
-            fail(fid_error("feature record fid mismatch for fid", fid));
+            fail(fid_error(kErrFidMismatch, fid));
             return false;
         }
         if (candidate.record.field_values.size() != parser->fields().size()) {
-            fail(fid_error("feature field count mismatch for fid", fid));
+            fail(fid_error(kErrFieldCountMismatch, fid));
             return false;
         }
 
@@ -183,7 +191,7 @@ public:
         } else {
             GdbTableParser* parser = table_;
             if (parser == nullptr) {
-                fail("query engine table is unavailable");
+                fail(kFallbackTableUnavailable);
                 return false;
             }
 
@@ -191,7 +199,7 @@ public:
             while (candidate < feature_limit_) {
                 if (candidate > static_cast<size_t>(
                                     std::numeric_limits<uint32_t>::max())) {
-                    fail("feature fid exceeds uint32 range");
+                    fail(kFallbackFidExceedsRange);
                     return false;
                 }
                 if (parser->has_feature(
@@ -237,7 +245,7 @@ private:
 
     bool engine_is_current() {
         if (!engine_valid_ || engine_valid_()) return true;
-        fail("query engine was reopened while cursor existed");
+        fail(kFallbackEngineReopened);
         return false;
     }
 
@@ -245,12 +253,12 @@ private:
         if (!engine_is_current()) return false;
         if (generation_ != 0) return true;
         if (!acquire_) {
-            fail("feature cursor cannot reacquire query engine");
+            fail(kFallbackCursorCannotReacquire);
             return false;
         }
         generation_ = acquire_();
         if (generation_ == 0) {
-            fail("another feature cursor is active");
+            fail(kFallbackAnotherCursorActive);
             return false;
         }
         return true;
@@ -266,14 +274,14 @@ private:
 
         GdbTableParser* parser = table_;
         if (parser == nullptr) {
-            fail("query engine table is unavailable");
+            fail(kFallbackTableUnavailable);
             return false;
         }
         while (next_sequential_fid_ < feature_limit_) {
             const size_t candidate = next_sequential_fid_++;
             if (candidate > static_cast<size_t>(
                                 std::numeric_limits<uint32_t>::max())) {
-                fail("feature fid exceeds uint32 range");
+                fail(kFallbackFidExceedsRange);
                 return false;
             }
             const uint32_t current =
@@ -352,16 +360,16 @@ const std::string& FeatureCursor::error() const noexcept {
 FeatureCursor QueryEngine::open_cursor(const QueryRequest& request) {
     QueryResult result;
     if (parser_ == nullptr) {
-        result.execution_path = "cursor:invalid";
-        result.fallback_reason = "table not open";
+        result.execution_path = kPathCursorInvalid;
+        result.fallback_reason = kFallbackTableNotOpen;
         return FeatureCursor(std::make_unique<FeatureCursor::Impl>(
-            std::move(result), "table not open"));
+            std::move(result), kFallbackTableNotOpen));
     }
     if (cursor_control_->feature_cursor_active()) {
-        result.execution_path = "cursor:invalid";
-        result.fallback_reason = "another feature cursor is active";
+        result.execution_path = kPathCursorInvalid;
+        result.fallback_reason = kFallbackAnotherCursorActive;
         return FeatureCursor(std::make_unique<FeatureCursor::Impl>(
-            std::move(result), "another feature cursor is active"));
+            std::move(result), kFallbackAnotherCursorActive));
     }
 
     const uint64_t planned_open_generation =
@@ -378,7 +386,7 @@ FeatureCursor QueryEngine::open_cursor(const QueryRequest& request) {
     };
 
     if (request.kind == QueryKind::SequentialScan) {
-        result.execution_path = "cursor:sequential";
+        result.execution_path = kPathCursorSequential;
         const size_t feature_limit = parser_->feature_count();
         if (parser_->active_feature_count() == 0) {
             return FeatureCursor(std::make_unique<FeatureCursor::Impl>(
@@ -391,10 +399,10 @@ FeatureCursor QueryEngine::open_cursor(const QueryRequest& request) {
         const uint64_t generation =
             control->register_feature_cursor();
         if (generation == 0) {
-            result.execution_path = "cursor:invalid";
-            result.fallback_reason = "another feature cursor is active";
+            result.execution_path = kPathCursorInvalid;
+            result.fallback_reason = kFallbackAnotherCursorActive;
             return FeatureCursor(std::make_unique<FeatureCursor::Impl>(
-                std::move(result), "another feature cursor is active"));
+                std::move(result), kFallbackAnotherCursorActive));
         }
         return FeatureCursor(std::make_unique<FeatureCursor::Impl>(
             parser_.get(), generation, std::move(acquire),
@@ -406,7 +414,7 @@ FeatureCursor QueryEngine::open_cursor(const QueryRequest& request) {
     result = query(request);
     if (query_result_is_error(request, result)) {
         std::string error = result.fallback_reason.empty()
-            ? "invalid query request"
+            ? kFallbackInvalidRequest
             : result.fallback_reason;
         return FeatureCursor(std::make_unique<FeatureCursor::Impl>(
             std::move(result), std::move(error)));
@@ -429,10 +437,10 @@ FeatureCursor QueryEngine::open_cursor(const QueryRequest& request) {
     const uint64_t generation =
         control->register_feature_cursor();
     if (generation == 0) {
-        result.execution_path = "cursor:invalid";
-        result.fallback_reason = "another feature cursor is active";
+        result.execution_path = kPathCursorInvalid;
+        result.fallback_reason = kFallbackAnotherCursorActive;
         return FeatureCursor(std::make_unique<FeatureCursor::Impl>(
-            std::move(result), "another feature cursor is active"));
+            std::move(result), kFallbackAnotherCursorActive));
     }
 
     return FeatureCursor(std::make_unique<FeatureCursor::Impl>(

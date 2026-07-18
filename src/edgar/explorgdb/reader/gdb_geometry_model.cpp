@@ -2,6 +2,7 @@
 #include "polygon_topology.h"
 #include "spatial_predicate.h"
 #include "wkb_writer.h"
+#include "explorgdb_constants.h"
 
 #include <algorithm>
 #include <cmath>
@@ -26,7 +27,7 @@ public:
     bool read_varuint(uint64_t& value) {
         value = 0;
         unsigned shift = 0;
-        for (unsigned count = 0; count < 10; ++count) {
+        for (unsigned count = 0; count < kMaxVarintLen; ++count) {
             if (current_ == nullptr || current_ >= end_) return false;
             const uint8_t byte = *current_++;
             const uint64_t payload = byte & 0x7f;
@@ -66,7 +67,7 @@ public:
     }
 
     bool read_le_u32(uint32_t& value) {
-        if (remaining() < 4) return false;
+        if (remaining() < kReadU32Bytes) return false;
         value = static_cast<uint32_t>(current_[0]) |
                 (static_cast<uint32_t>(current_[1]) << 8) |
                 (static_cast<uint32_t>(current_[2]) << 16) |
@@ -76,7 +77,7 @@ public:
     }
 
     bool read_le_double(double& value) {
-        if (remaining() < 8) return false;
+        if (remaining() < kReadDoubleBytes) return false;
         uint64_t bits = 0;
         for (unsigned index = 0; index < 8; ++index)
             bits |= static_cast<uint64_t>(current_[index]) <<
