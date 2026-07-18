@@ -19,6 +19,10 @@
 
 // 旧实现通过源文件级宏改名为内部符号。类定义必须在所有翻译单元保持
 // 一致，因此声明区临时屏蔽宏，并在文件尾恢复给对应实现文件。
+#ifdef parse_records
+#define FAST_GDB_RESTORE_PARSE_RECORDS_MACRO
+#undef parse_records
+#endif
 #ifdef read_record_by_fid
 #define FAST_GDB_RESTORE_READ_RECORD_BY_FID_MACRO
 #undef read_record_by_fid
@@ -56,6 +60,8 @@ public:
 
     bool parse_header();
     bool parse_fields();
+
+    /** 批量物化所有活动 record；Geometry 槽仍遵守空字符串占位契约。 */
     bool parse_records();
 
     const TableHeader& header() const { return header_; }
@@ -173,6 +179,7 @@ private:
     const FieldDescriptor* geometry_field_descriptor() const;
 
     // 未发布实现保留为内部符号，公开包装器统一 WKB-first 字段契约。
+    bool parse_records_eager_wkt();
     bool read_record_by_fid_eager_wkt(uint32_t fid, FeatureRecord& record);
     bool read_feature_by_fid_wkb_internal(
         uint32_t fid,
@@ -208,6 +215,10 @@ private:
 
 } // namespace explorgdb
 
+#ifdef FAST_GDB_RESTORE_PARSE_RECORDS_MACRO
+#define parse_records parse_records_eager_wkt
+#undef FAST_GDB_RESTORE_PARSE_RECORDS_MACRO
+#endif
 #ifdef FAST_GDB_RESTORE_READ_RECORD_BY_FID_MACRO
 #define read_record_by_fid read_record_by_fid_eager_wkt
 #undef FAST_GDB_RESTORE_READ_RECORD_BY_FID_MACRO
