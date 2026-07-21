@@ -3,7 +3,9 @@
 #include "versioned_gdb_validator.h"
 
 #include "catalog_resolver.h"
+#include "gdb_attribute_index.h"
 #include "gdb_catalog.h"
+#include "gdb_spatial_index.h"
 #include "query_engine.h"
 
 #include <algorithm>
@@ -32,6 +34,116 @@ bool contains_index_name(const std::vector<IndexEntry>& entries,
                        [&](const IndexEntry& entry) {
                            return entry.name == index_name;
                        });
+}
+
+GenerationValidationResult validate_sample_fid(
+    const GdbLayerValidationRule& rule,
+    QueryEngine& engine,
+    GdbTableParser& table,
+    uint32_t fid) {
+    FeatureRecord record;
+    if (!rule.validate_sample_geometry) {
+        if (!engine.read_by_fid(fid, record)) {
+            return validation_failure(
+                rule.layer_name,
+                "sample FID " + std::to_string(fid) +
+                    " could not be reopened");
+        }
+    } else {
+        GeometryValue geometry;
+        if (!table.read_feature_by_fid(fid, record, geometry)) {
+            return validation_failure(
+                rule.layer_name,
+                "sample FID " + std::to_string(fid) +
+                    " could not be reopened through the geometry path");
+        }
+        if (!geometry.valid()) {
+            return validation_failure(
+                rule.layer_name,
+                "sample FID " + std::to_string(fid) +
+                    " has invalid geometry: " + geometry.diagnostic);
+        }
+    }
+
+    if (record.fid != fid) {
+        return validation_failure(
+            rule.layer_name,
+            "sample FID mapping mismatch for " + std::to_string(fid));
+    }
+    return GenerationValidationResult::success();
+}
+
+GenerationValidationResult validate_spatial_index(
+    const fs::path& generation_path,
+    const GdbLayerValidationRule& rule,
+    const ResolvedTable& resolved,
+    const GdbCatalog& catalog) {
+    const CatalogEntry* spatial_index = catalog.find_spx(resolved.id);
+    if (spatial_index == nullptr || spatial_index->file_size == 0) {
+        return validation_failure(
+            rule.layer_name,
+            "required spatial index is missing or empty");
+    }
+
+    GdbSpatialIndexParser parser(
+        (generation_path / spatial_index->filename).string());
+    if (!parser.parse()) {
+        return validation_failure(
+            rule.layer_name,
+            "required spatial index could not be parsed");
+    }
+    return GenerationValidationResult::success();
+}
+
+GenerationValidationResult validate_attribute_indexes(
+    const fs::path& generation_path,
+    const GdbLayerValidationRule& rule,
+    const ResolvedTable& resolved,
+    const GdbCatalog& catalog) {
+    if (rule.required_attribute_indexes.empty()) {
+        return GenerationValidationResult::success();
+    }
+
+    std::vector<IndexEntry> metadata;
+    if (!catalog.read_index_metadata(resolved.id, metadata)) {
+        return validation_failure(
+            rule.layer_name,
+            "attribute index metadata could not be parsed");
+    }
+
+    for (const std::string& index_name :
+         rule.required_attribute_indexes) {
+        if (index_name.empty()) {
+            return validation_failure(
+                rule.layer_name,
+                "required attribute index name is empty");
+        }
+        if (!contains_index_name(metadata, index_name)) {
+            return validation_failure(
+                rule.layer_name,
+                "required attribute index metadata is missing: " +
+                    index_name);
+        }
+
+        const CatalogEntry* attribute_index =
+            catalog.find_atx(resolved.id, index_name);
+        if (attribute_index == nullptr || attribute_index->file_size == 0) {
+            return validation_failure(
+                rule.layer_name,
+                "required attribute index file is missing or empty: " +
+                    index_name);
+        }
+
+        GdbAttributeIndexParser parser(
+            (generation_path / attribute_index->filename).string());
+        if (!parser.parse()) {
+            return validation_failure(
+                rule.layer_name,
+                "required attribute index could not be parsed: " +
+                    index_name);
+        }
+    }
+    return GenerationValidationResult::success();
 }
 
 GenerationValidationResult validate_generation(
@@ -101,64 +213,22 @@ GenerationValidationResult validate_generation(
         }
 
         for (uint32_t fid : rule.sample_fids) {
-            FeatureRecord record;
-            GeometryValue geometry;
-            if (!table->read_feature_by_fid(fid, record, geometry)) {
-                return validation_failure(
-                    rule.layer_name,
-                    "sample FID " + std::to_string(fid) +
-                        " could not be reopened");
-            }
-            if (record.fid != fid) {
-                return validation_failure(
-                    rule.layer_name,
-                    "sample FID mapping mismatch for " +
-                        std::to_string(fid));
-            }
-            if (rule.validate_sample_geometry && !geometry.valid()) {
-                return validation_failure(
-                    rule.layer_name,
-                    "sample FID " + std::to_string(fid) +
-                        " has invalid geometry: " + geometry.diagnostic);
-            }
+            const GenerationValidationResult sample =
+                validate_sample_fid(rule, engine, *table, fid);
+            if (!sample.ok) return sample;
         }
 
         if (rule.require_spatial_index) {
-            const CatalogEntry* spatial_index = catalog.find_spx(resolved->id);
-            if (spatial_index == nullptr || spatial_index->file_size == 0) {
-                return validation_failure(
-                    rule.layer_name,
-                    "required spatial index is missing or empty");
-            }
+            const GenerationValidationResult spatial =
+                validate_spatial_index(generation_path, rule, *resolved,
+                                       catalog);
+            if (!spatial.ok) return spatial;
         }
 
-        if (!rule.required_attribute_indexes.empty()) {
-            std::vector<IndexEntry> metadata;
-            if (!catalog.read_index_metadata(resolved->id, metadata)) {
-                return validation_failure(
-                    rule.layer_name,
-                    "attribute index metadata could not be parsed");
-            }
-
-            for (const std::string& index_name :
-                 rule.required_attribute_indexes) {
-                if (!contains_index_name(metadata, index_name)) {
-                    return validation_failure(
-                        rule.layer_name,
-                        "required attribute index metadata is missing: " +
-                            index_name);
-                }
-                const CatalogEntry* attribute_index =
-                    catalog.find_atx(resolved->id, index_name);
-                if (attribute_index == nullptr ||
-                    attribute_index->file_size == 0) {
-                    return validation_failure(
-                        rule.layer_name,
-                        "required attribute index file is missing or empty: " +
-                            index_name);
-                }
-            }
-        }
+        const GenerationValidationResult attributes =
+            validate_attribute_indexes(generation_path, rule, *resolved,
+                                       catalog);
+        if (!attributes.ok) return attributes;
     }
 
     return GenerationValidationResult::success();
