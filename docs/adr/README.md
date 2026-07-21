@@ -14,6 +14,7 @@ ADR 记录已经冻结的架构决策。状态含义：
 | [ADR-004 Writer Transaction](ADR-004-writer-transaction.md) | Proposed | 单 Writer、无嵌套、统一 staging、一次发布和崩溃恢复边界 | ADR-001～003 |
 | ADR-005 Writer Delete | Planned | staging 删除、FID 不复用、范围收缩和索引无残留 | ADR-004 接口约束 |
 | ADR-006 Crash Recovery | Planned | staging/backup 发现、分类、人工确认和恢复证据 | ADR-004 |
+| [ADR-007 Versioned MRSW](ADR-007-versioned-multi-reader-single-writer.md) | Proposed | 本地版本仓库、Reader 快照租约、CoW 单 Writer 和原子清单发布 | ADR-004、ADR-006 |
 
 ## 决策依赖关系
 
@@ -23,7 +24,8 @@ ADR-001 stable session/error/publish vocabulary
   ├─ ADR-003 update
   └─ ADR-004 transaction
        ├─ ADR-005 delete
-       └─ ADR-006 crash recovery
+       ├─ ADR-006 crash recovery
+       └─ ADR-007 versioned MRSW
 ```
 
 ## 变更规则
