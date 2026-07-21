@@ -10,6 +10,7 @@
 #include <fstream>
 #include <iterator>
 #include <string>
+#include <thread>
 #include <utility>
 
 using namespace explorgdb::writer;
@@ -107,13 +108,14 @@ TEST_F(VersionedGdbStoreTest, ReaderSnapshotRemainsOnOldGenerationUntilRefresh) 
     write_text(writer.working_path() / "records.txt", "v2");
     write_text(writer.working_path() / "a00000001.gdbtable", "records-v2");
     ASSERT_TRUE(writer.publish(expect_marker("v2"))) << writer.last_error();
+    EXPECT_TRUE(writer.published());
+    EXPECT_EQ(writer.publish_state(), GdbPublishState::PublishedDurable);
 
     auto new_reader = store.acquire_reader();
     ASSERT_TRUE(new_reader.valid()) << store.last_error();
     EXPECT_NE(new_reader.generation(), old_generation);
     EXPECT_EQ(read_text(new_reader.path() / "records.txt"), "v2");
 
-    // Existing mmap users remain on the immutable old directory.
     EXPECT_TRUE(fs::is_directory(old_path));
     EXPECT_EQ(read_text(old_reader.path() / "records.txt"), "v1");
 
@@ -121,6 +123,49 @@ TEST_F(VersionedGdbStoreTest, ReaderSnapshotRemainsOnOldGenerationUntilRefresh) 
     EXPECT_EQ(old_reader.generation(), new_reader.generation());
     EXPECT_EQ(read_text(old_reader.path() / "records.txt"), "v2");
     EXPECT_FALSE(fs::exists(old_path));
+}
+
+TEST_F(VersionedGdbStoreTest, OldReaderRemainsContinuouslyVisibleDuringPublish) {
+    VersionedGdbStore store(store_root_);
+    initialize(store);
+    auto old_reader = store.acquire_reader();
+    ASSERT_TRUE(old_reader.valid()) << store.last_error();
+
+    std::atomic<bool> started{false};
+    std::atomic<bool> stop{false};
+    std::atomic<bool> observed_failure{false};
+    const fs::path old_marker = old_reader.path() / "records.txt";
+    std::thread reader([&] {
+        started.store(true, std::memory_order_release);
+        while (!stop.load(std::memory_order_acquire)) {
+            if (read_text(old_marker) != "v1") {
+                observed_failure.store(true, std::memory_order_release);
+                break;
+            }
+        }
+    });
+    while (!started.load(std::memory_order_acquire)) {
+        std::this_thread::yield();
+    }
+
+    auto writer = store.begin_write();
+    const bool writer_valid = writer.valid();
+    if (writer_valid) {
+        write_text(writer.working_path() / "records.txt", "v2");
+    }
+    const bool published =
+        writer_valid && writer.publish(expect_marker("v2"));
+    auto new_reader = published ? store.acquire_reader() : GdbReaderSnapshot{};
+
+    stop.store(true, std::memory_order_release);
+    reader.join();
+
+    ASSERT_TRUE(writer_valid) << store.last_error();
+    ASSERT_TRUE(published) << writer.last_error();
+    ASSERT_TRUE(new_reader.valid()) << store.last_error();
+    EXPECT_EQ(read_text(new_reader.path() / "records.txt"), "v2");
+    EXPECT_FALSE(observed_failure.load(std::memory_order_acquire));
+    EXPECT_EQ(read_text(old_marker), "v1");
 }
 
 TEST_F(VersionedGdbStoreTest, OnlyOneWriterMayOwnRepositoryAcrossStoreInstances) {
@@ -139,6 +184,7 @@ TEST_F(VersionedGdbStoreTest, OnlyOneWriterMayOwnRepositoryAcrossStoreInstances)
     ASSERT_TRUE(writer.abort()) << writer.last_error();
     auto next = second.begin_write();
     EXPECT_TRUE(next.valid()) << second.last_error();
+    EXPECT_TRUE(second.last_error().empty());
 }
 
 TEST_F(VersionedGdbStoreTest, SymlinkAliasCannotBypassWriterGate) {
@@ -162,6 +208,58 @@ TEST_F(VersionedGdbStoreTest, SymlinkAliasCannotBypassWriterGate) {
     EXPECT_NE(alias.last_error().find("another Writer"), std::string::npos);
 }
 
+#ifdef _WIN32
+TEST_F(VersionedGdbStoreTest, WindowsCaseAliasCannotBypassWriterGate) {
+    VersionedGdbStore direct(store_root_);
+    initialize(direct);
+
+    const fs::path case_alias = store_root_.parent_path() / "STORE";
+    VersionedGdbStore alias(case_alias);
+    ASSERT_TRUE(alias.open()) << alias.last_error();
+
+    auto writer = direct.begin_write();
+    ASSERT_TRUE(writer.valid()) << direct.last_error();
+    auto rejected = alias.begin_write();
+    EXPECT_FALSE(rejected.valid());
+    EXPECT_NE(alias.last_error().find("another Writer"), std::string::npos);
+}
+#endif
+
+TEST_F(VersionedGdbStoreTest, ManagedSourceRejectsSymbolicLinks) {
+    const fs::path external = test_directory_ / "external.bin";
+    write_text(external, "mutable-external-data");
+    std::error_code error;
+    fs::create_symlink(external, source_ / "external-link", error);
+    if (error) {
+        GTEST_SKIP() << "file symlinks unavailable: " << error.message();
+    }
+
+    VersionedGdbStore store(store_root_);
+    ASSERT_TRUE(store.open()) << store.last_error();
+    EXPECT_FALSE(store.initialize_from(source_, expect_marker("v1")));
+    EXPECT_TRUE(store.current_generation().empty());
+    EXPECT_NE(store.last_error().find("symbolic links"), std::string::npos);
+}
+
+#ifndef _WIN32
+TEST_F(VersionedGdbStoreTest, WorkingCloneAddsOwnerWritePermission) {
+    std::error_code error;
+    fs::permissions(source_ / "records.txt", fs::perms::owner_read,
+                    fs::perm_options::replace, error);
+    ASSERT_FALSE(error) << error.message();
+
+    VersionedGdbStore store(store_root_);
+    initialize(store);
+    auto writer = store.begin_write();
+    ASSERT_TRUE(writer.valid()) << store.last_error();
+
+    const fs::perms permissions =
+        fs::status(writer.working_path() / "records.txt", error).permissions();
+    ASSERT_FALSE(error) << error.message();
+    EXPECT_NE(permissions & fs::perms::owner_write, fs::perms::none);
+}
+#endif
+
 TEST_F(VersionedGdbStoreTest, FailedValidationLeavesCurrentUntouched) {
     VersionedGdbStore store(store_root_);
     initialize(store);
@@ -172,6 +270,7 @@ TEST_F(VersionedGdbStoreTest, FailedValidationLeavesCurrentUntouched) {
     write_text(writer.working_path() / "records.txt", "corrupt");
 
     EXPECT_FALSE(writer.publish(expect_marker("v2")));
+    EXPECT_FALSE(writer.published());
     EXPECT_TRUE(writer.valid());
     EXPECT_EQ(store.current_generation(), before);
 
@@ -180,6 +279,7 @@ TEST_F(VersionedGdbStoreTest, FailedValidationLeavesCurrentUntouched) {
     EXPECT_EQ(reader.generation(), before);
     EXPECT_EQ(read_text(reader.path() / "records.txt"), "v1");
     EXPECT_TRUE(writer.abort()) << writer.last_error();
+    EXPECT_TRUE(writer.last_error().empty());
 }
 
 TEST_F(VersionedGdbStoreTest, WriterDestructionAbortsWorkingDirectoryAndReleasesGate) {
@@ -219,6 +319,20 @@ TEST_F(VersionedGdbStoreTest, RecoveryRemovesWorkAndUnpublishedGenerations) {
     auto reader = store.acquire_reader();
     ASSERT_TRUE(reader.valid()) << store.last_error();
     EXPECT_EQ(read_text(reader.path() / "records.txt"), "v1");
+}
+
+TEST_F(VersionedGdbStoreTest, CorruptMultiLineCurrentManifestFailsClosed) {
+    {
+        VersionedGdbStore store(store_root_);
+        initialize(store);
+    }
+    const std::string current = read_text(store_root_ / "CURRENT");
+    write_text(store_root_ / "CURRENT", current + "gen-forged.gdb\n");
+
+    VersionedGdbStore reopened(store_root_);
+    EXPECT_FALSE(reopened.open());
+    EXPECT_NE(reopened.last_error().find("more than one line"),
+              std::string::npos);
 }
 
 }  // namespace
