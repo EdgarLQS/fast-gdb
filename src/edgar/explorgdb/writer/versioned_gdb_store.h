@@ -19,6 +19,13 @@ enum class GdbCloneStrategy {
     FullCopy,
 };
 
+/** Publication state remains inspectable when publish() reports uncertainty. */
+enum class GdbPublishState {
+    NotPublished,
+    PublishedDurable,
+    PublishedDurabilityUncertain,
+};
+
 /** Result returned by the mandatory pre-publication validator. */
 struct GenerationValidationResult {
     bool ok = false;
@@ -99,12 +106,20 @@ public:
         return working_path_;
     }
     GdbCloneStrategy clone_strategy() const noexcept { return clone_strategy_; }
+    GdbPublishState publish_state() const noexcept { return publish_state_; }
+    bool published() const noexcept {
+        return publish_state_ != GdbPublishState::NotPublished;
+    }
     const std::string& last_error() const noexcept { return last_error_; }
 
     /**
      * Publish only after every Writer and file handle targeting working_path()
      * has been closed. The validator must reopen the candidate and verify the
      * required record count, FIDs, geometry and indexes.
+     *
+     * A false return with published()==true means CURRENT switched but the final
+     * root-directory durability barrier failed. The transaction is terminal;
+     * call VersionedGdbStore::recover() before starting another Writer.
      */
     bool publish(const GenerationValidator& validator);
 
@@ -128,6 +143,7 @@ private:
     std::string generation_;
     std::filesystem::path working_path_;
     GdbCloneStrategy clone_strategy_ = GdbCloneStrategy::FullCopy;
+    GdbPublishState publish_state_ = GdbPublishState::NotPublished;
     std::string last_error_;
     bool completed_ = false;
 };
@@ -160,7 +176,10 @@ public:
     /** Clone CURRENT into private working storage and acquire the writer gate. */
     GdbWriteTransaction begin_write();
 
-    /** Repeat crash cleanup and CURRENT validation. No readers/writer may be active. */
+    /**
+     * Repeat crash cleanup and CURRENT validation. No readers/writer may be active.
+     * Also resolves a prior CURRENT durability-uncertain state before allowing writes.
+     */
     bool recover();
 
     const std::filesystem::path& root() const noexcept;
