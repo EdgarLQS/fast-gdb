@@ -8,7 +8,9 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <string>
+#include <utility>
 
 using namespace explorgdb::writer;
 namespace fs = std::filesystem;
