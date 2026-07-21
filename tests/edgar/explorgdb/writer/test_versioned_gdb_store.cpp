@@ -141,6 +141,27 @@ TEST_F(VersionedGdbStoreTest, OnlyOneWriterMayOwnRepositoryAcrossStoreInstances)
     EXPECT_TRUE(next.valid()) << second.last_error();
 }
 
+TEST_F(VersionedGdbStoreTest, SymlinkAliasCannotBypassWriterGate) {
+    VersionedGdbStore direct(store_root_);
+    initialize(direct);
+
+    const fs::path alias_path = test_directory_ / "store-alias";
+    std::error_code error;
+    fs::create_directory_symlink(store_root_, alias_path, error);
+    if (error) {
+        GTEST_SKIP() << "directory symlinks unavailable: " << error.message();
+    }
+
+    VersionedGdbStore alias(alias_path);
+    ASSERT_TRUE(alias.open()) << alias.last_error();
+
+    auto writer = direct.begin_write();
+    ASSERT_TRUE(writer.valid()) << direct.last_error();
+    auto rejected = alias.begin_write();
+    EXPECT_FALSE(rejected.valid());
+    EXPECT_NE(alias.last_error().find("another Writer"), std::string::npos);
+}
+
 TEST_F(VersionedGdbStoreTest, FailedValidationLeavesCurrentUntouched) {
     VersionedGdbStore store(store_root_);
     initialize(store);
