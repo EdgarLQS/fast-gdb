@@ -31,11 +31,9 @@
 
 namespace explorgdb {
 namespace writer {
-
 namespace fs = std::filesystem;
 
 namespace detail {
-
 struct VersionedGdbStoreState {
     explicit VersionedGdbStoreState(fs::path canonical_root)
         : root(std::move(canonical_root)),
@@ -47,7 +45,6 @@ struct VersionedGdbStoreState {
     fs::path generations;
     fs::path work;
     fs::path current_manifest;
-
     mutable std::mutex mutex;
     std::unordered_map<std::string, size_t> reader_counts;
     std::string current_generation;
@@ -55,26 +52,32 @@ struct VersionedGdbStoreState {
     bool writer_active = false;
     bool opened = false;
 };
-
 }  // namespace detail
 
 namespace {
-
 using StoreState = detail::VersionedGdbStoreState;
+
+enum class ManifestSwitchResult {
+    NotSwitched,
+    SwitchedDurable,
+    SwitchedDurabilityUncertain,
+};
 
 std::mutex g_registry_mutex;
 std::unordered_map<std::string, std::weak_ptr<StoreState>> g_registry;
 std::atomic<uint64_t> g_name_sequence{0};
 
-fs::path normalized_absolute(const fs::path& input) {
+fs::path canonical_store_root(const fs::path& input) {
     std::error_code error;
+    fs::path canonical = fs::weakly_canonical(input, error);
+    if (!error) return canonical.lexically_normal();
+    error.clear();
     fs::path absolute = fs::absolute(input, error);
-    if (error) return input.lexically_normal();
-    return absolute.lexically_normal();
+    return error ? input.lexically_normal() : absolute.lexically_normal();
 }
 
 std::shared_ptr<StoreState> state_for_root(const fs::path& root) {
-    const fs::path canonical = normalized_absolute(root);
+    const fs::path canonical = canonical_store_root(root);
     const std::string key = canonical.generic_string();
     std::lock_guard<std::mutex> lock(g_registry_mutex);
     const auto found = g_registry.find(key);
@@ -99,9 +102,9 @@ std::string new_generation_name() {
 }
 
 bool valid_generation_name(const std::string& name) {
-    if (name.size() < 9 || name.rfind("gen-", 0) != 0) return false;
-    if (fs::path(name).filename().string() != name) return false;
-    return fs::path(name).extension() == ".gdb";
+    return name.size() >= 9 && name.rfind("gen-", 0) == 0 &&
+           fs::path(name).filename().string() == name &&
+           fs::path(name).extension() == ".gdb";
 }
 
 void set_error(const std::shared_ptr<StoreState>& state, std::string message) {
@@ -124,9 +127,7 @@ bool flush_file(const fs::path& path, std::string& error_message) {
     const bool ok = ::FlushFileBuffers(handle) != 0;
     const DWORD code = ok ? ERROR_SUCCESS : ::GetLastError();
     ::CloseHandle(handle);
-    if (!ok) {
-        error_message = "FlushFileBuffers failed: " + std::to_string(code);
-    }
+    if (!ok) error_message = "FlushFileBuffers failed: " + std::to_string(code);
     return ok;
 #else
     const int fd = ::open(path.c_str(), O_RDONLY);
@@ -175,27 +176,23 @@ bool flush_directory(const fs::path& path, std::string& error_message) {
 
 bool sync_tree(const fs::path& root, std::string& error_message) {
     std::error_code error;
-    for (fs::recursive_directory_iterator iterator(root, error), end;
-         !error && iterator != end; iterator.increment(error)) {
-        if (iterator->is_regular_file(error)) {
-            if (error || !flush_file(iterator->path(), error_message)) {
-                return false;
-            }
+    for (fs::recursive_directory_iterator it(root, error), end;
+         !error && it != end; it.increment(error)) {
+        if (it->is_regular_file(error) &&
+            (error || !flush_file(it->path(), error_message))) {
+            return false;
         }
     }
     if (error) {
-        error_message = "enumerating candidate for sync failed: " +
-                        error.message();
+        error_message = "enumerating candidate for sync failed: " + error.message();
         return false;
     }
-
 #if !defined(_WIN32)
-    for (fs::recursive_directory_iterator iterator(root, error), end;
-         !error && iterator != end; iterator.increment(error)) {
-        if (iterator->is_directory(error)) {
-            if (error || !flush_directory(iterator->path(), error_message)) {
-                return false;
-            }
+    for (fs::recursive_directory_iterator it(root, error), end;
+         !error && it != end; it.increment(error)) {
+        if (it->is_directory(error) &&
+            (error || !flush_directory(it->path(), error_message))) {
+            return false;
         }
     }
     if (error) {
@@ -225,16 +222,16 @@ bool atomic_replace(const fs::path& source, const fs::path& destination,
 #endif
 }
 
-bool write_current_manifest(const std::shared_ptr<StoreState>& state,
-                            const std::string& generation,
-                            std::string& error_message) {
-    const fs::path temporary =
-        state->root / ("CURRENT.tmp-" + unique_token());
+ManifestSwitchResult write_current_manifest(
+    const std::shared_ptr<StoreState>& state,
+    const std::string& generation,
+    std::string& error_message) {
+    const fs::path temporary = state->root / ("CURRENT.tmp-" + unique_token());
     {
         std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
         if (!output) {
             error_message = "cannot create temporary CURRENT manifest";
-            return false;
+            return ManifestSwitchResult::NotSwitched;
         }
         output << generation << '\n';
         output.flush();
@@ -243,18 +240,20 @@ bool write_current_manifest(const std::shared_ptr<StoreState>& state,
             output.close();
             std::error_code ignored;
             fs::remove(temporary, ignored);
-            return false;
+            return ManifestSwitchResult::NotSwitched;
         }
     }
 
     if (!flush_file(temporary, error_message) ||
-        !atomic_replace(temporary, state->current_manifest, error_message) ||
-        !flush_directory(state->root, error_message)) {
+        !atomic_replace(temporary, state->current_manifest, error_message)) {
         std::error_code ignored;
         fs::remove(temporary, ignored);
-        return false;
+        return ManifestSwitchResult::NotSwitched;
     }
-    return true;
+    if (!flush_directory(state->root, error_message)) {
+        return ManifestSwitchResult::SwitchedDurabilityUncertain;
+    }
+    return ManifestSwitchResult::SwitchedDurable;
 }
 
 bool read_current_manifest(const std::shared_ptr<StoreState>& state,
@@ -269,15 +268,12 @@ bool read_current_manifest(const std::shared_ptr<StoreState>& state,
         generation.clear();
         return true;
     }
-
     std::ifstream input(state->current_manifest, std::ios::binary);
     if (!input || !std::getline(input, generation)) {
         error_message = "cannot read CURRENT manifest";
         return false;
     }
-    if (!generation.empty() && generation.back() == '\r') {
-        generation.pop_back();
-    }
+    if (!generation.empty() && generation.back() == '\r') generation.pop_back();
     if (!valid_generation_name(generation)) {
         error_message = "CURRENT contains an invalid generation name";
         return false;
@@ -332,11 +328,10 @@ bool clone_regular_file(const fs::path& source, const fs::path& destination,
             return false;
         }
     }
-
     std::error_code permission_error;
-    const fs::file_status source_status = fs::status(source, permission_error);
+    const fs::file_status status = fs::status(source, permission_error);
     if (!permission_error) {
-        fs::permissions(destination, source_status.permissions(), permission_error);
+        fs::permissions(destination, status.permissions(), permission_error);
     }
     return true;
 }
@@ -354,26 +349,23 @@ bool clone_tree(const fs::path& source, const fs::path& destination,
     }
 
     bool used_full_copy = false;
-    for (fs::recursive_directory_iterator iterator(source, error), end;
-         !error && iterator != end; iterator.increment(error)) {
-        const fs::path relative = fs::relative(iterator->path(), source, error);
+    for (fs::recursive_directory_iterator it(source, error), end;
+         !error && it != end; it.increment(error)) {
+        const fs::path relative = fs::relative(it->path(), source, error);
         if (error) break;
         const fs::path target = destination / relative;
-        const fs::file_status status = iterator->symlink_status(error);
+        const fs::file_status status = it->symlink_status(error);
         if (error) break;
         if (fs::is_directory(status)) {
             fs::create_directories(target, error);
         } else if (fs::is_regular_file(status)) {
-            if (!clone_regular_file(iterator->path(), target, used_full_copy,
-                                    error_message)) {
-                return false;
-            }
+            if (!clone_regular_file(it->path(), target, used_full_copy,
+                                    error_message)) return false;
         } else if (fs::is_symlink(status)) {
-            fs::copy_symlink(iterator->path(), target, error);
+            fs::copy_symlink(it->path(), target, error);
             used_full_copy = true;
         } else {
-            error_message = "unsupported file type in GDB: " +
-                            iterator->path().string();
+            error_message = "unsupported file type in GDB: " + it->path().string();
             return false;
         }
         if (error) break;
@@ -389,17 +381,15 @@ bool clone_tree(const fs::path& source, const fs::path& destination,
 
 void cleanup_generations_locked(const std::shared_ptr<StoreState>& state) {
     std::error_code error;
-    for (fs::directory_iterator iterator(state->generations, error), end;
-         !error && iterator != end; iterator.increment(error)) {
-        if (!iterator->is_directory(error)) continue;
-        const std::string name = iterator->path().filename().string();
+    for (fs::directory_iterator it(state->generations, error), end;
+         !error && it != end; it.increment(error)) {
+        if (!it->is_directory(error)) continue;
+        const std::string name = it->path().filename().string();
         if (name == state->current_generation) continue;
         const auto readers = state->reader_counts.find(name);
-        if (readers != state->reader_counts.end() && readers->second != 0) {
-            continue;
-        }
+        if (readers != state->reader_counts.end() && readers->second != 0) continue;
         std::error_code ignored;
-        fs::remove_all(iterator->path(), ignored);
+        fs::remove_all(it->path(), ignored);
     }
 }
 
@@ -408,8 +398,7 @@ bool recover_locked(const std::shared_ptr<StoreState>& state,
     std::error_code error;
     fs::create_directories(state->generations, error);
     if (error) {
-        error_message = "cannot create generations directory: " +
-                        error.message();
+        error_message = "cannot create generations directory: " + error.message();
         return false;
     }
     fs::create_directories(state->work, error);
@@ -417,38 +406,29 @@ bool recover_locked(const std::shared_ptr<StoreState>& state,
         error_message = "cannot create work directory: " + error.message();
         return false;
     }
-
-    for (fs::directory_iterator iterator(state->work, error), end;
-         !error && iterator != end; iterator.increment(error)) {
+    for (fs::directory_iterator it(state->work, error), end;
+         !error && it != end; it.increment(error)) {
         std::error_code ignored;
-        fs::remove_all(iterator->path(), ignored);
+        fs::remove_all(it->path(), ignored);
     }
     if (error) {
-        error_message = "cannot clean stale work directories: " +
-                        error.message();
+        error_message = "cannot clean stale work directories: " + error.message();
         return false;
     }
-
-    for (fs::directory_iterator iterator(state->root, error), end;
-         !error && iterator != end; iterator.increment(error)) {
-        const std::string name = iterator->path().filename().string();
-        if (name.rfind("CURRENT.tmp-", 0) == 0) {
+    for (fs::directory_iterator it(state->root, error), end;
+         !error && it != end; it.increment(error)) {
+        if (it->path().filename().string().rfind("CURRENT.tmp-", 0) == 0) {
             std::error_code ignored;
-            fs::remove_all(iterator->path(), ignored);
+            fs::remove_all(it->path(), ignored);
         }
     }
     if (error) {
-        error_message = "cannot clean temporary manifests: " +
-                        error.message();
+        error_message = "cannot clean temporary manifests: " + error.message();
         return false;
     }
-
     std::string current;
     if (!read_current_manifest(state, current, error_message)) return false;
     state->current_generation = current;
-
-    // Recovery runs only without live leases. Non-current directories are
-    // unpublished crash leftovers or generations whose readers died with the process.
     cleanup_generations_locked(state);
     state->opened = true;
     state->last_error.clear();
@@ -472,11 +452,14 @@ GenerationValidationResult run_validator(const GenerationValidator& validator,
     }
 }
 
+std::string durability_uncertain_message(const std::string& detail) {
+    return "CURRENT switched, but root directory durability is uncertain: " + detail;
+}
+
 }  // namespace
 
 GdbReaderSnapshot::GdbReaderSnapshot(std::shared_ptr<StoreState> state,
-                                     std::string generation,
-                                     fs::path path)
+                                     std::string generation, fs::path path)
     : state_(std::move(state)),
       generation_(std::move(generation)),
       path_(std::move(path)) {}
@@ -505,11 +488,8 @@ void GdbReaderSnapshot::release() noexcept {
         std::lock_guard<std::mutex> lock(state->mutex);
         const auto found = state->reader_counts.find(generation_);
         if (found != state->reader_counts.end()) {
-            if (found->second > 1) {
-                --found->second;
-            } else {
-                state->reader_counts.erase(found);
-            }
+            if (found->second > 1) --found->second;
+            else state->reader_counts.erase(found);
         }
         cleanup_generations_locked(state);
     }
@@ -526,22 +506,17 @@ bool GdbReaderSnapshot::refresh() {
         return false;
     }
     if (generation_ == state_->current_generation) return true;
-
     const fs::path next_path = state_->generations / state_->current_generation;
     std::error_code error;
     if (!fs::is_directory(next_path, error) || error) {
         state_->last_error = "cannot refresh: CURRENT generation is missing";
         return false;
     }
-
     ++state_->reader_counts[state_->current_generation];
     const auto previous = state_->reader_counts.find(generation_);
     if (previous != state_->reader_counts.end()) {
-        if (previous->second > 1) {
-            --previous->second;
-        } else {
-            state_->reader_counts.erase(previous);
-        }
+        if (previous->second > 1) --previous->second;
+        else state_->reader_counts.erase(previous);
     }
     generation_ = state_->current_generation;
     path_ = next_path;
@@ -559,9 +534,7 @@ GdbWriteTransaction::GdbWriteTransaction(
       working_path_(std::move(working_path)),
       clone_strategy_(clone_strategy) {}
 
-GdbWriteTransaction::~GdbWriteTransaction() {
-    if (valid()) abort();
-}
+GdbWriteTransaction::~GdbWriteTransaction() { if (valid()) abort(); }
 
 GdbWriteTransaction::GdbWriteTransaction(GdbWriteTransaction&& other) noexcept
     : state_(std::move(other.state_)),
@@ -603,7 +576,6 @@ void GdbWriteTransaction::release_writer_gate() noexcept {
 
 bool GdbWriteTransaction::publish(const GenerationValidator& validator) {
     if (!valid()) return fail("write transaction is not active");
-
     const GenerationValidationResult validation =
         run_validator(validator, working_path_);
     if (!validation.ok) {
@@ -630,8 +602,9 @@ bool GdbWriteTransaction::publish(const GenerationValidator& validator) {
     }
 
     std::string manifest_error;
-    if (!write_current_manifest(state_, generation_, manifest_error)) {
-        // CURRENT was not replaced, therefore the old version remains authoritative.
+    const ManifestSwitchResult switch_result =
+        write_current_manifest(state_, generation_, manifest_error);
+    if (switch_result == ManifestSwitchResult::NotSwitched) {
         std::error_code ignored;
         fs::remove_all(generation_path, ignored);
         completed_ = true;
@@ -640,16 +613,21 @@ bool GdbWriteTransaction::publish(const GenerationValidator& validator) {
                     manifest_error);
     }
 
+    const bool durability_uncertain =
+        switch_result == ManifestSwitchResult::SwitchedDurabilityUncertain;
+    const std::string uncertain_error =
+        durability_uncertain ? durability_uncertain_message(manifest_error)
+                             : std::string();
     {
         std::lock_guard<std::mutex> lock(state_->mutex);
         state_->current_generation = generation_;
         state_->writer_active = false;
-        state_->last_error.clear();
+        state_->last_error = uncertain_error;
         completed_ = true;
         cleanup_generations_locked(state_);
     }
-    last_error_.clear();
-    return true;
+    last_error_ = uncertain_error;
+    return !durability_uncertain;
 }
 
 bool GdbWriteTransaction::abort() {
@@ -710,62 +688,74 @@ bool VersionedGdbStore::initialize_from(
         working = state_->work / ("work-" + generation);
     }
 
-    auto rollback = [&](const std::string& message) {
+    auto rollback_working = [&](const std::string& message) {
         std::error_code ignored;
         fs::remove_all(working, ignored);
-        {
-            std::lock_guard<std::mutex> lock(state_->mutex);
-            state_->writer_active = false;
-            state_->last_error = message;
-        }
+        std::lock_guard<std::mutex> lock(state_->mutex);
+        state_->writer_active = false;
+        state_->last_error = message;
         return false;
     };
 
     GdbCloneStrategy strategy = GdbCloneStrategy::FullCopy;
     std::string clone_error;
     if (!clone_tree(source_gdb_path, working, strategy, clone_error)) {
-        return rollback("bootstrap clone failed: " + clone_error);
+        return rollback_working("bootstrap clone failed: " + clone_error);
     }
     (void)strategy;
     const GenerationValidationResult validation =
         run_validator(validator, working);
     if (!validation.ok) {
-        return rollback("bootstrap validation failed: " + validation.message);
+        return rollback_working("bootstrap validation failed: " +
+                                validation.message);
     }
 
     std::string durability_error;
     if (!sync_tree(working, durability_error)) {
-        return rollback("bootstrap durability sync failed: " +
-                        durability_error);
+        return rollback_working("bootstrap durability sync failed: " +
+                                durability_error);
     }
 
     const fs::path generation_path = state_->generations / generation;
     std::error_code error;
     fs::rename(working, generation_path, error);
     if (error) {
-        return rollback("bootstrap promotion failed: " + error.message());
+        return rollback_working("bootstrap promotion failed: " + error.message());
     }
     if (!flush_directory(state_->generations, durability_error)) {
         std::error_code ignored;
         fs::remove_all(generation_path, ignored);
-        return rollback("bootstrap generation sync failed: " +
-                        durability_error);
+        std::lock_guard<std::mutex> lock(state_->mutex);
+        state_->writer_active = false;
+        state_->last_error = "bootstrap generation sync failed: " +
+                             durability_error;
+        return false;
     }
 
     std::string manifest_error;
-    if (!write_current_manifest(state_, generation, manifest_error)) {
+    const ManifestSwitchResult switch_result =
+        write_current_manifest(state_, generation, manifest_error);
+    if (switch_result == ManifestSwitchResult::NotSwitched) {
         std::error_code ignored;
         fs::remove_all(generation_path, ignored);
-        return rollback("bootstrap CURRENT switch failed: " + manifest_error);
+        std::lock_guard<std::mutex> lock(state_->mutex);
+        state_->writer_active = false;
+        state_->last_error = "bootstrap CURRENT switch failed: " + manifest_error;
+        return false;
     }
 
+    const bool durability_uncertain =
+        switch_result == ManifestSwitchResult::SwitchedDurabilityUncertain;
+    const std::string uncertain_error =
+        durability_uncertain ? durability_uncertain_message(manifest_error)
+                             : std::string();
     {
         std::lock_guard<std::mutex> lock(state_->mutex);
         state_->current_generation = generation;
         state_->writer_active = false;
-        state_->last_error.clear();
+        state_->last_error = uncertain_error;
     }
-    return true;
+    return !durability_uncertain;
 }
 
 GdbReaderSnapshot VersionedGdbStore::acquire_reader() {
@@ -787,7 +777,6 @@ GdbReaderSnapshot VersionedGdbStore::acquire_reader() {
 
 GdbWriteTransaction VersionedGdbStore::begin_write() {
     if (!ensure_open()) return {};
-
     std::string source_generation;
     std::string generation;
     fs::path source;
@@ -814,14 +803,11 @@ GdbWriteTransaction VersionedGdbStore::begin_write() {
     if (!clone_tree(source, working, strategy, clone_error)) {
         std::error_code ignored;
         fs::remove_all(working, ignored);
-        {
-            std::lock_guard<std::mutex> lock(state_->mutex);
-            state_->writer_active = false;
-            state_->last_error = "working clone failed: " + clone_error;
-        }
+        std::lock_guard<std::mutex> lock(state_->mutex);
+        state_->writer_active = false;
+        state_->last_error = "working clone failed: " + clone_error;
         return {};
     }
-
     return GdbWriteTransaction(state_, std::move(source_generation),
                                std::move(generation), std::move(working),
                                strategy);
@@ -849,9 +835,7 @@ bool VersionedGdbStore::recover() {
     return true;
 }
 
-const fs::path& VersionedGdbStore::root() const noexcept {
-    return state_->root;
-}
+const fs::path& VersionedGdbStore::root() const noexcept { return state_->root; }
 
 std::string VersionedGdbStore::current_generation() const {
     std::lock_guard<std::mutex> lock(state_->mutex);
