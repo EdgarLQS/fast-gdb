@@ -259,15 +259,22 @@ bool read_current_manifest(const std::shared_ptr<StoreState>& state,
         return true;
     }
 
+    const uintmax_t manifest_size = fs::file_size(state->current_manifest, error);
+    if (error || manifest_size == 0 || manifest_size > 512) {
+        error_message = error
+            ? "cannot inspect CURRENT size: " + error.message()
+            : "CURRENT manifest has an invalid physical size";
+        return false;
+    }
+
     std::ifstream input(state->current_manifest, std::ios::binary);
     if (!input) {
         error_message = "cannot read CURRENT manifest";
         return false;
     }
-    const std::string contents{std::istreambuf_iterator<char>(input),
-                               std::istreambuf_iterator<char>()};
-    if (input.bad() || contents.empty() || contents.size() > 512 ||
-        contents.back() != '\n') {
+    std::string contents(static_cast<size_t>(manifest_size), '\0');
+    input.read(contents.data(), static_cast<std::streamsize>(contents.size()));
+    if (!input || contents.back() != '\n') {
         error_message = "CURRENT manifest has an invalid physical format";
         return false;
     }
