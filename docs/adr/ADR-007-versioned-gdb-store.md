@@ -46,6 +46,7 @@
 ### 2.2 单 Writer 门禁
 
 - 同一规范化 store root 的所有 `VersionedGdbStore` 实例共享进程内状态；
+- store root 使用 `weakly_canonical` 归一化，符号链接别名不能绕过 Writer 门禁；
 - 任意时刻最多一个 `GdbWriteTransaction`；
 - Writer 只能打开 `working_path()`，不得打开 CURRENT generation 进行修改；
 - 未发布事务析构或 `abort()` 会删除 working GDB 并释放门禁；
@@ -99,25 +100,33 @@ Writer 从 CURRENT generation 创建私有 working GDB：
 11. 在进程内状态锁下更新 `current_generation`，释放 Writer 门禁；
 12. 清理无租约旧 generation。
 
-只有第 9 步成功后新版本才对新 Reader 生效。此前所有失败均不得改变 CURRENT。
+只有第 9 步成功后新版本才对新 Reader 生效。第 9 步之前失败时，CURRENT 不变且候选可安全回滚。第 9 步成功而第 10 步失败时，进程内与当前文件系统视图已经切换到新版，但崩溃后的持久性不确定；实现必须保留新版 generation、终结 Writer 事务并返回明确错误，绝不能删除 CURRENT 已引用的目录或允许同一事务重试。
 
 ## 3. 故障与恢复
 
-### 3.1 校验、空间或 I/O 失败
+### 3.1 校验、空间或切换前 I/O 失败
 
 - 当前 generation 不变；
 - 已有 Reader 不受影响；
 - working 可重试或删除；
 - 空间不足不得先删除旧 generation，也不得覆盖 CURRENT。
 
-### 3.2 generation 已提升但 CURRENT 切换失败
+### 3.2 generation 已提升但 CURRENT 原子替换失败
 
 - CURRENT 仍指向旧版；
 - 新 generation 被视为未发布候选并删除；
 - Writer 门禁释放；
 - 调用方获得明确失败。
 
-### 3.3 进程崩溃恢复
+### 3.3 CURRENT 已替换但根目录同步失败
+
+- 新 Reader 在当前进程和当前文件系统视图中获取新版；
+- 新 generation 必须保留，不能尝试“回滚”清单；
+- Writer 事务终结并释放门禁，禁止重试；
+- API 返回失败并报告“已切换但持久性不确定”；
+- 调用方应立即执行运行状态检查，并在下一次启动通过 CURRENT 恢复规则确认最终状态。
+
+### 3.4 进程崩溃恢复
 
 `open()` / `recover()`：
 
@@ -172,6 +181,7 @@ Writer 从 CURRENT generation 创建私有 working GDB：
 - 旧 generation 会在 Reader 长租约期间占用空间；
 - Windows 默认走完整复制，发布准备时间和容量成本更高；
 - `fsync` 全树会增加发布延迟；
+- 原子替换后的目录同步失败需要以“提交结果不确定”处理；
 - 本阶段仍需上层保证单进程访问边界。
 
 ## 7. 验收
@@ -186,10 +196,12 @@ Writer 从 CURRENT generation 创建私有 working GDB：
 
 ### 7.2 Writer 门禁与回滚
 
-- 同一 store 的第二 Writer 必须立即失败；
-- validator 失败、clone/copy 失败、空间不足、generation rename 失败和 CURRENT 切换失败均保持旧 CURRENT；
+- 同一 store 的第二 Writer必须立即失败；
+- validator 失败、clone/copy 失败、空间不足、generation rename 失败和 CURRENT 原子替换失败均保持旧 CURRENT；
+- CURRENT 已替换而根目录同步失败时保留并采用新版，同时返回持久性不确定错误；
 - abort/析构删除 working 并释放门禁；
-- 发布成功后旧 generation 仅在最后租约释放后删除。
+- 发布成功后旧 generation 仅在最后租约释放后删除；
+- 真实路径和符号链接别名共享同一 Writer 门禁。
 
 ### 7.3 崩溃恢复
 
@@ -199,7 +211,7 @@ Writer 从 CURRENT generation 创建私有 working GDB：
 - validator 前后；
 - generation rename 后；
 - CURRENT 临时文件写入后；
-- CURRENT 原子替换后；
+- CURRENT 原子替换后、store root 同步前后；
 - 旧 generation 清理前。
 
 恢复后 CURRENT 必须指向完整、已验证 generation，或明确 fail closed；不得指向 working、临时清单或缺失目录。
