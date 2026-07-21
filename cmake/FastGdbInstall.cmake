@@ -25,6 +25,22 @@ endif()
 unset(_fast_gdb_reader_sources)
 unset(_fast_gdb_wkb_reader_source)
 
+# GDAL=ON 时 writer GLOB 已把该测试加入 full runner；GDAL=OFF 需要独立目标，
+# 确保 VersionedGdbStore 的并发、回滚和恢复契约不依赖可选 GDAL 组件。
+if(BUILD_TESTING AND NOT FAST_GDB_WITH_GDAL)
+    add_executable(fast_gdb_versioned_store_test_runner
+        tests/test_runner.cpp
+        tests/edgar/explorgdb/writer/test_versioned_gdb_store.cpp)
+    target_include_directories(fast_gdb_versioned_store_test_runner PRIVATE
+        tests
+        tests/edgar/explorgdb/writer)
+    target_link_libraries(fast_gdb_versioned_store_test_runner PRIVATE
+        GTest::gtest explorgdb_writer_lib)
+    fast_gdb_enable_warnings(fast_gdb_versioned_store_test_runner)
+    gtest_discover_tests(fast_gdb_versioned_store_test_runner
+        TEST_PREFIX "versioned-store.")
+endif()
+
 option(FAST_GDB_INSTALL_LEGACY_WRITER_API
        "Install the deprecated experimental Writer compatibility target" ON)
 
