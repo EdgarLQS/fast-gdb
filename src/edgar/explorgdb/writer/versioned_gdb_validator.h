@@ -30,10 +30,10 @@ struct GdbLayerValidationRule {
     /** Decode sample_fids through the WKB-first geometry path. */
     bool validate_sample_geometry = true;
 
-    /** Require a non-empty .spx file for this layer. */
+    /** Require a non-empty and structurally parseable .spx file. */
     bool require_spatial_index = false;
 
-    /** Require each named index in .gdbindexes and its non-empty .atx file. */
+    /** Require each named index in metadata and fully parse its .atx B+ tree. */
     std::vector<std::string> required_attribute_indexes;
 };
 
