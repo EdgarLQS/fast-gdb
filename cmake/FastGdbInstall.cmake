@@ -25,9 +25,10 @@ endif()
 unset(_fast_gdb_reader_sources)
 unset(_fast_gdb_wkb_reader_source)
 
-# GDAL=ON 时 writer GLOB 已把该测试加入 full runner；GDAL=OFF 需要独立目标，
-# 确保 VersionedGdbStore 的并发、回滚和恢复契约不依赖可选 GDAL 组件。
-if(BUILD_TESTING AND NOT FAST_GDB_WITH_GDAL)
+# 无论 GDAL 是否启用，都单独构建托管发布测试。它包含真实 std::thread 并发
+# 可见性、回滚、路径别名与恢复契约，不能只依赖 GDAL full runner 的文件 GLOB。
+if(BUILD_TESTING AND NOT TARGET fast_gdb_versioned_store_test_runner)
+    find_package(Threads REQUIRED)
     add_executable(fast_gdb_versioned_store_test_runner
         tests/test_runner.cpp
         tests/edgar/explorgdb/writer/test_versioned_gdb_store.cpp)
@@ -35,7 +36,7 @@ if(BUILD_TESTING AND NOT FAST_GDB_WITH_GDAL)
         tests
         tests/edgar/explorgdb/writer)
     target_link_libraries(fast_gdb_versioned_store_test_runner PRIVATE
-        GTest::gtest explorgdb_writer_lib)
+        GTest::gtest explorgdb_writer_lib Threads::Threads)
     fast_gdb_enable_warnings(fast_gdb_versioned_store_test_runner)
     gtest_discover_tests(fast_gdb_versioned_store_test_runner
         TEST_PREFIX "versioned-store.")
@@ -141,6 +142,7 @@ if(FAST_GDB_INSTALL_LEGACY_WRITER_API)
         PATTERN "writer_session.h" EXCLUDE
         PATTERN "writer_recovery.h" EXCLUDE
         PATTERN "versioned_gdb_store.h" EXCLUDE
+        PATTERN "versioned_gdb_store_internal.h" EXCLUDE
         PATTERN "versioned_gdb_validator.h" EXCLUDE
         PATTERN "writer_index.h" EXCLUDE
         PATTERN "writer_append.h" EXCLUDE
