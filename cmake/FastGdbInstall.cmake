@@ -105,6 +105,8 @@ install(DIRECTORY src/edgar/explorgdb/reader/
 install(FILES
     src/edgar/explorgdb/writer/writer_session.h
     src/edgar/explorgdb/writer/writer_recovery.h
+    src/edgar/explorgdb/writer/versioned_gdb_store.h
+    src/edgar/explorgdb/writer/versioned_gdb_validator.h
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/writer)
 if(FAST_GDB_WITH_GDAL)
     install(FILES
@@ -122,6 +124,8 @@ if(FAST_GDB_INSTALL_LEGACY_WRITER_API)
         FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp"
         PATTERN "writer_session.h" EXCLUDE
         PATTERN "writer_recovery.h" EXCLUDE
+        PATTERN "versioned_gdb_store.h" EXCLUDE
+        PATTERN "versioned_gdb_validator.h" EXCLUDE
         PATTERN "writer_index.h" EXCLUDE
         PATTERN "writer_append.h" EXCLUDE
         PATTERN "writer_update.h" EXCLUDE
