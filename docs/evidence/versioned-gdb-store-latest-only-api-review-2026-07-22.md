@@ -37,11 +37,13 @@
 - 旧实现符号是否仍进入安装 archive；
 - 公共 include path 是否仍暴露 `src/edgar/explorgdb/writer/`；
 - VersionedGdbStore 实现是否能够独立链接 Reader 和 common；
-- 测试是否链接真正安装的 Writer 实现。
+- 测试是否链接真正安装的 Writer 实现；
+- 删除源码目录重复公共头后，内部完整测试目标是否仍可找到新版头。
 
 ### 发现
 
-原安装目标仍复用 `explorgdb_writer_lib`。即使旧头不安装，静态 archive 仍包含旧 Writer 符号，不满足“旧接口全部删除”。
+1. 原安装目标仍复用 `explorgdb_writer_lib`。即使旧头不安装，静态 archive 仍包含旧 Writer 符号，不满足“旧接口全部删除”。
+2. 删除 `src/.../writer/versioned_gdb_store.h` 和 validator 重复头后，内部 `explorgdb_writer_lib` 仍会通过 GLOB 编译 `versioned_gdb_*.cpp`，但缺少 `include/fast_gdb/writer`，完整构建会找不到新版公共头。
 
 ### 修复
 
@@ -51,11 +53,12 @@
 - Reader 和源码 Writer 目录均为 PRIVATE；
 - 导出名设为 `writer`；
 - `explorgdb_writer_lib` 降为不安装的内部实现/历史测试目标；
+- 内部目标仅以 PRIVATE 方式增加 `include/fast_gdb/writer`，避免完整测试构建回归，同时不形成传递或安装接口；
 - versioned store test runner 改为链接 `fast_gdb_versioned_writer_lib`。
 
 ### 结果
 
-安装 archive、头文件和传递 include path 均不再包含旧 Writer 公共接口。
+安装 archive、头文件和传递 include path 均不再包含旧 Writer 公共接口；内部历史测试目标仍可编译新版源文件，但不会被安装或导出。
 
 ## 3. 第二轮：安装面与负向兼容检查
 
@@ -118,7 +121,8 @@
 - README、项目总览、规划状态、未完成清单；
 - GDAL 功能对比矩阵；
 - Changelog breaking changes；
-- `versioned-gdb-store.yml` 三平台 workflow。
+- `versioned-gdb-store.yml` 三平台 workflow；
+- PR 标题和描述改为明确的 breaking replacement。
 
 ### 结果
 
