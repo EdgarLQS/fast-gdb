@@ -1,219 +1,159 @@
 # 02 — fast-gdb / GDAL 功能对比矩阵
 
-**更新日期**：2026-07-15
+**更新日期**：2026-07-22  
 **文档状态**：当前权威能力矩阵  
-**对比对象**：`fast_gdb_linear`、`fast_gdb_hybrid`、`explorgdb writer` 与 GDAL OpenFileGDB 能力
+**对比对象**：`fast_gdb::linear`、`fast_gdb::hybrid`、`fast_gdb::writer` 与 GDAL OpenFileGDB
 
 ## 1. 状态约定
 
 | 标记 | 含义 |
 |---|---|
-| ✅ | 已实现并有自动化/真实样本验收 |
-| 🧪 | 已实现且有合成契约测试，仍需专门真实 FileGDB 差异验收 |
-| ⚠️ | 部分实现或降级支持 |
+| ✅ | 已实现并有既有验收或正式证据 |
+| 🧪 | 已实现并有合成/本地验证，正式真实数据证据未闭环 |
+| ⚠️ | 部分或降级支持 |
 | ❌ | 当前不支持 |
-| ⏸️ | 明确不在当前版本范围 |
+| ⏸️ | 明确不在范围 |
 
-本矩阵中的 ✅ 只表示最终验收报告声明的支持范围已完成，不表示所有 ArcGIS/FileGDB 类型均已实现。
+## 2. 产品定位
 
-## 2. 快速结论
+| 产品 | 主要职责 | 不负责 |
+|---|---|---|
+| `fast_gdb::linear` | 无 GDAL Reader、几何、索引和查询 | 字段级写入 |
+| `fast_gdb::hybrid` | fast-gdb 主路径 + GDAL 复杂拓扑回退 | 通用编辑事务 |
+| `fast_gdb::writer` | 不可变 FileGDB generation、Reader snapshot、单 Writer 和原子 CURRENT 发布 | 字段级 Append/Update/Delete、schema migration |
+| GDAL OpenFileGDB | Dataset/Layer/Feature 访问和驱动支持的编辑 | fast-gdb 进程内 generation lease |
 
-| 维度 | `fast_gdb_linear` | `fast_gdb_hybrid` | 当前边界 |
+`fast_gdb::writer` 唯一公共入口是 VersionedGdbStore。旧 Writer、legacy target 和直接 source 发布接口已删除。
+
+## 3. 几何读取
+
+| 类型/能力 | 纯 C++ | Hybrid | 边界 |
 |---|:---:|:---:|---|
-| 常规点/线/面/多点 | ✅ | ✅ | 主路径均为纯 C++ |
-| Polygon 洞/多面/岛中岛 | ✅ | ✅/GDAL 兜底 | 支持范围内真实数据和空间查询已验收 |
-| ISO WKB-first | ✅ | ✅ | 2D/Z/M/ZM 及曲线线性化支持范围已验收 |
-| CircularArc | ✅ | ✅/GDAL | 内置折线化或 GDAL 回退 |
-| Cubic Bezier | ✅ | ✅/GDAL | 内置自适应折线化或 GDAL 回退 |
-| EllipticArc | ✅ | ✅/GDAL | minor/major/complete/rotation |
-| 原生曲线 WKB | ❌ | 🧪 | 仅显式 `NATIVE_CURVE_WKB` + GDAL |
-| MultiPatch | ⚠️ | ⚠️/GDAL 兜底 | 纯 C++ 仍不保留完整 part type/表面拓扑 |
-| `.spx` 空间查询 | ✅ | ✅ | 候选后必须做精确判断 |
-| GDAL Dataset/Layer 缓存 | 不适用 | ✅ | 线程本地缓存，不逐要素重开 |
-| Windows/Linux/macOS | ✅ | ✅ | 跨平台代码 CI run 78 通过 |
-
-## 3. 几何类型
-
-### 3.1 常规与 General 类型
-
-| 类型 | 纯 C++状态 | 说明 |
-|---|:---:|---|
-| Point / Z / M / ZM | ✅ | Point 使用 `(raw-1)/scale+origin`；统一 decode/peek/query |
-| MultiPoint / Z / M / ZM | ✅ | `nPoints + bbox + delta arrays` |
-| Polyline / Z / M / ZM | ✅ | 内部 MultiLineString 模型 |
-| Polygon / Z / M / ZM | ✅ | 环顺序/方向无关；洞和岛中岛 |
-| GeneralPoint (52) | ✅ | Z/M 从 General flags 读取 |
-| GeneralMultiPoint (53) | ✅ | General flags 和普通布局 |
-| GeneralPolyline (50) | ✅ | Curve flag 控制 `nCurves` |
-| GeneralPolygon (51) | ✅ | Curve flag + 统一 Polygon 拓扑 |
-| GeneralMultiPatch (54) | ⚠️ | 与 MultiPatch 相同的降级边界 |
-| Null / Empty | ✅ | 与非法编码区分 |
-
-General 线面只在以下条件读取 `nCurves`：
-
-```cpp
-(base_type == 50 || base_type == 51) &&
-(geom_type & 0x20000000ULL) != 0
-```
-
-`Curve flag + nCurves == 0` 继续按普通 General 线面处理。
-
-### 3.2 Polygon 拓扑
-
-| 能力 | 状态 | 说明 |
-|---|:---:|---|
-| 环闭合标准化 | ✅ | 内部保存开放环，Writer 输出时闭合 |
-| 连续重复点去除 | ✅ | 保留 Z/M 与顶点绑定 |
-| 方向无关外环/洞识别 | ✅ | 最小直接包含父环 |
-| 多外环 / MultiPolygon | ✅ | 偶数深度环形成 Polygon |
-| 岛中岛 | ✅ | 深度 2 形成新 Polygon |
-| Z/M 方向反转 | ✅ | 整个 `GridPoint` 反转 |
-| 自交检测 | ✅ | 整数网格精确方向符号 |
-| 重复环检测 | ✅ | 起点和方向无关 |
-| 环相切/重叠 | ✅ | 明确状态，不静默猜测 |
-| `int64` 极值安全 | ✅ | 跨平台 64x64→128 符号比较，无 `__int128` 依赖 |
-
-### 3.3 曲线
-
-| 曲线 | BUILTIN | GDAL Hybrid | 输出 |
-|---|:---:|:---:|---|
-| 三点 CircularArc | ✅ | ✅ | 默认线性 ISO WKB |
-| 圆心 CircularArc | ✅ | ✅ | 默认线性 ISO WKB |
-| 完整圆 | ✅ | ✅ | 闭合折线 |
-| Cubic Bezier | ✅ | ✅ | 自适应折线 |
-| EllipticArc minor | ✅ | ✅ | 线性 ISO WKB |
-| EllipticArc major | ✅ | ✅ | 线性 ISO WKB |
-| 完整椭圆 | ✅ | ✅ | 闭合折线 |
-| 旋转椭圆 | ✅ | ✅ | FileGDB/GDAL 旋转约定已对齐 |
-| 混合直线/曲线 part | ✅ | ✅ | 保持 part 顺序 |
-| Z/M 曲线插值 | ✅ | ✅ | 按参数同步插值 |
-| 原生 curve WKB | ❌ | 🧪 | 显式 opt-in，不是默认契约 |
-
-内置后端受以下上限控制：
-
-- 最大弦高误差；
-- 最大角步长；
-- 每段最大细分数；
-- 非法起点、跨 part、截断描述符和数值溢出 fail closed。
-
-### 3.4 MultiPatch
-
-| 能力 | 纯 C++ |
-|---|:---:|
-| XY/Z/M 读取 | ✅ |
-| 有限 `GEOMETRYCOLLECTION` WKT | ✅ |
-| part type 完整保留 | ❌ |
-| TriangleStrip / TriangleFan | ❌ |
-| Outer/Inner Ring 表面拓扑 | ❌ |
-| 标准线性 GeometryModel | ❌ |
-| 能力级别 | ⚠️ degraded |
-
-Hybrid 可将 `UnsupportedType` 配置为 GDAL 回退，但这不等于纯 C++ 已完成 MultiPatch 语义。
+| Point / Z / M / ZM | ✅ | ✅ | ISO WKB-first |
+| MultiPoint / Z / M / ZM | ✅ | ✅ | delta arrays |
+| Polyline / Z / M / ZM | ✅ | ✅ | multipart |
+| Polygon / Z / M / ZM | ✅ | ✅ | 洞、多面、岛中岛 |
+| CircularArc | ✅ | ✅ | 内置折线化或 GDAL 回退 |
+| Cubic Bezier | ✅ | ✅ | 自适应折线化 |
+| EllipticArc | ✅ | ✅ | minor/major/complete/rotation |
+| MultiPatch | ⚠️ | ⚠️ | degraded，不保留完整表面语义 |
+| Null / Empty | ✅ | ✅ | 与损坏编码区分 |
+| 原生 curve object 输出 | ❌ | 🧪 | 非默认、非正式主契约 |
 
 ## 4. 输出契约
 
 | 输出 | 状态 | 说明 |
 |---|:---:|---|
-| ISO WKB 2D | ✅ | Point 至 MultiPolygon，限最终报告支持范围 |
-| ISO WKB Z/M/ZM | ✅ | 1000/2000/3000 类型偏移，限最终报告支持范围 |
-| `GeometryValue` 元数据 | ✅ | backend/status/curve/linearized/diagnostic |
-| Debug/兼容 WKT | ✅ | 与 WKB 共用同一模型 |
-| WKT → WKB 中转 | ⏸️ | 新路径禁止 |
+| ISO WKB 2D/Z/M/ZM | ✅ | 正式几何输出 |
+| `GeometryValue` 状态/诊断 | ✅ | backend、curve、linearized、status |
+| 按需 WKT | ✅ | 从 WKB 显式转换 |
+| WKT → WKB 中转主路径 | ⏸️ | 禁止 |
+| 完整 MultiPatch 表面 | ❌ | 不在范围 |
 
-WKT 兼容接口保留至少一个稳定大版本；正式性能和互操作契约是 ISO WKB。
-
-## 5. 空间查询
+## 5. 查询
 
 | 能力 | fast-gdb | 说明 |
 |---|:---:|---|
 | 顺序扫描 / FID | ✅ | `QueryEngine` |
-| `.spx` 候选 | ✅ | 有效空候选不触发全表扫描 |
-| 精确 Point/MultiPoint | ✅ | 连续查询框 |
-| 精确 Line bbox | ✅ | 线段裁剪，不依赖顶点落框 |
-| 精确 Polygon bbox | ✅ | 外环/洞/岛统一模型 |
-| 曲线精确查询 | ✅ | BUILTIN 使用同一折线；Hybrid 可 GDAL |
-| Hybrid `.spx` + GDAL fallback | ✅ | `HybridQueryEngine` |
-| `.atx` 数值/字符串 | ✅ | 索引入口已实现 |
+| FeatureCursor | 🧪 | 完整字段 + GeometryValue，正式证据待闭环 |
+| cursor `move_to(fid)` | 🧪 | 按零基 FID 定位 |
+| `.spx` 候选 | ✅ | 最终必须精确几何复核 |
+| `.atx` 数值/字符串 | ✅ | 最终必须 WHERE 复核 |
+| bbox | ✅ | Point/Line/Polygon 精确判断 |
 | WHERE 子集 | ✅ | 比较、AND/OR、括号、IN |
+| bbox + WHERE | 🧪 | `SpatialWhere` 分支本地通过 |
 | 完整 SQL/JOIN/聚合 | ❌ | 不在范围 |
 
-`QueryGridBbox` 保持连续 `long double` 网格坐标，避免子网格查询框被整数取整后漏判。
+## 6. 字段、SRS 和元数据
 
-## 6. GDAL Hybrid 边界
-
-| 项目 | 行为 |
-|---|---|
-| 普通几何 | fast-gdb 主路径，不调用 GDAL |
-| 内置可处理曲线 | 默认 fast-gdb；可配置优先 GDAL |
-| fast-gdb 拒绝/不支持曲线 | 缓存式 GDAL FID 回退 |
-| 非法/不可靠 Polygon 拓扑 | 可配置 GDAL 回退 |
-| Dataset/Layer 生命周期 | 线程本地缓存 |
-| FID 默认映射 | `gdal_fid = fast_fid + 1` |
-| 映射错误 | 明确失败，不尝试多个偏移 |
-| 原生 curve WKB | 仅显式配置 |
-
-真实发布必须验证目标数据的 ObjectID/GDAL FID 映射。
-
-## 7. 字段、SRS 和元数据
-
-| 能力 | fast-gdb | 说明 |
+| 能力 | fast-gdb Reader | 说明 |
 |---|:---:|---|
-| 常规数值/字符串/XML/Binary/GUID/GlobalID/Int64 | ✅ | 已暴露 |
-| DateTimeWithOffset | ✅ | 10 字节读取，日期值与 offset 独立暴露并覆盖 Writer/GDAL 回读 |
-| Raster | ⚠️ | 检测并 degraded，不读像素 |
+| 数值/字符串/XML/Binary/GUID/GlobalID/Int64 | ✅ | 已暴露 |
+| DateTimeWithOffset | ✅ | 日期值与 offset 分离 |
 | SRS WKT/WKID/LatestWKID/SRSName | ✅ | 不重投影 |
-| coded/range domain | ✅ | 已结构化解析 |
-| Feature Dataset | ✅ | 已提供摘要 |
-| relationship | ✅/⚠️ | 摘要/定义；不执行 join/级联 |
-| Annotation / Dimension | ❌ | 未实现专用语义 |
+| coded/range domain | ✅ | 结构化解析 |
+| Feature Dataset | ✅ | 摘要 |
+| relationship | ✅/⚠️ | 摘要/定义，不执行 join/级联 |
+| Raster 像素 | ❌ | 只检测/degraded |
+| Annotation / Dimension | ❌ | 无专用语义 |
 
-## 8. 自动化与真实数据状态
+## 7. VersionedGdbStore 与 GDAL 编辑的关系
 
-自动化矩阵：
+VersionedGdbStore 的提交单元是一个完整 FileGDB 目录：
 
-- Windows/Linux/macOS 纯 C++完整构建；
-- Linux GDAL Hybrid 构建和测试；
-- `FAST_GDB_CURVE_BACKEND=GDAL` 独立构建；
-- ASan/UBSan 几何核心；
-- 截断前缀和确定性随机垃圾输入；
-- Polygon、WKB、空间过滤和曲线合成契约。
+```text
+CURRENT generation
+  → private working generation
+  → caller edits working_path() with its chosen editor
+  → fast-gdb validator reopens candidate
+  → immutable generation promote
+  → atomic CURRENT switch
+```
 
-真实数据（2026-07-13 当前验收）：
+调用方可以在 `working_path()` 上使用 GDAL 或业务编辑器。fast-gdb 只负责版本、租约、验证和发布，不公开 GDAL 的字段级编辑包装。
 
-- 仓库普通 FileGDB 样本用于常规读取 release contract；
-- 早期版本的 `testcurve.gdb` 曾提供 25 个图层、54 个要素；当前最新版本已扩展为 44 个图层、
-  1,120,083 个要素，覆盖 Z/M/ZM、CircularArc、Bezier 场景、完整圆、Ellipse、旋转 Ellipse、
-  Ellipse Arc、曲线 Polygon、FID 精确/间断、坏拓扑、CRS 和性能图层；
-- `参数化数据_liqs.gdb` 已提供 11 个业务图层、12 个要素和 11 个 `.spx`，覆盖参数化
-  CircularArc、完整圆、混合曲线、Bezier 命名场景、Ellipse、Ellipse Arc 和曲线 Polygon；
-- 两份真实曲线样本均已通过当前内置 WKB-first/显式曲线失败契约；参数化样本与普通样本同时
-  设置时真实数据契约为 3/3 通过；
-- 最新 `testcurve.gdb` 的串行完整 CTest 为 455/455 通过；其 100K/1M 图层已完成读取基线，
-  本机 fast-gdb/GDAL 计数一致；
-- 当前数据的 CircularArc 内置 WKB-first 和曲线显式失败契约已通过；
-- Bezier 样本在 GDAL 中展示为已线性化 `MULTILINESTRING`，原生来源已确认来自 ArcGIS Pro 3.5；
-  支持范围内的 Hybrid 和纯 C++ M 曲线逐要素对照已通过；
-- 曲线 Polygon 的面积、点包含、空间查询和 FID 间断 Hybrid 映射本地专项已通过；
-- 非空 MultiPatch 样本已经存在且 degraded 行为已通过；其 part type/完整表面拓扑仍明确不在当前支持范围；
-- 当前可以声明支持范围内的发布验收完成，但不能扩展为所有 ArcGIS 几何类型的全量等价。
+| 能力 | VersionedGdbStore | GDAL OpenFileGDB |
+|---|:---:|:---:|
+| 完整 GDB working copy | ✅ | 可由调用方生成/编辑 |
+| macOS clonefile | 🧪 | 不适用 |
+| Linux FICLONE | 🧪 | 不适用 |
+| full-copy fallback | 🧪 | 可自行复制 |
+| Reader snapshot lease | 🧪 | 无 fast-gdb generation lease |
+| 单 Writer process gate | 🧪 | 由调用方协调 |
+| 原子 CURRENT 清单 | 🧪 | 无此模型 |
+| 记录/FID/几何/索引重开验证 | 🧪 | 可作为编辑引擎/对照 |
+| 字段级 Create/Set/DeleteFeature | ❌ | 由驱动能力决定 |
+| schema migration | ❌ | 由驱动能力决定 |
+| 跨进程锁 | ❌ | 仍需业务层协调 |
 
-## 9. Writer 能力边界
+## 8. Writer 公共 API
 
-| 能力 | 当前状态 | 说明 |
-|---|:---:|---|
-| 空 schema 二进制批量写 | ✅/🧪 | 精确选表、空表拒绝边界、行校验、原子发布、4 GiB 和 GDAL 重开已在 macOS 收口；ArcGIS/其他平台待统一验收 |
-| 非空数据表安全追加 | ❌ | 原有记录、FID 和 `.gdbtablx` 保留尚未形成安全契约 |
-| 批量行缓冲写入 | ✅ | 适合顺序批量追加，绕过逐条 GDAL `CreateFeature()` |
-| 源 GDB 读取与过滤 | ✅/⚠️ | Reader 可提供扫描、FID、属性和空间查询；端到端工具流程仍需调用方编排 |
-| 原地删除要素 | ❌ | 当前 writer 没有生产级要素删除、freelist 和删除标记维护接口 |
-| 新 GDB 元数据闭环 | ✅/⚠️ | schema adapter 保留 SRS/alias/default/domain/extent；不等于既有 GDB 原地编辑 |
-| 写完后的 `.spx/.atx` 重建 | ✅/⚠️ | GDAL 构建可对目标图层重建并以查询验证；删除索引和复合属性索引仍受驱动限制 |
-| 全量过滤重写 | ✅/🧪 | Reader → Writer → 索引 → GDAL 验证已有自动化；35GB/5 亿级仍需真实基准 |
+安装包只包含：
 
-因此，`explorgdb writer` 当前应描述为“受限支持的空 schema 批量写入组件”，不应描述为 GDAL/ArcGIS 完整编辑替代品。对于“过滤删除后追加”场景，生产流程应优先考虑新 GDB 全量重写，完成后统一构建索引并做 GDAL/ArcGIS 交叉验证。
+```cpp
+#include <versioned_gdb_store.h>
+#include <versioned_gdb_validator.h>
+```
 
-详细迁移、FID 和发布检查见：
+删除项：
 
-- `docs/usage/02_几何WKB曲线支持与迁移.md`
-- `docs/evidence/13_fast-gdb最终等价与发布验收报告.md`
-- `docs/planning/18_writer跨平台测试统一与后续编辑计划.md`
+- WriterSession；
+- Append/Update/Delete 公共 API；
+- 旧 WriterTransaction；
+- writer recovery/index 公共头；
+- `fast_gdb::writer_legacy`；
+- 直接 `source → backup → source` 公共发布协议。
+
+## 9. VersionedGdbStore 边界
+
+支持：
+
+- 同一进程多个 Reader + 单 Writer；
+- 旧 Reader 跨发布保持旧版；
+- 新 Reader 获取新版；
+- 显式 refresh；
+- CoW 优先/full-copy 回退；
+- validator、CURRENT、recover 和旧 generation GC。
+
+不支持：
+
+- 字段级公共编辑 API；
+- schema migration；
+- 原生曲线/MultiPatch 写入；
+- FID 空洞复用；
+- 跨进程锁/租约；
+- 多 Writer；
+- savepoint、嵌套、跨 GDB 或分布式事务；
+- S3、对象存储或不可靠网络文件系统。
+
+## 10. 验收状态
+
+Reader 既有支持范围保留历史结论。VersionedGdbStore 已完成三轮自检、Linux 本地 smoke、并发检查和 sanitizer，但仍缺：
+
+- 完整 CMake/CTest；
+- macOS/Linux/Windows 实际矩阵；
+- ENOSPC/crash-phase 故障注入；
+- 真实 FileGDB validator；
+- 可审计 Actions logs/artifacts。
+
+因此 Writer 状态为 **Implemented / Formal acceptance blocked**。
