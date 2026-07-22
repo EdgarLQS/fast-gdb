@@ -24,9 +24,14 @@ unset(_fast_gdb_reader_sources)
 unset(_fast_gdb_wkb_reader_source)
 
 # The existing explorgdb_writer_lib remains an uninstalled implementation/test
-# target. The installed Writer product is rebuilt from versioned_gdb_* only, so
-# old direct Writer symbols are absent from the public archive as well as from
-# the public include surface.
+# target. Its GLOB sees the new versioned sources, so it needs the new public
+# headers privately; this path is never propagated or installed by that target.
+target_include_directories(explorgdb_writer_lib PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/fast_gdb/writer)
+
+# The installed Writer product is rebuilt from versioned_gdb_* only, so old
+# direct Writer symbols are absent from the public archive as well as from the
+# public include surface.
 file(GLOB FAST_GDB_VERSIONED_WRITER_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/writer/versioned_gdb_*.cpp)
 add_library(fast_gdb_versioned_writer_lib STATIC
