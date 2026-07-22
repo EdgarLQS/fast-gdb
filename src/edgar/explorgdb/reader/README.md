@@ -1,200 +1,53 @@
-# explorgdb — 纯 C++ ESRI FileGDB 二进制解析器
+# explorgdb Reader
 
-## 这是什么
+This directory contains the fast-gdb FileGDB Reader implementation.
 
-`explorgdb` 是一个**纯 C++17** 实现的 ESRI FileGDB (`.gdb`) 二进制格式解析器，不依赖 GDAL。
+## Scope
 
-最初参考 Even Rouault 的 `dump_gdbtable` Python 脚本和 GDAL OpenFileGDB 实现反向工程而来；这些外部参考不随本仓库分发。
+- catalog and system-table discovery;
+- `.gdbtable` and `.gdbtablx` parsing;
+- FID lookup and sequential scan;
+- `.spx` spatial candidates;
+- `.atx` attribute candidates;
+- WHERE, spatial and combined query planning;
+- FeatureCursor;
+- geometry decoding and ISO WKB output.
 
-**定位**：探索和学习工具，不是生产级 GDB 读写库。
+fast-gdb does not implement FileGDB editing. There is no Writer dependency from this directory.
 
-## 从哪开始看
+## Main flow
 
-推荐按以下顺序阅读源码：
-
-```
-1. binary_reader.h/cpp    → 基础设施：二进制光标读取器（小端、边界检查、seek/tell）
-2. varint.h/cpp           → 变长整数编码（无符号 7-bit + 有符号 6-bit+符号位）
-3. utf16.h/cpp            → UTF-16LE 到 UTF-8 转换
-4. explorgdb_types.h      → 公共类型定义（FieldType 枚举、FieldDescriptor、FeatureRecord 等）
-
-5. gdb_catalog.h/cpp      → 目录扫描：枚举 .gdb 目录下所有文件，读 gdb 头部 magic 和 timestamps
-
-6. gdb_tablx.h/cpp        → .gdbtablx 偏移索引（相对简单，先看懂这个）
-   核心：n1024Blocks × 1024 个偏移条目，每个 4/5/6 字节，稀疏块位图
-
-7. gdb_table.h/cpp        → .gdbtable 表解析（最复杂，最后看）
-   三遍读取：头部(版本 3/4) → 字段描述符(17 种类型) → 要素记录(依赖 .gdbtablx 偏移)
-
-8. gdb_indexes.h/cpp      → .gdbindexes 索引元数据（目录中的索引目录）
-9. gdb_geometry.h/cpp     → 几何解码、peek_bbox、空间关系辅助判断
-10. gdb_spatial_index.h/cpp → .spx 空间索引（B+ 树导航 + LRU 页面缓存）
-11. gdb_attribute_index.h/cpp → .atx 属性索引（数值/字符串查询）
-12. explorgdb_cli.cpp     → CLI 工具：explore / dump-table / dump-tablx / dump-indexes / dump-records
+```text
+GdbCatalog
+  → CatalogResolver
+  → GdbTableParser
+  → QueryEngine
+  → FeatureCursor
+  → FeatureRecord + GeometryValue
 ```
 
-## 文件结构
+## Correctness rules
 
-```
-src/edgar/explorgdb/
-├── common/
-│   ├── binary_reader.h/cpp   # BinaryReader 类：基于 const uint8_t* 的光标读取器
-│   ├── varint.h/cpp          # VarInt 编解码：encode_varuint / encode_varint
-│   ├── utf16.h/cpp           # read_utf16: UTF-16LE → UTF-8 转换
-│   ├── ole_date.h/cpp        # OLE DATE ↔ 时间表示转换
-│   └── explorgdb_types.h/cpp # 公共类型：FieldType, FieldDescriptor, FeatureRecord 等
-├── reader/
-│   ├── gdb_catalog.h/cpp     # GdbCatalog: 目录扫描 + 文件分类 + magic 验证
-│   ├── gdb_table.h/cpp       # GdbTableParser: .gdbtable 头部/字段/记录解析
-│   ├── gdb_tablx.h/cpp       # GdbTablxParser: .gdbtablx 偏移表 + 稀疏位图
-│   ├── gdb_indexes.h/cpp     # GdbIndexesParser: .gdbindexes 索引元数据
-│   ├── gdb_geometry.h/cpp    # 几何解码 + peek_bbox
-│   ├── gdb_spatial_index.h/cpp   # .spx 空间索引
-│   ├── gdb_attribute_index.h/cpp # .atx 属性索引
-│   └── explorgdb_cli.cpp     # CLI 主程序：子命令入口
-└── writer/
-    ├── gdb_table_writer.h/cpp # 二进制表写入器
-    └── gdb_index_creator.h/cpp # GDAL SQL 索引创建封装
+- `.spx` and `.atx` return candidates only;
+- final WHERE and geometry checks are mandatory;
+- malformed metadata/pages fail closed or fall back;
+- FID density and physical row-offset stability are not assumed;
+- WKB is the formal geometry output; WKT is on demand.
 
-tests/edgar/explorgdb/
-├── common/                 # 基础设施测试
-├── reader/                 # catalog/table/tablx/index/geometry/spatial/attribute 测试
-├── writer/                 # writer/index creator 测试
-├── test_fixture_explorgdb.h
-└── generate_large_gdb.cpp  # 大规模测试数据生成器
+## Lifetime rules
+
+Reader objects may retain mmap regions, file descriptors, table schema, FID offsets and index pages. Before GDAL/OpenFileGDB updates the same `.gdb` directory, destroy every Reader object and close every mapping/handle.
+
+After GDALClose, build a new Reader object graph beginning with `GdbCatalog::scan()`. Reusing an old parser, engine, cursor or mapping is unsupported.
+
+```text
+open fast-gdb Reader + GDAL update same directory = unsupported
 ```
 
-## 关键概念
+The overlap may expose old, new, mixed or error states. Tests that characterize this behavior do not establish a support contract.
 
-### FileGDB 目录结构
+## Related documents
 
-一个 `.gdb` 目录包含：
-- `gdb` — 8 字节头部：`version(4) + magic(4)`，version=5，magic=0xDEADBEEF
-- `timestamps` — 384 字节时间戳
-- `aXXXXXXXX.*` — 编号文件，每个表/索引对应一组：
-  - `.gdbtable` — 表数据（头部 + 字段描述符 + 要素记录）
-  - `.gdbtablx` — 偏移索引（FID → 文件偏移）
-  - `.gdbindexes` — 索引元数据
-  - `.spx` — 空间索引（已支持解析和 bbox 查询）
-  - `.atx` — 属性索引（已支持解析和数值/字符串查询）
-
-### .gdbtable 三遍读取
-
-```
-偏移 0          → 表头部（version=3 或 4，不同结构）
-field_desc_offset → 字段描述符区（Section Header + N 个字段）
-.gdbtablx 提供   → 要素记录偏移表（FID → offset）
-```
-
-### 字段类型（17 种）
-
-| 类型 | 值 | 说明 |
-|---|---|---|
-| Int16 | 0 | 2 字节有符号 |
-| Int32 | 1 | 4 字节有符号 |
-| Float32 | 2 | 4 字节浮点 |
-| Float64 | 3 | 8 字节浮点 |
-| String | 4 | VarInt 长度 + UTF-8 |
-| DateTime | 5 | OLE DATE (double) |
-| ObjectId | 6 | 隐式（不在记录中存储，= FID+1）|
-| Geometry | 7 | 复杂几何描述符 + 二进制 blob |
-| Binary | 8 | VarInt 长度 + 原始字节 |
-| Raster | 9 | 栅格类型 |
-| UUID_1/2 | 10/11 | 16 字节 UUID |
-| XML | 12 | VarInt 长度 + UTF-8 |
-| Int64 | 13 | 8 字节有符号 |
-| Date | 14 | 日期 |
-| Time | 15 | 时间 |
-| DateTimeWithOffset | 16 | 带时区的日期时间 |
-
-### 几何字段描述符
-
-几何字段的描述符是最复杂的部分，结构：
-
-```
-name(U16) + alias(U16) + type + width(1) + flag(1)
-→ wkt_len(2, 字节数) + wkt(U16, wkt_len/2 字符)
-→ magic1(1)
-→ geom_flags(1): has_m = bit1, has_z = bit2
-→ xorig(8) + yorig(8) + xyscale(8)     ← 始终存在
-→ [if has_m] morig(8) + mscale(8)       ← 条件
-→ [if has_z] zorig(8) + zscale(8)       ← 条件
-→ xytolerance(8)
-→ [if has_m] mtolerance(8)
-→ [if has_z] ztolerance(8)
-→ xmin/ymin/xmax/ymax (各 8)
-→ [if layer_has_z] zmin/zmax
-→ [if layer_has_m] mmin/mmax
-→ terminator(1)
-→ nb_grid_sizes(4) + grid_sizes[N×8]
-```
-
-> 注意：`layer_has_z/layer_has_m` 来自 `geom_type_full >> 24` 的位，**不是**来自 `geom_flags`。
-
-### .gdbtablx 偏移编码
-
-偏移条目使用变长编码（`size_tablx_offsets` 决定宽度）：
-
-| 宽度 | 编码 |
-|---|---|
-| 4 字节 | 标准小端 uint32 |
-| 5 字节 | byte[0]=低 8 位 + bytes[1:5]=高 32 位 |
-| 6 字节 | byte[0]=低 8 位 + bytes[1:5]=中 32 位 + byte[5]=高 8 位 |
-
-稀疏位图：每 1024 个要素为一个块，1 bit/块，0 表示全块偏移为 0。
-
-### VarInt 编码
-
-**无符号 (varuint)**：每字节 7 bit 数据，bit 7 = 延续标志
-```
-0x00 → 0
-0x7F → 127
-0x80 0x01 → 128
-```
-
-**有符号 (varint)**：bit 6 = 符号，6 bit 数据在首字节
-```
-0 → 0x00
-+1 → 0x02
--1 → 0x03
-```
-
-## 构建和运行
-
-```bash
-# 构建
-cmake -B build && cmake --build build
-
-# CLI 探索
-./build/bin/explorgdb_cli explore /path/to/spx.gdb
-./build/bin/explorgdb_cli dump-table /path/to/a00000001.gdbtable
-./build/bin/explorgdb_cli dump-tablx /path/to/a00000001.gdbtablx
-./build/bin/explorgdb_cli dump-indexes /path/to/a00000001.gdbindexes
-
-# 运行测试
-./build/bin/gdb_tutorial_test_runner --gtest_filter='*Gdb*:*Binary*:*Varint*:*Full*'
-```
-
-## 参考资源
-
-| 来源 | 路径 | 说明 |
-|---|---|---|
-| GDAL OpenFileGDB | 仓库外部参考 | FileGDB 读取/写入实现，可对照 `filegdbtable.cpp`、`filegdbtable_write.cpp` |
-| Even Rouault `dump_gdbtable` | 仓库外部参考 | `.gdbtable` / `.gdbtablx` / `.gdbindexes` 解析脚本 |
-| 本仓库测试数据 | `test_data/gdb/`、`test_data/large/`、`test_data/large_10m/` | 小规模、100K/10M 大数据集与索引基准 |
-
-## Phase 状态
-
-| 阶段 | 内容 | 状态 |
-|---|---|---|
-| Phase 1 Step 1 | 基础设施（binary_reader, varint, utf16） | ✅ 完成 |
-| Phase 1 Step 2 | 目录审计（gdb_catalog） | ✅ 完成 |
-| Phase 1 Step 3 | .gdbtable 解析 | ✅ 完成 |
-| Phase 1 Step 4 | .gdbtablx 解析 | ✅ 完成 |
-| Phase 1 Step 5 | .gdbindexes 解析 | ✅ 完成 |
-| Phase 1 Step 6 | CLI 工具 | ✅ 完成 |
-| Phase 1 Step 7 | 基础 reader 测试 | ✅ 完成 |
-| Phase 2 Step 9 | .spx 空间索引探索与查询 | ✅ 完成 |
-| Phase 2 Step 10 | .atx 属性索引探索与查询 | ✅ 完成 |
-| Phase 2 Step 11 | 几何解码、peek_bbox、空间过滤 | ✅ 完成 |
-| Phase 3 Step 12 | writer / index creator / benchmark 扩展 | ✅ 完成 |
+- `docs/technical/06_Reader读取流程专题.md`
+- `docs/usage/11_GDAL写入与fast-gdb读取边界.md`
+- `docs/adr/ADR-007-reader-only-gdal-edit-boundary.md`

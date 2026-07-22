@@ -1,0 +1,135 @@
+# ADR-007：fast-gdb 采用 Reader-only 产品定位，FileGDB 编辑交给 GDAL
+
+- **状态**：Accepted
+- **日期**：2026-07-22
+- **取代**：ADR-001～ADR-005、旧 Writer 设计和 VersionedGdbStore 方案
+
+## 背景
+
+fast-gdb 的核心优势集中在 FileGDB 二进制读取、mmap、FID、空间/属性索引、几何解析、WKB-first 和查询性能。继续实现和维护 FileGDB 字段级 Writer，需要同时承担：
+
+- `.gdbtable/.gdbtablx` 编码；
+- FID/ObjectID 分配和删除孔洞；
+- Schema、系统表和元数据更新；
+- `.spx/.atx/.gdbindexes` 创建与重建；
+- 几何、曲线、MultiPatch、域、关系和层级兼容性；
+- 崩溃恢复、事务、锁和跨平台文件系统行为。
+
+GDAL/OpenFileGDB 已提供 FileGDB 创建和更新能力。重复实现字段级 Writer 会稀释 Reader 正确性和性能投入。
+
+## 决策
+
+fast-gdb 正式产品只提供 Reader：
+
+- `fast_gdb::linear`；
+- `fast_gdb::hybrid`。
+
+项目删除并停止维护：
+
+- `fast_gdb::writer`；
+- `include/fast_gdb/writer`；
+- 自研 FileGDB 二进制 Writer；
+- VersionedGdbStore；
+- Append/Update/Delete/Transaction/Recovery API；
+- Writer 专项工具、工作流、基准和文档；
+- GDAL 包装层中的 BatchWriter 和 Transaction 抽象。
+
+FileGDB 创建和修改由调用方直接使用 GDAL/OpenFileGDB 或 ArcGIS 完成。
+
+## 支持合同
+
+唯一受支持的编辑时序是：
+
+```text
+1. 停止创建新 fast-gdb 查询
+2. 销毁全部 FeatureCursor、QueryEngine、GdbTableParser 和 GdbCatalog
+3. 解除 mmap 并关闭全部 fd/HANDLE
+4. GDAL/OpenFileGDB 独占修改目标 .gdb
+5. 关闭 OGRFeature、OGRLayer、SQL result set 和 GDALDataset
+6. 重新创建 fast-gdb Reader
+7. 读取新数据
+```
+
+写后必须完整重开，不提供局部 refresh 合同。
+
+## 同目录并发读写
+
+以下场景明确不支持：
+
+```text
+fast-gdb Reader 保持打开
++ GDAL 以 update 模式修改同一个 .gdb 目录
+```
+
+原因：FileGDB 是多文件格式，GDAL 更新可能改变表、tablx、空间索引、属性索引、系统表、Schema 和物理记录位置。fast-gdb Reader 可能同时持有：
+
+- mmap；
+- 文件描述符或 Windows HANDLE；
+- 字段定义；
+- FID/row offset；
+- `.spx/.atx` 页面；
+- 目录和系统表解析结果。
+
+并发期间可能观察到旧数据、新数据、混合数据或错误。任何单次平台观测都不能被提升为产品保证。
+
+## 在线不停读更新
+
+若业务要求 Reader 不停机，业务系统应在 fast-gdb 之外实现：
+
+```text
+稳定副本 A 供 Reader 使用
+    ↓ copy
+副本 B 由 GDAL 编辑
+    ↓ 完整关闭和验证
+业务层原子切换路径/配置
+    ↓
+新 Reader 打开副本 B
+```
+
+副本管理、路径发布、跨进程锁、Reader 租约、版本回收和崩溃恢复不属于 fast-gdb。
+
+## 测试策略
+
+测试分为两层：
+
+### 正式门禁
+
+关闭全部 Reader 后 GDAL 写入，GDALClose 后重开 fast-gdb，必须读取新值。
+
+### 观测性测试
+
+Reader 保持打开时 GDAL 修改同一目录，记录：
+
+- old；
+- new；
+- mixed；
+- error。
+
+测试不对其中任何类别建立断言，只验证完整关闭和重开后可读取新数据。
+
+## 后果
+
+### 正面
+
+- 集中资源提升 Reader 正确性、性能和格式覆盖；
+- 删除两套 Writer 语义和维护成本；
+- 避免对 FileGDB 写入兼容性作过度承诺；
+- 产品目标、安装面和文档更加清晰；
+- GDAL 写结果可直接作为 Reader 兼容性测试输入。
+
+### 代价
+
+- fast-gdb 不提供在线原地读写能力；
+- 调用方必须管理读写阶段切换；
+- 写后必须销毁和重建 Reader；
+- 不停读更新需要额外业务基础设施。
+
+## 验收条件
+
+- 安装导出中不存在 Writer target；
+- 仓库中不存在自研 FileGDB Writer 源码和公共头；
+- Writer 专项工作流和文档删除；
+- package consumer 只验证 linear/hybrid；
+- GDAL 写后 Reader 重开测试进入 CI；
+- 同目录并发测试明确标记为 characterization / unsupported；
+- README、文档索引、规划和 Changelog 使用一致表述。

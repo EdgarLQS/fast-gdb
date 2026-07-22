@@ -1,159 +1,68 @@
-# 02 — fast-gdb / GDAL 功能对比矩阵
+# fast-gdb 与 GDAL/OpenFileGDB 功能对比矩阵
 
-**更新日期**：2026-07-22  
-**文档状态**：当前权威能力矩阵  
-**对比对象**：`fast_gdb::linear`、`fast_gdb::hybrid`、`fast_gdb::writer` 与 GDAL OpenFileGDB
+## 定位
 
-## 1. 状态约定
+fast-gdb 负责高性能读取；GDAL/OpenFileGDB 负责 FileGDB 编辑，并作为正确性对照和可选 fallback。
 
-| 标记 | 含义 |
-|---|---|
-| ✅ | 已实现并有既有验收或正式证据 |
-| 🧪 | 已实现并有合成/本地验证，正式真实数据证据未闭环 |
-| ⚠️ | 部分或降级支持 |
-| ❌ | 当前不支持 |
-| ⏸️ | 明确不在范围 |
+| 能力 | fast-gdb | GDAL/OpenFileGDB | 结论 |
+|---|---|---|---|
+| 打开 FileGDB | 是 | 是 | fast-gdb 主读路径 |
+| 顺序扫描 | 是 | 是 | 性能与校验对照 |
+| FID 随机读取 | 是 | 是 | 需明确 FID 映射 |
+| 属性 WHERE | 是 | 是 | GDAL parity |
+| bbox/空间查询 | 是 | 是 | 候选后精确复核 |
+| `.spx` 读取 | 是 | 是 | fast-gdb 自研读取 |
+| `.atx` 读取 | 是 | 是 | fast-gdb 自研读取 |
+| ISO WKB | 是 | 是 | fast-gdb 正式输出 |
+| 曲线 | 内置线性化/Hybrid | 是 | 复杂场景 fallback |
+| MultiPatch | degraded | 较完整 | 专项 profile |
+| CreateFeature | 否 | 是 | 交给 GDAL |
+| SetFeature | 否 | 是 | 交给 GDAL |
+| DeleteFeature | 否 | 是 | 交给 GDAL |
+| Create/Delete Field | 否 | 是 | 交给 GDAL |
+| Create/Delete Index | 否 | 是 | 交给 GDAL |
+| REPACK | 否 | 是 | 交给 GDAL；写后重开 |
+| 事务 | 否 | 模拟/驱动能力 | 不进入 fast-gdb 产品 |
+| 在线版本发布 | 否 | 否 | 业务层能力 |
 
-## 2. 产品定位
+## 读写阶段规则
 
-| 产品 | 主要职责 | 不负责 |
-|---|---|---|
-| `fast_gdb::linear` | 无 GDAL Reader、几何、索引和查询 | 字段级写入 |
-| `fast_gdb::hybrid` | fast-gdb 主路径 + GDAL 复杂拓扑回退 | 通用编辑事务 |
-| `fast_gdb::writer` | 不可变 FileGDB generation、Reader snapshot、单 Writer 和原子 CURRENT 发布 | 字段级 Append/Update/Delete、schema migration |
-| GDAL OpenFileGDB | Dataset/Layer/Feature 访问和驱动支持的编辑 | fast-gdb 进程内 generation lease |
-
-`fast_gdb::writer` 唯一公共入口是 VersionedGdbStore。旧 Writer、legacy target 和直接 source 发布接口已删除。
-
-## 3. 几何读取
-
-| 类型/能力 | 纯 C++ | Hybrid | 边界 |
-|---|:---:|:---:|---|
-| Point / Z / M / ZM | ✅ | ✅ | ISO WKB-first |
-| MultiPoint / Z / M / ZM | ✅ | ✅ | delta arrays |
-| Polyline / Z / M / ZM | ✅ | ✅ | multipart |
-| Polygon / Z / M / ZM | ✅ | ✅ | 洞、多面、岛中岛 |
-| CircularArc | ✅ | ✅ | 内置折线化或 GDAL 回退 |
-| Cubic Bezier | ✅ | ✅ | 自适应折线化 |
-| EllipticArc | ✅ | ✅ | minor/major/complete/rotation |
-| MultiPatch | ⚠️ | ⚠️ | degraded，不保留完整表面语义 |
-| Null / Empty | ✅ | ✅ | 与损坏编码区分 |
-| 原生 curve object 输出 | ❌ | 🧪 | 非默认、非正式主契约 |
-
-## 4. 输出契约
-
-| 输出 | 状态 | 说明 |
-|---|:---:|---|
-| ISO WKB 2D/Z/M/ZM | ✅ | 正式几何输出 |
-| `GeometryValue` 状态/诊断 | ✅ | backend、curve、linearized、status |
-| 按需 WKT | ✅ | 从 WKB 显式转换 |
-| WKT → WKB 中转主路径 | ⏸️ | 禁止 |
-| 完整 MultiPatch 表面 | ❌ | 不在范围 |
-
-## 5. 查询
-
-| 能力 | fast-gdb | 说明 |
-|---|:---:|---|
-| 顺序扫描 / FID | ✅ | `QueryEngine` |
-| FeatureCursor | 🧪 | 完整字段 + GeometryValue，正式证据待闭环 |
-| cursor `move_to(fid)` | 🧪 | 按零基 FID 定位 |
-| `.spx` 候选 | ✅ | 最终必须精确几何复核 |
-| `.atx` 数值/字符串 | ✅ | 最终必须 WHERE 复核 |
-| bbox | ✅ | Point/Line/Polygon 精确判断 |
-| WHERE 子集 | ✅ | 比较、AND/OR、括号、IN |
-| bbox + WHERE | 🧪 | `SpatialWhere` 分支本地通过 |
-| 完整 SQL/JOIN/聚合 | ❌ | 不在范围 |
-
-## 6. 字段、SRS 和元数据
-
-| 能力 | fast-gdb Reader | 说明 |
-|---|:---:|---|
-| 数值/字符串/XML/Binary/GUID/GlobalID/Int64 | ✅ | 已暴露 |
-| DateTimeWithOffset | ✅ | 日期值与 offset 分离 |
-| SRS WKT/WKID/LatestWKID/SRSName | ✅ | 不重投影 |
-| coded/range domain | ✅ | 结构化解析 |
-| Feature Dataset | ✅ | 摘要 |
-| relationship | ✅/⚠️ | 摘要/定义，不执行 join/级联 |
-| Raster 像素 | ❌ | 只检测/degraded |
-| Annotation / Dimension | ❌ | 无专用语义 |
-
-## 7. VersionedGdbStore 与 GDAL 编辑的关系
-
-VersionedGdbStore 的提交单元是一个完整 FileGDB 目录：
+### 支持
 
 ```text
-CURRENT generation
-  → private working generation
-  → caller edits working_path() with its chosen editor
-  → fast-gdb validator reopens candidate
-  → immutable generation promote
-  → atomic CURRENT switch
+fast-gdb close all Reader state
+→ GDAL update
+→ GDALClose
+→ fast-gdb full reopen
 ```
 
-调用方可以在 `working_path()` 上使用 GDAL 或业务编辑器。fast-gdb 只负责版本、租约、验证和发布，不公开 GDAL 的字段级编辑包装。
+### 不支持
 
-| 能力 | VersionedGdbStore | GDAL OpenFileGDB |
-|---|:---:|:---:|
-| 完整 GDB working copy | ✅ | 可由调用方生成/编辑 |
-| macOS clonefile | 🧪 | 不适用 |
-| Linux FICLONE | 🧪 | 不适用 |
-| full-copy fallback | 🧪 | 可自行复制 |
-| Reader snapshot lease | 🧪 | 无 fast-gdb generation lease |
-| 单 Writer process gate | 🧪 | 由调用方协调 |
-| 原子 CURRENT 清单 | 🧪 | 无此模型 |
-| 记录/FID/几何/索引重开验证 | 🧪 | 可作为编辑引擎/对照 |
-| 字段级 Create/Set/DeleteFeature | ❌ | 由驱动能力决定 |
-| schema migration | ❌ | 由驱动能力决定 |
-| 跨进程锁 | ❌ | 仍需业务层协调 |
-
-## 8. Writer 公共 API
-
-安装包只包含：
-
-```cpp
-#include <versioned_gdb_store.h>
-#include <versioned_gdb_validator.h>
+```text
+fast-gdb Reader open
++ GDAL update same .gdb
 ```
 
-删除项：
+并发期间 old/new/mixed/error 均可能出现。
 
-- WriterSession；
-- Append/Update/Delete 公共 API；
-- 旧 WriterTransaction；
-- writer recovery/index 公共头；
-- `fast_gdb::writer_legacy`；
-- 直接 `source → backup → source` 公共发布协议。
+## GDAL 写后 Reader 兼容矩阵
 
-## 9. VersionedGdbStore 边界
+| GDAL 操作 | fast-gdb 重开后验证 |
+|---|---|
+| CreateFeature | 记录数、FID、字段、几何 |
+| SetFeature | 新字段值、几何、属性/空间索引 |
+| DeleteFeature | 删除槽、扫描、FID lookup |
+| CreateField | Schema、nullable、record layout |
+| DeleteField | 字段偏移和记录解析 |
+| CreateIndex | `.gdbindexes/.atx` 解析和查询 |
+| DeleteIndex | 安全回退 |
+| REPACK | tablx、row offset、FID 语义 |
+| Recompute extent | bbox 和图层范围 |
 
-支持：
+## 测试解释
 
-- 同一进程多个 Reader + 单 Writer；
-- 旧 Reader 跨发布保持旧版；
-- 新 Reader 获取新版；
-- 显式 refresh；
-- CoW 优先/full-copy 回退；
-- validator、CURRENT、recover 和旧 generation GC。
-
-不支持：
-
-- 字段级公共编辑 API；
-- schema migration；
-- 原生曲线/MultiPatch 写入；
-- FID 空洞复用；
-- 跨进程锁/租约；
-- 多 Writer；
-- savepoint、嵌套、跨 GDB 或分布式事务；
-- S3、对象存储或不可靠网络文件系统。
-
-## 10. 验收状态
-
-Reader 既有支持范围保留历史结论。VersionedGdbStore 已完成三轮自检、Linux 本地 smoke、并发检查和 sanitizer，但仍缺：
-
-- 完整 CMake/CTest；
-- macOS/Linux/Windows 实际矩阵；
-- ENOSPC/crash-phase 故障注入；
-- 真实 FileGDB validator；
-- 可审计 Actions logs/artifacts。
-
-因此 Writer 状态为 **Implemented / Formal acceptance blocked**。
+- GDAL parity 用于验证 Reader；
+- GDAL 生成数据不表示 fast-gdb 提供写入；
+- 同目录重叠测试只记录可见性类别；
+- 任何单平台 old/new 结果都不是并发支持证明；
+- 正式门禁只覆盖完整关闭和重开后的正确性。

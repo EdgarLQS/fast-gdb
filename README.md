@@ -1,164 +1,118 @@
-# fast-gdb — FileGDB C++ Reader 与版本化 Writer Store
+# fast-gdb — 高性能 FileGDB C++ Reader
 
-ESRI FileGDB 格式研究和 C++17 组件库。项目以 ISO WKB-first Reader、索引查询和不可变 generation 发布为核心。
+fast-gdb 是面向 ESRI FileGDB 的 C++17 读取、查询和几何解析库。项目正式定位为 **Reader only**：不提供 FileGDB 创建、追加、更新、删除、Schema 编辑、事务或发布 API；所有 FileGDB 编辑统一交给 GDAL/OpenFileGDB。
 
-当前正式版本：**v0.1.0**。`VersionedGdbStore` 属于 Unreleased 开发能力，已完成本地自检，跨平台正式验收尚未闭环。
+当前正式版本：**v0.1.0**。
 
 ## 产品形态
 
 | 安装目标 | 用途 | GDAL 依赖 |
 |---|---|---:|
-| `fast_gdb::linear` | 纯 C++ Reader、几何与查询 | 无 |
-| `fast_gdb::hybrid` | fast-gdb 主路径 + GDAL 复杂拓扑回退 | 有 |
-| `fast_gdb::writer` | 不可变 generation、Reader 快照、单 Writer 和原子发布 | 无 |
+| `fast_gdb::linear` | 纯 C++ FileGDB Reader、几何与查询 | 无 |
+| `fast_gdb::hybrid` | fast-gdb 主路径 + GDAL 复杂几何回退 | 有 |
 
-`fast_gdb::writer` 只公开 VersionedGdbStore。旧 Writer、legacy target 和直接 source 替换接口已经从安装面删除，不提供兼容层。
+安装包不导出 `fast_gdb::writer`，仓库不维护自研 FileGDB Writer 或 GDAL 写入包装库。
 
-## Reader 概览
-
-读取链路：
-
-```text
-FileGDB geometry blob
-    → GeometryModel（整数网格 XY + Z/M）
-    → PolygonTopologyBuilder / built-in curve linearizer
-    → ISO WKB（正式输出）
-       WKT（按需调试输出）
-       SpatialPredicate（精确空间判断）
-```
-
-主要能力：
+## Reader 能力
 
 - Point、MultiPoint、Polyline、Polygon 及 Z/M/ZM；
 - multipart、洞、岛中岛和环方向无关拓扑；
 - CircularArc、CubicBezier、EllipticArc 的内置折线化；
-- `.spx`、`.atx`、WHERE、bbox 与组合查询；
-- FID-only 查询和完整 `FeatureCursor`；
-- ISO WKB-first，WKT 仅按需转换；
-- 可选 GDAL Hybrid 回退。
+- `.spx`、`.atx`、WHERE、bbox 与空间属性联合查询；
+- FID 随机读取、顺序扫描和完整 `FeatureCursor`；
+- ISO WKB-first，WKT 按需转换；
+- 可选 GDAL Hybrid 回退；
+- mmap、索引候选复核、Reader 性能与兼容性验证。
 
 MultiPatch 仍只提供 Hybrid degraded support，不承诺完整表面拓扑。
 
-Reader 从 generation snapshot 到 QueryEngine、索引规划、FeatureCursor、WKB-first 和 refresh 的完整流程见 [Reader 读取流程专题](docs/technical/06_Reader读取流程专题.md)。
+## FileGDB 写入
 
-## VersionedGdbStore
-
-### 解决的问题
-
-Writer 不再修改 Reader 正在 mmap 的目录，也不再通过 `source → backup → source` 替换业务路径。每次发布创建一个不可变 generation，并通过 `CURRENT` 原子切换：
-
-```text
-<store-root>/
-├── CURRENT
-├── generations/
-│   ├── gen-<id>.gdb/
-│   └── gen-<id>.gdb/
-└── work/
-    └── work-gen-<id>.gdb/
-```
-
-语义：
-
-- 已有 Reader 固定旧 generation；
-- Writer 只修改私有 `working_path()`；
-- 新 Reader 在发布后获取新 generation；
-- 空闲 Reader 可显式 `refresh()`；
-- 同一进程、同一仓库最多一个 Writer。
-
-### 消费
-
-```cmake
-find_package(fast_gdb 0.1 CONFIG REQUIRED)
-target_link_libraries(my_app PRIVATE fast_gdb::writer)
-```
+fast-gdb 不提供写入接口。创建或修改 FileGDB 时，调用方直接使用官方 GDAL/OpenFileGDB API：
 
 ```cpp
-#include <versioned_gdb_store.h>
-#include <versioned_gdb_validator.h>
+GDALAllRegister();
+const char* drivers[] = {"OpenFileGDB", nullptr};
+GDALDataset* dataset = static_cast<GDALDataset*>(GDALOpenEx(
+    "data.gdb",
+    GDAL_OF_VECTOR | GDAL_OF_UPDATE,
+    drivers,
+    nullptr,
+    nullptr));
 
-using namespace explorgdb::writer;
+// OGRLayer::CreateFeature / SetFeature / DeleteFeature、
+// CreateField、SQL、索引和 REPACK 等由 GDAL 完成。
 
-VersionedGdbStore store("/data/cities-store");
-if (!store.open()) return false;
-
-auto reader = store.acquire_reader();
-if (!reader.valid()) return false;
-// GdbCatalog、QueryEngine、cursor 和 mmap 全部从 reader.path() 打开。
-
-auto write = store.begin_write();
-if (!write.valid()) return false;
-
-// 业务编辑器、GDAL 或其他完整 GDB 生成器只能修改 working_path()。
-if (!business_editor_rewrites_gdb(write.working_path())) {
-    write.abort();
-    return false;
-}
-
-close_all_handles_for_working_gdb();
-if (!write.publish(validator)) {
-    if (write.published()) {
-        // CURRENT 已切换，但最终持久化屏障失败。
-        // 停止新 Writer，释放 Reader 后调用 store.recover()。
-    } else {
-        write.abort();
-    }
-}
+GDALClose(dataset);
 ```
 
-完整 API 用法见 [VersionedGdbStore 并发读写与版本发布](docs/usage/11_VersionedGdbStore并发读写与版本发布.md)。从 store open、CoW/FullCopy working、编辑契约、validator、CURRENT 原子切换到 uncertain recover 的逐阶段说明见 [Writer 写入与版本发布流程专题](docs/technical/07_Writer写入与版本发布流程专题.md)。
+### 受支持的读写时序
 
-### 发布状态
+```text
+停止创建新的 fast-gdb 查询
+        ↓
+销毁 FeatureCursor / QueryEngine / GdbTableParser / GdbCatalog
+        ↓
+解除 mmap，关闭 fd/HANDLE
+        ↓
+GDAL/OpenFileGDB 独占修改目标 .gdb
+        ↓
+关闭 Feature、SQL result set 和 GDALDataset
+        ↓
+重新创建 fast-gdb Reader
+        ↓
+读取新数据
+```
 
-| 返回值 | 状态 | 含义 |
-|---:|---|---|
-| `true` | `PublishedDurable` | 新 generation 已发布并持久化 |
-| `false` | `NotPublished` | CURRENT 未切换，可修复或 abort |
-| `false` | `PublishedDurabilityUncertain` | CURRENT 已切换但最终目录同步失败，必须 recover |
+写入完成后必须完整重开 Reader；不支持只刷新部分表、索引或缓存。
 
-不能只根据 `publish()` 的 bool 判断是否已经切换版本。
+### 明确不支持：同一 GDB 边写边读
 
-### 克隆和校验
+当 GDAL 以 update 模式修改某个 `.gdb` 目录时，fast-gdb Reader 不得同时读取该目录。并发期间可能观察到：
 
-working GDB 创建优先级：
+- 旧数据；
+- 新数据；
+- 表、tablx、spx、atx 或系统表之间的混合状态；
+- 文件锁、读取失败或平台相关错误。
 
-- macOS `clonefile`；
-- Linux `FICLONE`；
-- Windows 或不支持 CoW 时完整复制。
+项目不为上述任何结果建立稳定合同。已有 Reader 即使在 GDAL 关闭后仍可能持有旧 mmap、文件描述符、Schema 或索引缓存，必须销毁并重开。
 
-发布前 validator 使用新的 Reader 对象重开候选，可检查目录 magic、系统目录、记录数、全表扫描、FID、WKB-first 几何、`.spx` 和 `.atx`。
+需要不停读服务时，应由业务系统在 fast-gdb 之外实现副本编辑和原子路径切换。
 
-## @深度研究：架构与 GDAL 对比结论
+## GDAL 写入 / fast-gdb 读取边界测试
 
-VersionedGdbStore 的定位必须严格理解为 **FileGDB 的版本化发布协议**，而不是 ArcGIS/GDAL 原地编辑语义的透明替代。GDAL/OpenFileGDB 可以作为 `working_path()` 的字段级编辑器，但 GDAL transaction commit 不等于 Store 已发布；真正的发布点仍是 CURRENT 切换。
+独立测试目标：
 
-三条生产前提：
+```text
+fast_gdb_gdal_read_write_boundary_test_runner
+```
 
-1. **所有访问必须经托管入口。** 直接打开 `generations/*.gdb`、`work/*.gdb` 或手工修改 CURRENT，会使 Reader 租约、单 Writer、GC 和恢复保证失效。
-2. **当前只支持可靠本地文件系统上的单进程多 Reader + 单 Writer。** 跨进程 Reader/Writer、NFS、SMB、FUSE、云同步目录、对象存储和跨主机共享不支持。
-3. **validator 通过不表示 ArcGIS/GDAL 全能力兼容。** 关系、域、subtype、feature dataset、曲线、MultiPatch、栅格、稀疏 64-bit ObjectID 等未进入明确 compatibility profile 的能力默认按不支持处理。
+测试分为两类：
 
-高风险注意事项：
+1. **正式门禁**：关闭所有 fast-gdb Reader 后由 GDAL 写入，`GDALClose()` 后重开 Reader，必须读到新数据；
+2. **观测性测试**：保持 Reader 打开并由 GDAL 修改同一目录，记录 old/new/mixed/error，但不把任何观测提升为支持语义。
 
-- CoW 只减少初始复制成本，不预留后续编辑和索引重建空间；ENOSPC 可以在 clone 成功后出现；
-- publish 前必须关闭 GDAL Dataset、Layer、Feature、SQL result set、cursor、fd、HANDLE 和 mmap；
-- snapshot 必须比所有派生 Reader 对象存活更久，禁止只缓存 `snapshot.path()`；
-- 长生命周期 Reader 会阻止旧 generation GC，并可能造成磁盘持续增长；
-- `PublishedDurabilityUncertain` 时禁止 abort、重试 publish、GC 或启动新 Writer，只能在释放 Reader/Writer 后 recover；
-- 不得依赖 FID 连续、删除孔洞复用、物理 row offset 跨 generation 不变。
+```bash
+cmake -S . -B build-boundary \
+  -DFAST_GDB_WITH_GDAL=ON \
+  -DFAST_GDB_BUILD_FULL_TESTS=OFF \
+  -DFAST_GDB_BUILD_TOOLS=OFF \
+  -DBUILD_TESTING=ON
+cmake --build build-boundary \
+  --target fast_gdb_gdal_read_write_boundary_test_runner --parallel
+ctest --test-dir build-boundary --output-on-failure \
+  -R '^gdal-reader-boundary\.'
+```
 
-详细文档：
+详见：
 
-- [架构自检与 GDAL 对比文档索引](docs/review/README.md)
-- [架构自检总览与结论](docs/review/00_架构自检总览与结论.md)
-- [与 GDAL/OpenFileGDB 能力和语义对比](docs/review/01_与GDAL-OpenFileGDB能力和语义对比.md)
-- [当前实现风险陷阱与误用清单](docs/review/02_当前实现风险陷阱与误用清单.md)
-- [明确不支持场景与 Fail-Fast 策略](docs/review/03_明确不支持场景与Fail-Fast策略.md)
-- [生产运行恢复与故障处理手册](docs/review/04_生产运行恢复与故障处理手册.md)
-- [跨平台测试与正式验收矩阵](docs/review/05_跨平台测试与正式验收矩阵.md)
+- [GDAL 写入与 fast-gdb 读取边界](docs/usage/11_GDAL写入与fast-gdb读取边界.md)
+- [Reader/GDAL 编辑边界 ADR](docs/adr/ADR-007-reader-only-gdal-edit-boundary.md)
+- [并发可见性观测证据](docs/evidence/gdal-write-fast-gdb-read-characterization-2026-07-22.md)
 
 ## 构建
 
-### 纯 C++
+### 纯 C++ Reader
 
 ```bash
 cmake -S . -B build-linear \
@@ -170,7 +124,7 @@ cmake --build build-linear --parallel
 ctest --test-dir build-linear --output-on-failure
 ```
 
-### GDAL Hybrid
+### GDAL Hybrid Reader
 
 ```bash
 cmake -S . -B build-hybrid \
@@ -184,7 +138,7 @@ ctest --test-dir build-hybrid --output-on-failure
 
 CMake 使用 `find_package(GDAL)`，不绑定本机安装路径。
 
-## WKB-first API
+## WKB-first 示例
 
 ```cpp
 explorgdb::GdbTableParser table(table_path);
@@ -202,34 +156,18 @@ if (table.read_geometry_value(fid, geometry) && geometry.valid()) {
 
 | 目录 | 内容 |
 |---|---|
-| `src/edgar/explorgdb/common` | 二进制与共享基础设施 |
-| `src/edgar/explorgdb/reader` | Reader、索引、几何和查询 |
+| `src/edgar/explorgdb/common` | 二进制和共享基础设施 |
+| `src/edgar/explorgdb/reader` | FileGDB Reader、索引、几何和查询 |
 | `src/edgar/explorgdb/curve_gdal` | 可选 GDAL Hybrid Bridge |
-| `src/edgar/explorgdb/writer` | VersionedGdbStore 私有实现及未导出的内部代码 |
-| `include/fast_gdb/writer` | 唯一 Writer 公共 API |
+| `tests/usegdal/test_*.cpp` | 直接调用 GDAL 的 fixture、parity 和边界测试 |
 
-## 关键文档
+## 产品边界
 
-- [Reader 读取流程专题](docs/technical/06_Reader读取流程专题.md)
-- [Writer 写入与版本发布流程专题](docs/technical/07_Writer写入与版本发布流程专题.md)
-- [VersionedGdbStore 使用指南](docs/usage/11_VersionedGdbStore并发读写与版本发布.md)
-- [ADR-007](docs/adr/ADR-007-versioned-gdb-store.md)
-- [Writer 生命周期](docs/architecture/writer-lifecycle.md)
-- [Writer Known Limitations](docs/architecture/writer-known-limitations.md)
-- [Writer Roadmap](docs/roadmap/writer-roadmap.md)
-- [架构自检与 GDAL 对比](docs/review/README.md)
-- [三轮代码自检](docs/evidence/versioned-gdb-store-three-round-self-review-2026-07-21.md)
-- [测试数据准备与跨平台验证](docs/usage/03_测试数据准备与跨平台验证.md)
-
-## 明确边界
-
-- 所有仓库访问必须经 VersionedGdbStore；
-- 只支持可靠本地文件系统上的同一进程多个 Reader + 单 Writer；
-- 不提供旧 Writer API、legacy target 或兼容头；
-- 不内建字段级 Append/Update/Delete 公共 API；
-- 不支持 schema migration、原生曲线/MultiPatch 写入和 FID 空洞复用；
-- 不支持跨进程租约/锁、跨主机、分布式或跨 GDB 事务；
-- NFS、SMB、FUSE、云同步目录、S3、对象存储和 VSI 写入不在范围内；
-- 关系、域、层级、栅格和稀疏 64-bit ObjectID 未经专项 profile 不支持；
-- 调用方必须为完整复制及 CoW 后续写放大准备足够空间；
-- 当前仍缺 macOS/Linux/Windows 正式矩阵、ENOSPC/崩溃故障注入和真实 FileGDB 发布证据。
+- fast-gdb 是 Reader，不是 FileGDB 编辑器；
+- 不提供 Writer API、Writer target、Writer 头文件、Writer 包装库或 ABI；
+- GDAL 编辑目标 GDB 时，所有 fast-gdb Reader 必须停止并释放；
+- `GDALClose()` 后必须完整重开 fast-gdb Reader；
+- 同一 `.gdb` 的 GDAL 写入与 fast-gdb 并发读取明确不支持；
+- 在线副本发布、跨进程锁、版本管理和垃圾回收由业务系统实现；
+- `.spx` 和 `.atx` 只提供候选，最终结果必须复核；
+- 关系、域、层级、栅格、MultiPatch 和稀疏 64-bit ObjectID 仍需专项兼容性验证。

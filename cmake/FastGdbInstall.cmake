@@ -23,70 +23,6 @@ endif()
 unset(_fast_gdb_reader_sources)
 unset(_fast_gdb_wkb_reader_source)
 
-# The existing explorgdb_writer_lib remains an uninstalled implementation/test
-# target. Its GLOB sees the new versioned sources, so it needs the new public
-# headers privately; this path is never propagated or installed by that target.
-target_include_directories(explorgdb_writer_lib PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/fast_gdb/writer)
-
-# The installed Writer product is rebuilt from versioned_gdb_* only, so old
-# direct Writer symbols are absent from the public archive as well as from the
-# public include surface.
-file(GLOB FAST_GDB_VERSIONED_WRITER_SOURCES CONFIGURE_DEPENDS
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/writer/versioned_gdb_*.cpp)
-add_library(fast_gdb_versioned_writer_lib STATIC
-    ${FAST_GDB_VERSIONED_WRITER_SOURCES})
-target_include_directories(fast_gdb_versioned_writer_lib
-    PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/include/fast_gdb/writer
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/writer
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/common)
-target_link_libraries(fast_gdb_versioned_writer_lib
-    PUBLIC explorgdb_common_lib
-    PRIVATE explorgdb_reader_lib)
-target_compile_features(fast_gdb_versioned_writer_lib PUBLIC cxx_std_17)
-fast_gdb_enable_warnings(fast_gdb_versioned_writer_lib)
-
-# Build the managed-publication contract independently of the GDAL matrix.
-if(BUILD_TESTING AND NOT TARGET fast_gdb_versioned_store_test_runner)
-    find_package(Threads REQUIRED)
-    add_executable(fast_gdb_versioned_store_test_runner
-        tests/test_runner.cpp
-        tests/edgar/explorgdb/writer/test_versioned_gdb_store.cpp)
-    target_include_directories(fast_gdb_versioned_store_test_runner PRIVATE
-        tests
-        tests/edgar/explorgdb/writer)
-    target_link_libraries(fast_gdb_versioned_store_test_runner PRIVATE
-        GTest::gtest fast_gdb_versioned_writer_lib Threads::Threads)
-    fast_gdb_enable_warnings(fast_gdb_versioned_store_test_runner)
-    gtest_discover_tests(fast_gdb_versioned_store_test_runner
-        TEST_PREFIX "versioned-store.")
-endif()
-
-# Real OpenFileGDB integration contract. This target is intentionally separate
-# from the large historical full-test runner: it proves the visibility boundary
-# when GDAL edits working_path(), and can run as a focused release gate.
-if(BUILD_TESTING AND FAST_GDB_WITH_GDAL AND
-   NOT TARGET fast_gdb_gdal_visibility_test_runner)
-    add_executable(fast_gdb_gdal_visibility_test_runner
-        tests/test_runner.cpp
-        tests/edgar/explorgdb/writer/test_versioned_gdb_store_gdal_visibility.cpp)
-    target_include_directories(fast_gdb_gdal_visibility_test_runner PRIVATE
-        tests
-        tests/edgar/explorgdb/writer)
-    target_link_libraries(fast_gdb_gdal_visibility_test_runner PRIVATE
-        GTest::gtest
-        fast_gdb_versioned_writer_lib
-        explorgdb_reader_lib
-        ${FAST_GDB_GDAL_TARGET})
-    fast_gdb_enable_warnings(fast_gdb_gdal_visibility_test_runner)
-    gtest_discover_tests(fast_gdb_gdal_visibility_test_runner
-        TEST_PREFIX "versioned-gdal-visibility."
-        PROPERTIES RESOURCE_LOCK fast_gdb_gdal_visibility_fixture)
-endif()
-
 set(FAST_GDB_PACKAGE_VARIANT "" CACHE STRING
     "Release package variant name; defaults to linear or hybrid")
 if(NOT FAST_GDB_PACKAGE_VARIANT)
@@ -109,17 +45,12 @@ set_target_properties(explorgdb_reader_lib PROPERTIES
     EXPORT_NAME reader
     INTERFACE_INCLUDE_DIRECTORIES
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader>;$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/reader>")
-set_target_properties(fast_gdb_versioned_writer_lib PROPERTIES
-    EXPORT_NAME writer
-    INTERFACE_INCLUDE_DIRECTORIES
-        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/fast_gdb/writer>;$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/writer>")
 set_target_properties(fast_gdb_linear PROPERTIES EXPORT_NAME linear)
 
 set(FAST_GDB_INSTALL_TARGETS
     fast_gdb_geometry_core
     explorgdb_common_lib
     explorgdb_reader_lib
-    fast_gdb_versioned_writer_lib
     fast_gdb_linear)
 
 if(FAST_GDB_WITH_GDAL)
@@ -146,10 +77,6 @@ install(DIRECTORY src/edgar/explorgdb/reader/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/reader
     FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp"
     PATTERN "query_where_internal.h" EXCLUDE)
-
-install(DIRECTORY include/fast_gdb/writer/
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/writer
-    FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp")
 
 if(FAST_GDB_WITH_GDAL)
     install(DIRECTORY src/edgar/explorgdb/curve_gdal/
@@ -190,7 +117,7 @@ set(CPACK_PACKAGE_NAME "fast-gdb")
 set(CPACK_PACKAGE_VENDOR "EdgarLQS")
 set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
-    "C++17 FileGDB reader and immutable-generation managed Writer store")
+    "C++17 FileGDB Reader with optional GDAL-backed compatibility fallback")
 set(CPACK_PACKAGE_FILE_NAME
     "fast-gdb-${PROJECT_VERSION}-${FAST_GDB_PACKAGE_VARIANT}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
 set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY ON)

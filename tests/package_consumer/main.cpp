@@ -1,43 +1,4 @@
-#ifdef FAST_GDB_CONSUMER_VERSIONED_WRITER
-#include <versioned_gdb_store.h>
-#include <versioned_gdb_validator.h>
-
-#include <type_traits>
-
-static_assert(!std::is_copy_constructible<
-                  explorgdb::writer::GdbReaderSnapshot>::value,
-              "installed reader snapshots must be move-only");
-static_assert(std::is_nothrow_move_constructible<
-                  explorgdb::writer::GdbReaderSnapshot>::value,
-              "installed reader snapshots must support noexcept moves");
-static_assert(!std::is_copy_constructible<
-                  explorgdb::writer::GdbWriteTransaction>::value,
-              "installed writer transactions must be move-only");
-static_assert(std::is_nothrow_move_constructible<
-                  explorgdb::writer::GdbWriteTransaction>::value,
-              "installed writer transactions must support noexcept moves");
-
-int main() {
-    using namespace explorgdb::writer;
-
-    QueryEngineGenerationValidationOptions options;
-    GdbLayerValidationRule rule;
-    rule.layer_name = "layer";
-    rule.expected_active_records = 0;
-    rule.scan_all_records = true;
-    rule.validate_sample_geometry = true;
-    options.layers.push_back(rule);
-
-    auto validator = make_query_engine_generation_validator(options);
-    VersionedGdbStore store("package-consumer-store");
-
-    if (!validator || !store.current_generation().empty()) return 1;
-    if (GdbPublishState::NotPublished == GdbPublishState::PublishedDurable) {
-        return 1;
-    }
-    return 0;
-}
-#elif defined(FAST_GDB_CONSUMER_HYBRID)
+#ifdef FAST_GDB_CONSUMER_HYBRID
 #include <hybrid_geometry_reader.h>
 
 int main() {
