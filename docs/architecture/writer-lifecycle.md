@@ -1,196 +1,182 @@
 # Writer 生命周期与发布模型
 
 - **最后更新**：2026-07-22
-- **相关决策**：ADR-001、ADR-002、ADR-003、ADR-004、ADR-005、ADR-007
+- **权威决策**：ADR-007
+- **唯一公共入口**：`VersionedGdbStore`
 
-## 1. 架构分层
-
-Writer 生命周期现在分为两个正交层次：
-
-```text
-编辑层
-  WriterSession / Append / Update / Delete / WriterTransaction
-  └─ 负责 working 数据集中的字段、几何、FID、索引和事务语义
-
-发布层
-  VersionedGdbStore / GdbWriteTransaction / GdbReaderSnapshot
-  └─ 负责 Reader 快照、单 Writer 门禁、generation、验证和 CURRENT 切换
-```
-
-编辑层决定“候选 GDB 内容是否正确”；发布层决定“候选 GDB 如何对并发 Reader 生效”。
-`VersionedGdbStore` 不替代 Append、Update、Delete 或业务事务，也不增加新的 FileGDB 写入类型。
-
-## 2. 编辑会话共同原则
-
-所有稳定编辑能力遵守首错锁定和未发布清理原则：
+## 1. 总体状态机
 
 ```text
-constructed
-  └─ open
-      ├─ active
-      │   ├─ mutate rows/features
-      │   ├─ validate
-      │   ├─ finish candidate
-      │   └─ abort → cleanup → aborted
-      └─ failure → locked → abort/destructor only
+store constructed
+  → open
+      ├─ uninitialized
+      │    └─ initialize_from(source, validator)
+      │         ├─ validate/sync/publish → ready
+      │         └─ failure → uninitialized
+      └─ ready
+           ├─ acquire_reader → reader snapshot lease
+           ├─ begin_write → exclusive writer transaction
+           │    ├─ edit private working generation
+           │    ├─ validate
+           │    ├─ publish durable → committed
+           │    ├─ publish not switched → retry validation or abort
+           │    └─ switched but durability uncertain
+           │         → terminal transaction
+           │         → block new writer
+           │         → recover required
+           └─ recover → cleanup/validate/durability barrier → ready
 ```
 
-首个失败锁定会话。锁定后不得继续写入或提交，避免后续成功覆盖最初错误。编辑会话只应操作 staging/working GDB。
+旧 WriterSession、Append、Update、Delete、legacy target 和直接 source 替换生命周期不再属于公共架构。
 
-## 3. 空 schema WriterSession
+## 2. Store 生命周期
 
-用途：向已创建且没有写入/删除历史的空 schema 写入新数据。
+### Constructed
 
-```text
-empty schema template
-  → open staging
-  → begin_row / set_* / geometry / end_row
-  → close + header/tablx validation
-  → reopen validation
-  → no-overwrite publish to a new path
-```
+构造只规范化 store root，并与同进程同路径实例共享状态。尚未访问文件系统。
 
-`WriterSession::commit(final)` 只发布到不存在的新目标。它适合新建或离线全量生成，不替换已有 source，也不提供并发版本仓库。
+### Open
 
-## 4. Append、Update、Delete 和 WriterTransaction
+`open()`：
 
-这些 API 负责已有 GDB 的内容编辑：
-
-- Append：保留原 FID，新 FID 单调增长，不复用删除空洞；
-- Update：保持 FID/ObjectID 和未指定字段；
-- Delete：保留 survivor FID，不立即复用被删除 FID；
-- WriterTransaction：将多个编辑动作组合到一个 working 数据集。
-
-它们在候选发布前必须完成：
-
-1. 操作级即时回读；
-2. 完整 working GDB 重开；
-3. 记录数、FID、属性、几何和范围验证；
-4. 必要索引重建与查询验证；
-5. 源变化冲突检查（使用直接 source 发布时）。
-
-## 5. 两种发布协议
-
-### 5.1 新目标无覆盖发布
-
-用于 `WriterSession` 新建数据：
-
-```text
-staging → validate → rename to non-existing final path
-```
-
-目标已存在时失败，不覆盖任何已有目录。
-
-### 5.2 直接 source 替换发布
-
-Append/Update/Delete/WriterTransaction 的既有独立模式采用：
-
-```text
-source GDB
-  → complete sibling working copy
-  → edit + reopen validation
-  → source fingerprint check
-  → source → backup
-  → working → source
-  → remove backup
-```
-
-该模式适用于离线或能够暂停 Reader 的场景。它具备冲突检测、rollback 和显式 recovery，但**不承诺目录切换窗口内 Reader 连续可见，也不能让 Writer 修改 Reader 正在 mmap 的同一 source 文件**。
-
-### 5.3 generation 版本发布
-
-需要同一进程多 Reader + 单 Writer 时，推荐 ADR-007：
-
-```text
-CURRENT generation
-  → begin_write
-  → CoW/full-copy private working GDB
-  → existing Writer APIs edit working_path()
-  → close every Writer/fd/mmap
-  → fresh Reader reopen validation
-  → promote immutable generation
-  → atomically replace CURRENT
-```
-
-Reader 语义：
-
-- 已有 Reader 的 `GdbReaderSnapshot` 固定旧 generation；
-- 发布后新 Reader 获取新 generation；
-- 空闲 Reader 在关闭其 QueryEngine、cursor 和 mmap 后显式 `refresh()`；
-- 旧 generation 仅在不是 CURRENT 且租约归零后回收。
-
-## 6. VersionedGdbStore 状态机
-
-```text
-store.open()
-  ├─ acquire_reader() → snapshot(old/current generation)
-  └─ begin_write() → exclusive writer transaction
-       ├─ edit working_path()
-       ├─ validation failure → NotPublished → retry validation or abort
-       ├─ publish durable → PublishedDurable
-       └─ CURRENT switched, final barrier failed
-            → PublishedDurabilityUncertain
-            → preserve old + new generations
-            → block new Writer
-            → recover() with no active readers/writer
-```
-
-`publish()==false` 不一定表示 CURRENT 未切换。调用方必须同时检查 `published()` 或 `publish_state()`。
-
-## 7. 持久化顺序
-
-版本发布固定遵守：
-
-1. 编辑层关闭所有指向 working GDB 的句柄；
-2. validator 使用全新 Reader 重开候选；
-3. 刷新候选文件和目录；
-4. working 重命名为 immutable generation；
-5. 同步 `generations/`；
-6. 写入并刷新临时 `CURRENT`；
-7. 原子替换 `CURRENT`；
-8. 同步 store root；
-9. 更新进程内 current generation；
-10. 在安全条件下回收旧 generation。
-
-在第 7 步前失败时，旧 CURRENT 保持权威；第 7 步成功、第 8 步失败时进入 `PublishedDurabilityUncertain`，不得删除新旧 generation 或继续写入。
-
-## 8. 恢复模型
-
-### 直接 source 发布
-
-继续使用 `writer_recovery.h` 检查 source、working/staging 和 backup 组合。恢复默认不覆盖健康 source，候选歧义时拒绝猜测。
-
-### generation 发布
-
-`VersionedGdbStore::open()` / `recover()`：
-
-- 清理 stale work 和临时清单；
-- 严格解析 CURRENT；
+- 创建 `generations/` 和 `work/`；
+- 清理 stale work 和 `CURRENT.tmp-*`；
+- 严格解析 `CURRENT`；
 - 确认 CURRENT generation 存在；
-- 不根据时间戳猜测最新 generation；
-- 不确定发布时先完成持久化屏障；
-- 无活跃 Reader/Writer 后才允许恢复和旧代次回收。
+- 在安全条件下回收非 CURRENT generation。
 
-## 9. 事务接入点
+`CURRENT` 非法、超长、多行或指向缺失目录时 fail closed。
 
-业务事务仍由 `WriterTransaction` 负责 Append/Update/Delete 的组合语义。需要连续 Reader 时，事务的真实目标应是 `GdbWriteTransaction::working_path()`，事务自身不得再替换版本仓库的 CURRENT generation。
+### Ready
+
+ready 状态允许获取 Reader 或单个 Writer。所有实例共享同一 reader lease registry 和 writer gate。
+
+## 3. Reader 生命周期
 
 ```text
-VersionedGdbStore.begin_write()
-  → WriterTransaction / supported edit operations on working_path()
-  → validate complete working dataset
-  → close edit transaction
-  → GdbWriteTransaction.publish() once
+acquire_reader()
+  → increment generation lease
+  → snapshot valid
+      ├─ open GdbCatalog / QueryEngine / cursor / mmap from path()
+      ├─ continue reading same immutable generation across publish
+      ├─ close all derived objects
+      ├─ refresh() → move lease to CURRENT
+      └─ destroy → decrement lease → maybe collect old generation
 ```
 
-第一版仍不支持嵌套事务、savepoint、跨 GDB 或分布式事务。
+不变量：
 
-## 10. 选择规则
+- snapshot 必须覆盖全部派生 Reader 对象和 mmap；
+- Writer 永不修改该 generation；
+- publish 不自动移动已有 Reader；
+- 活动 Reader 不得 refresh；
+- 最后一个租约释放前不得删除 generation。
 
-| 场景 | 推荐发布模型 |
-|---|---|
-| 新建、不覆盖任何已有路径 | `WriterSession::commit(new_path)` |
-| 离线维护，Reader 可暂停 | 既有直接 source 替换 + recovery |
-| 同一进程 Reader 必须连续可见 | `VersionedGdbStore` generation 发布 |
-| 跨进程或跨主机并发 | 当前不支持，需独立锁/租约 ADR |
-| S3/对象存储 | 当前不支持，不能复用本地 rename 协议 |
+## 4. Writer 生命周期
+
+```text
+begin_write()
+  → acquire single-writer gate
+  → clone CURRENT to private work/
+      ├─ macOS clonefile
+      ├─ Linux FICLONE
+      └─ full-copy fallback
+  → caller edits working_path()
+  → caller closes every handle
+  → publish(validator)
+```
+
+Writer 只能修改 `working_path()`。任何对 `CURRENT`、`generations/` 或 Reader snapshot path 的直接修改都违反契约。
+
+### Abort
+
+在 CURRENT 未切换前：
+
+- 删除 working GDB；
+- 释放 writer gate；
+- 当前 generation 不变。
+
+析构未发布事务等价于自动 abort。
+
+### PublishedDurable
+
+发布完成：
+
+1. validator 使用新 Reader 对象重开候选；
+2. 刷新候选文件和目录；
+3. working 重命名为 immutable generation；
+4. 同步 `generations/`；
+5. 写入并刷新临时 CURRENT；
+6. 原子替换 CURRENT；
+7. 同步 store root；
+8. 更新进程内 current generation；
+9. 回收无租约旧 generation。
+
+事务进入终态，不能再次 publish 或 abort。
+
+### PublishedDurabilityUncertain
+
+CURRENT 已原子切换，但最终 store root 同步失败：
+
+- 当前进程采用新 generation；
+- 新旧 generation 全部保留；
+- 事务终结；
+- 禁止 abort 和重试；
+- 阻止新 Writer；
+- Reader 仍可读取其已持有 generation；
+- 无活动 Reader/Writer 后必须 `recover()`。
+
+这是“提交结果不确定”，不是普通未发布失败。
+
+## 5. Validator 生命周期
+
+validator 必须在所有 working 句柄关闭后运行，并创建全新的：
+
+- `GdbCatalog`；
+- `CatalogResolver`；
+- `QueryEngine`；
+- 索引解析器。
+
+可验证目录 magic、系统目录、记录数、全表扫描、抽样 FID、抽样几何、`.spx` 和 `.atx`。validator 失败不得切换 CURRENT。
+
+## 6. Recovery 生命周期
+
+```text
+recover()
+  precondition: no active reader and no active writer
+  → remove stale work/tmp manifests
+  → parse and validate CURRENT
+  → if durability uncertain: flush generation/current/root barriers
+  → clear uncertainty
+  → collect unleased non-current generations
+  → ready
+```
+
+恢复不根据时间戳或目录名猜测“最新” generation。清单损坏或引用缺失时拒绝自动修复。
+
+## 7. 文件系统不变量
+
+- `work/` 与 `generations/` 必须位于同一 store root；
+- generation promote 和 CURRENT replace 必须在同一可靠本地文件系统中；
+- 已发布 generation 不包含符号链接或特殊文件；
+- CoW 失败必须回退完整复制；
+- 空间不足不得删除或覆盖 CURRENT generation；
+- 任何清理失败必须可观察，不能静默吞掉。
+
+## 8. 并发边界
+
+支持：
+
+- 同一进程；
+- 多个独立 Reader；
+- 一个 Writer；
+- Reader 跨发布连续可见。
+
+不支持：
+
+- 跨进程锁或租约；
+- 多 Writer；
+- 分布式协调；
+- S3/对象存储；
+- 跨 GDB 事务；
+- savepoint 或嵌套事务。
