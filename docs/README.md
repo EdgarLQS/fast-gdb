@@ -11,7 +11,8 @@
 | [Writer 生命周期](architecture/writer-lifecycle.md) | Store、Reader、Writer、validator 和 recovery 状态机 |
 | [Writer Known Limitations](architecture/writer-known-limitations.md) | 并发、文件系统、容量、事务和验收边界 |
 | [Writer Roadmap](roadmap/writer-roadmap.md) | API 收敛、并发、持久化和三平台验收门禁 |
-| [三轮代码自检](evidence/versioned-gdb-store-three-round-self-review-2026-07-21.md) | 并发/生命周期、崩溃一致性、API/跨平台/测试发现与修复 |
+| [核心实现三轮自检](evidence/versioned-gdb-store-three-round-self-review-2026-07-21.md) | 并发/生命周期、崩溃一致性、API/跨平台/测试发现与修复 |
+| [latest-only API 三轮自检](evidence/versioned-gdb-store-latest-only-api-review-2026-07-22.md) | 旧公共接口删除、versioned-only archive、安装负向检查和文档/CI 收敛 |
 
 旧 ADR-001～ADR-005、WriterSession/Append/Update/Delete/Transaction 使用指南及对应 workflow 已被 ADR-007 取代并从当前分支删除。
 
