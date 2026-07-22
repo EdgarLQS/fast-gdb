@@ -24,12 +24,14 @@
 | [明确不支持场景与 Fail-Fast 策略](review/03_明确不支持场景与Fail-Fast策略.md) | Supported/Conditional/Unsupported/Unspecified 分类和运行时拒绝策略 |
 | [生产运行恢复与故障处理手册](review/04_生产运行恢复与故障处理手册.md) | 正常运行、uncertain、ENOSPC、CURRENT 损坏、残留 work、回滚和监控 |
 | [跨平台测试与正式验收矩阵](review/05_跨平台测试与正式验收矩阵.md) | macOS/Linux/Windows、文件系统、故障注入、真实 GDB 和生产门禁 |
+| [GDAL 写入期间 Reader 可见性测试](evidence/versioned-gdb-store-gdal-write-visibility-2026-07-22.md) | 真实 OpenFileGDB `SetFeature`/事务提交、旧 Reader、新 Reader、working 与 CURRENT 的可见性合同 |
 
 所有面向使用方的文档必须保持以下约束一致：
 
 1. 所有访问必须经托管入口；
 2. 当前只支持可靠本地文件系统上的单进程多 Reader + 单 Writer；
-3. validator 通过只证明已定义不变量，不证明 ArcGIS/GDAL 全部高级 geodatabase 语义。
+3. validator 通过只证明已定义不变量，不证明 ArcGIS/GDAL 全部高级 geodatabase 语义；
+4. GDAL 只能编辑 `working_path()`；GDAL commit 不等于 Store publish。
 
 ## 当前 Writer 入口
 
@@ -42,6 +44,7 @@
 | [Writer Roadmap](roadmap/writer-roadmap.md) | API 收敛、并发、持久化和三平台验收门禁 |
 | [核心实现三轮自检](evidence/versioned-gdb-store-three-round-self-review-2026-07-21.md) | 并发/生命周期、崩溃一致性、API/跨平台/测试发现与修复 |
 | [latest-only API 三轮自检](evidence/versioned-gdb-store-latest-only-api-review-2026-07-22.md) | 旧公共接口删除、versioned-only archive、安装负向检查和文档/CI 收敛 |
+| [GDAL 写入可见性证据](evidence/versioned-gdb-store-gdal-write-visibility-2026-07-22.md) | GDAL working 编辑对旧/新 Reader 的真实可见性测试设计、实现与证据边界 |
 
 旧 ADR-001～ADR-005、WriterSession/Append/Update/Delete/Transaction 使用指南及对应 workflow 已被 ADR-007 取代并从当前分支删除。
 
@@ -94,5 +97,6 @@
 - MultiPatch 仍为 degraded；
 - 关系、域、层级、栅格、稀疏 64-bit ObjectID 等未进入明确 profile 的能力默认不支持；
 - NFS、SMB、FUSE、云同步目录、对象存储和跨进程 Store 访问不支持；
+- GDAL `CommitTransaction()` 只提交 working；正式可见性以 Store `PublishedDurable` 为准；
 - 本地自检、真实数据和正式 CI artifact 必须分开记录；
 - VersionedGdbStore 当前为 Implemented / Formal acceptance blocked。
