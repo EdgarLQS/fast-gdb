@@ -6,7 +6,7 @@
 |---|---|
 | `fast_gdb_geometry_test_runner` | Portable geometry, topology and WKB contracts |
 | `fast_gdb_hybrid_test_runner` | GDAL-backed curve fallback and real-data release contracts |
-| `gdb_tutorial_test_runner` | Full Reader, query, index, GDAL parity and benchmark suite |
+| `gdb_tutorial_test_runner` | Full Reader, query, index and direct-GDAL parity suite |
 | `fast_gdb_gdal_read_write_boundary_test_runner` | GDAL edit / fast-gdb Reader lifecycle boundary |
 
 ## GDAL boundary tests
@@ -52,23 +52,30 @@ ctest --test-dir build-boundary --output-on-failure \
 - `linear`;
 - `hybrid`.
 
-There is no Writer consumer mode.
+There is no Writer consumer mode and no `usegdal` consumer mode.
 
-## Removed test scope
+## Reference-only `usegdal`
 
-The repository no longer builds or maintains:
+`src/edgar/usegdal` is retained as historical GDAL/OGR wrapper source. It is not linked into any release-gate target. Its old wrapper-specific tests are not part of the active test suite.
 
-- self-developed Writer tests;
-- Append/Update/Delete/Transaction/Recovery tests;
+Formal Reader parity and lifecycle tests call the official GDAL API directly so the supported boundary is not coupled to reference wrappers.
+
+## Removed active test scope
+
+The repository no longer builds or maintains as release gates:
+
+- self-developed FileGDB Writer tests;
+- Append/Update/Delete/Transaction/Recovery product tests;
 - VersionedGdbStore tests;
 - Writer performance tests;
 - GDAL BatchWriter/Transaction wrapper tests.
 
-GDAL may still be used inside Reader tests to generate FileGDB fixtures and provide correctness parity.
+The corresponding `usegdal` source may remain for reference, but it is not considered tested or production-supported.
 
 ## Result policy
 
 - `PASS` requires executed test steps and assertions;
 - `SKIPPED` is not acceptance;
 - runner failures without steps/logs are infrastructure failures;
-- characterization output is diagnostic and cannot establish concurrent read/write support.
+- characterization output is diagnostic and cannot establish concurrent read/write support;
+- reference-only source presence is not release evidence.

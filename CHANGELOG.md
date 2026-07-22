@@ -13,6 +13,7 @@ All notable changes to fast-gdb are documented in this file.
 - Reader objects, mmap regions, table parsers, catalogs, query engines, cursors, FID mappings and index caches must not survive an external GDAL edit.
 - Same-directory GDAL update plus fast-gdb reading is explicitly classified as unsupported and may expose old, new, mixed or error states.
 - Online copy/edit/switch publication is an application responsibility outside fast-gdb.
+- `src/edgar/usegdal` is retained as reference-only historical GDAL/OGR wrapper code. It is not built, installed, exported, release-gated, or covered by API/ABI compatibility promises.
 
 ### Added
 
@@ -22,6 +23,7 @@ All notable changes to fast-gdb are documented in this file.
 - ADR-007 for the Reader-only product decision and GDAL edit boundary.
 - Architecture, usage and evidence documents defining Reader quiescence, GDAL lifecycle and result interpretation.
 - CI checks that verify no Writer target or installed Writer headers remain.
+- `src/edgar/usegdal/README.md` documenting the non-product reference boundary.
 
 ### Removed
 
@@ -29,16 +31,17 @@ All notable changes to fast-gdb are documented in this file.
 - `VersionedGdbStore`, `GdbReaderSnapshot`, `GdbWriteTransaction` and generation publication APIs.
 - Installed Writer headers and the `include/fast_gdb/writer` tree.
 - The self-developed FileGDB binary Writer implementation under `src/edgar/explorgdb/writer`.
-- Append, Update, Delete, Transaction, Recovery, table/index Writer and atomic publication code.
-- GDAL `GdbBatchWriter` and `GdbTransaction` wrapper abstractions.
+- Append, Update, Delete, Transaction, Recovery, table/index Writer and atomic publication code from the supported product surface.
 - Writer tests, Writer performance tools, Writer-specific workflows, ADRs, roadmaps, design documents and evidence reports.
 - Writer package-consumer mode.
+- The `usegdal` wrapper library from root CMake targets, installation, package exports and formal test gates; its source remains available as reference material.
 
 ### Validation status
 
 - The Reader-only build graph, install surface and boundary tests are implemented on the development branch.
 - Formal acceptance requires usable CMake/CTest logs and artifacts for the pure Reader surface and the GDAL boundary target.
 - Characterization observations are diagnostic only and never constitute a concurrent read/write support statement.
+- Reference-only `usegdal` code is intentionally not claimed as build-validated or production-ready.
 
 ## [0.1.0] - 2026-07-13
 

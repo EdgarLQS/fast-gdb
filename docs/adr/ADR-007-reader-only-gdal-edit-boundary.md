@@ -24,17 +24,33 @@ fast-gdb 正式产品只提供 Reader：
 - `fast_gdb::linear`；
 - `fast_gdb::hybrid`。
 
-项目删除并停止维护：
+项目从正式产品、构建、安装和兼容性范围中删除：
 
 - `fast_gdb::writer`；
 - `include/fast_gdb/writer`；
-- 自研 FileGDB 二进制 Writer；
+- `src/edgar/explorgdb/writer` 自研 FileGDB 二进制 Writer；
 - VersionedGdbStore；
-- Append/Update/Delete/Transaction/Recovery API；
+- Append/Update/Delete/Transaction/Recovery 公共 API；
 - Writer 专项工具、工作流、基准和文档；
-- GDAL 包装层中的 BatchWriter 和 Transaction 抽象。
+- Writer package consumer 和安装导出。
 
 FileGDB 创建和修改由调用方直接使用 GDAL/OpenFileGDB 或 ArcGIS 完成。
+
+## `usegdal` 参考代码
+
+`src/edgar/usegdal` 保留为 **reference only** 的历史探索代码，其中包括 datasource、dataset、recordset、field、feature、query、connection pool、transaction 和 batch-write 包装示例。
+
+该目录：
+
+- 不由根 `CMakeLists.txt` 构建；
+- 不安装；
+- 不导出 CMake target；
+- 不进入 package consumer；
+- 不进入正式发布门禁；
+- 不提供 API/ABI、正确性、事务、并发或性能承诺；
+- 不构成 fast-gdb Writer 产品。
+
+保留它的目的仅是设计比较、实验和后续独立研究。若未来要把其中任何能力提升为受支持组件，必须新建 ADR、独立 target、兼容性策略和测试矩阵。
 
 ## 支持合同
 
@@ -45,7 +61,7 @@ FileGDB 创建和修改由调用方直接使用 GDAL/OpenFileGDB 或 ArcGIS 完�
 2. 销毁全部 FeatureCursor、QueryEngine、GdbTableParser 和 GdbCatalog
 3. 解除 mmap 并关闭全部 fd/HANDLE
 4. GDAL/OpenFileGDB 独占修改目标 .gdb
-5. 关闭 OGRFeature、OGRLayer、SQL result set 和 GDALDataset
+5. 关闭 OGRFeature、SQL result set 和 GDALDataset
 6. 重新创建 fast-gdb Reader
 7. 读取新数据
 ```
@@ -71,6 +87,8 @@ fast-gdb Reader 保持打开
 - 目录和系统表解析结果。
 
 并发期间可能观察到旧数据、新数据、混合数据或错误。任何单次平台观测都不能被提升为产品保证。
+
+`usegdal` 中存在写示例也不会改变这一边界；这些示例不属于支持合同。
 
 ## 在线不停读更新
 
@@ -107,28 +125,33 @@ Reader 保持打开时 GDAL 修改同一目录，记录：
 
 测试不对其中任何类别建立断言，只验证完整关闭和重开后可读取新数据。
 
+正式门禁直接调用官方 GDAL API，不依赖 `src/edgar/usegdal` 参考包装层。
+
 ## 后果
 
 ### 正面
 
 - 集中资源提升 Reader 正确性、性能和格式覆盖；
-- 删除两套 Writer 语义和维护成本；
+- 删除受支持 Writer 语义和维护成本；
 - 避免对 FileGDB 写入兼容性作过度承诺；
 - 产品目标、安装面和文档更加清晰；
-- GDAL 写结果可直接作为 Reader 兼容性测试输入。
+- GDAL 写结果可直接作为 Reader 兼容性测试输入；
+- 保留早期 GDAL 包装探索，便于后续比较和独立研究。
 
 ### 代价
 
 - fast-gdb 不提供在线原地读写能力；
 - 调用方必须管理读写阶段切换；
 - 写后必须销毁和重建 Reader；
-- 不停读更新需要额外业务基础设施。
+- 不停读更新需要额外业务基础设施；
+- `usegdal` 参考代码可能老化，且不保证可构建或可用于生产。
 
 ## 验收条件
 
 - 安装导出中不存在 Writer target；
-- 仓库中不存在自研 FileGDB Writer 源码和公共头；
-- Writer 专项工作流和文档删除；
+- `include/fast_gdb/writer` 和 `src/edgar/explorgdb/writer` 不存在；
+- Writer 专项工作流和正式产品文档删除；
+- `src/edgar/usegdal` 明确标记 reference only，且不进入根构建、安装或导出；
 - package consumer 只验证 linear/hybrid；
 - GDAL 写后 Reader 重开测试进入 CI；
 - 同目录并发测试明确标记为 characterization / unsupported；

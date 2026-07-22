@@ -1,6 +1,8 @@
 # fast-gdb 文档索引
 
-fast-gdb 当前产品定位为 **FileGDB Reader only**。项目不提供自研 FileGDB Writer；创建、追加、更新、删除、Schema 编辑、索引维护和 REPACK 统一由 GDAL/OpenFileGDB 完成。
+fast-gdb 当前产品定位为 **FileGDB Reader only**。项目不提供受支持的 FileGDB Writer；创建、追加、更新、删除、Schema 编辑、索引维护和 REPACK 统一由 GDAL/OpenFileGDB 完成。
+
+`src/edgar/usegdal` 作为历史 GDAL/OGR 包装探索代码保留，仅供设计比较和后续研究；它不构建、不安装、不导出，也不属于产品兼容性范围。
 
 ## 核心入口
 
@@ -11,6 +13,7 @@ fast-gdb 当前产品定位为 **FileGDB Reader only**。项目不提供自研 F
 | [ADR-007：Reader-only 与 GDAL 编辑边界](adr/ADR-007-reader-only-gdal-edit-boundary.md) | 产品定位、决策理由、支持合同和非目标 |
 | [GDAL/Reader 边界架构说明](architecture/gdal-write-reader-boundary.md) | 生命周期、缓存失效、并发可见性和在线服务外置方案 |
 | [并发可见性观测证据](evidence/gdal-write-fast-gdb-read-characterization-2026-07-22.md) | 真实 OpenFileGDB 测试设计、分类结果和证据边界 |
+| [`usegdal` 参考层说明](../src/edgar/usegdal/README.md) | 非产品 GDAL/OGR RAII、查询、事务和批量写入参考代码的边界 |
 
 ## 产品目标
 
@@ -20,6 +23,8 @@ fast-gdb 当前产品定位为 **FileGDB Reader only**。项目不提供自研 F
 | `fast_gdb::hybrid` | fast-gdb Reader 主路径 + GDAL 复杂几何回退 |
 
 不存在 `fast_gdb::writer`。`include/fast_gdb/writer`、自研二进制 Writer、Writer 工具、Writer 工作流和 Writer 专项文档均不属于当前产品。
+
+`src/edgar/usegdal` 中可能存在 write、transaction 或 batch-write 示例，但这些文件不进入根 CMake target、安装包、package consumer 或发布门禁，其存在不构成 Writer 支持声明。
 
 ## 读写边界
 
@@ -47,7 +52,7 @@ fast-gdb Reader 保持打开
 
 | 文件 | 内容 |
 |---|---|
-| [组件库设计与使用](usage/01_组件库设计与使用.md) | Reader 和可选 GDAL Hybrid 组件 |
+| [组件库设计与使用](usage/01_组件库设计与使用.md) | Reader、可选 GDAL Hybrid 和 reference-only `usegdal` 边界 |
 | [几何 WKB 曲线支持与迁移](usage/02_几何WKB曲线支持与迁移.md) | GeometryModel/GeometryValue、WKB、曲线和 Hybrid |
 | [测试数据准备与跨平台验证](usage/03_测试数据准备与跨平台验证.md) | 使用 GDAL/ArcGIS Pro 生成测试数据和验证 Reader |
 | [功能与基准测试覆盖矩阵](usage/04_功能与基准测试覆盖矩阵.md) | Reader 自动化、性能和真实数据缺口 |
@@ -70,6 +75,7 @@ fast-gdb Reader 保持打开
 
 - fast-gdb 正式产品只读；
 - 所有 FileGDB 编辑统一由 GDAL/OpenFileGDB 或 ArcGIS 完成；
+- `usegdal` 只保留为非产品参考，不建立 API/ABI 或运行时承诺；
 - 同一 GDB 的外部写入和 fast-gdb 并发读取不支持；
 - 写前关闭 Reader，写后完整重开；
 - 在线不停读更新需要业务系统实现副本和原子切换；
