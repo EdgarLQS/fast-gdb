@@ -39,6 +39,8 @@ FileGDB geometry blob
 
 MultiPatch 仍只提供 Hybrid degraded support，不承诺完整表面拓扑。
 
+Reader 从 generation snapshot 到 QueryEngine、索引规划、FeatureCursor、WKB-first 和 refresh 的完整流程见 [Reader 读取流程专题](docs/technical/06_Reader读取流程专题.md)。
+
 ## VersionedGdbStore
 
 ### 解决的问题
@@ -103,7 +105,7 @@ if (!write.publish(validator)) {
 }
 ```
 
-完整用法见 [VersionedGdbStore 并发读写与版本发布](docs/usage/11_VersionedGdbStore并发读写与版本发布.md)。
+完整 API 用法见 [VersionedGdbStore 并发读写与版本发布](docs/usage/11_VersionedGdbStore并发读写与版本发布.md)。从 store open、CoW/FullCopy working、编辑契约、validator、CURRENT 原子切换到 uncertain recover 的逐阶段说明见 [Writer 写入与版本发布流程专题](docs/technical/07_Writer写入与版本发布流程专题.md)。
 
 ### 发布状态
 
@@ -179,6 +181,8 @@ if (table.read_geometry_value(fid, geometry) && geometry.valid()) {
 
 ## 关键文档
 
+- [Reader 读取流程专题](docs/technical/06_Reader读取流程专题.md)
+- [Writer 写入与版本发布流程专题](docs/technical/07_Writer写入与版本发布流程专题.md)
 - [VersionedGdbStore 使用指南](docs/usage/11_VersionedGdbStore并发读写与版本发布.md)
 - [ADR-007](docs/adr/ADR-007-versioned-gdb-store.md)
 - [Writer 生命周期](docs/architecture/writer-lifecycle.md)
