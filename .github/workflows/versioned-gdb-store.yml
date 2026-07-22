@@ -1,0 +1,73 @@
+name: versioned-gdb-store
+
+on:
+  pull_request:
+    paths:
+      - 'include/fast_gdb/writer/**'
+      - 'src/edgar/explorgdb/writer/versioned_gdb_*.cpp'
+      - 'src/edgar/explorgdb/writer/versioned_gdb_store_internal.h'
+      - 'tests/edgar/explorgdb/writer/test_versioned_gdb_store.cpp'
+      - 'tests/package_consumer/**'
+      - 'cmake/**'
+      - 'CMakeLists.txt'
+      - '.github/workflows/versioned-gdb-store.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'include/fast_gdb/writer/**'
+      - 'src/edgar/explorgdb/writer/versioned_gdb_*.cpp'
+      - 'src/edgar/explorgdb/writer/versioned_gdb_store_internal.h'
+      - 'tests/edgar/explorgdb/writer/test_versioned_gdb_store.cpp'
+      - 'tests/package_consumer/**'
+      - 'cmake/**'
+      - 'CMakeLists.txt'
+      - '.github/workflows/versioned-gdb-store.yml'
+
+jobs:
+  managed-store:
+    name: managed-store-${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: >-
+          cmake -S . -B build
+          -DFAST_GDB_WITH_GDAL=OFF
+          -DFAST_GDB_BUILD_TOOLS=OFF
+          -DFAST_GDB_BUILD_FULL_TESTS=OFF
+          -DBUILD_TESTING=ON
+          -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build managed store tests
+        run: cmake --build build --config Release --target fast_gdb_versioned_store_test_runner --parallel
+
+      - name: Run managed store tests
+        run: ctest --test-dir build -C Release --output-on-failure -R '^versioned-store\.'
+
+      - name: Install package
+        run: cmake --install build --config Release --prefix "${{ github.workspace }}/install"
+
+      - name: Configure installed Writer consumer
+        run: >-
+          cmake -S tests/package_consumer -B consumer-build
+          -DFAST_GDB_CONSUMER_TARGET=writer
+          -DCMAKE_PREFIX_PATH="${{ github.workspace }}/install"
+          -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build installed Writer consumer
+        run: cmake --build consumer-build --config Release --parallel
+
+      - name: Run installed Writer consumer
+        shell: bash
+        run: |
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            ./consumer-build/Release/fast_gdb_package_consumer.exe
+          else
+            ./consumer-build/fast_gdb_package_consumer
+          fi
