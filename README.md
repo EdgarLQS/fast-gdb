@@ -127,6 +127,35 @@ working GDB 创建优先级：
 
 发布前 validator 使用新的 Reader 对象重开候选，可检查目录 magic、系统目录、记录数、全表扫描、FID、WKB-first 几何、`.spx` 和 `.atx`。
 
+## @深度研究：架构与 GDAL 对比结论
+
+VersionedGdbStore 的定位必须严格理解为 **FileGDB 的版本化发布协议**，而不是 ArcGIS/GDAL 原地编辑语义的透明替代。GDAL/OpenFileGDB 可以作为 `working_path()` 的字段级编辑器，但 GDAL transaction commit 不等于 Store 已发布；真正的发布点仍是 CURRENT 切换。
+
+三条生产前提：
+
+1. **所有访问必须经托管入口。** 直接打开 `generations/*.gdb`、`work/*.gdb` 或手工修改 CURRENT，会使 Reader 租约、单 Writer、GC 和恢复保证失效。
+2. **当前只支持可靠本地文件系统上的单进程多 Reader + 单 Writer。** 跨进程 Reader/Writer、NFS、SMB、FUSE、云同步目录、对象存储和跨主机共享不支持。
+3. **validator 通过不表示 ArcGIS/GDAL 全能力兼容。** 关系、域、subtype、feature dataset、曲线、MultiPatch、栅格、稀疏 64-bit ObjectID 等未进入明确 compatibility profile 的能力默认按不支持处理。
+
+高风险注意事项：
+
+- CoW 只减少初始复制成本，不预留后续编辑和索引重建空间；ENOSPC 可以在 clone 成功后出现；
+- publish 前必须关闭 GDAL Dataset、Layer、Feature、SQL result set、cursor、fd、HANDLE 和 mmap；
+- snapshot 必须比所有派生 Reader 对象存活更久，禁止只缓存 `snapshot.path()`；
+- 长生命周期 Reader 会阻止旧 generation GC，并可能造成磁盘持续增长；
+- `PublishedDurabilityUncertain` 时禁止 abort、重试 publish、GC 或启动新 Writer，只能在释放 Reader/Writer 后 recover；
+- 不得依赖 FID 连续、删除孔洞复用、物理 row offset 跨 generation 不变。
+
+详细文档：
+
+- [架构自检与 GDAL 对比文档索引](docs/review/README.md)
+- [架构自检总览与结论](docs/review/00_架构自检总览与结论.md)
+- [与 GDAL/OpenFileGDB 能力和语义对比](docs/review/01_与GDAL-OpenFileGDB能力和语义对比.md)
+- [当前实现风险陷阱与误用清单](docs/review/02_当前实现风险陷阱与误用清单.md)
+- [明确不支持场景与 Fail-Fast 策略](docs/review/03_明确不支持场景与Fail-Fast策略.md)
+- [生产运行恢复与故障处理手册](docs/review/04_生产运行恢复与故障处理手册.md)
+- [跨平台测试与正式验收矩阵](docs/review/05_跨平台测试与正式验收矩阵.md)
+
 ## 构建
 
 ### 纯 C++
@@ -188,17 +217,19 @@ if (table.read_geometry_value(fid, geometry) && geometry.valid()) {
 - [Writer 生命周期](docs/architecture/writer-lifecycle.md)
 - [Writer Known Limitations](docs/architecture/writer-known-limitations.md)
 - [Writer Roadmap](docs/roadmap/writer-roadmap.md)
+- [架构自检与 GDAL 对比](docs/review/README.md)
 - [三轮代码自检](docs/evidence/versioned-gdb-store-three-round-self-review-2026-07-21.md)
 - [测试数据准备与跨平台验证](docs/usage/03_测试数据准备与跨平台验证.md)
 
 ## 明确边界
 
 - 所有仓库访问必须经 VersionedGdbStore；
-- 只支持同一进程多个 Reader + 单 Writer；
+- 只支持可靠本地文件系统上的同一进程多个 Reader + 单 Writer；
 - 不提供旧 Writer API、legacy target 或兼容头；
 - 不内建字段级 Append/Update/Delete 公共 API；
 - 不支持 schema migration、原生曲线/MultiPatch 写入和 FID 空洞复用；
-- 不支持跨进程锁、跨主机、分布式或跨 GDB 事务；
-- S3、对象存储和不可靠网络文件系统不在范围内；
-- 调用方必须为完整复制准备足够空间；
+- 不支持跨进程租约/锁、跨主机、分布式或跨 GDB 事务；
+- NFS、SMB、FUSE、云同步目录、S3、对象存储和 VSI 写入不在范围内；
+- 关系、域、层级、栅格和稀疏 64-bit ObjectID 未经专项 profile 不支持；
+- 调用方必须为完整复制及 CoW 后续写放大准备足够空间；
 - 当前仍缺 macOS/Linux/Windows 正式矩阵、ENOSPC/崩溃故障注入和真实 FileGDB 发布证据。
