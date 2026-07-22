@@ -5,8 +5,9 @@
 | ADR | 状态 | 决策范围 |
 |---|---|---|
 | [ADR-007：Reader-only 与 GDAL 编辑边界](ADR-007-reader-only-gdal-edit-boundary.md) | Accepted | fast-gdb 只提供 Reader；FileGDB 编辑交给 GDAL/OpenFileGDB；同目录并发读写不支持 |
+| [ADR-008：Adaptive Reader 写入检测与 fresh GDAL 回退](ADR-008-adaptive-reader-write-detection-gdal-fallback.md) | Proposed | 通过协调状态或 best-effort 文件快照发现源变化；写期间返回 Busy；稳定后使用全新 GDAL 只读连接恢复 |
 
-ADR-001～ADR-005 和旧版 ADR-007 对应的自研 Writer、字段级 Append/Update/Delete、事务、恢复和版本发布方案已被本决策取代并从当前文档删除。
+ADR-001～ADR-005 和旧版 ADR-007 对应的自研 Writer、字段级 Append/Update/Delete、事务、恢复和版本发布方案已被 ADR-007 取代并从当前文档删除。
 
 ## 当前决策关系
 
@@ -15,16 +16,22 @@ fast-gdb
   ├─ fast_gdb::linear
   ├─ fast_gdb::hybrid
   ├─ FileGDB Reader / Query / Geometry / Index
+  ├─ proposed Adaptive Reader orchestration
   └─ no Writer product
 
 GDAL/OpenFileGDB
-  └─ all FileGDB creation and editing
+  ├─ all FileGDB creation and editing
+  └─ fresh read-only fallback after source becomes stable
 ```
+
+ADR-008 仍为 Proposed。在实现和验收完成前，ADR-007 的“关闭 Reader → GDAL 写 → GDALClose → 重开 Reader”仍是唯一正式支持合同。
 
 ## 变更规则
 
 1. 不允许在安装面重新增加 Writer target、Writer 头文件或 FileGDB 编辑 ABI；
 2. 新增 `.gdbtable/.gdbtablx/.spx/.atx` 写入代码必须先通过新 ADR；
-3. 外部写入与 Reader 生命周期边界发生变化时必须更新 ADR-007；
+3. 外部写入与 Reader 生命周期边界发生变化时必须同步 ADR-007 和 ADR-008；
 4. 同目录并发读写的观测结果不得写成支持合同；
-5. 在线副本发布能力若未来进入项目，必须作为独立可选组件重新决策，而不能隐式混入 Reader 核心。
+5. Adaptive Reader 检测到活动 Writer 时必须 fail closed，不能立即以 GDAL 并发读取替代；
+6. 无协调外部 Writer 检测必须明确标记 best-effort；
+7. 在线副本发布能力若未来进入项目，必须作为独立可选组件重新决策，而不能隐式混入 Reader 核心。
