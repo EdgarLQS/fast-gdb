@@ -1,48 +1,40 @@
-#ifdef FAST_GDB_CONSUMER_WRITER_LEGACY
-#include <gdb_table_writer.h>
+#ifdef FAST_GDB_CONSUMER_VERSIONED_WRITER
+#include <versioned_gdb_store.h>
+#include <versioned_gdb_validator.h>
+
+#include <type_traits>
+
+static_assert(!std::is_copy_constructible<
+                  explorgdb::writer::GdbReaderSnapshot>::value,
+              "installed reader snapshots must be move-only");
+static_assert(std::is_nothrow_move_constructible<
+                  explorgdb::writer::GdbReaderSnapshot>::value,
+              "installed reader snapshots must support noexcept moves");
+static_assert(!std::is_copy_constructible<
+                  explorgdb::writer::GdbWriteTransaction>::value,
+              "installed writer transactions must be move-only");
+static_assert(std::is_nothrow_move_constructible<
+                  explorgdb::writer::GdbWriteTransaction>::value,
+              "installed writer transactions must support noexcept moves");
 
 int main() {
-    explorgdb::writer::GdbTableWriter writer;
-    return writer.is_open() ? 1 : 0;
-}
-#elif defined(FAST_GDB_CONSUMER_WRITER)
-#include <writer_session.h>
-#ifdef FAST_GDB_CONSUMER_WRITER_INDEX
-#include <writer_index.h>
-#endif
-#ifdef FAST_GDB_CONSUMER_WRITER_APPEND
-#include <writer_append.h>
-#endif
-#ifdef FAST_GDB_CONSUMER_WRITER_TRANSACTION
-#include <writer_transaction.h>
-#endif
+    using namespace explorgdb::writer;
 
-int main() {
-    explorgdb::writer::WriterSession session;
-    if (session.is_open() || session.is_committed() || session.is_aborted()) {
+    QueryEngineGenerationValidationOptions options;
+    GdbLayerValidationRule rule;
+    rule.layer_name = "layer";
+    rule.expected_active_records = 0;
+    rule.scan_all_records = true;
+    rule.validate_sample_geometry = true;
+    options.layers.push_back(rule);
+
+    auto validator = make_query_engine_generation_validator(options);
+    VersionedGdbStore store("package-consumer-store");
+
+    if (!validator || !store.current_generation().empty()) return 1;
+    if (GdbPublishState::NotPublished == GdbPublishState::PublishedDurable) {
         return 1;
     }
-    if (explorgdb::writer::writer_error_code_name(
-            explorgdb::writer::WriterErrorCode::None) == nullptr) {
-        return 1;
-    }
-#ifdef FAST_GDB_CONSUMER_WRITER_INDEX
-    auto* create_spatial_index = &explorgdb::writer::CreateSpatialIndex;
-    if (create_spatial_index == nullptr) return 1;
-#endif
-#ifdef FAST_GDB_CONSUMER_WRITER_APPEND
-    explorgdb::writer::WriterAppendSession append;
-    if (append.is_open() || append.is_committed() || append.is_aborted()) {
-        return 1;
-    }
-#endif
-#ifdef FAST_GDB_CONSUMER_WRITER_TRANSACTION
-    explorgdb::writer::WriterTransaction transaction;
-    if (transaction.is_open() || transaction.is_committed() ||
-        transaction.is_aborted()) {
-        return 1;
-    }
-#endif
     return 0;
 }
 #elif defined(FAST_GDB_CONSUMER_HYBRID)
