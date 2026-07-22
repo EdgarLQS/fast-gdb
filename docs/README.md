@@ -9,9 +9,11 @@ fast-gdb 当前产品定位为 **FileGDB Reader only**。项目不提供受支�
 | 文件 | 内容 |
 |---|---|
 | [Reader 读取流程专题](technical/06_Reader读取流程专题.md) | 目录扫描、系统表、表解析、索引规划、FeatureCursor、WKB-first 和对象生命周期 |
-| [GDAL 写入与 fast-gdb 读取边界](usage/11_GDAL写入与fast-gdb读取边界.md) | 受支持的停读→GDAL 写→重开流程，以及同目录并发读写的明确边界 |
-| [ADR-007：Reader-only 与 GDAL 编辑边界](adr/ADR-007-reader-only-gdal-edit-boundary.md) | 产品定位、决策理由、支持合同和非目标 |
-| [GDAL/Reader 边界架构说明](architecture/gdal-write-reader-boundary.md) | 生命周期、缓存失效、并发可见性和在线服务外置方案 |
+| [GDAL 写入与 fast-gdb 读取边界](usage/11_GDAL写入与fast-gdb读取边界.md) | 当前停读→GDAL 写→重开合同，以及计划中的 Adaptive Reader 使用语义 |
+| [ADR-007：Reader-only 与 GDAL 编辑边界](adr/ADR-007-reader-only-gdal-edit-boundary.md) | 当前产品定位、决策理由、支持合同和非目标 |
+| [ADR-008：Adaptive Reader 写入检测与 fresh GDAL 回退](adr/ADR-008-adaptive-reader-write-detection-gdal-fallback.md) | Proposed：写期间 fail closed、源稳定后 fresh GDAL 只读恢复 |
+| [Adaptive Reader 实施计划](planning/22_AdaptiveReader写入检测与GDAL回退计划.md) | 文件快照、协调探针、Reader 失效、fresh GDAL、测试和平台验收阶段 |
+| [GDAL/Reader 边界架构说明](architecture/gdal-write-reader-boundary.md) | 生命周期、缓存失效、并发可见性和 Adaptive 计划架构 |
 | [并发可见性观测证据](evidence/gdal-write-fast-gdb-read-characterization-2026-07-22.md) | 真实 OpenFileGDB 测试设计、分类结果和证据边界 |
 | [`usegdal` 参考层说明](../src/edgar/usegdal/README.md) | 非产品 GDAL/OGR RAII、查询、事务和批量写入参考代码的边界 |
 
@@ -22,11 +24,13 @@ fast-gdb 当前产品定位为 **FileGDB Reader only**。项目不提供受支�
 | `fast_gdb::linear` | 无 GDAL 依赖的纯 C++ Reader |
 | `fast_gdb::hybrid` | fast-gdb Reader 主路径 + GDAL 复杂几何回退 |
 
+计划中的 Adaptive Reader 仍处于 ADR-008 Proposed 阶段，尚未作为安装 target 或当前能力发布。
+
 不存在 `fast_gdb::writer`。`include/fast_gdb/writer`、自研二进制 Writer、Writer 工具、Writer 工作流和 Writer 专项文档均不属于当前产品。
 
 `src/edgar/usegdal` 中可能存在 write、transaction 或 batch-write 示例，但这些文件不进入根 CMake target、安装包、package consumer 或发布门禁，其存在不构成 Writer 支持声明。
 
-## 读写边界
+## 当前读写边界
 
 ### 支持
 
@@ -48,6 +52,28 @@ fast-gdb Reader 保持打开
 
 并发期间可能出现 old/new/mixed/error，项目不承诺任何固定结果。旧 Reader 在 GDALClose 后也不能继续复用，必须销毁并完整重开。
 
+## 计划中的 Adaptive Reader 边界
+
+ADR-008 计划增加一个可选 Reader 编排层：
+
+```text
+稳定数据源
+  → fast-gdb 快路径
+
+活动 Writer / 读取期间源变化
+  → 丢弃结果
+  → SourceBusy / ReaderExpired
+
+写入结束且源稳定
+  → fresh GDAL read-only fallback
+  → 完整物化并关闭 Dataset
+  → 后置验证通过后返回
+```
+
+协调模式通过调用方提供的 `writer_active/generation` 获得确定性行为。未知外部 Writer 只能采用 best-effort 文件快照检测，不能承诺绝对无漏检。
+
+该计划不引入 Writer、GDAL update wrapper、事务、发布层或 marker 写入能力。ADR-008 Accepted 前，ADR-007 仍是唯一正式合同。
+
 ## 使用文档
 
 | 文件 | 内容 |
@@ -58,7 +84,7 @@ fast-gdb Reader 保持打开
 | [功能与基准测试覆盖矩阵](usage/04_功能与基准测试覆盖矩阵.md) | Reader 自动化、性能和真实数据缺口 |
 | [真实数据验收资料清单](usage/05_fast-gdb真实数据验收资料清单.md) | Reader 新能力的真实数据验收规范 |
 | [空间属性联合查询代码审核指南](usage/10_空间属性联合查询代码审核指南.md) | 查询路径、回退和审核点 |
-| [GDAL 写入与 fast-gdb 读取边界](usage/11_GDAL写入与fast-gdb读取边界.md) | Reader 与外部编辑器的生命周期合同 |
+| [GDAL 写入与 fast-gdb 读取边界](usage/11_GDAL写入与fast-gdb读取边界.md) | 当前 Reader/Writer 阶段合同和 Adaptive Reader 计划用法 |
 
 ## 技术专题
 
@@ -76,8 +102,11 @@ fast-gdb Reader 保持打开
 - fast-gdb 正式产品只读；
 - 所有 FileGDB 编辑统一由 GDAL/OpenFileGDB 或 ArcGIS 完成；
 - `usegdal` 只保留为非产品参考，不建立 API/ABI 或运行时承诺；
-- 同一 GDB 的外部写入和 fast-gdb 并发读取不支持；
-- 写前关闭 Reader，写后完整重开；
+- 当前同一 GDB 的外部写入和 fast-gdb 并发读取不支持；
+- 当前写前关闭 Reader，写后完整重开；
+- 计划中的 Adaptive Reader 检测到活动 Writer 时 fail closed；
+- fresh GDAL fallback 只能在源稳定后执行，且必须前后验证；
+- 无协调外部 Writer 检测只能标记 best-effort；
 - 在线不停读更新需要业务系统实现副本和原子切换；
 - Reader 正式输出保持 ISO WKB-first；
 - `.spx/.atx` 候选必须最终复核；
