@@ -2,6 +2,15 @@
 
 本文档是 `docs/` 的分类入口。当前 Writer 开发分支为 `agent/versioned-gdb-store`，公共 Writer API 已收敛为 VersionedGdbStore；旧 Writer、legacy target 和直接发布文档已删除。
 
+## Reader 与 Writer 流程专题
+
+| 文件 | 内容 |
+|---|---|
+| [Reader 读取流程专题](technical/06_Reader读取流程专题.md) | 从 generation snapshot、目录扫描、系统表解析到 QueryEngine、索引规划、FeatureCursor、WKB-first、refresh 和错误诊断的完整流程 |
+| [Writer 写入与版本发布流程专题](technical/07_Writer写入与版本发布流程专题.md) | 从 store open、initialize、CoW/FullCopy working、编辑契约、validator、CURRENT 原子切换到 uncertain recover 和 generation GC 的完整流程 |
+
+两份专题按职责分离：Reader 只消费稳定 generation；Writer 只生成、验证和发布新 generation。两者通过 `GdbReaderSnapshot::path()`、不可变 generation 和 `CURRENT` 切换边界衔接。
+
 ## 当前 Writer 入口
 
 | 文件 | 内容 |
@@ -38,6 +47,7 @@
 
 | 文件 | 内容 |
 |---|---|
+| [Reader 读取流程专题](technical/06_Reader读取流程专题.md) | Reader 对象所有权、查询分派、cursor、索引和 generation 生命周期权威流程 |
 | [21_空间属性联合查询实现计划.md](planning/21_空间属性联合查询实现计划.md) | 联合查询实现范围、测试矩阵和验收清单 |
 | [10_空间属性联合查询代码审核指南.md](usage/10_空间属性联合查询代码审核指南.md) | Reader 审核顺序和检查点 |
 | [spatial-attribute-query-self-review-2026-07-17.md](evidence/spatial-attribute-query-self-review-2026-07-17.md) | Reader 三轮静态审核 |
@@ -51,6 +61,8 @@
 | [02_索引构建方案.md](technical/02_索引构建方案.md) | 空间/属性索引构建与验证 |
 | [03_技术探索与教训.md](technical/03_技术探索与教训.md) | B+ 树、LRU、mmap 和失败实验 |
 | [04_GDB二进制格式图解教程.md](technical/04_GDB二进制格式图解教程.md) | FileGDB 二进制格式、查询链路和源码链接 |
+| [06_Reader读取流程专题.md](technical/06_Reader读取流程专题.md) | Reader 端到端流程、生命周期、状态、回退、性能和测试矩阵 |
+| [07_Writer写入与版本发布流程专题.md](technical/07_Writer写入与版本发布流程专题.md) | Writer 端到端流程、持久化、失败矩阵、恢复、容量和运维 runbook |
 
 ## 状态原则
 
