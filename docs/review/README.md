@@ -2,6 +2,7 @@
 
 - **整理日期**：2026-07-22
 - **适用分支**：`agent/versioned-gdb-store`
+- **审查标签**：@深度研究
 - **审查对象**：VersionedGdbStore、Reader snapshot、Writer publication、validator、recovery、generation GC
 - **对照基线**：GDAL/OGR OpenFileGDB、GDAL Dataset Transaction RFC、ArcGIS File Geodatabase locking 与文件系统约束
 - **当前结论**：Implemented / Formal acceptance blocked
