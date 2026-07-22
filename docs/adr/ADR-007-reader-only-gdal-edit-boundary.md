@@ -156,3 +156,15 @@ Reader 保持打开时 GDAL 修改同一目录，记录：
 - GDAL 写后 Reader 重开测试进入 CI；
 - 同目录并发测试明确标记为 characterization / unsupported；
 - README、文档索引、规划和 Changelog 使用一致表述。
+
+## 后续提案：Adaptive Reader
+
+[ADR-008](ADR-008-adaptive-reader-write-detection-gdal-fallback.md) 提议增加一个 Reader-only 编排层：
+
+- 通过调用方提供的 `writer_active/generation` 协调信号，在写入期间确定性返回 `SourceBusy`；
+- 对未知外部 Writer 采用明确标记为 best-effort 的文件快照检测；
+- fast-gdb 读取期间检测到变化时丢弃结果并使旧 Reader 过期；
+- 写入结束且源稳定后，使用全新 GDALDataset 只读恢复；
+- GDAL 结果也必须完整物化、关闭 Dataset 并通过读取后源状态验证。
+
+ADR-008 当前为 Proposed，不改变本 ADR 的当前支持合同，也不把 Reader/Writer 重叠变成受支持读取场景。只有完成三平台正确性、压力、性能和安装面验收后，Adaptive Reader 才能作为独立受支持能力发布。
