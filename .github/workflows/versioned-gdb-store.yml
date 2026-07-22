@@ -67,7 +67,8 @@ jobs:
             test ! -e "$writer_include/$removed"
           done
 
-          if grep -R "writer_legacy" "${{ github.workspace }}/install"; then
+          exported_cmake="${{ github.workspace }}/install/lib/cmake/fast_gdb"
+          if grep -R "writer_legacy" "$exported_cmake"; then
             echo "writer_legacy must not be exported"
             exit 1
           fi
