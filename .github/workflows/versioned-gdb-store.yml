@@ -53,6 +53,25 @@ jobs:
       - name: Install package
         run: cmake --install build --config Release --prefix "${{ github.workspace }}/install"
 
+      - name: Verify public Writer surface
+        shell: bash
+        run: |
+          writer_include="${{ github.workspace }}/install/include/fast_gdb/writer"
+          test -f "$writer_include/versioned_gdb_store.h"
+          test -f "$writer_include/versioned_gdb_validator.h"
+
+          for removed in \
+            writer_session.h writer_recovery.h writer_index.h \
+            writer_append.h writer_update.h writer_delete.h \
+            writer_transaction.h gdb_table_writer.h; do
+            test ! -e "$writer_include/$removed"
+          done
+
+          if grep -R "writer_legacy" "${{ github.workspace }}/install"; then
+            echo "writer_legacy must not be exported"
+            exit 1
+          fi
+
       - name: Configure installed Writer consumer
         run: >-
           cmake -S tests/package_consumer -B consumer-build
