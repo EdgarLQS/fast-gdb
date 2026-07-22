@@ -49,7 +49,7 @@ GDAL 写入后，以上任一状态都可能过期。因此不能只重开某一
 
 所以“字段值只是改了一点”也不能推导出已有 mmap 或索引缓存仍安全。
 
-## 4. 受支持的状态机
+## 4. 当前受支持的状态机
 
 ```text
 Reading
@@ -76,7 +76,7 @@ Reader Reopen
   └─ resume queries
 ```
 
-只有最后重新创建的 Reader 才属于受支持状态。
+只有最后重新创建的 Reader 才属于当前受支持状态。
 
 ## 5. 不支持的状态
 
@@ -121,14 +121,14 @@ GDALClose 只说明 GDAL 已释放其对象，不会自动使 fast-gdb 的 mmap�
 
 ## 7. 线程与进程边界
 
-fast-gdb 无法发现外部进程何时通过 GDAL 修改目录。因此读写互斥必须由调用方提供：
+当前 fast-gdb 无法确定外部进程何时通过 GDAL 修改目录。因此读写互斥必须由调用方提供：
 
 - 进程内读写状态机；
 - 服务维护窗口；
 - 独占文件锁协议；
 - 业务层版本目录切换。
 
-即使调用方使用锁，锁也只是协调手段；仍需遵守“写前关闭 Reader、写后重新打开”。
+即使调用方使用锁，锁也只是协调手段；当前仍需遵守“写前关闭 Reader、写后重新打开”。
 
 ## 8. 在线服务方案
 
@@ -145,7 +145,7 @@ immutable data-v2.gdb  ← new Readers after external switch
 
 GDAL 永远只编辑未被 Reader 使用的工作副本。业务系统负责验证、切换和旧版本回收。
 
-## 9. 测试门禁
+## 9. 当前测试门禁
 
 ### 必须通过
 
@@ -162,7 +162,7 @@ GDAL 永远只编辑未被 Reader 使用的工作副本。业务系统负责验�
 
 这些记录可以是 old/new/mixed/error 中任意一种。
 
-## 10. 代码审核规则
+## 10. 当前代码审核规则
 
 任何提交若出现以下行为，应直接拒绝或要求明确 ADR：
 
@@ -172,3 +172,134 @@ GDAL 永远只编辑未被 Reader 使用的工作副本。业务系统负责验�
 - 写后复用旧 parser、cursor 或 mmap；
 - 将观测性测试的单平台结果写成并发支持声明；
 - 在安装导出中重新加入 Writer target。
+
+## 11. 计划中的 Adaptive Reader 扩展
+
+> 本节是 [ADR-008](../adr/ADR-008-adaptive-reader-write-detection-gdal-fallback.md) 的 Proposed 架构，尚未构成当前发布能力。
+
+Adaptive Reader 不尝试支持边写边读，而是把不安全重叠转换为：
+
+```text
+活动 Writer
+  → SourceBusy
+
+读取期间源变化
+  → 丢弃结果
+  → ReaderExpired
+
+源恢复稳定且 fast 路径不可用
+  → fresh GDAL read-only fallback
+```
+
+它是读取编排层，不承担写入、事务、锁管理或发布职责。
+
+## 12. 两层写入检测
+
+### 12.1 协调模式
+
+调用方提供只读状态：
+
+```text
+writer_active
+stable generation
+```
+
+正式目标：
+
+- `writer_active=true` 时不调用 fast-gdb，也不调用 GDAL fallback；
+- generation 在读取前后变化时丢弃结果；
+- generation 变化后旧 Reader 对象图过期；
+- 写入方发布 `writer_active=false` 且 generation 稳定后，才允许恢复读取。
+
+fast-gdb 只消费状态，不创建、删除或修改 marker。
+
+### 12.2 无协调模式
+
+对未知外部 Writer 使用 best-effort 文件状态检测：
+
+- device/inode 或 volume/file ID；
+- size；
+- 高精度 mtime；
+- 文件增加、删除和替换；
+- 查询依赖的 table/tablx/spx/atx/index/system-table 变化；
+- `.lock` 仅作为辅助信号。
+
+无协调模式不能证明 Writer 生命周期，只能发现变化并拒绝可疑结果。连续两次快照相同不能单独证明写入已经结束。
+
+## 13. Adaptive 读取状态机
+
+```text
+Ready
+  ├─ activity says writer active ─────────→ SourceBusy
+  └─ snapshot A
+          ↓
+      FastReading
+          ↓ fully materialize
+      snapshot B
+          ├─ stable + success ─────────────→ ReturnFast
+          └─ changed/unsupported/failure ─→ ExpireFastReader
+                                                ↓
+                                         CheckQuiescent
+                                                ├─ unstable → SourceBusy
+                                                └─ stable → FreshGdalReading
+                                                               ↓ fully materialize
+                                                          close GDALDataset
+                                                               ↓ snapshot verify
+                                                          stable → ReturnGdal
+                                                          changed → SourceBusy
+```
+
+### 为什么必须完整物化
+
+读取后校验之前，不得将以下借用状态返回调用方：
+
+- mmap 中的指针；
+- `FieldRef`；
+- row buffer 视图；
+- cursor 当前行；
+- GDAL Feature/Geometry 非拥有指针。
+
+否则源变化发生时无法撤回已经暴露的数据。
+
+## 14. fresh GDAL recovery 边界
+
+Adaptive recovery 必须：
+
+1. 确认没有协调模式活动 Writer；
+2. 捕获读取前快照；
+3. 新开 `GDAL_OF_READONLY` Dataset；
+4. 完整物化查询结果；
+5. 释放 Feature 和 SQL result set；
+6. `GDALClose()`；
+7. 捕获读取后快照；
+8. 快照一致才返回。
+
+现有 `GdalCurveBackendBridge` 使用 thread-local Dataset 缓存，适用于复杂几何回退，但不能直接承担外部写入后的恢复读取。Adaptive recovery 必须拥有独立的 fresh session。
+
+## 15. Adaptive 失效和缓存规则
+
+检测到 generation 或依赖文件变化时，必须使以下状态全部失效：
+
+- `GdbCatalog` 和 system-table 解析；
+- `CatalogResolver`；
+- `GdbTableParser`；
+- mmap、fd/HANDLE；
+- tablx offset 和进程缓存；
+- spx/atx/index metadata；
+- QueryEngine 和 FeatureCursor；
+- 与旧 generation 绑定的 GDAL fallback Dataset。
+
+不得以局部 refresh 将旧对象恢复为有效状态。
+
+## 16. Adaptive 审核规则
+
+在 ADR-008 Accepted 前，相关实现必须满足：
+
+- 所有 API 和 target 只描述 Reader、fallback、busy 和 invalidation；
+- 活动 Writer 时 fail closed；
+- 不把 GDAL 只读路径当作并发更新快照；
+- 无协调模式名称和文档明确包含 best-effort；
+- fast 和 GDAL 结果都在源状态后置校验后才发布；
+- 不复用旧 GDALDataset；
+- 不重新引入 Writer target、Writer header 或 update API；
+- 三平台测试、压力测试和 artifact 完成前不得写成已支持能力。
