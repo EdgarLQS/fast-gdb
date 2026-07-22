@@ -6,6 +6,19 @@ All notable changes to fast-gdb are documented in this file.
 
 ### Added
 
+- `VersionedGdbStore` as the sole public Writer API.
+- Immutable FileGDB generations selected through an atomic single-line `CURRENT` manifest.
+- Move-only `GdbReaderSnapshot` leases that pin existing readers to their generation until explicit refresh or destruction.
+- Move-only `GdbWriteTransaction` with a process-local single-writer gate and private `working_path()`.
+- macOS `clonefile` and Linux `FICLONE` working-copy acceleration with full-copy fallback.
+- Explicit `GdbPublishState`: `NotPublished`, `PublishedDurable`, and `PublishedDurabilityUncertain`.
+- Recovery barriers that preserve both old and new generations when CURRENT switched but final directory durability is uncertain.
+- Mandatory reopen validator for directory magic, catalog/layer resolution, record counts, full scans, FIDs, WKB-first geometry, `.spx`, and `.atx`.
+- Path canonicalization and Windows case folding for process-local writer-gate aliases.
+- Managed-tree rejection of symbolic links and unsupported special files.
+- Independent VersionedGdbStore test target in both GDAL ON and OFF builds.
+- Installed package consumer coverage for the new managed Writer API.
+- Detailed usage, ADR-007, lifecycle, limitations, roadmap, and three-round self-review documentation.
 - Branch-only `QueryKind::SpatialWhere` entry that combines exact bbox filtering with the existing WHERE subset.
 - `CombinedQueryMetrics` diagnostics for candidates, rechecks, final matches and stage timings.
 - Detailed attribute-planning metrics for `.gdbindexes` metadata, `.atx` file load, tree navigation, leaf scan, candidate ordering, final WHERE recheck, page counts and scanned entries.
@@ -33,10 +46,14 @@ All notable changes to fast-gdb are documented in this file.
 - Opt-in 100K full-feature cursor/legacy/GDAL checksum benchmark.
 - Draft-PR strict performance workflow requiring correct fused execution and `cursor_median_ms < gdal_median_ms`.
 - GDAL-OFF cursor public API and ownership contract tests.
-- Installed `fast_gdb::writer` target for the supported empty-schema bulk-write workflow.
 
 ### Changed
 
+- `fast_gdb::writer` now exposes only `include/fast_gdb/writer/versioned_gdb_store.h` and `versioned_gdb_validator.h`.
+- Writer publication is a complete immutable-generation commit; callers edit only `GdbWriteTransaction::working_path()`.
+- Publication failure must be interpreted together with `publish_state()` because CURRENT may already have switched.
+- Reader access must originate from `GdbReaderSnapshot::path()` for lease and garbage-collection safety.
+- The package description and Writer documentation now describe a managed store rather than staged direct publication.
 - `.atx` parsing fails closed on invalid sizes, page bounds/capacity, cyclic leaf chains, count mismatches and zero FIDs.
 - SpatialWhere bypasses `.atx` data-page reads when exact spatial matches are no more than 65,536 and no more than 12.5% of active features; the full WHERE is evaluated directly on those candidates.
 - Selective SpatialWhere parses each `.spx` candidate row once and performs exact geometry plus WHERE evaluation from the same `FieldRef` array; incomplete scans fall back transactionally.
@@ -59,16 +76,23 @@ All notable changes to fast-gdb are documented in this file.
 - FID-only benchmark records the adaptive execution path and detailed attribute-planning stages; default evidence is written outside the repository.
 - Feature profiling is bound to each `QueryRequest`; normal reads do not call the profile clock or depend on process-global state.
 - Combined-query and full-feature evidence records observed paths and computed correctness rather than hard-coded claims.
-- Writer safety, validation, atomic publication and index rebuild behavior remains as documented by its own workstream.
 - DateTimeWithOffset exposes the date and offset independently.
+
+### Removed
+
+- `fast_gdb::writer_legacy`.
+- The compatibility option `FAST_GDB_INSTALL_LEGACY_WRITER_API`.
+- Installed `writer_session.h`, `writer_recovery.h`, `writer_index.h`, `writer_append.h`, `writer_update.h`, `writer_delete.h`, and `writer_transaction.h`.
+- Legacy/direct Writer package-consumer modes and migration guarantees.
+- Duplicate public VersionedGdbStore headers from the implementation source directory.
+- User documentation for the old direct-publication Writer APIs.
 
 ### Review status
 
+- VersionedGdbStore completed three rounds of concurrency/lifetime, crash-consistency, and API/platform/test self-review.
+- Linux local validation passed strict C++17 syntax checks, single- and multi-thread smoke tests, path-alias tests, ASan and UBSan.
+- Formal acceptance remains blocked pending complete CMake/CTest, macOS/Linux/Windows runtime matrices, ENOSPC/crash fault injection, real FileGDB validator evidence, and usable GitHub Actions logs/artifacts.
 - Combined-query, FeatureCursor, one-pass and performance optimization work exists only on `codex/spatial-attribute-query`; it has not entered `main` or a release.
-- Combined-query static review, FeatureCursor review, one-pass review, `.atx` planner review and fused-overtake static review are complete.
-- 2026-07-18 local review passed GDAL OFF 310/310 and GDAL ON 653/653 parallel CTest, both installed package consumers, and both explicit 100K evidence runners.
-- Local FeatureCursor schema-v3 measured 0.630 ms versus GDAL 1.300 ms with `correct=true`; this is a single M5 fresh-open-not-strict-cold scenario, not a product-wide claim.
-- Status is **local code review and commit gates passed / formal acceptance blocked** pending cross-platform CI, real-data contracts, 10M performance, strict-cold and peak RSS.
 
 ## [0.1.0] - 2026-07-13
 
@@ -100,4 +124,4 @@ All notable changes to fast-gdb are documented in this file.
 - Pure C++ output is linearized standard WKB; native ArcGIS curve objects are not preserved.
 - MultiPatch is available only through Hybrid degraded support and does not preserve complete surface semantics.
 - Unknown or future FileGDB geometry encodings are not claimed as supported.
-- The writer remains experimental and is not part of the v0.1.0 production support statement.
+- The writer is not part of the v0.1.0 production support statement.
