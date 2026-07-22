@@ -79,6 +79,27 @@ GDAL/OpenFileGDB 独占修改目标 .gdb
 
 需要不停读服务时，应由业务系统在 fast-gdb 之外实现副本编辑和原子路径切换。
 
+### 规划中：Adaptive Reader
+
+[ADR-008](docs/adr/ADR-008-adaptive-reader-write-detection-gdal-fallback.md) 提议增加一个可选 Reader 编排层，但该能力目前尚未实现或发布：
+
+```text
+稳定源
+  → fast-gdb 快路径
+
+活动 Writer / 读取期间源变化
+  → 丢弃结果
+  → SourceBusy / ReaderExpired
+
+写入结束且源稳定
+  → fresh GDAL read-only fallback
+  → 完整物化、关闭 Dataset、后置验证
+```
+
+协调模式由调用方提供只读的 `writer_active/generation` 信号，写入期间两个读取后端都不执行。未知外部 Writer 只能采用明确标记为 best-effort 的文件快照检测。
+
+该计划不会增加 Writer API、GDAL update wrapper、事务、marker 写入或在线发布能力。ADR-008 验收前，上述“关闭 Reader → GDAL 写 → 重开 Reader”仍是唯一正式合同。
+
 ## `usegdal` 参考目录
 
 `src/edgar/usegdal` 保留了早期围绕 GDAL/OGR 的 RAII 和包装设计，包括 datasource、dataset、recordset、field、feature、query、connection pool、transaction 和 batch-write 示例。
@@ -123,6 +144,8 @@ ctest --test-dir build-boundary --output-on-failure \
 
 - [GDAL 写入与 fast-gdb 读取边界](docs/usage/11_GDAL写入与fast-gdb读取边界.md)
 - [Reader/GDAL 编辑边界 ADR](docs/adr/ADR-007-reader-only-gdal-edit-boundary.md)
+- [Adaptive Reader Proposed ADR](docs/adr/ADR-008-adaptive-reader-write-detection-gdal-fallback.md)
+- [Adaptive Reader 实施计划](docs/planning/22_AdaptiveReader写入检测与GDAL回退计划.md)
 - [并发可见性观测证据](docs/evidence/gdal-write-fast-gdb-read-characterization-2026-07-22.md)
 
 ## 构建
@@ -182,9 +205,11 @@ if (table.read_geometry_value(fid, geometry) && geometry.valid()) {
 - fast-gdb 是 Reader，不是 FileGDB 编辑器；
 - 不提供 Writer API、Writer target、Writer 头文件、受支持的 Writer 包装库或 ABI；
 - `src/edgar/usegdal` 的存在不构成产品支持声明；
-- GDAL 编辑目标 GDB 时，所有 fast-gdb Reader 必须停止并释放；
+- 当前 GDAL 编辑目标 GDB 时，所有 fast-gdb Reader 必须停止并释放；
 - `GDALClose()` 后必须完整重开 fast-gdb Reader；
-- 同一 `.gdb` 的 GDAL 写入与 fast-gdb 并发读取明确不支持；
+- 当前同一 `.gdb` 的 GDAL 写入与 fast-gdb 并发读取明确不支持；
+- 计划中的 Adaptive Reader 只负责检测、拒绝、失效和 fresh 只读回退；
+- 无协调外部 Writer 检测不提供绝对保证；
 - 在线副本发布、跨进程锁、版本管理和垃圾回收由业务系统实现；
 - `.spx` 和 `.atx` 只提供候选，最终结果必须复核；
 - 关系、域、层级、栅格、MultiPatch 和稀疏 64-bit ObjectID 仍需专项兼容性验证。
