@@ -19,6 +19,7 @@ All notable changes to fast-gdb are documented in this file.
 - Independent VersionedGdbStore test target in both GDAL ON and OFF builds.
 - Installed package consumer coverage for the new managed Writer API.
 - Detailed usage, ADR-007, lifecycle, limitations, roadmap, and three-round self-review documentation.
+- @深度研究 architecture review documentation split into architecture conclusions, GDAL/OpenFileGDB comparison, implementation risks, unsupported/fail-fast policy, production recovery runbook, and cross-platform acceptance matrix.
 - Branch-only `QueryKind::SpatialWhere` entry that combines exact bbox filtering with the existing WHERE subset.
 - `CombinedQueryMetrics` diagnostics for candidates, rechecks, final matches and stage timings.
 - Detailed attribute-planning metrics for `.gdbindexes` metadata, `.atx` file load, tree navigation, leaf scan, candidate ordering, final WHERE recheck, page counts and scanned entries.
@@ -54,6 +55,11 @@ All notable changes to fast-gdb are documented in this file.
 - Publication failure must be interpreted together with `publish_state()` because CURRENT may already have switched.
 - Reader access must originate from `GdbReaderSnapshot::path()` for lease and garbage-collection safety.
 - The package description and Writer documentation now describe a managed store rather than staged direct publication.
+- Writer documentation now explicitly defines VersionedGdbStore as a versioned-publication protocol rather than a transparent replacement for all ArcGIS/GDAL FileGDB behavior.
+- Cross-process Reader/Writer access, NFS/SMB/FUSE/cloud-sync/object-storage deployment, direct generation access, and manual CURRENT edits are explicitly unsupported.
+- Validator success is now documented as proof of configured repository invariants only; relationships, domains, hierarchy, native curves, MultiPatch, raster, and sparse 64-bit ObjectID require separate compatibility profiles.
+- GDAL/OpenFileGDB integration documentation now requires complete Dataset/Layer/Feature/SQL-result/handle shutdown before VersionedGdbStore publication.
+- CoW documentation now distinguishes initial clone efficiency from capacity reservation and covers ENOSPC after clone, long-lived Reader pinning, and GC-driven disk growth.
 - `.atx` parsing fails closed on invalid sizes, page bounds/capacity, cyclic leaf chains, count mismatches and zero FIDs.
 - SpatialWhere bypasses `.atx` data-page reads when exact spatial matches are no more than 65,536 and no more than 12.5% of active features; the full WHERE is evaluated directly on those candidates.
 - Selective SpatialWhere parses each `.spx` candidate row once and performs exact geometry plus WHERE evaluation from the same `FieldRef` array; incomplete scans fall back transactionally.
@@ -90,8 +96,9 @@ All notable changes to fast-gdb are documented in this file.
 ### Review status
 
 - VersionedGdbStore completed three rounds of concurrency/lifetime, crash-consistency, and API/platform/test self-review.
+- A separate @深度研究 review compared the current architecture with GDAL/OpenFileGDB and added explicit risk, unsupported-scenario, runbook, and acceptance documents under `docs/review/`.
 - Linux local validation passed strict C++17 syntax checks, single- and multi-thread smoke tests, path-alias tests, ASan and UBSan.
-- Formal acceptance remains blocked pending complete CMake/CTest, macOS/Linux/Windows runtime matrices, ENOSPC/crash fault injection, real FileGDB validator evidence, and usable GitHub Actions logs/artifacts.
+- Formal acceptance remains blocked pending complete CMake/CTest, macOS/Linux/Windows runtime matrices, ENOSPC/crash fault injection, real FileGDB validator evidence, cross-process misuse rejection, and usable GitHub Actions logs/artifacts.
 - Combined-query, FeatureCursor, one-pass and performance optimization work exists only on `codex/spatial-attribute-query`; it has not entered `main` or a release.
 
 ## [0.1.0] - 2026-07-13
