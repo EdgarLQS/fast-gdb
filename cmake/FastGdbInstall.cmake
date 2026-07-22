@@ -65,6 +65,28 @@ if(BUILD_TESTING AND NOT TARGET fast_gdb_versioned_store_test_runner)
         TEST_PREFIX "versioned-store.")
 endif()
 
+# Real OpenFileGDB integration contract. This target is intentionally separate
+# from the large historical full-test runner: it proves the visibility boundary
+# when GDAL edits working_path(), and can run as a focused release gate.
+if(BUILD_TESTING AND FAST_GDB_WITH_GDAL AND
+   NOT TARGET fast_gdb_gdal_visibility_test_runner)
+    add_executable(fast_gdb_gdal_visibility_test_runner
+        tests/test_runner.cpp
+        tests/edgar/explorgdb/writer/test_versioned_gdb_store_gdal_visibility.cpp)
+    target_include_directories(fast_gdb_gdal_visibility_test_runner PRIVATE
+        tests
+        tests/edgar/explorgdb/writer)
+    target_link_libraries(fast_gdb_gdal_visibility_test_runner PRIVATE
+        GTest::gtest
+        fast_gdb_versioned_writer_lib
+        explorgdb_reader_lib
+        ${FAST_GDB_GDAL_TARGET})
+    fast_gdb_enable_warnings(fast_gdb_gdal_visibility_test_runner)
+    gtest_discover_tests(fast_gdb_gdal_visibility_test_runner
+        TEST_PREFIX "versioned-gdal-visibility."
+        PROPERTIES RESOURCE_LOCK fast_gdb_gdal_visibility_fixture)
+endif()
+
 set(FAST_GDB_PACKAGE_VARIANT "" CACHE STRING
     "Release package variant name; defaults to linear or hybrid")
 if(NOT FAST_GDB_PACKAGE_VARIANT)
