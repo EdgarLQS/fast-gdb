@@ -6,7 +6,7 @@ on:
       - 'include/fast_gdb/writer/**'
       - 'src/edgar/explorgdb/writer/versioned_gdb_*.cpp'
       - 'src/edgar/explorgdb/writer/versioned_gdb_store_internal.h'
-      - 'tests/edgar/explorgdb/writer/test_versioned_gdb_store.cpp'
+      - 'tests/edgar/explorgdb/writer/test_versioned_gdb_store*.cpp'
       - 'tests/package_consumer/**'
       - 'cmake/**'
       - 'CMakeLists.txt'
@@ -17,7 +17,7 @@ on:
       - 'include/fast_gdb/writer/**'
       - 'src/edgar/explorgdb/writer/versioned_gdb_*.cpp'
       - 'src/edgar/explorgdb/writer/versioned_gdb_store_internal.h'
-      - 'tests/edgar/explorgdb/writer/test_versioned_gdb_store.cpp'
+      - 'tests/edgar/explorgdb/writer/test_versioned_gdb_store*.cpp'
       - 'tests/package_consumer/**'
       - 'cmake/**'
       - 'CMakeLists.txt'
@@ -91,3 +91,36 @@ jobs:
           else
             ./consumer-build/fast_gdb_package_consumer
           fi
+
+  gdal-write-visibility:
+    name: gdal-write-read-visibility-ubuntu
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install GDAL OpenFileGDB development package
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gdal-bin libgdal-dev
+          gdal-config --version
+          ogrinfo --formats | grep -F 'OpenFileGDB'
+
+      - name: Configure focused GDAL visibility test
+        run: >-
+          cmake -S . -B build-gdal-visibility
+          -DFAST_GDB_WITH_GDAL=ON
+          -DFAST_GDB_BUILD_TOOLS=OFF
+          -DFAST_GDB_BUILD_FULL_TESTS=OFF
+          -DBUILD_TESTING=ON
+          -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build GDAL visibility test
+        run: >-
+          cmake --build build-gdal-visibility --config Release
+          --target fast_gdb_gdal_visibility_test_runner --parallel
+
+      - name: Run GDAL visibility contract
+        run: >-
+          ctest --test-dir build-gdal-visibility -C Release
+          --output-on-failure -R '^versioned-gdal-visibility\.'
