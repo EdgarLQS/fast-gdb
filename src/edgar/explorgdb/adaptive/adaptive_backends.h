@@ -6,6 +6,7 @@
 
 #include "adaptive_reader.h"
 
+#include <cstdint>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -17,10 +18,12 @@ namespace explorgdb {
  *
  * fields 保留 fast-gdb 字段顺序与类型，使 GDAL cursor 能输出与 fast cursor
  * 可对照的 FeatureRecord。attribute_index_fields 把 QueryRequest::index_name
- * 映射到 OGR 字段名；键按 ASCII 大小写不敏感处理。
+ * 映射到 OGR 字段名；键按 ASCII 大小写不敏感处理。generation 绑定加载时的
+ * 稳定代次，后续代次不匹配时必须重建 session，禁止使用旧 Schema。
  */
 struct AdaptiveLayerBinding {
     std::string layer_name;
+    uint64_t generation = 0;
     std::vector<FieldDescriptor> fields;
     std::unordered_map<std::string, std::string> attribute_index_fields;
 };
@@ -74,7 +77,8 @@ private:
 
 /**
  * 使用正式 fast 与 fresh GDAL 后端构造 AdaptiveReadSession。
- * binding 必须在 Stable 状态预先加载并跨 Writer 生命周期复用。
+ * binding 必须在 Stable 状态预先加载；Writer 关闭导致 generation 变化后，旧
+ * binding 的并发 GDAL 路径会 fail closed，调用方必须重新加载 binding 并重建 session。
  */
 AdaptiveReadSession make_adaptive_read_session(
     InProcessGdbCoordinator coordinator,
