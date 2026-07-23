@@ -58,13 +58,16 @@ jobs:
             --target fast_gdb_adaptive_reader_test_runner \
             --parallel --verbose 2>&1 | tee build-adaptive.log
 
-      - name: Run 17 adaptive tests
+      - name: Run adaptive tests
         shell: bash
         run: |
           set -o pipefail
+          discovered="$(ctest --test-dir build-adaptive -N \
+            -R '^adaptive-reader\.' | sed -n 's/^Total Tests: //p')"
+          echo "Discovered adaptive tests: ${discovered:-0}"
+          test "${discovered:-0}" -ge 17
           ctest --test-dir build-adaptive --output-on-failure \
             -R '^adaptive-reader\.' 2>&1 | tee test-adaptive.log
-          test "$(grep -c 'Test  #' test-adaptive.log || true)" -ge 17
 
       - name: Verify linear remains GDAL-free
         shell: bash
