@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 using namespace explorgdb;
 using namespace std::chrono_literals;
@@ -228,4 +229,35 @@ TEST_F(AdaptiveGdalContractRegressionTest,
     EXPECT_FALSE(cursor.next(feature, error));
     EXPECT_NE(error.find("non-nullable field: name"), std::string::npos);
     cursor.close();
+}
+
+TEST_F(AdaptiveGdalContractRegressionTest,
+       FilterSetupFailureIsClassifiedAsGdalReadFailure) {
+    AdaptiveReadSession session = make_adaptive_read_session(
+        coordinator_, gdb_path_.string(), loaded_.binding);
+
+    auto prepared = coordinator_.prepare_external_update(
+        gdb_path_.string(), 0ms);
+    ASSERT_EQ(prepared.status, CoordinationStatus::Ok);
+    ASSERT_EQ(prepared.token.notify_update_opened(), CoordinationStatus::Ok);
+
+    QueryRequest request;
+    request.kind = QueryKind::AttributeDouble;
+    request.index_name = "missing_index";
+    request.double_value = 1.0;
+
+    auto cursor = session.open_cursor(
+        request, ConcurrentReadPolicy::GdalUnverified);
+    ASSERT_EQ(cursor.status(), AdaptiveReadStatus::Ok);
+
+    QueryFeature feature;
+    EXPECT_FALSE(cursor.next(feature));
+    EXPECT_EQ(cursor.status(), AdaptiveReadStatus::GdalReadFailed);
+    EXPECT_EQ(cursor.consistency(),
+              AdaptiveReadConsistency::UnverifiedConcurrentRead);
+    EXPECT_NE(cursor.error().find("not bound to an OGR field"),
+              std::string::npos);
+
+    EXPECT_EQ(prepared.token.notify_update_closed(true),
+              CoordinationStatus::Ok);
 }
