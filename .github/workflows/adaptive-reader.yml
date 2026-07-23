@@ -88,6 +88,7 @@ jobs:
             AdaptiveGdalContractRegressionTest.EmptyWhereAndSpatialWhereNeverBecomeFullScans
             AdaptiveGdalContractRegressionTest.NullInNonNullableBindingFailsQueryAndCursor
             AdaptiveGdalContractRegressionTest.FilterSetupFailureIsClassifiedAsGdalReadFailure
+            AdaptiveGdalOpenFailureRegressionTest.MissingDatasetRemainsGdalOpenFailed
           )
           for required_test in "${required_tests[@]}"; do
             grep -F "adaptive-reader.${required_test}" \
