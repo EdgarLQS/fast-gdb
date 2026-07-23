@@ -62,10 +62,41 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          discovered="$(ctest --test-dir build-adaptive -N \
-            -R '^adaptive-reader\.' | sed -n 's/^Total Tests: //p')"
-          echo "Discovered adaptive tests: ${discovered:-0}"
-          test "${discovered:-0}" -ge 21
+          ctest --test-dir build-adaptive -N \
+            -R '^adaptive-reader\.' | tee discovered-adaptive-tests.log
+
+          required_tests=(
+            AdaptiveReaderTest.StableSourceUsesFastVerified
+            AdaptiveReaderTest.WriterPendingStopsNewFastReads
+            AdaptiveReaderTest.FastCursorExpiresAtNextSafePoint
+            AdaptiveReaderTest.PendingTimeoutClearsPendingAndRecovers
+            AdaptiveReaderTest.UpdatePermitRequiresFastReadersDrained
+            AdaptiveReaderTest.UpdateOpenFailureCancelsPending
+            AdaptiveReaderTest.AbandonedActiveTokenRemainsFailClosed
+            AdaptiveReaderTest.DefaultPolicyReturnsBusyWithoutCallingBackends
+            AdaptiveReaderTest.ExplicitPolicyUsesFreshGdalUnverified
+            AdaptiveReaderTest.UnverifiedResultIsNeverReportedVerified
+            AdaptiveReaderTest.GdalFailureKeepsDiagnosticAndConsistency
+            AdaptiveReaderTest.ClosedUpdateNotificationIncrementsGeneration
+            AdaptiveReaderTest.OldReaderExpiresAfterClosedUpdateNotification
+            AdaptiveReaderTest.PostWriteRebuildReturnsFastVerified
+            AdaptiveReaderTest.AllQueryKindsMatchOnStableSource
+            AdaptiveReaderTest.RepackNeverOverlapsFastMmap
+            AdaptiveReaderTest.MultipleReadersSingleWriterStress
+            AdaptiveReviewRegressionTest.ThrowingFastCursorCloseKeepsWriterFailClosed
+            AdaptiveReviewRegressionTest.ThrowingGdalCursorCloseIsReportedAsUnverifiedReadFailure
+            AdaptiveGdalContractRegressionTest.EmptyWhereAndSpatialWhereNeverBecomeFullScans
+            AdaptiveGdalContractRegressionTest.NullInNonNullableBindingFailsQueryAndCursor
+            AdaptiveGdalContractRegressionTest.FilterSetupFailureIsClassifiedAsGdalReadFailure
+          )
+          for required_test in "${required_tests[@]}"; do
+            grep -F "adaptive-reader.${required_test}" \
+              discovered-adaptive-tests.log >/dev/null || {
+                echo "Required adaptive test was not discovered: ${required_test}" >&2
+                exit 1
+              }
+          done
+
           ctest --test-dir build-adaptive --output-on-failure \
             -R '^adaptive-reader\.' 2>&1 | tee test-adaptive.log
 
@@ -123,6 +154,7 @@ jobs:
           path: |
             configure-invalid.log
             build-adaptive.log
+            discovered-adaptive-tests.log
             test-adaptive.log
             configure-linear.log
             build-linear.log
