@@ -65,6 +65,16 @@ if(FAST_GDB_WITH_GDAL)
 endif()
 
 if(TARGET fast_gdb_adaptive)
+    # The root target declares the coordinator translation unit explicitly.
+    # Add every other Adaptive Reader implementation unit here; this module
+    # already owns target source reshaping for the installable product graph.
+    file(GLOB _fast_gdb_adaptive_sources CONFIGURE_DEPENDS
+         "${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/adaptive/*.cpp")
+    list(REMOVE_ITEM _fast_gdb_adaptive_sources
+         "${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/adaptive/adaptive_reader.cpp")
+    target_sources(fast_gdb_adaptive PRIVATE ${_fast_gdb_adaptive_sources})
+    unset(_fast_gdb_adaptive_sources)
+
     set_target_properties(fast_gdb_adaptive PROPERTIES
         EXPORT_NAME adaptive
         INTERFACE_INCLUDE_DIRECTORIES
