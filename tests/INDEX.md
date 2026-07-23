@@ -53,23 +53,43 @@ ADR-008 and planning document 22 define a future test target. This target and it
 fast_gdb_adaptive_reader_test_runner
 adaptive-reader.unit.*
 adaptive-reader.coordinated.*
-adaptive-reader.uncoordinated.*
-adaptive-reader.gdal-fallback.*
+adaptive-reader.gdal-unverified.*
+adaptive-reader.parity.*
+adaptive-reader.lifecycle.*
 adaptive-reader.stress.*
 ```
 
 Initial planned contracts:
 
-- `WriterActiveReturnsBusyWithoutCallingEitherBackend`;
-- `GenerationChangeExpiresExistingReader`;
-- `StableFastReadReturnsMaterializedFastResult`;
-- `ChangedSourceDiscardsFastResult`;
-- `StableUnsupportedFastReadUsesFreshGdal`;
-- `ChangedSourceDuringGdalReadDiscardsFallbackResult`;
-- `CompletedWriteFreshGdalReadsNewGeneration`;
-- `FreshGdalFallbackDoesNotReuseCachedDataset`.
+- `StableSourceUsesFastVerified`;
+- `WriterPendingStopsNewFastReads`;
+- `FastCursorExpiresAtNextSafePoint`;
+- `PendingTimeoutClearsPendingAndRecovers`;
+- `UpdatePermitRequiresFastReadersDrained`;
+- `UpdateOpenFailureCancelsPending`;
+- `AbandonedActiveTokenRemainsFailClosed`;
+- `DefaultPolicyReturnsBusyWithoutCallingBackends`;
+- `ExplicitPolicyUsesFreshGdalUnverified`;
+- `UnverifiedResultIsNeverReportedVerified`;
+- `GdalFailureKeepsDiagnosticAndConsistency`;
+- `ClosedUpdateNotificationIncrementsGeneration`;
+- `OldReaderExpiresAfterClosedUpdateNotification`;
+- `PostWriteRebuildReturnsFastVerified`;
+- `AllQueryKindsMatchOnStableSource`;
+- `RepackNeverOverlapsFastMmap`;
+- `MultipleReadersSingleWriterStress`.
 
-The coordinated stress gate may return only a complete old generation, a complete new generation, or `SourceBusy`; mixed results and process crashes are failures. Uncoordinated external Writer tests remain best-effort characterization and cannot establish universal detection guarantees.
+The coordinated gate distinguishes two contracts:
+
+- stable fast reads and post-write rebuilds are correctness gates and must be
+  `Verified`;
+- GDAL reads during `WriterPending` or `WriterActive` are routing and ownership
+  gates only. A successful result must be `UnverifiedConcurrentRead`, and its
+  old/new/mixed value is characterization rather than a correctness assertion.
+
+The Writer may open its update Dataset only after all fast Reader leases are
+released. External-process Writer detection is outside the first implementation
+scope and cannot be inferred from these planned tests.
 
 ## Product-surface tests
 
@@ -78,7 +98,10 @@ The coordinated stress gate may return only a complete old generation, a complet
 - `linear`;
 - `hybrid`.
 
-There is no Writer consumer mode, no `usegdal` consumer mode and no Adaptive Reader consumer mode yet. A future adaptive mode requires ADR-008 acceptance.
+There is no Writer consumer mode, no `usegdal` consumer mode and no Adaptive
+Reader consumer mode yet. A future adaptive mode requires ADR-008 to be revised
+for `WriterPending` and explicit `GdalUnverified`, then accepted after the
+planned matrix passes.
 
 ## Reference-only `usegdal`
 
@@ -104,5 +127,6 @@ The corresponding `usegdal` source may remain for reference, but it is not consi
 - `SKIPPED` is not acceptance;
 - runner failures without steps/logs are infrastructure failures;
 - characterization output is diagnostic and cannot establish concurrent read/write support;
+- `UnverifiedConcurrentRead` must never be counted as a verified data-correctness result;
 - planned Adaptive Reader test names are not evidence of implementation;
 - reference-only source presence is not release evidence.

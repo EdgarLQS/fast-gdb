@@ -1,436 +1,473 @@
-# Adaptive Reader 写入检测与 GDAL 只读回退计划
+# 同进程 GDAL 写入与 Adaptive Reader 切换计划
 
 - **状态**：Active / Design first
-- **日期**：2026-07-22
-- **架构依据**：[ADR-008：Adaptive Reader 写入检测与 fresh GDAL 只读回退](../adr/ADR-008-adaptive-reader-write-detection-gdal-fallback.md)
-- **产品边界**：Reader only；不实现任何 FileGDB 写入能力
+- **日期**：2026-07-23
+- **当前正式合同**：[ADR-007：Reader-only 与 GDAL 编辑边界](../adr/ADR-007-reader-only-gdal-edit-boundary.md)
+- **待修订提案**：[ADR-008：Adaptive Reader 写入检测与 fresh GDAL 只读回退](../adr/ADR-008-adaptive-reader-write-detection-gdal-fallback.md)
+- **产品边界**：fast-gdb 仍是 Reader only；所有 FileGDB 修改继续由原生 GDAL/OpenFileGDB 执行
 
-## 1. 目标
+## 1. 计划结论
 
-实现一个可选的 Reader 编排层，在不改变现有 `fast_gdb::linear` 低层读取职责的前提下提供：
+第一版只处理 **同一进程、统一入口管理的 GDAL Writer**。稳定数据源使用
+fast-gdb；Writer 请求开始后，新的读取停止进入 fast 路径，并按显式策略返回
+`SourceBusy` 或退化为原生 GDAL 读取。
 
 ```text
-正常稳定数据源
-  → fast-gdb 高性能读取
+稳定状态
+  → fast-gdb
+  → Verified
 
-fast-gdb 不支持或确定性读取失败
-  → fresh GDAL/OpenFileGDB 只读回退
+WriterPending / WriterActive
+  → 默认 SourceBusy
+  → 显式 GdalUnverified 策略下使用原生 GDAL
+  → UnverifiedConcurrentRead
 
-检测到活动 Writer 或读取期间数据源变化
-  → 丢弃结果
-  → 返回 SourceBusy / SourceChangedDuringRead
-
-写入完成且数据源恢复稳定
-  → fresh GDAL 只读恢复
-  → 后续重建 fast-gdb Reader
+Writer 关闭
+  → generation + 1
+  → 旧 fast Reader 全部过期
+  → 重建后恢复 fast-gdb
 ```
 
-目标不是实现边写边读，而是把不安全重叠转换为可诊断的拒绝和恢复。
+`UnverifiedConcurrentRead` 只表示“读取行为交给原生 GDAL 执行”。它不保证结果属于
+完整旧版本或完整新版本，也不把同目录重叠读写提升为 fast-gdb 的支持合同。
 
-## 2. 成功标准
+在 ADR-008 完成修订和实现验收前，唯一具有一致性保证的流程仍然是：
 
-### 协调模式
-
-- Writer 活动期间不进入 fast-gdb 或 GDAL 读取；
-- generation 读取前后不变才允许发布结果；
-- generation 变化使旧 Reader 立即过期；
-- 写入结束后 fresh GDAL 能读取完整新状态；
-- 压力测试只允许完整旧版本、完整新版本或 `SourceBusy`。
-
-### 无协调模式
-
-- 对依赖文件的身份、大小、mtime、增加、删除和替换进行前后检测；
-- 发现变化时绝不返回 fast-gdb 结果；
-- fresh GDAL 读取期间再次变化时绝不返回 GDAL 结果；
-- API、日志和文档明确标记为 best-effort，不宣称可发现所有外部 Writer。
-
-### 产品边界
-
-- 不新增 Writer target、Writer API、Writer ABI；
-- 不创建或修改外部 writer marker；
-- 不包装 GDAL update；
-- 不提供事务、回滚、发布或版本回收。
-
-## 3. 设计原则
-
-1. **Fail closed**：无法判断源是否稳定时返回 Busy，不返回猜测结果；
-2. **Fresh fallback**：恢复路径每次新开并关闭 GDALDataset；
-3. **Materialize before publish**：源校验完成前不得暴露借用视图；
-4. **Full invalidation**：源变化后旧 catalog/table/cursor/index/mmap 全部失效；
-5. **No hidden wait**：默认立即返回 Busy；等待和重试必须由显式策略控制；
-6. **Dependency-aware**：只监测本次查询依赖的文件，同时允许目录级兜底；
-7. **Observable**：后端、变化文件、generation 和重试次数必须可诊断；
-8. **Zero Writer coupling**：协调接口只读取调用方状态，不接管写入生命周期。
-
-## 4. 目标组件
-
-### 4.1 `FileStamp`
-
-跨平台文件身份和元数据：
-
-```cpp
-struct FileStamp {
-    uint64_t device_or_volume = 0;
-    uint64_t inode_or_file_id = 0;
-    uint64_t size = 0;
-    int64_t mtime_ticks = 0;
-    bool exists = false;
-};
+```text
+关闭全部 Reader → GDAL 写入 → GDALClose → 重开 Reader
 ```
 
-实施要求：
+## 2. 为什么需要 `WriterPending`
 
-- POSIX 使用 `stat` 的 device/inode/size/高精度 mtime；
-- Windows 使用 VolumeSerialNumber/FileIndex/FileSize/FILETIME；
-- 从现有 `TablxCacheKey` 提取共用实现；
-- 文件不存在、被替换或读取元数据失败均可区分。
+如果 Writer 在 fast Reader 的 mmap 读取中途直接修改、重写或截断文件，Reader
+可能读取跨文件混合状态，也可能因失效映射发生进程级异常。事后把结果标记为
+`Unverified` 无法撤回事先暴露的数据或避免 mmap 异常。
 
-### 4.2 `GdbSourceSnapshot`
+因此 Writer 分为两个阶段：
 
-记录一次查询所依赖的数据源状态：
-
-```cpp
-struct GdbSourceSnapshot {
-    uint64_t generation = 0;
-    std::vector<StampedPath> dependencies;
-    std::vector<std::string> lock_signals;
-};
+```text
+Writer 请求开始
+  → 发布 WriterPending
+  → 新 Reader 不再进入 fast
+  → 已有 fast query 完成当前原子读取
+  → 已有 fast cursor 在下一安全点返回 ReaderExpired
+  → 等待 fast Reader 计数归零
+  → 打开 OpenFileGDB update Dataset
+  → WriterActive
 ```
 
-依赖集合至少覆盖：
+这不是停止整个读取服务。Pending 和 Active 期间，新请求仍可在调用方显式选择
+`GdalUnverified` 时通过 GDAL 读取；真正禁止重叠的只有旧 fast mmap Reader 与
+Writer 修改源文件。
 
-- 目标 `.gdbtable`；
-- 目标 `.gdbtablx`；
-- 查询使用的 `.spx`；
-- 查询使用的 `.gdbindexes/.atx`；
-- 解析图层和 Schema 所需的系统表；
-- 可选目录清单摘要。
+如果调用方不再推进或销毁旧 cursor，Writer 等待可能超时。超时必须：
 
-### 4.3 `WriterActivityProbe`
+- 撤销本次 Pending；
+- 不打开 GDAL update Dataset；
+- 返回 `ReadersActive`；
+- 保留可操作诊断，包括未退出 Reader 数量和等待时间。
 
-只读协调接口：
+## 3. 范围
+
+### 3.1 第一版包含
+
+- 同一进程内的统一 Reader/Writer 协调；
+- 单 GDB 单 Writer；
+- `WriterPending`、`WriterActive` 和 generation；
+- fast query 与流式 cursor 的安全租约；
+- 显式 `SourceBusy` / `GdalUnverified` 策略；
+- 原生 GDAL 的 FID、顺序、空间、属性、WHERE 和 SpatialWhere 读取；
+- 后端、一致性、generation 和错误诊断；
+- Writer 关闭后的完整 Reader 失效与重建。
+
+### 3.2 第一版不包含
+
+- 外部进程、QGIS 或 ArcGIS Writer 检测；
+- 扫描 `GDALGetOpenDatasets()` 作为正式 Writer 检测；
+- 文件指纹、`.lock` 或 sidecar 的强保证；
+- fast-gdb 自研 FileGDB Writer；
+- 自研事务、回滚、恢复或索引写入；
+- GDAL 驱动插件；
+- 跨 GDB 事务或同一 GDB 多 Writer；
+- 将 `UnverifiedConcurrentRead` 结果作为正确性门禁。
+
+外部 Writer 检测和 GDAL 插件只能在本计划完成后另立提案。
+
+## 4. 目标接口
+
+### 4.1 构建开关
+
+```cmake
+option(FAST_GDB_BUILD_ADAPTIVE_READER
+       "Build the coordinated Adaptive Reader" OFF)
+```
+
+约束：
+
+- `FAST_GDB_BUILD_ADAPTIVE_READER=ON` 要求 `FAST_GDB_WITH_GDAL=ON`；
+- 新增可选安装 target `fast_gdb::adaptive`；
+- `fast_gdb::linear` 保持无 GDAL 依赖；
+- Adaptive 编译宏只属于新 target，不进入低层 Reader 公共头；
+- 计划阶段不新增 runtime target，以上内容必须在 ADR-008 修订后实施。
+
+### 4.2 `InProcessGdbCoordinator`
+
+按规范化 GDB 路径维护：
 
 ```cpp
-class WriterActivityProbe {
-public:
-    virtual ~WriterActivityProbe() = default;
-    virtual WriterActivityState observe(const std::string& gdb_path) = 0;
-};
-
-struct WriterActivityState {
+struct CoordinatedSourceState {
+    bool writer_pending = false;
     bool writer_active = false;
     uint64_t generation = 0;
-    bool coordinated = false;
+    size_t fast_reader_count = 0;
 };
 ```
 
-首批实现：
+要求：
 
-- `NullWriterActivityProbe`：无协调模式；
-- `CallbackWriterActivityProbe`：调用方回调；
-- 可选 `SidecarWriterActivityProbe`：只读取约定的 activity/generation 文件。
+- 使用进程内互斥保护状态转换；
+- 同一路径只允许一个 Pending/Active Writer；
+- 不同 GDB 可独立并行；
+- Windows 路径采用平台一致的规范化和大小写规则；
+- 调用方确认 update Dataset 已关闭后递增 generation；
+- 调用方报告 `GDALClose` 失败时也要使旧 Reader 失效，不能继续把源视为 `Verified`。
 
-fast-gdb 不负责创建或删除 sidecar 文件。
+### 4.3 外部更新协调令牌
 
-### 4.4 `GdbChangeDetector`
+fast-gdb 不打开、不暴露、不 Flush、不关闭 GDAL update Dataset，也不导出任何 GDAL
+Writer 类型。调用方继续直接使用官方 GDAL，只通过无 GDAL 类型的协调令牌报告状态。
 
-职责：
-
-- 捕获依赖快照；
-- 比较 before/after；
-- 输出变化文件和变化类型；
-- 对 stat 失败采取 fail-closed；
-- 可选稳定窗口只作为无协调模式启发式，不作为写入结束证明。
-
-### 4.5 `AdaptiveReadSession`
-
-统一编排 fast 和 GDAL 后端：
+准备更新时必须显式提供等待超时，不允许隐藏的无限等待：
 
 ```cpp
-AdaptiveReadResult read(const AdaptiveReadRequest& request);
-void invalidate();
-bool expired() const;
+PrepareExternalUpdateResult prepare_external_update(
+    const std::string& gdb_path,
+    std::chrono::milliseconds drain_timeout);
 ```
 
-建议不改变低层 `GdbTableParser` 的基础接口，先在更高层实现编排和失效管理，降低对现有性能路径的侵入。
+行为：
 
-### 4.6 `FreshGdalReadSession`
+1. 原子发布 `WriterPending`；
+2. 阻止新的 fast Reader 租约；
+3. 等待已有 fast Reader 在超时内退出；
+4. 归零后向调用方返回 `ExternalUpdateToken`；
+5. 调用方自己调用 `GDALOpenEx(...GDAL_OF_UPDATE...)`；
+6. 打开失败时调用 `cancel_before_update()`，撤销 Pending；
+7. 打开成功后调用 `notify_update_opened()`，转换为 `WriterActive`；
+8. 调用方自己执行官方 GDAL 写入、Flush 和 `GDALClose()`；
+9. Dataset 关闭后调用 `notify_update_closed(close_succeeded)`，递增 generation 并清除 Active。
 
-职责：
+令牌在 Pending 状态析构可以安全撤销 Pending。令牌进入 Active 后，如果调用方没有先
+关闭 GDAL Dataset 并发送关闭通知，协调器必须保持 fail-closed，不能靠令牌析构猜测
+Writer 已结束；恢复需要调用方确认 Dataset 已关闭后显式通知。应用层可自行用 RAII
+封装“GDALClose → notify”，但该封装不属于 fast-gdb 安装面。
 
-- 每次请求新建 `GDALDataset`；
-- 完整属性、几何和查询结果物化；
-- 释放 Feature/SQL result set；
-- `GDALClose()` 后才允许返回；
-- 不访问 `GdalCurveBackendBridge` 的 thread-local Dataset 缓存。
-
-## 5. 状态与错误
-
-### 状态机
+失败状态至少包括：
 
 ```text
-Ready
-  → FastReading
-  → FastValidated
-  → ReturnFast
-
-Ready
-  → WriterActive
-  → SourceBusy
-
-FastReading
-  → SourceChanged
-  → Expired
-  → QuiescenceCheck
-  → FreshGdalReading
-  → GdalValidated
-  → ReturnGdal
+ReadersActive
+WriterAlreadyPending
+WriterAlreadyActive
+InvalidCoordinationToken
+ExternalUpdateNotClosed
 ```
 
-### 结果状态
+### 4.4 `AdaptiveReadSession`
 
 ```cpp
-enum class AdaptiveReadStatus {
-    Ok,
+enum class ConcurrentReadPolicy {
     SourceBusy,
-    SourceChangedDuringRead,
-    ReaderExpired,
-    FastBackendUnsupported,
-    FastBackendReadFailed,
-    GdalOpenFailed,
-    GdalReadFailed,
-    SourceNeverStabilized
+    GdalUnverified
+};
+
+enum class AdaptiveReadBackend {
+    FastGdb,
+    GdalOpenFileGDB
+};
+
+enum class AdaptiveReadConsistency {
+    Verified,
+    UnverifiedConcurrentRead
 };
 ```
 
-诊断字段：
+每个结果至少包含：
 
-- `backend`；
-- `attempt_count`；
-- `coordinated`；
-- `writer_active_seen`；
-- `generation_before/after`；
-- `changed_files`；
-- `fast_error`；
-- `gdal_error`。
+```text
+status
+backend
+consistency
+generation_before
+generation_after
+writer_pending_seen
+writer_active_seen
+fast_error
+gdal_error
+```
 
-## 6. 分阶段实施
+稳定状态：
 
-## Phase 0：合同和测试骨架
+- 获得 fast Reader 租约；
+- 执行 fast-gdb；
+- 返回 `FastGdb + Verified`；
+- 低层 `GdbTableParser` 和 `QueryEngine` 接口保持不变。
 
-交付：
+Pending/Active 状态：
 
-- ADR-008；
-- 本计划；
-- 新测试 target 和空实现接口；
-- 明确现有 ADR-007 在新能力验收前仍是唯一正式合同。
+- `SourceBusy` 策略不调用任何读取后端；
+- `GdalUnverified` 策略每次创建新的只读 GDALDataset；
+- 查询结果完整物化并关闭 Dataset 后返回；
+- 结果无条件标记为 `GdalOpenFileGDB + UnverifiedConcurrentRead`；
+- Writer 在 GDAL 读取期间结束，也不得把本次结果升级为 `Verified`；
+- GDAL 打开或读取失败分别返回 `GdalOpenFailed` / `GdalReadFailed`。
 
-门禁：
+### 4.5 `AdaptiveFeatureCursor`
 
-- 文档不暗示功能已经实现；
-- 安装面仍为 Reader-only；
-- 现有 boundary tests 不改变语义。
+fast cursor：
 
-## Phase 1：跨平台文件快照基础
+- 注册为活动 fast Reader；
+- WriterPending 发布后，正在执行的单次 `next()` 可以完成；
+- 下一次安全点关闭底层 cursor、释放 mmap/句柄并返回 `ReaderExpired`；
+- 调用方重新打开后按 Pending/Active 策略进入 GDAL 或 Busy。
 
-任务：
+GDAL cursor：
 
-- 提取 `FileStamp`；
-- 将 `TablxCacheKey` 改为复用 `FileStamp`；
-- 为 `GdbCatalog` 增加可选高精度快照；
-- 实现依赖文件枚举和差异诊断。
+- 自己拥有 fresh GDALDataset；
+- Pending/Active 期间不计入 fast Reader 数量；
+- cursor 整个生命周期保持 `UnverifiedConcurrentRead`；
+- 销毁时释放 Feature、SQL result set、Layer 引用并关闭 Dataset。
 
-测试：
+## 5. 状态机
 
-- 同长度原地修改；
-- 文件增长/缩小；
-- 删除后重建；
-- rename/replace；
-- mtime 纳秒或 FILETIME；
-- stat 失败；
-- UTF-8 Windows 路径。
-
-验收：
-
-- 三平台相同语义；
-- 不影响现有 tablx cache 正确性；
-- 快照操作有独立性能基线。
-
-## Phase 2：协调探针与 Reader 失效
-
-任务：
-
-- `WriterActivityProbe`；
-- callback 和 null 实现；
-- generation 前后检查；
-- `ReaderExpired` 状态；
-- 统一 invalidation hook，清理 catalog/table/index/cursor 和相关缓存。
-
-测试：
-
-- writer active 时 fast/GDAL 后端调用计数为 0；
-- generation 变化使 Reader 过期；
-- 旧 Reader 不得自动恢复；
-- 新 Reader 可在新 generation 上打开。
-
-## Phase 3：fast 路径前后校验
-
-任务：
-
-- 读取前捕获 activity + snapshot；
-- fast-gdb 完整物化结果；
-- 读取后再次捕获；
-- 变化时丢弃结果并记录差异；
-- 禁止向调用方泄露 `FieldRef`、mmap 指针和 cursor 借用状态。
-
-测试：
-
-- `.gdbtable` 修改；
-- `.gdbtablx` 修改；
-- `.spx` 修改；
-- `.atx/.gdbindexes` 修改；
-- Schema/system table 修改；
-- 结果物化完成前发生变化；
-- 结果物化完成后、发布前发生变化。
-
-## Phase 4：fresh GDAL 完整读取回退
-
-任务：
-
-- 新建 `FreshGdalReadSession`；
-- 支持与首批 fast API 对等的 FID 读取和基础查询；
-- 每次请求 fresh open/close；
-- 读取前后快照校验；
-- 明确区分 fast unsupported、fast read failed、source changed。
-
-测试：
-
-- fast 人工不支持、源稳定 → GDAL 成功；
-- GDAL open/read 失败；
-- GDAL 读取期间源变化 → 丢弃；
-- 写后 fresh GDAL 读到新值；
-- 旧 thread-local GDAL cache 不被复用。
-
-## Phase 5：稳定判断与策略
-
-任务：
-
-- 默认 `ImmediateBusy`；
-- 可选有界重试 `BoundedRetry`；
-- 协调模式以 `writer_active=false + generation stable` 为准；
-- 无协调模式以快照稳定 + fresh GDAL 前后验证为准；
-- 超时返回 `SourceNeverStabilized`。
+```text
+Stable
+  ├─ Reader → FastReading → Return Verified
+  └─ Writer request
+        ↓
+     WriterPending
+        ├─ new Reader + SourceBusy → SourceBusy
+        ├─ new Reader + GdalUnverified → Return Unverified
+        ├─ old fast Reader → safe-point ReaderExpired
+        └─ readers drained
+              ↓
+          WriterActive
+              ├─ Reader + SourceBusy → SourceBusy
+              ├─ Reader + GdalUnverified → Return Unverified
+              └─ GDALClose
+                    ↓
+               generation + 1
+                    ↓
+               Stable / rebuild fast Reader
+```
 
 禁止：
 
-- 无限等待；
-- 后台轮询线程；
-- 仅凭连续两次 mtime 相同宣称写入完成；
-- `.lock` 不存在即判定安全。
+- Writer 在 fast Reader 计数非零时打开 update Dataset；
+- Pending 后继续创建新的 fast cursor；
+- 将 GDAL 并发读取结果标记为 `Verified`；
+- 复用旧 fast mmap、catalog、tablx 或索引缓存；
+- 复用曲线回退的 thread-local GDALDataset；
+- 无限等待或后台无界轮询。
 
-## Phase 6：压力、故障和平台验收
+## 6. 分阶段实施
 
-场景：
+### Phase 0：决策同步
 
-- `SetFeature`；
-- `CreateFeature`；
-- `DeleteFeature`；
-- 变长字符串和几何更新；
-- Schema 修改；
-- 属性/空间索引重建；
-- `REPACK`；
-- Writer 中途失败；
-- marker 残留；
-- 高频短写和长事务；
-- 本地盘、网络盘 profile；
-- Windows/Linux/macOS；
-- 多个 GDAL 稳定版本。
+- 修订 ADR-008，使其包含 `WriterPending` 和显式 `GdalUnverified`；
+- 保留 ADR-007 当前正式合同；
+- 同步 README、架构、使用说明和测试索引；
+- 建立 Adaptive 测试 target，但不以空测试宣称实现完成。
 
-硬门禁：
+### Phase 1：Coordinator 与外部更新协调
 
-- 不崩溃；
-- 不发布 mixed 结果；
-- 协调模式只返回完整旧、完整新或 Busy；
-- 无协调模式不得把 best-effort 观测写成强保证；
-- 所有失败包含可操作诊断。
+- 实现路径规范化、单 Writer、generation 和 Reader 计数；
+- 实现 Pending、超时撤销和 Active 状态转换；
+- 实现不依赖 GDAL Writer 类型的 `ExternalUpdateToken`；
+- 确认调用方只在 fast Reader 归零后打开 update Dataset；
+- Active 令牌异常丢失时保持 fail-closed，不猜测外部 Dataset 已关闭。
 
-## Phase 7：API、安装和文档收口
+### Phase 2：fast Reader 租约和安全点过期
 
-任务：
+- fully-materialized query 持有查询级租约；
+- cursor 注册长期 Reader，并在 `next()` 边界处理 Pending；
+- generation 变化后完整失效 Reader 对象图；
+- 不在逐 Feature 热路径增加全局文件快照。
 
-- 决定是否作为 `fast_gdb::adaptive` 可选 Reader target；
-- 保持 `fast_gdb::linear` 无 GDAL 依赖；
-- Adaptive target 显式依赖 GDAL；
-- package consumer 增加 adaptive 只读用例；
-- 更新 README、usage、architecture、test index 和 changelog；
-- ADR-008 通过验收后从 Proposed 改为 Accepted。
+### Phase 3：GDAL 未验证回退
 
-安装门禁：
+- 实现 FID、顺序、空间、属性、WHERE 和 SpatialWhere；
+- 每个 query fresh open/close；
+- cursor 独占自己的 GDALDataset；
+- 所有成功结果强制携带 `UnverifiedConcurrentRead`；
+- 保持 fast 与 GDAL 的 FID、NULL、字段和几何输出语义可对照。
 
-- 无 Writer 头和 Writer target；
-- 无 GDAL update 符号或包装 API；
-- `usegdal` 仍为 reference only；
-- adaptive API 名称和文档只描述读取、拒绝和回退。
+### Phase 4：写后恢复
 
-## 7. 测试目标规划
+- 调用方确认 update Dataset 已关闭后，关闭通知使 generation 递增；
+- 旧 Reader 返回 `ReaderExpired`；
+- 新 Reader 完整重建并恢复 `FastGdb + Verified`；
+- 覆盖 Feature、Schema、索引、REPACK 和 extent 修改。
 
-建议新增：
+### Phase 5：三平台、性能和安装收口
+
+- Windows、Linux、macOS 自动化；
+- OpenFileGDB create/update 能力缺失时 required job 失败，不能 SKIP；
+- 增加 adaptive package consumer；
+- 验证 linear 包仍不依赖 GDAL；
+- 记录 fast 稳定路径和 GDAL 并发路径的独立性能数据。
+
+## 7. 测试矩阵
+
+### 7.1 状态与路由
+
+| 场景 | 策略 | 预期后端 | 一致性/状态 | 门禁 |
+|---|---|---|---|---|
+| 无 Writer | 任意 | fast-gdb | `Verified` | 正式 |
+| WriterPending | `SourceBusy` | 不调用 | `SourceBusy` | 正式 |
+| WriterActive | `SourceBusy` | 不调用 | `SourceBusy` | 正式 |
+| WriterPending | `GdalUnverified` | fresh GDAL | `UnverifiedConcurrentRead` | 正式路由门禁 |
+| WriterActive | `GdalUnverified` | fresh GDAL | `UnverifiedConcurrentRead` | 正式路由门禁 |
+| GDAL 并发读取成功 | `GdalUnverified` | GDAL | 值不作一致性断言 | Characterization |
+| GDAL 并发读取失败 | `GdalUnverified` | GDAL | 明确 GDAL 错误 | 正式错误门禁 |
+| 调用方关闭 Dataset 并通知 | 任意 | 重建 fast | 新 generation `Verified` | 正式 |
+
+### 7.2 Pending 与租约
+
+| 场景 | 预期 |
+|---|---|
+| fast query 执行中发布 Pending | query 完成后释放租约，Writer 才可打开 |
+| fast cursor 空闲时发布 Pending | 下一次 `next()` 返回 `ReaderExpired` 并关闭底层 Reader |
+| fast cursor 当前 `next()` 中发布 Pending | 当前调用完成，后续安全点过期 |
+| cursor 不再推进也不销毁 | 超时返回 `ReadersActive`、撤销 Pending，后续 Reader/Writer 可恢复进入 |
+| Pending 等待期间的新 Reader | 不得增加 fast Reader 计数 |
+| 同一路径第二个 Writer | 返回 AlreadyPending/AlreadyActive |
+| 不同路径 Writer | 可并行 |
+| 调用方 GDAL update 打开失败 | `cancel_before_update()` 撤销 Pending，不增加 generation |
+| Active 令牌未收到关闭通知 | 保持 fail-closed，不允许新 fast Reader |
+| 调用方报告 Dataset 已关闭 | 清除 Active，generation 增加，旧 Reader 失效 |
+
+### 7.3 查询 parity
+
+| QueryKind | fast 稳定路径 | GDAL Pending/Active 路径 |
+|---|---|---|
+| `ReadByFid` | 值和 FID 正确 | 结果可读，标记 Unverified |
+| `SequentialScan` | 顺序、删除槽正确 | 同一 GDAL 调用内完成，标记 Unverified |
+| `SpatialBbox` | spx/精确过滤正确 | OGR spatial filter，标记 Unverified |
+| `AttributeDouble/String` | atx/回退正确 | OGR attribute filter，标记 Unverified |
+| `WhereClause` | fast WHERE 正确 | `SetAttributeFilter`，标记 Unverified |
+| `SpatialWhere` | 联合查询正确 | GDAL 联合过滤，标记 Unverified |
+
+稳定数据源下，fast 与 GDAL 必须比较 FID 集合、字段值、NULL、WKB 和错误分类。
+Writer 活动期间只验证路由、所有权、状态标记和进程稳定性，不比较业务结果一致性。
+
+### 7.4 GDAL 编辑覆盖
+
+| GDAL 操作 | 写前 | 写中 | 写后 |
+|---|---|---|---|
+| `SetFeature` | fast Verified | GDAL Unverified/Busy | 新 fast 值 Verified |
+| `CreateFeature` | 旧计数 | 不断言计数 | 新 FID/计数 Verified |
+| `DeleteFeature` | FID 可读 | 不断言删除状态 | 删除槽/扫描 Verified |
+| 几何更新 | 旧 WKB | 不断言 WKB | 新 WKB/空间查询 Verified |
+| Create/Delete Field | 旧 Schema | 不断言 Schema | 新 Schema Verified |
+| Create/Delete Index | 旧索引状态 | 不断言索引 | 索引或正确回退 Verified |
+| `REPACK` | 旧物理布局 | 只验证无 fast mmap 重叠 | tablx/FID Verified |
+| Recompute extent | 旧范围 | 不断言范围 | 新范围 Verified |
+
+### 7.5 计划测试名称
 
 ```text
 fast_gdb_adaptive_reader_test_runner
 adaptive-reader.unit.*
 adaptive-reader.coordinated.*
-adaptive-reader.uncoordinated.*
-adaptive-reader.gdal-fallback.*
+adaptive-reader.gdal-unverified.*
+adaptive-reader.parity.*
+adaptive-reader.lifecycle.*
 adaptive-reader.stress.*
 ```
 
-首批正式测试名称建议：
+首批测试：
 
-- `WriterActiveReturnsBusyWithoutCallingEitherBackend`；
-- `GenerationChangeExpiresExistingReader`；
-- `StableFastReadReturnsMaterializedFastResult`；
-- `ChangedSourceDiscardsFastResult`；
-- `StableUnsupportedFastReadUsesFreshGdal`；
-- `ChangedSourceDuringGdalReadDiscardsFallbackResult`；
-- `CompletedWriteFreshGdalReadsNewGeneration`；
-- `FreshGdalFallbackDoesNotReuseCachedDataset`。
+- `StableSourceUsesFastVerified`;
+- `WriterPendingStopsNewFastReads`;
+- `FastCursorExpiresAtNextSafePoint`;
+- `PendingTimeoutClearsPendingAndRecovers`;
+- `UpdatePermitRequiresFastReadersDrained`;
+- `UpdateOpenFailureCancelsPending`;
+- `AbandonedActiveTokenRemainsFailClosed`;
+- `DefaultPolicyReturnsBusyWithoutCallingBackends`;
+- `ExplicitPolicyUsesFreshGdalUnverified`;
+- `UnverifiedResultIsNeverReportedVerified`;
+- `GdalFailureKeepsDiagnosticAndConsistency`;
+- `ClosedUpdateNotificationIncrementsGeneration`;
+- `OldReaderExpiresAfterClosedUpdateNotification`;
+- `PostWriteRebuildReturnsFastVerified`;
+- `AllQueryKindsMatchOnStableSource`;
+- `RepackNeverOverlapsFastMmap`;
+- `MultipleReadersSingleWriterStress`.
 
-## 8. 性能预算
+## 8. 构建与 CI 矩阵
 
-Adaptive 层不能让稳定数据源下的快路径失去 fast-gdb 的主要价值。
+| 构建 | GDAL | Adaptive | 目的 |
+|---|---:|---:|---|
+| Linear | OFF | OFF | 纯 Reader、无 GDAL 依赖 |
+| Hybrid | ON | OFF | 当前几何回退 |
+| Adaptive configure error | OFF | ON | 必须配置失败 |
+| Adaptive | ON | ON | Coordinator、外部更新协调和读取切换 |
+| Sanitizer | ON | ON | 生命周期、竞态和资源释放 |
+| Package consumer | ON | ON | 安装 target 与公共接口 |
 
-初始预算：
+CI 要求：
 
-- 协调模式仅两次轻量 activity/generation 读取；
-- 文件快照按查询依赖收集，避免默认哈希整个 GDB；
-- 不在每次读取中做全文件内容哈希；
-- 允许调用方按请求粒度选择 `None/Coordinated/BestEffort` 检测策略；
-- 建立 FID lookup、顺序扫描、空间查询的额外延迟和吞吐回归门禁；
-- 性能优化不能削弱 fail-closed 语义。
+- Linux、macOS、Windows；
+- 至少一个最低支持 GDAL 和一个当前稳定 GDAL；
+- required 测试不得因 OpenFileGDB update 缺失而 SKIP；
+- 上传测试日志、GDAL 版本、构建选项和压力测试摘要；
+- `UnverifiedConcurrentRead` 的 old/new/mixed/error 观测只作为 artifact，不作为 PASS 值。
 
-## 9. 风险
+## 9. 性能与可观测性
+
+稳定 fast 路径：
+
+- 每次 query 或 cursor 打开只做一次协调状态读取；
+- 不在逐 Feature 热路径读取全局状态；
+- 不扫描进程全部 GDAL handle；
+- 不默认捕获整个 GDB 文件快照。
+
+GDAL 未验证路径单独记录：
+
+- Pending/Active；
+- GDAL open/read/close 时间；
+- 查询类型和返回数量；
+- Writer 操作类型；
+- `UnverifiedConcurrentRead`；
+- GDAL 错误。
+
+不得把 GDAL 并发路径性能与稳定 fast 路径混为同一性能结论。
+
+## 10. 风险
 
 | 风险 | 控制措施 |
 |---|---|
-| 外部 Writer 无协调导致漏检 | 明确 best-effort；前后快照；fresh GDAL 再验证 |
-| mmap 文件截断导致进程异常 | 正式强保证依赖协调模式；压力测试 REPACK/replace；必要时为 adaptive 模式提供非 mmap 安全读取策略 |
-| 快照开销抵消性能收益 | 依赖感知；协调模式优先；基准和预算 |
-| GDAL fallback 复用旧缓存 | 独立 fresh session；禁止使用 thread-local cache |
-| 状态过多导致 API 混乱 | 明确状态枚举、诊断和重试分类 |
-| 功能被误解为 Writer | target/API/文档全程使用 Reader/fallback/busy 术语 |
-| marker 残留导致永久 Busy | 显式超时和诊断；不自动删除 marker |
+| 长 cursor 阻塞 Writer | Pending 安全点过期；显式等待超时 |
+| 调用方绕过外部更新协调入口 | 文档明确不在检测合同内；测试只覆盖统一入口 |
+| GDAL 并发结果被误用 | 策略显式开启；结果强制携带 Unverified |
+| mmap 与 REPACK 重叠 | Writer 打开前 fast Reader 计数必须为零 |
+| GDAL Dataset 被缓存复用 | query fresh session；cursor 独占 session |
+| 调用方报告 close 失败 | 增加 generation、保留诊断并使旧 Reader 过期 |
+| Active 关闭通知丢失 | 保持 fail-closed，待调用方确认 Dataset 已关闭后恢复 |
+| 计划与 ADR 冲突 | Phase 0 先修订 Proposed ADR-008，不修改 ADR-007 当前合同 |
 
-## 10. 完成定义
+## 11. 完成定义
 
 只有满足以下条件，计划才能标记 Completed：
 
-- ADR-008 Accepted；
-- 三平台自动化通过；
-- 协调模式压力测试无 mixed、无崩溃；
-- fresh GDAL 回退前后验证通过；
-- 所有旧 Reader 和缓存失效测试通过；
-- 性能预算有可复现 artifact；
-- package install 仍严格 Reader-only；
-- README、架构、使用、测试和规划文档口径一致；
-- CI 日志和 artifact 可用，不能仅以代码存在宣称完成。
+- ADR-008 已按本计划修订并 Accepted；
+- 三平台 required 自动化通过且无 required SKIP；
+- 调用方从未在 fast Reader 计数非零时打开 update Dataset；
+- 所有 GDAL 并发成功结果都标记 `UnverifiedConcurrentRead`；
+- 稳定源全部 QueryKind 完成 fast/GDAL parity；
+- Feature、Schema、索引、REPACK 和 extent 写后重建测试通过；
+- 压力测试无崩溃、死锁或资源泄漏；
+- linear、hybrid、adaptive 安装面验证通过；
+- 性能和 characterization artifact 可审计；
+- README、ADR、架构、使用、测试和规划文档口径一致。
