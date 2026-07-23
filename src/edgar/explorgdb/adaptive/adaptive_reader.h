@@ -104,6 +104,10 @@ private:
  * Pending 状态析构会撤销 Pending。Active 状态析构不会猜测外部 Dataset 已关闭，
  * 协调器保持 fail-closed。调用方应在打开 update Dataset 前保存 coordination_id；
  * 若 Active 令牌丢失，可在确认 Dataset 已关闭后通过协调器显式恢复。
+ *
+ * notify_update_closed(false) 表示 Dataset 尚未确认关闭：WriterActive、token id 和
+ * fail-closed 状态全部保留。调用方之后必须使用同一令牌或保存的 coordination_id
+ * 再次报告 true；每个 Writer 生命周期最多递增一次 generation。
  */
 class ExternalUpdateToken {
 public:
@@ -159,7 +163,8 @@ struct PrepareExternalUpdateResult {
 
 /**
  * 按规范化 GDB 路径维护 WriterPending、WriterActive、generation 和 fast 租约。
- * 对象可复制；副本共享同一注册表。
+ * 所有默认构造对象共享同一进程级注册表；复制对象也共享该注册表，因此同一进程中
+ * 不同组件无法通过创建新的 coordinator 绕过同一路径的互斥状态。
  */
 class InProcessGdbCoordinator {
 public:
@@ -172,11 +177,11 @@ public:
         std::chrono::milliseconds drain_timeout) const;
 
     /**
-     * Active 令牌丢失后的显式恢复入口。
+     * Active 令牌丢失后的显式关闭报告入口。
      *
-     * 仅在调用方已经关闭对应官方 GDAL update Dataset 后调用，并传入打开前保存的
-     * coordination_id。成功或关闭失败都会递增 generation；关闭失败使源继续禁止
-     * Verified fast 读取。
+     * 传入打开 update Dataset 前保存的 coordination_id。close_succeeded=false 会使
+     * generation 失效一次，但保持 WriterActive 并阻断 fast Reader 与新 Writer；
+     * 只有同一 id 后续报告 true 才会清除 Active 并恢复 Verified fast 读取。
      */
     CoordinationStatus notify_external_update_closed(
         const std::string& gdb_path,
