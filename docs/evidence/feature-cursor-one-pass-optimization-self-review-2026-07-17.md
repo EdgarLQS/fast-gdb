@@ -3,7 +3,7 @@
 - 日期：2026-07-17
 - 分支：`codex/spatial-attribute-query`
 - 优化前基线：`721f1860599ceea4f7c7592d89ed1febb787e14b`
-- 参考：`docs/technical/01_性能基准与优化.md` 第 1.10 节
+- 参考：`docs/testing/06_性能基准与回归门禁.md` 第 1.10 节
 - 状态：**实现与三轮静态自检完成；性能复测和正式验收阻塞**
 
 ## 1. 优化目标

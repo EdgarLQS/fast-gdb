@@ -1,5 +1,7 @@
 # Test Index
 
+文档说明与验收规则见 [`docs/testing/07_测试索引.md`](../docs/testing/07_测试索引.md)。
+
 ## Reader release gates
 
 | Target | Scope |

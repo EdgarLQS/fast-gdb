@@ -142,7 +142,7 @@ ctest --test-dir build-boundary --output-on-failure \
 
 详见：
 
-- [GDAL 写入与 fast-gdb 读取边界](docs/usage/11_GDAL写入与fast-gdb读取边界.md)
+- [GDAL 写入与 fast-gdb 读取边界](docs/testing/03_GDAL边界与读写测试.md)
 - [Reader/GDAL 编辑边界 ADR](docs/adr/ADR-007-reader-only-gdal-edit-boundary.md)
 - [Adaptive Reader Proposed ADR](docs/adr/ADR-008-adaptive-reader-write-detection-gdal-fallback.md)
 - [Adaptive Reader 实施计划](docs/planning/22_AdaptiveReader写入检测与GDAL回退计划.md)

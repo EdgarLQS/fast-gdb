@@ -1,7 +1,7 @@
 # testcurve.gdb 数据集生成说明
 
 本文保留 `testcurve.gdb` 的图层、字段和预期结果细节。测试数据分层、跨平台验证、环境变量与 GDAL 对照流程统一见
-[`docs/usage/03_测试数据准备与跨平台验证.md`](../../docs/usage/03_测试数据准备与跨平台验证.md)。
+[`docs/testing/05_测试数据与真实数据验收.md`](../../docs/testing/05_测试数据与真实数据验收.md)。
 
 ## 概述
 
