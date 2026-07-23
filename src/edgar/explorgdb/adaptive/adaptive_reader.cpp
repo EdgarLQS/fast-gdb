@@ -8,7 +8,6 @@
 #include <exception>
 #include <filesystem>
 #include <mutex>
-#include <stdexcept>
 #include <unordered_map>
 #include <utility>
 
@@ -46,6 +45,33 @@ CoordinatedSourceState snapshot(
     result.generation = entry.generation;
     result.fast_reader_count = entry.fast_reader_count;
     return result;
+}
+
+CoordinationStatus complete_external_update(
+    const std::shared_ptr<detail::CoordinatorRegistry>& registry,
+    const std::string& normalized_path,
+    uint64_t token_id,
+    bool close_succeeded) {
+    if (!registry || normalized_path.empty() || token_id == 0) {
+        return CoordinationStatus::InvalidCoordinationToken;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(registry->mutex);
+        const auto found = registry->sources.find(normalized_path);
+        if (found == registry->sources.end() ||
+            !found->second.writer_active ||
+            found->second.writer_token_id != token_id) {
+            return CoordinationStatus::InvalidCoordinationToken;
+        }
+        found->second.writer_active = false;
+        found->second.writer_token_id = 0;
+        ++found->second.generation;
+        found->second.source_verified = close_succeeded;
+    }
+    registry->condition.notify_all();
+    return close_succeeded ? CoordinationStatus::Ok
+                           : CoordinationStatus::ExternalUpdateNotClosed;
 }
 
 AdaptiveReadStatus backend_failure_status(BackendFailureKind failure) {
@@ -215,23 +241,13 @@ CoordinationStatus ExternalUpdateToken::notify_update_closed(
         return CoordinationStatus::InvalidCoordinationToken;
     }
 
-    {
-        std::lock_guard<std::mutex> lock(registry_->mutex);
-        const auto found = registry_->sources.find(normalized_path_);
-        if (found == registry_->sources.end() ||
-            !found->second.writer_active ||
-            found->second.writer_token_id != token_id_) {
-            return CoordinationStatus::InvalidCoordinationToken;
-        }
-        found->second.writer_active = false;
-        found->second.writer_token_id = 0;
-        ++found->second.generation;
-        found->second.source_verified = close_succeeded;
+    const CoordinationStatus status = complete_external_update(
+        registry_, normalized_path_, token_id_, close_succeeded);
+    if (status == CoordinationStatus::Ok ||
+        status == CoordinationStatus::ExternalUpdateNotClosed) {
         phase_ = Phase::Closed;
     }
-    registry_->condition.notify_all();
-    return close_succeeded ? CoordinationStatus::Ok
-                           : CoordinationStatus::ExternalUpdateNotClosed;
+    return status;
 }
 
 void ExternalUpdateToken::abandon_current_state() noexcept {
@@ -245,7 +261,8 @@ void ExternalUpdateToken::abandon_current_state() noexcept {
     }
 
     // Active is intentionally not cleared here: the external GDALDataset may
-    // still be open. Losing the token leaves the source fail-closed.
+    // still be open. Losing the token leaves the source fail-closed until the
+    // caller confirms close with the saved coordination id.
     registry_.reset();
     normalized_path_.clear();
     token_id_ = 0;
@@ -332,6 +349,15 @@ InProcessGdbCoordinator::prepare_external_update(
     result.status = CoordinationStatus::Ok;
     result.token = ExternalUpdateToken(registry_, normalized, token_id);
     return result;
+}
+
+CoordinationStatus InProcessGdbCoordinator::notify_external_update_closed(
+    const std::string& gdb_path,
+    uint64_t coordination_id,
+    bool close_succeeded) const {
+    return complete_external_update(
+        registry_, normalize_path(gdb_path), coordination_id,
+        close_succeeded);
 }
 
 CoordinatedSourceState InProcessGdbCoordinator::state(
