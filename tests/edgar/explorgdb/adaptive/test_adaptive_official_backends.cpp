@@ -147,7 +147,7 @@ std::vector<QueryRequest> all_requests() {
 
     QueryRequest where;
     where.kind = QueryKind::WhereClause;
-    where.where_clause = "value >= 10 AND name <> 'beta'";
+    where.where_clause = "value >= 10 AND name != 'beta'";
     requests.push_back(where);
 
     QueryRequest combined;
