@@ -92,6 +92,25 @@ BackendCursor rejected_empty_where_cursor() {
     return cursor;
 }
 
+BackendCursor failed_read_cursor(std::string message) {
+    auto pending_error = std::make_shared<std::string>(std::move(message));
+    BackendCursor cursor;
+    cursor.next = [pending_error](QueryFeature&, std::string& error) {
+        if (!pending_error->empty()) {
+            error = std::move(*pending_error);
+        }
+        return false;
+    };
+    cursor.close = [] {};
+    return cursor;
+}
+
+bool is_gdal_dataset_open_failure(const std::string& error) {
+    return error.find("GDALOpenEx(OpenFileGDB readonly) failed") !=
+               std::string::npos ||
+           error.find("OpenFileGDB layer not found:") == 0;
+}
+
 BackendCursor validating_cursor(BackendCursor raw,
                                 AdaptiveLayerBinding binding) {
     auto raw_cursor = std::make_shared<BackendCursor>(std::move(raw));
@@ -101,7 +120,10 @@ BackendCursor validating_cursor(BackendCursor raw,
     cursor.next = [raw_cursor, schema](QueryFeature& feature,
                                       std::string& error) {
         if (!raw_cursor->next || !raw_cursor->next(feature, error)) return false;
-        if (!validate_feature_contract(*schema, feature, error)) return false;
+        if (!validate_feature_contract(*schema, feature, error)) {
+            feature = QueryFeature{};
+            return false;
+        }
         return true;
     };
     cursor.close = [raw_cursor] {
@@ -203,10 +225,15 @@ AdaptiveReadSession make_adaptive_read_session(
          binding_generation](const QueryRequest& request) {
             if (state_reader.state(state_path).generation !=
                 binding_generation) {
-                throw std::runtime_error(
+                return failed_read_cursor(
                     "adaptive layer binding expired; rebuild the session");
             }
-            return gdal->open_cursor(request);
+            try {
+                return gdal->open_cursor(request);
+            } catch (const std::runtime_error& exception) {
+                if (is_gdal_dataset_open_failure(exception.what())) throw;
+                return failed_read_cursor(exception.what());
+            }
         });
 }
 
