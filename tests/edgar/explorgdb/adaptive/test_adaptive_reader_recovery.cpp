@@ -78,3 +78,25 @@ TEST(AdaptiveReaderRecoveryTest,
     EXPECT_EQ(repaired.generation, 2U);
     EXPECT_TRUE(coordinator.try_acquire_fast_reader(path).valid());
 }
+
+TEST(AdaptiveReaderRecoveryTest,
+     IndependentCoordinatorObjectsShareTheProcessRegistry) {
+    InProcessGdbCoordinator reader_coordinator;
+    InProcessGdbCoordinator writer_coordinator;
+    const std::string path = "process-wide-registry.gdb";
+
+    auto lease = reader_coordinator.try_acquire_fast_reader(path);
+    ASSERT_TRUE(lease.valid());
+    EXPECT_EQ(writer_coordinator.state(path).fast_reader_count, 1U);
+
+    auto blocked = writer_coordinator.prepare_external_update(path, 2ms);
+    EXPECT_EQ(blocked.status, CoordinationStatus::ReadersActive);
+    EXPECT_FALSE(reader_coordinator.state(path).writer_pending);
+
+    lease.release();
+    auto prepared = writer_coordinator.prepare_external_update(path, 0ms);
+    ASSERT_EQ(prepared.status, CoordinationStatus::Ok);
+    EXPECT_TRUE(reader_coordinator.state(path).writer_pending);
+    EXPECT_FALSE(reader_coordinator.try_acquire_fast_reader(path).valid());
+    EXPECT_EQ(prepared.token.cancel_before_update(), CoordinationStatus::Ok);
+}
