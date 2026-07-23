@@ -1,6 +1,6 @@
 # 14 — fast-gdb 大规模空间查询超越 GDAL 计划
 
-> 归档说明（2026-07-15）：本文档保留初始提案和历史验收背景；Phase A–G 的最终实施状态见 [15_spatial-query-followup-optimization-design.md](15_spatial-query-followup-optimization-design.md)，Phase H 历史计划见 [16_spatial-query-scale-optimization-plan.md](16_spatial-query-scale-optimization-plan.md)，当前工作见 [计划 18](../18_writer跨平台测试统一与后续编辑计划.md)。
+> 归档说明（2026-07-15）：本文档保留初始提案和历史验收背景；Phase A–G 的最终实施状态见 [15_spatial-query-followup-optimization-design.md](15_spatial-query-followup-optimization-design.md)，Phase H 历史计划见 [16_spatial-query-scale-optimization-plan.md](16_spatial-query-scale-optimization-plan.md)，当前工作见 [项目状态与规划](../01_项目状态与规划.md)。
 
 **更新日期**：2026-07-13  
 **状态**：实施中  

@@ -1,129 +1,118 @@
 # fast-gdb 项目介绍与当前状态
 
-**面向读者**：需要理解项目目标、代码结构、性能依据和验收边界的开发人员
-**最后更新**：2026-07-18
-**当前基线**：`main@6274f00`
-**当前结论**：`codex/spatial-attribute-query` 分支已完成合并。空间属性联合查询、
-FeatureCursor 流式迭代、融合扫描优化和 WKB-first 完整对象读取已进入 `main`。
-性能超越 GDAL：100K 全要素基准 Cursor 0.567ms vs GDAL 1.083ms（1.91× 快），
-联合查询 FID 匹配 0.314ms vs GDAL 0.700ms（2.23× 快）。详见[综合汇报](02_fast-gdb项目综合汇报.md)。
+## 当前定位
 
-## 1. 项目目标
+fast-gdb 是高性能 FileGDB Reader，不提供受支持的 FileGDB Writer 产品。项目集中维护：
 
-fast-gdb 是围绕 ESRI File Geodatabase 的 C++17 项目：
+- 二进制表和索引解析；
+- GeometryModel / GeometryValue；
+- ISO WKB-first；
+- QueryEngine / FeatureCursor；
+- 属性、空间和联合查询；
+- GDAL parity 与 Hybrid fallback；
+- 规划中的 Adaptive Reader 写入活动观测、源变化检测和 fresh GDAL 只读恢复。
 
-- 解析 `.gdbtable`、`.gdbtablx`、`.gdbindexes`、`.spx`、`.atx`；
-- 提供纯 C++ Reader/Writer 和 GDAL 高层组件；
-- 统一 GeometryModel、ISO WKB-first 和精确空间判断；
-- 提供 FID、顺序、bbox、属性、WHERE 和 bbox+WHERE 查询；
-- 提供逐条完整 Feature cursor；
-- 用合成数据、真实 FileGDB 和 GDAL 对照建立证据。
+## 当前产品
 
-当前不承诺完整 SQL/JOIN/聚合、Raster 像素、Annotation/Dimension 或完整 MultiPatch
-表面拓扑。
+| 目标 | 状态 |
+|---|---|
+| `fast_gdb::linear` | 正式 Reader 产品 |
+| `fast_gdb::hybrid` | 可选 GDAL-backed Reader 产品 |
+| `fast_gdb::adaptive` | Proposed / 未实现；ADR-008 验收后才能成为可选 Reader 产品 |
+| Writer | 不属于产品，已从构建、安装和兼容性范围删除 |
+| `src/edgar/usegdal` | 非产品、非构建的 GDAL/OGR 历史参考代码 |
 
-## 2. 产品形态与边界
+## 当前编辑合同
 
-| 组件/产物 | 用途 | 当前状态 |
-|---|---|---|
-| `fast_gdb_linear` | 无 GDAL Reader、几何和查询 | 既有范围已完成历史验收 |
-| `fast_gdb_hybrid` | fast-gdb 主路径 + 显式 GDAL 回退 | 既有范围已完成历史验收 |
-| `usegdal` | GDAL Datasource/Dataset/Recordset | 既定阶段已实现 |
-| `explorgdb reader` | 二进制解析、索引、查询、完整对象 | 查询、游标、WKB 已合入 `main` |
-| `explorgdb writer` | Writer 专项 | 本报告不展开 |
+调用方使用 GDAL/OpenFileGDB 或 ArcGIS 修改 GDB。当前唯一受支持时序：
 
-`Local review passed` 表示本地提交门禁通过；`Formal acceptance blocked` 表示跨平台和发布证据未齐。
-
-## 3. Reader 能力
-
-### FID-only
-
-```cpp
-QueryResult result = engine.query(request);
+```text
+close fast-gdb Readers
+→ GDAL edit
+→ GDALClose
+→ reopen fast-gdb Readers
 ```
 
-- 保持既有 API；
-- `SpatialWhere` 返回精确空间与完整 WHERE 的最终 FID；
-- `.spx/.atx` 都只提供候选。
+同一 `.gdb` 目录边写边读明确不支持。ADR-008 当前只是规划如何将重叠访问转换为 `SourceBusy`、结果丢弃和写后读取恢复，不代表并发读写已经受支持。
 
-### Full-feature cursor
+## Proposed Adaptive Reader
 
-```cpp
-auto cursor = engine.open_cursor(request);
-QueryFeature feature;
-while (cursor.next(feature)) {
-    consume(feature.fid,
-            feature.record.field_values,
-            feature.geometry.wkb);
-}
-if (!cursor.done()) report(cursor.error());
+目标行为：
+
+```text
+稳定源
+→ fast-gdb 快路径
+
+writer_active=true
+→ 不调用 fast-gdb
+→ 不调用 GDAL fallback
+→ SourceBusy
+
+读取前后 generation 或文件快照变化
+→ 丢弃结果
+→ ReaderExpired / SourceChangedDuringRead
+
+写入结束且源稳定
+→ fresh GDALOpenEx(READONLY)
+→ 完整物化
+→ GDALClose
+→ 再验证源未变化
+→ 返回 GDAL 结果
 ```
 
-- 返回 FID、全部 Reader 字段和 GeometryValue；
-- SequentialScan 不物化全表 FID；
-- 候选查询只保存最终 FID vector；
-- 正常 EOF 和读取失败明确区分；
-- 同一 engine 同时只允许一个活动 cursor。
+协调模式通过调用方提供的 `writer_active/generation` 建立确定性合同。ArcGIS、QGIS 或第三方 GDAL 等无协调 Writer 只能做 best-effort 文件变化检测，不能承诺绝对发现。
 
-### FID 定位
+## `usegdal` 参考层
 
-```cpp
-cursor.move_to(500);
-```
+`src/edgar/usegdal` 保留 datasource、dataset、recordset、query、transaction 和 batch-write 等早期包装探索，便于后续设计比较和独立研究。
 
-下一次 `next()` 返回当前查询结果中第一个 `FID >= 500` 的对象。支持向前、向后、
-rewind 和跳跃，并跳过删除槽或不满足过滤的 FID。
+该目录：
 
-## 4. 总体架构
+- 不由根 CMake 构建；
+- 不安装、不导出；
+- 不进入 package consumer 或发布门禁；
+- 不提供 API/ABI、事务、并发、性能或正确性保证；
+- 其中的写示例不构成 fast-gdb Writer 支持声明；
+- 不作为 Adaptive Reader 的 GDAL recovery 实现依赖。
 
-```mermaid
-flowchart TB
-    Common["explorgdb_common_lib"]
-    Reader["explorgdb_reader_lib\nCatalog/Table/Index/Geometry/Query/Cursor"]
-    Writer["explorgdb_writer_lib"]
-    UseGdal["gdb_component"]
-    Linear["fast_gdb_linear"]
-    Hybrid["fast_gdb_hybrid"]
-    Tests["gdb_tutorial_test_runner"]
+## 当前重点
 
-    Common --> Reader
-    Common --> Writer
-    Reader --> Linear
-    Reader --> Hybrid
-    Reader --> Tests
-    Writer --> Tests
-    UseGdal --> Tests
-```
+1. Reader 正确性；
+2. Reader 性能；
+3. `.spx/.atx` 安全解析和回退；
+4. FeatureCursor 和 WKB-first；
+5. 真实 FileGDB 与 GDAL parity；
+6. GDAL 写后 Reader 重开兼容矩阵；
+7. ADR-008 Phase 0～Phase 1：合同、测试骨架、跨平台文件快照；
+8. Windows/Linux/macOS Reader 验收。
 
-主要源码：
+## 已清理范围
 
-- `query_engine.h/.cpp`：公开查询和 engine 状态；
-- `feature_cursor.cpp`：cursor PImpl、状态机和 `move_to`；
-- `query_engine_combined.cpp`：空间属性联合查询；
-- `query_engine_geometry.cpp`：既有自适应空间 planner；
-- `gdb_table*.cpp`：完整记录和 GeometryValue；
-- `query_where_internal.*`：WHERE 内部模块。
+- `include/fast_gdb/writer` 和 `src/edgar/explorgdb/writer`；
+- VersionedGdbStore；
+- Append/Update/Delete/Transaction/Recovery 产品 API；
+- Writer CMake target 和公共头；
+- Writer 测试、基准、工具和工作流；
+- Writer ADR、设计、roadmap 和证据已移出当前入口并归入历史档案；
+- `usegdal` 从正式构建、安装、导出和 release gate 中移除，但源代码作为 reference only 保留。
 
-## 5. 当前验证边界
+## 风险边界
 
-已完成代码：
+- 外部 GDAL 写入期间，已有 Reader 可能读到 old/new/mixed/error；
+- GDALClose 后旧 Reader 仍可能持有过期 mmap、Schema 和索引；
+- 写后必须销毁并从 catalog scan 开始完整重开；
+- 未实现 ADR-008 前，不能依赖自动检测或 GDAL fallback 恢复；
+- 无协调模式即使实现，也不能保证捕获所有 Writer；
+- 在线副本切换由业务系统实现；
+- MultiPatch、关系、域、层级、栅格和稀疏 64-bit ObjectID 仍需专项验证；
+- reference-only 代码可能老化，不等同于可构建或可生产使用。
 
-- 全部 QueryKind cursor 入口；
-- 顺序流和候选模式；
-- 完整字段、NULL、Binary 和 ISO WKB；
-- 无几何、NULL geometry、ObjectID-only 行；
-- `move_to`、move ownership、reopen/reacquire；
-- GDAL 完整对象对照测试代码；
-- 100K full-feature benchmark runner；
-- 联合查询和 cursor 三轮静态自检。
+## 验收状态
 
-本地已完成 GDAL ON/OFF Release、310/310 与 653/653 并行 CTest、两套 package consumer、
-GDAL 完整对象对等和 100K full-feature。尚未形成正式证据：
+Reader-only 架构、构建目标、文档和边界测试已进入开发分支。ADR-008 与计划 22 已完成设计文档，但没有运行时代码、target 或测试通过声明。正式验收以可用的 CI step、日志、artifact 和真实数据结果为准。
 
-- Windows/Linux 和真实数据 release contract；
-- 10M full-feature；
-- peak RSS；
-- current/main 和 5% 门禁；
-- 正式 artifact。
+## 相关文档
 
-上述能力已合入 `main`，通过本地 479 测试验证。综合性能数据见[项目综合汇报](02_fast-gdb项目综合汇报.md)。
+- [ADR-007：Reader-only 与 GDAL 编辑边界](../adr/ADR-007-reader-only-gdal-edit-boundary.md)
+- [ADR-008：Adaptive Reader 写入检测与 fresh GDAL 只读回退](../adr/ADR-008-adaptive-reader-write-detection-gdal-fallback.md)
+- [Adaptive Reader 实施计划](../planning/22_AdaptiveReader写入检测与GDAL回退计划.md)

@@ -1,46 +1,154 @@
-# fast-gdb — FileGDB C++ Reader / Writer 与格式研究
+# fast-gdb — 高性能 FileGDB C++ Reader
 
-ESRI FileGDB 格式研究和 C++ 组件库。项目采用“测试即教程”的方式记录二进制格式、API、兼容边界和性能决策。
+fast-gdb 是面向 ESRI FileGDB 的 C++17 读取、查询和几何解析库。项目正式定位为 **Reader only**：不提供 FileGDB 创建、追加、更新、删除、Schema 编辑、事务或发布 API；所有 FileGDB 编辑统一交给 GDAL/OpenFileGDB。
 
 当前正式版本：**v0.1.0**。
 
-## 几何子系统概览
+## 产品形态
 
-当前几何读取链路为：
+| 安装目标 | 用途 | GDAL 依赖 |
+|---|---|---:|
+| `fast_gdb::linear` | 纯 C++ FileGDB Reader、几何与查询 | 无 |
+| `fast_gdb::hybrid` | fast-gdb 主路径 + GDAL 复杂几何回退 | 有 |
 
-```text
-FileGDB geometry blob
-    -> GeometryModel（整数网格 XY + Z/M）
-    -> PolygonTopologyBuilder / built-in curve linearizer
-    -> ISO WKB（正式输出）
-       WKT（兼容/调试输出）
-       SpatialPredicate（精确空间过滤）
-```
+安装包不导出 `fast_gdb::writer`。仓库不维护受支持的 FileGDB Writer 产品；`src/edgar/usegdal` 仅作为历史 GDAL/OGR 包装探索代码保留，不构建、不安装、不导出，也不提供兼容性承诺。
 
-主要能力：
+## Reader 能力
 
 - Point、MultiPoint、Polyline、Polygon 及 Z/M/ZM；
-- Polygon 外环、洞、多面、岛中岛，环顺序和方向无关；
-- 重复环、自交、相切、退化环返回明确状态；
-- CircularArc、三次 Bezier、EllipticArc、完整圆/椭圆和混合 part；
-- M-enabled 二维 ArcGIS 曲线的 FileGDB `0x42` 缺失-M 数组编码；
-- `.spx` 候选过滤后复用同一个几何模型做精确判断；
-- 标准 ISO WKB-first API，无需从 WKT 二次解析；
-- 可选 GDAL Hybrid 回退，只处理曲线或 fast-gdb 无法可靠组织的拓扑。
+- multipart、洞、岛中岛和环方向无关拓扑；
+- CircularArc、CubicBezier、EllipticArc 的内置折线化；
+- `.spx`、`.atx`、WHERE、bbox 与空间属性联合查询；
+- FID 随机读取、顺序扫描和完整 `FeatureCursor`；
+- ISO WKB-first，WKT 按需转换；
+- 可选 GDAL Hybrid 回退；
+- mmap、索引候选复核、Reader 性能与兼容性验证。
 
-MultiPatch 仍属于兼容/降级路径：可以通过 Hybrid 回退读取，但尚未纳入标准线性 `GeometryModel` 的完整表面拓扑。
+MultiPatch 仍只提供 Hybrid degraded support，不承诺完整表面拓扑。
 
-## 构建产物
+## FileGDB 写入
 
-| 源码目标 | 安装后目标 | GDAL 依赖 | 曲线策略 | 适用场景 |
-|---|---|---:|---|---|
-| `fast_gdb_linear` | `fast_gdb::linear` | 无 | 内置算法折线化 | 轻量部署、服务端批量读取 |
-| `explorgdb_writer` | `fast_gdb::writer` | 无（索引助手需 GDAL 构建） | 实验性空 schema 顺序批量写 | 新建/全量重写验证 |
-| `fast_gdb_hybrid` | `fast_gdb::hybrid` | 有 | fast-gdb 优先，按需缓存式 GDAL 回退 | 需要 GDAL 对照或复杂拓扑兜底 |
+fast-gdb 不提供写入接口。创建或修改 FileGDB 时，调用方直接使用官方 GDAL/OpenFileGDB API：
 
-普通非曲线几何在两个产物中都走纯 C++ fast-gdb 主路径。
+```cpp
+GDALAllRegister();
+const char* drivers[] = {"OpenFileGDB", nullptr};
+GDALDataset* dataset = static_cast<GDALDataset*>(GDALOpenEx(
+    "data.gdb",
+    GDAL_OF_VECTOR | GDAL_OF_UPDATE,
+    drivers,
+    nullptr,
+    nullptr));
 
-## 快速构建
+// OGRLayer::CreateFeature / SetFeature / DeleteFeature、
+// CreateField、SQL、索引和 REPACK 等由 GDAL 完成。
+
+GDALClose(dataset);
+```
+
+### 受支持的读写时序
+
+```text
+停止创建新的 fast-gdb 查询
+        ↓
+销毁 FeatureCursor / QueryEngine / GdbTableParser / GdbCatalog
+        ↓
+解除 mmap，关闭 fd/HANDLE
+        ↓
+GDAL/OpenFileGDB 独占修改目标 .gdb
+        ↓
+关闭 Feature、SQL result set 和 GDALDataset
+        ↓
+重新创建 fast-gdb Reader
+        ↓
+读取新数据
+```
+
+写入完成后必须完整重开 Reader；不支持只刷新部分表、索引或缓存。
+
+### 明确不支持：同一 GDB 边写边读
+
+当 GDAL 以 update 模式修改某个 `.gdb` 目录时，fast-gdb Reader 不得同时读取该目录。并发期间可能观察到：
+
+- 旧数据；
+- 新数据；
+- 表、tablx、spx、atx 或系统表之间的混合状态；
+- 文件锁、读取失败或平台相关错误。
+
+项目不为上述任何结果建立稳定合同。已有 Reader 即使在 GDAL 关闭后仍可能持有旧 mmap、文件描述符、Schema 或索引缓存，必须销毁并重开。
+
+需要不停读服务时，应由业务系统在 fast-gdb 之外实现副本编辑和原子路径切换。
+
+### 规划中：Adaptive Reader
+
+[ADR-008](docs/adr/ADR-008-adaptive-reader-write-detection-gdal-fallback.md) 提议增加一个可选 Reader 编排层，但该能力目前尚未实现或发布：
+
+```text
+稳定源
+  → fast-gdb 快路径
+
+活动 Writer / 读取期间源变化
+  → 丢弃结果
+  → SourceBusy / ReaderExpired
+
+写入结束且源稳定
+  → fresh GDAL read-only fallback
+  → 完整物化、关闭 Dataset、后置验证
+```
+
+协调模式由调用方提供只读的 `writer_active/generation` 信号，写入期间两个读取后端都不执行。未知外部 Writer 只能采用明确标记为 best-effort 的文件快照检测。
+
+该计划不会增加 Writer API、GDAL update wrapper、事务、marker 写入或在线发布能力。ADR-008 验收前，上述“关闭 Reader → GDAL 写 → 重开 Reader”仍是唯一正式合同。
+
+## `usegdal` 参考目录
+
+`src/edgar/usegdal` 保留了早期围绕 GDAL/OGR 的 RAII 和包装设计，包括 datasource、dataset、recordset、field、feature、query、connection pool、transaction 和 batch-write 示例。
+
+该目录的定位是：
+
+- 仅供设计比较、实验和后续独立研究；
+- 不进入根 CMake 构建；
+- 不进入安装包和 `fast_gdbConfig.cmake`；
+- 不属于 Reader API 或 Writer API；
+- 不提供 ABI、事务、并发、性能或正确性保证；
+- 生产 FileGDB 编辑应直接调用官方 GDAL/OpenFileGDB API。
+
+详见 [`src/edgar/usegdal/README.md`](src/edgar/usegdal/README.md)。
+
+## GDAL 写入 / fast-gdb 读取边界测试
+
+独立测试目标：
+
+```text
+fast_gdb_gdal_read_write_boundary_test_runner
+```
+
+测试分为两类：
+
+1. **正式门禁**：关闭所有 fast-gdb Reader 后由 GDAL 写入，`GDALClose()` 后重开 Reader，必须读到新数据；
+2. **观测性测试**：保持 Reader 打开并由 GDAL 修改同一目录，记录 old/new/mixed/error，但不把任何观测提升为支持语义。
+
+```bash
+cmake -S . -B build-boundary \
+  -DFAST_GDB_WITH_GDAL=ON \
+  -DFAST_GDB_BUILD_FULL_TESTS=OFF \
+  -DFAST_GDB_BUILD_TOOLS=OFF \
+  -DBUILD_TESTING=ON
+cmake --build build-boundary \
+  --target fast_gdb_gdal_read_write_boundary_test_runner --parallel
+ctest --test-dir build-boundary --output-on-failure \
+  -R '^gdal-reader-boundary\.'
+```
+
+详见：
+
+- [GDAL 写入与 fast-gdb 读取边界](docs/usage/11_GDAL写入与fast-gdb读取边界.md)
+- [Reader/GDAL 编辑边界 ADR](docs/adr/ADR-007-reader-only-gdal-edit-boundary.md)
+- [Adaptive Reader Proposed ADR](docs/adr/ADR-008-adaptive-reader-write-detection-gdal-fallback.md)
+- [Adaptive Reader 实施计划](docs/planning/22_AdaptiveReader写入检测与GDAL回退计划.md)
+- [并发可见性观测证据](docs/evidence/gdal-write-fast-gdb-read-characterization-2026-07-22.md)
+
+## 构建
 
 ### 纯 C++ Reader
 
@@ -49,178 +157,59 @@ cmake -S . -B build-linear \
   -DFAST_GDB_WITH_GDAL=OFF \
   -DFAST_GDB_CURVE_BACKEND=BUILTIN \
   -DFAST_GDB_GEOMETRY_OUTPUT=STANDARD_WKB \
-  -DFAST_GDB_BUILD_TOOLS=OFF \
-  -DFAST_GDB_BUILD_FULL_TESTS=OFF \
   -DBUILD_TESTING=ON
 cmake --build build-linear --parallel
-ctest --test-dir build-linear --output-on-failure -R '^geometry\.'
+ctest --test-dir build-linear --output-on-failure
 ```
 
-### GDAL Hybrid
+### GDAL Hybrid Reader
 
 ```bash
 cmake -S . -B build-hybrid \
   -DFAST_GDB_WITH_GDAL=ON \
   -DFAST_GDB_CURVE_BACKEND=BUILTIN \
   -DFAST_GDB_GEOMETRY_OUTPUT=STANDARD_WKB \
-  -DFAST_GDB_BUILD_TOOLS=OFF \
-  -DFAST_GDB_BUILD_FULL_TESTS=OFF \
   -DBUILD_TESTING=ON
-cmake --build build-hybrid --target fast_gdb_geometry_test_runner fast_gdb_hybrid_test_runner --parallel
-ctest --test-dir build-hybrid --output-on-failure -R '^(geometry|hybrid)\.'
+cmake --build build-hybrid --parallel
+ctest --test-dir build-hybrid --output-on-failure
 ```
 
-CMake 使用 `find_package(GDAL)`；不绑定某台机器的 GDAL 安装路径。Google Test 未安装时由 CMake FetchContent 获取。
+CMake 使用 `find_package(GDAL)`，不绑定本机安装路径。
 
-## 安装与 CMake 消费
-
-### 安装
-
-```bash
-cmake --install build-linear --prefix /path/to/fast-gdb
-```
-
-### 纯 C++ 消费项目
-
-```cmake
-find_package(fast_gdb 0.1 CONFIG REQUIRED)
-target_link_libraries(my_app PRIVATE fast_gdb::linear)
-```
-
-### Hybrid 消费项目
-
-```cmake
-find_package(GDAL REQUIRED)
-find_package(fast_gdb 0.1 CONFIG REQUIRED)
-target_link_libraries(my_app PRIVATE fast_gdb::hybrid)
-```
-
-### Writer 消费项目
-
-```cmake
-find_package(fast_gdb 0.1 CONFIG REQUIRED)
-target_link_libraries(my_app PRIVATE fast_gdb::writer)
-```
-
-Writer 当前是安装包中的实验性受限目标，只验证“已创建空 schema 后顺序批量写入并关闭重开”；
-非空追加、原地更新/删除、事务和原生曲线写入不在支持范围。schema 默认值会保留，但 Writer 不会自动应用，
-调用方必须显式写入该字段。GDAL 构建可在写入结束后调用索引助手。
-
-安装包包含静态库、公共头文件、可重定位的 `fast_gdbConfig.cmake`、变更记录和发布验收证据。
-
-## CPack 打包
-
-```bash
-cmake -S . -B build-package \
-  -DFAST_GDB_WITH_GDAL=OFF \
-  -DFAST_GDB_BUILD_TOOLS=OFF \
-  -DFAST_GDB_BUILD_FULL_TESTS=OFF \
-  -DFAST_GDB_PACKAGE_VARIANT=linear \
-  -DBUILD_TESTING=OFF
-cmake --build build-package --target explorgdb_reader_lib --config Release --parallel
-cpack --config build-package/CPackConfig.cmake -C Release -G TGZ
-```
-
-仓库的 `release` 工作流会为 v0.1.0 生成：
-
-- Windows x64 纯 C++ ZIP；
-- Linux x64 纯 C++ TGZ；
-- macOS 纯 C++ TGZ；
-- Linux x64 Hybrid TGZ；
-- 全部归档的 `SHA256SUMS.txt`。
-
-## WKB-first API
+## WKB-first 示例
 
 ```cpp
 explorgdb::GdbTableParser table(table_path);
 table.open();
 table.load_tablx(tablx_path);
 
-explorgdb::GeometryValue value;
-if (table.read_geometry_value(fid, value) && value.valid()) {
-    // value.wkb: ISO WKB
-    // value.has_z / has_m
-    // value.source_was_curve / linearized
-    // value.backend / status / diagnostic
-    const auto wkt = value.to_wkt(); // 仅在调用方明确需要时转换
+explorgdb::GeometryValue geometry;
+if (table.read_geometry_value(fid, geometry) && geometry.valid()) {
+    consume(geometry.wkb);
+    const auto debug_wkt = geometry.to_wkt();
 }
 ```
 
-`read_record_by_fid()` 和 FeatureCursor 的 Geometry 字段槽是空字符串占位；正式几何只从
-`GeometryValue::wkb/status` 读取。需要内部拓扑或自定义空间判断时使用
-`read_geometry_model()`；`GdbGeomDecoder::decode()` 只作为显式调试接口。
+## 项目目录
 
-## Hybrid FID 映射
+| 目录 | 内容 |
+|---|---|
+| `src/edgar/explorgdb/common` | 二进制和共享基础设施 |
+| `src/edgar/explorgdb/reader` | FileGDB Reader、索引、几何和查询 |
+| `src/edgar/explorgdb/curve_gdal` | 可选 GDAL Hybrid Bridge |
+| `src/edgar/usegdal` | 非产品、非构建的 GDAL/OGR 包装参考代码 |
+| `tests/usegdal/test_*.cpp` | 直接调用 GDAL 的 fixture、parity 和边界测试 |
 
-fast-gdb 的行 FID 为零基；OpenFileGDB 常将一基 ObjectID 暴露为 GDAL FID。因此 `HybridGeometryOptions::gdal_fid_offset` 默认是 `+1`：
+## 产品边界
 
-```cpp
-explorgdb::HybridGeometryOptions options;
-options.gdal_fid_offset = 1; // 默认值；特殊数据源可改为 0
-```
-
-发布前必须用目标真实数据核对 ObjectID/GDAL FID。映射失败会返回明确诊断，不会静默读取另一条要素。
-
-## GDB 探索工具
-
-```bash
-cmake -S . -B build -DFAST_GDB_BUILD_TOOLS=ON
-cmake --build build --target explorgdb_cli --parallel
-./build/bin/explorgdb_cli explore <gdb_path>
-```
-
-## 真实数据回归
-
-完整的数据清单、GDAL/ArcGIS Pro 生成方法、三平台命令和基准环境变量统一见
-[测试数据准备与跨平台验证指南](docs/usage/03_测试数据准备与跨平台验证.md)。
-
-仓库内普通 FileGDB 样本可用于常规读取验证：
-
-```bash
-FAST_GDB_REAL_DATASET="$PWD/test_data/gdb/test_spatial_gdb.gdb/test_spatial_gdb.gdb" \
-./build/bin/gdb_tutorial_test_runner \
-  --gtest_filter='RealDataReleaseContractTest.RegularFileGdbMatchesCoreReadContract'
-```
-
-该目录是双层 `.gdb` 包装，环境变量必须指向内层目录。ArcGIS Pro 原生曲线验收结果见：
-
-- `docs/evidence/curve-polyline-m-real-acceptance-2026-07-13.md`；
-- `docs/evidence/13_fast-gdb最终等价与发布验收报告.md`。
-
-## 项目组成
-
-| 组件 | 目录 | 说明 |
-|---|---|---|
-| `usegdal` | `src/edgar/usegdal/` | GDAL 高层 API 教程和组件 |
-| `explorgdb/common` | `src/edgar/explorgdb/common/` | 二进制、公共类型和共享基础设施 |
-| `explorgdb/reader` | `src/edgar/explorgdb/reader/` | 纯 C++ Reader、几何模型、WKB、拓扑和查询 |
-| `explorgdb/curve_gdal` | `src/edgar/explorgdb/curve_gdal/` | 可选缓存式 GDAL Hybrid Bridge |
-| `explorgdb/writer` | `src/edgar/explorgdb/writer/` | 受限支持的纯 C++ 空 schema 批量写入器；不等同完整 FileGDB 编辑器 |
-
-## 文档
-
-- `CHANGELOG.md`
-- `docs/usage/03_测试数据准备与跨平台验证.md`
-- `docs/releases/v0.1.0.md`
-- `docs/overview/01_fast-gdb项目介绍与当前状态.md`
-- `docs/planning/00_规划文档状态索引.md`
-- `docs/planning/18_writer跨平台测试统一与后续编辑计划.md`
-- `docs/evidence/13_fast-gdb最终等价与发布验收报告.md`
-- `docs/usage/02_几何WKB曲线支持与迁移.md`
-- `docs/planning/02_GDAL功能对比矩阵.md`
-- `docs/technical/01_性能基准与优化.md`
-- `docs/README.md`
-
-## 平台与依赖
-
-- C++17、CMake 3.15+；
-- 纯 C++ 构建：Windows、Linux、macOS；
-- Hybrid 构建：需要可被 CMake 发现的 GDAL；
-- CI 覆盖三平台纯 C++、Linux Hybrid、GDAL 默认后端构建以及 ASan/UBSan/LSan。
-
-## v0.1.0 能力边界
-
-- 曲线正式输出为线性化标准 WKB，不保留 ArcGIS 原生 curve object；
-- MultiPatch 仅提供 Hybrid degraded support；
-- 不承诺所有未知或未来 FileGDB 几何编码；
-- Writer 仅支持安全空 schema 批量写和全量重写闭环；高级编辑仍不支持。
+- fast-gdb 是 Reader，不是 FileGDB 编辑器；
+- 不提供 Writer API、Writer target、Writer 头文件、受支持的 Writer 包装库或 ABI；
+- `src/edgar/usegdal` 的存在不构成产品支持声明；
+- 当前 GDAL 编辑目标 GDB 时，所有 fast-gdb Reader 必须停止并释放；
+- `GDALClose()` 后必须完整重开 fast-gdb Reader；
+- 当前同一 `.gdb` 的 GDAL 写入与 fast-gdb 并发读取明确不支持；
+- 计划中的 Adaptive Reader 只负责检测、拒绝、失效和 fresh 只读回退；
+- 无协调外部 Writer 检测不提供绝对保证；
+- 在线副本发布、跨进程锁、版本管理和垃圾回收由业务系统实现；
+- `.spx` 和 `.atx` 只提供候选，最终结果必须复核；
+- 关系、域、层级、栅格、MultiPatch 和稀疏 64-bit ObjectID 仍需专项兼容性验证。

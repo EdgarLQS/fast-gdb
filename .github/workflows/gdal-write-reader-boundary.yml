@@ -1,0 +1,116 @@
+name: reader-only-surface-and-gdal-boundary
+
+on:
+  pull_request:
+    paths:
+      - 'src/edgar/explorgdb/reader/**'
+      - 'src/edgar/explorgdb/curve_gdal/**'
+      - 'tests/usegdal/test_*.cpp'
+      - 'tests/package_consumer/**'
+      - 'cmake/**'
+      - 'CMakeLists.txt'
+      - '.github/workflows/gdal-write-reader-boundary.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/edgar/explorgdb/reader/**'
+      - 'src/edgar/explorgdb/curve_gdal/**'
+      - 'tests/usegdal/test_*.cpp'
+      - 'tests/package_consumer/**'
+      - 'cmake/**'
+      - 'CMakeLists.txt'
+      - '.github/workflows/gdal-write-reader-boundary.yml'
+
+jobs:
+  reader-only-surface:
+    name: reader-only-surface-${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure pure Reader build
+        run: >-
+          cmake -S . -B build-reader
+          -DFAST_GDB_WITH_GDAL=OFF
+          -DFAST_GDB_BUILD_TOOLS=OFF
+          -DFAST_GDB_BUILD_FULL_TESTS=OFF
+          -DBUILD_TESTING=ON
+          -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build Reader targets
+        run: cmake --build build-reader --config Release --parallel
+
+      - name: Run Reader tests
+        run: ctest --test-dir build-reader -C Release --output-on-failure
+
+      - name: Install package
+        run: cmake --install build-reader --config Release --prefix "${{ github.workspace }}/install"
+
+      - name: Verify Reader-only install surface
+        shell: bash
+        run: |
+          test -d "${{ github.workspace }}/install/include/fast_gdb/reader"
+          test ! -e "${{ github.workspace }}/install/include/fast_gdb/writer"
+
+          exported="${{ github.workspace }}/install/lib/cmake/fast_gdb"
+          if grep -R -E 'fast_gdb::writer|versioned_gdb|writer_legacy' "$exported"; then
+            echo "Writer symbols must not be exported"
+            exit 1
+          fi
+
+      - name: Configure installed linear consumer
+        run: >-
+          cmake -S tests/package_consumer -B consumer-build
+          -DFAST_GDB_CONSUMER_TARGET=linear
+          -DCMAKE_PREFIX_PATH="${{ github.workspace }}/install"
+          -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build installed consumer
+        run: cmake --build consumer-build --config Release --parallel
+
+      - name: Run installed consumer
+        shell: bash
+        run: |
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            ./consumer-build/Release/fast_gdb_package_consumer.exe
+          else
+            ./consumer-build/fast_gdb_package_consumer
+          fi
+
+  gdal-reader-boundary:
+    name: gdal-write-fast-reader-boundary-ubuntu
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install GDAL OpenFileGDB development package
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gdal-bin libgdal-dev
+          gdal-config --version
+          ogrinfo --formats | grep -F 'OpenFileGDB'
+
+      - name: Configure focused boundary test
+        run: >-
+          cmake -S . -B build-boundary
+          -DFAST_GDB_WITH_GDAL=ON
+          -DFAST_GDB_BUILD_TOOLS=OFF
+          -DFAST_GDB_BUILD_FULL_TESTS=OFF
+          -DBUILD_TESTING=ON
+          -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build boundary test
+        run: >-
+          cmake --build build-boundary --config Release
+          --target fast_gdb_gdal_read_write_boundary_test_runner --parallel
+
+      - name: Run supported and characterization tests
+        run: >-
+          ctest --test-dir build-boundary -C Release
+          --output-on-failure -R '^gdal-reader-boundary\.'

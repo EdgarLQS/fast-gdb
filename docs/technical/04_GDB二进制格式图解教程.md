@@ -712,7 +712,8 @@ flowchart LR
     I2 --> D2R --> R2
 ```
 
-**源代码**：编码 → [`src/edgar/explorgdb/writer/geometry_serializer.h`](../../src/edgar/explorgdb/writer/geometry_serializer.h#L452) `coord_to_int()`
+**历史实现**：Writer 编码路径已经退出当前产品；相关背景保留在
+[Writer 历史归档](../archive/writer/README.md)。
 
 **源代码**：解码 → [`src/edgar/explorgdb/reader/gdb_geometry.cpp`](../../src/edgar/explorgdb/reader/gdb_geometry.cpp#L69) `GdbGeomDecoder::decode_coord()`
 
@@ -1048,12 +1049,10 @@ flowchart TD
 | 空间索引 | `src/edgar/explorgdb/reader/gdb_spatial_index.cpp` | B+ 树导航 + LRU 缓存 |
 | 属性索引 | `src/edgar/explorgdb/reader/gdb_attribute_index.cpp` | 属性查询 |
 | 几何解码 | `src/edgar/explorgdb/reader/gdb_geometry.cpp` | GdbGeomDecoder |
-| 几何序列化 | `src/edgar/explorgdb/writer/geometry_serializer.h` | coord_to_int() |
-| 二进制写入 | `src/edgar/explorgdb/writer/gdb_table_writer.cpp` | GdbTableWriter |
-| 行缓冲区 | `src/edgar/explorgdb/writer/row_buffer.h` | RowBuffer（零分配） |
+| 历史 Writer 方案 | `docs/archive/writer/` | 已废弃，仅用于历史追溯 |
 | 查询流程 | `src/edgar/explorgdb/reader/QUERY_FLOW.md` | 索引查询流程图 |
-| 查询构建器 | `src/edgar/usegdal/query_builder.h` | GdbQuery 链式查询构建器 |
-| 查询执行 | `src/edgar/usegdal/datasets.cpp` | GdbDataset::query() 统一查询入口 |
-| 记录集过滤 | `src/edgar/usegdal/recordset.cpp` | GdbRecordset::moveNext() 空间关系后过滤 |
+| 查询构建器参考 | `src/edgar/usegdal/query_builder.h` | reference-only，不进入产品构建 |
+| 查询执行参考 | `src/edgar/usegdal/datasets.cpp` | reference-only，不进入产品构建 |
+| 记录集过滤参考 | `src/edgar/usegdal/recordset.cpp` | reference-only，不进入产品构建 |
 
 | CLI 入口 | `src/edgar/explorgdb/reader/explorgdb_cli.cpp` | CLI 工具 |

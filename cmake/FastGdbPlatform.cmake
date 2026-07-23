@@ -7,10 +7,3 @@ if(WIN32 AND MINGW)
         "${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader/gdb_table.cpp"
         PROPERTIES COMPILE_DEFINITIONS FAST_GDB_REDIRECT_POSIX_OPEN=1)
 endif()
-
-# writer_update_checked.cpp includes writer_update.cpp after renaming the three
-# lifecycle methods that require additional validation. Keep the original file
-# visible to IDEs but prevent it from becoming a second translation unit.
-set_source_files_properties(
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/writer/writer_update.cpp"
-    PROPERTIES HEADER_FILE_ONLY TRUE)

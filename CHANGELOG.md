@@ -4,71 +4,49 @@ All notable changes to fast-gdb are documented in this file.
 
 ## Unreleased
 
-### Added
-
-- Branch-only `QueryKind::SpatialWhere` entry that combines exact bbox filtering with the existing WHERE subset.
-- `CombinedQueryMetrics` diagnostics for candidates, rechecks, final matches and stage timings.
-- Detailed attribute-planning metrics for `.gdbindexes` metadata, `.atx` file load, tree navigation, leaf scan, candidate ordering, final WHERE recheck, page counts and scanned entries.
-- Fused selective SpatialWhere metrics for raw candidates, one-pass candidate scan time and path confirmation.
-- Internal WHERE tokenizer/parser/evaluator shared by standalone and combined paths.
-- Field-to-index resolution through `.gdbindexes`, including functional-index classification.
-- Sparse candidate-field scanning for mmap and fd paths.
-- Public `QueryFeature` and move-only `FeatureCursor` full-feature streaming API.
-- `QueryEngine::open_cursor()` for every existing QueryKind.
-- True SequentialScan streaming mode that does not materialize the whole FID set.
-- `FeatureCursor::move_to(fid)` for forward, backward, rewind and arbitrary zero-based FID jumps.
-- Cursor EOF/error diagnostics through `done()`, `query_result()` and `error()`.
-- Cursor and engine generations for single-active-cursor ownership and reopen invalidation.
-- One-pass `GdbTableParser::read_feature_by_fid()` that locates a row once, materializes fields once, decodes one `GeometryModel`, and writes ISO WKB without eager WKT.
-- Pure C++ `GeometryValue::to_wkt()` for explicit on-demand WKB conversion, including EMPTY members in Multi geometries.
-- Request-scoped `profile_feature_reads` and `FeatureCursorMetrics` for row lookup, field materialization, geometry decode and WKB stages.
-- Direct `.atx` query APIs that validate the complete leaf chain but materialize only matching FIDs instead of all index entries.
-- Snapshot-scoped `.gdbindexes` metadata cache on `GdbCatalog` without removing catalog copy/move value semantics.
-- Full-object GDAL tests for fields, NULL, Binary and ISO WKB.
-- WKB-first parity tests for Point, MultiPoint, Polyline and Polygon with a hole.
-- Adaptive SpatialWhere tests for low-coverage `.atx` bypass and high-coverage direct-index execution.
-- Fused SpatialWhere GDAL parity tests for MultiPoint, Polyline and Polygon.
-- Exact Point ZM WKT/WKB writer contract and `.spx` merged-range candidate-superset tests.
-- Tests for deleted slots, no-geometry tables, NULL geometry and ObjectID-only zero-length rows.
-- Opt-in 100K full-feature cursor/legacy/GDAL checksum benchmark.
-- Draft-PR strict performance workflow requiring correct fused execution and `cursor_median_ms < gdal_median_ms`.
-- GDAL-OFF cursor public API and ownership contract tests.
-- Installed `fast_gdb::writer` target for the supported empty-schema bulk-write workflow.
-
 ### Changed
 
-- `.atx` parsing fails closed on invalid sizes, page bounds/capacity, cyclic leaf chains, count mismatches and zero FIDs.
-- SpatialWhere bypasses `.atx` data-page reads when exact spatial matches are no more than 65,536 and no more than 12.5% of active features; the full WHERE is evaluated directly on those candidates.
-- Selective SpatialWhere parses each `.spx` candidate row once and performs exact geometry plus WHERE evaluation from the same `FieldRef` array; incomplete scans fall back transactionally.
-- Full-height selective queries may merge per-X `.spx` navigation into one raw-key range per grid level while retaining exact geometry filtering.
-- Dense candidate bitsets are enumerated directly in FID order instead of sorting a second vector.
-- High-coverage SpatialWhere queries use the direct `.atx` leaf path rather than constructing `all_entries_`.
-- Numeric direct-index comparisons operate on leaf-page bytes without a temporary `AttributeIndexEntry` per row.
-- Attribute candidates are sorted/deduplicated and always receive a complete WHERE recheck.
-- Non-BMP strings, `!=`, functional indexes and ambiguous numeric encodings fall back safely.
-- Candidate field scans reuse `FieldRef` scratch buffers and skip redundant physical sorting for monotonic mmap offsets.
-- `CatalogResolver::resolve()` carries the already-known `GDB_SpatialRefs` capability so fresh `QueryEngine::open()` does not reread the system catalog; manual legacy `ResolvedTable` construction retains the old fallback.
-- WKB output reserves the estimated final byte size, and WKT output writes directly into a reserved string stream buffer while preserving the existing iostream format.
-- GDAL integration tests use per-test temporary FileGDB directories for parallel CTest.
-- Active FeatureCursor instances block QueryEngine read entry points.
-- QueryEngine is non-copyable, move-constructible, and not move-assignable. Cursor state uses stable heap-owned control and table objects across a move; the moved-from engine remains safely unavailable.
-- Reopening QueryEngine invalidates exhausted cursors and resets cached spatial-index state.
-- Zero-length legal rows are normalized into ObjectID and nullable NULL values.
-- FeatureCursor now uses the one-pass full-object reader instead of `read_record_by_fid()` followed by `read_geometry_value()`.
-- Full-feature benchmark schema v3 rotates Cursor/record+geometry/GDAL order across five samples, keeps profile outside median/p95, records WKB-first stages and measures explicit `to_wkt()` separately.
-- FID-only benchmark records the adaptive execution path and detailed attribute-planning stages; default evidence is written outside the repository.
-- Feature profiling is bound to each `QueryRequest`; normal reads do not call the profile clock or depend on process-global state.
-- Combined-query and full-feature evidence records observed paths and computed correctness rather than hard-coded claims.
-- Writer safety, validation, atomic publication and index rebuild behavior remains as documented by its own workstream.
-- DateTimeWithOffset exposes the date and offset independently.
+- fast-gdb is now explicitly a **Reader-only** FileGDB product.
+- FileGDB creation and editing are delegated to GDAL/OpenFileGDB or ArcGIS.
+- The installed package exports only Reader products: `fast_gdb::linear` and optional `fast_gdb::hybrid`.
+- The supported edit workflow is now: close all fast-gdb Reader objects, edit exclusively with GDAL, close all GDAL objects, then construct a fresh Reader.
+- Reader objects, mmap regions, table parsers, catalogs, query engines, cursors, FID mappings and index caches must not survive an external GDAL edit.
+- Same-directory GDAL update plus fast-gdb reading is explicitly classified as unsupported and may expose old, new, mixed or error states.
+- Online copy/edit/switch publication is an application responsibility outside fast-gdb.
+- `src/edgar/usegdal` is retained as reference-only historical GDAL/OGR wrapper code. It is not built, installed, exported, release-gated, or covered by API/ABI compatibility promises.
+- A future Adaptive Reader is now planned as a Reader-only orchestration layer. Writer-active requests fail closed; source changes expire old Reader state; recovery uses a fresh GDAL read-only Dataset only after the source is quiescent.
+- Coordinated `writer_active/generation` detection is the proposed deterministic contract. Uncoordinated external Writer detection is explicitly best-effort and cannot guarantee discovery of every Writer lifecycle.
 
-### Review status
+### Added
 
-- Combined-query, FeatureCursor, one-pass and performance optimization work exists only on `codex/spatial-attribute-query`; it has not entered `main` or a release.
-- Combined-query static review, FeatureCursor review, one-pass review, `.atx` planner review and fused-overtake static review are complete.
-- 2026-07-18 local review passed GDAL OFF 310/310 and GDAL ON 653/653 parallel CTest, both installed package consumers, and both explicit 100K evidence runners.
-- Local FeatureCursor schema-v3 measured 0.630 ms versus GDAL 1.300 ms with `correct=true`; this is a single M5 fresh-open-not-strict-cold scenario, not a product-wide claim.
-- Status is **local code review and commit gates passed / formal acceptance blocked** pending cross-platform CI, real-data contracts, 10M performance, strict-cold and peak RSS.
+- Focused real OpenFileGDB boundary target: `fast_gdb_gdal_read_write_boundary_test_runner`.
+- A release-gate test proving that a fully closed Reader followed by GDAL edit and complete Reader reopen observes new data.
+- A characterization test that records old/new/mixed/error while GDAL holds an update Dataset against the same GDB as an open fast-gdb Reader.
+- ADR-007 for the Reader-only product decision and GDAL edit boundary.
+- Architecture, usage and evidence documents defining Reader quiescence, GDAL lifecycle and result interpretation.
+- CI checks that verify no Writer target or installed Writer headers remain.
+- `src/edgar/usegdal/README.md` documenting the non-product reference boundary.
+- Proposed ADR-008 defining Adaptive Reader write-activity detection, source-change validation, Reader invalidation and fresh GDAL read-only recovery.
+- Active design-first implementation plan `docs/planning/22_AdaptiveReader写入检测与GDAL回退计划.md`, including phased implementation, test names, stress gates and performance budgets.
+
+### Removed
+
+- `fast_gdb::writer`.
+- `VersionedGdbStore`, `GdbReaderSnapshot`, `GdbWriteTransaction` and generation publication APIs.
+- Installed Writer headers and the `include/fast_gdb/writer` tree.
+- The self-developed FileGDB binary Writer implementation under `src/edgar/explorgdb/writer`.
+- Append, Update, Delete, Transaction, Recovery, table/index Writer and atomic publication code from the supported product surface.
+- Writer tests, Writer performance tools, Writer-specific workflows, ADRs, roadmaps, design documents and evidence reports.
+- Writer package-consumer mode.
+- The `usegdal` wrapper library from root CMake targets, installation, package exports and formal test gates; its source remains available as reference material.
+
+### Validation status
+
+- The Reader-only build graph, install surface and boundary tests are implemented on the development branch.
+- Formal acceptance requires usable CMake/CTest logs and artifacts for the pure Reader surface and the GDAL boundary target.
+- Characterization observations are diagnostic only and never constitute a concurrent read/write support statement.
+- Reference-only `usegdal` code is intentionally not claimed as build-validated or production-ready.
+- ADR-008 remains Proposed. Adaptive Reader runtime code, target and tests are not implemented or accepted yet; ADR-007 remains the only supported external-edit runtime contract.
 
 ## [0.1.0] - 2026-07-13
 
@@ -100,4 +78,4 @@ All notable changes to fast-gdb are documented in this file.
 - Pure C++ output is linearized standard WKB; native ArcGIS curve objects are not preserved.
 - MultiPatch is available only through Hybrid degraded support and does not preserve complete surface semantics.
 - Unknown or future FileGDB geometry encodings are not claimed as supported.
-- The writer remains experimental and is not part of the v0.1.0 production support statement.
+- FileGDB editing is outside the fast-gdb product scope.

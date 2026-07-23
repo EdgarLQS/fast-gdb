@@ -1,71 +1,115 @@
-# fast_gdb 文档索引
+# fast-gdb 文档索引
 
-本文档是 `docs/` 的分类入口。当前分支为 `codex/spatial-attribute-query`，空间与属性联合查询、FeatureCursor 和 WKB-first Reader 已通过本地代码审核、Release 构建、并行 CTest、package consumer 与 100K 基准。分支内容尚未进入 `main`，跨平台和正式发布验收仍阻塞。
+fast-gdb 当前产品定位为 **FileGDB Reader only**。项目不提供受支持的 FileGDB Writer；创建、追加、更新、删除、Schema 编辑、索引维护和 REPACK 统一由 GDAL/OpenFileGDB 完成。
 
-## 当前分支审核入口
+`src/edgar/usegdal` 作为历史 GDAL/OGR 包装探索代码保留，仅供设计比较和后续研究；它不构建、不安装、不导出，也不属于产品兼容性范围。
 
-| 文件 | 内容 |
-|---|---|
-| [21_空间属性联合查询实现计划.md](planning/21_空间属性联合查询实现计划.md) | 实现范围、GDAL 参考、执行路径、测试矩阵、进度和验收清单 |
-| [10_空间属性联合查询代码审核指南.md](usage/10_空间属性联合查询代码审核指南.md) | 审核顺序、重点文件、P0/P1 检查点、建议命令和报告格式 |
-| [spatial-attribute-query-self-review-2026-07-17.md](evidence/spatial-attribute-query-self-review-2026-07-17.md) | 三轮静态代码审核发现和修复记录 |
-| [spatial-attribute-query-document-audit-2026-07-17.md](evidence/spatial-attribute-query-document-audit-2026-07-17.md) | 文档一致性自检、冲突和修复记录 |
-| [branch-review-and-validation-2026-07-18.md](evidence/branch-review-and-validation-2026-07-18.md) | 独立审核、修复、本地构建/CTest/consumer/100K 证据 |
-| [04_功能与基准测试覆盖矩阵.md](usage/04_功能与基准测试覆盖矩阵.md) | 当前自动化、性能和正式验证缺口 |
-| [Reader QUERY_FLOW](../src/edgar/explorgdb/reader/QUERY_FLOW.md) | 联合查询源码执行链和回退语义 |
-
-## 总览
+## 核心入口
 
 | 文件 | 内容 |
 |---|---|
-| [01_fast-gdb项目介绍与当前状态.md](overview/01_fast-gdb项目介绍与当前状态.md) | 面向开发人员的项目定位、架构、性能、测试和验收总览 |
-| [00_项目全景与架构概览.md](overview/00_项目全景与架构概览.md) | 项目全景、构建目标、架构总览、学习路线 |
+| [Reader 读取流程专题](technical/06_Reader读取流程专题.md) | 目录扫描、系统表、表解析、索引规划、FeatureCursor、WKB-first 和对象生命周期 |
+| [GDAL 写入与 fast-gdb 读取边界](usage/11_GDAL写入与fast-gdb读取边界.md) | 当前停读→GDAL 写→重开合同，以及计划中的 Adaptive Reader 使用语义 |
+| [ADR-007：Reader-only 与 GDAL 编辑边界](adr/ADR-007-reader-only-gdal-edit-boundary.md) | 当前产品定位、决策理由、支持合同和非目标 |
+| [ADR-008：Adaptive Reader 写入检测与 fresh GDAL 回退](adr/ADR-008-adaptive-reader-write-detection-gdal-fallback.md) | Proposed：写期间 fail closed、源稳定后 fresh GDAL 只读恢复 |
+| [Adaptive Reader 实施计划](planning/22_AdaptiveReader写入检测与GDAL回退计划.md) | 文件快照、协调探针、Reader 失效、fresh GDAL、测试和平台验收阶段 |
+| [GDAL/Reader 边界架构说明](architecture/gdal-write-reader-boundary.md) | 生命周期、缓存失效、并发可见性和 Adaptive 计划架构 |
+| [并发可见性观测证据](evidence/gdal-write-fast-gdb-read-characterization-2026-07-22.md) | 真实 OpenFileGDB 测试设计、分类结果和证据边界 |
+| [`usegdal` 参考层说明](../src/edgar/usegdal/README.md) | 非产品 GDAL/OGR RAII、查询、事务和批量写入参考代码的边界 |
+| [Writer 历史归档](archive/writer/README.md) | 已废弃 Writer ADR、规划、评审和证据；仅用于历史追溯 |
 
-## 使用
+## 产品目标
+
+| 安装目标 | 说明 |
+|---|---|
+| `fast_gdb::linear` | 无 GDAL 依赖的纯 C++ Reader |
+| `fast_gdb::hybrid` | fast-gdb Reader 主路径 + GDAL 复杂几何回退 |
+
+计划中的 Adaptive Reader 仍处于 ADR-008 Proposed 阶段，尚未作为安装 target 或当前能力发布。
+
+不存在 `fast_gdb::writer`。`include/fast_gdb/writer`、自研二进制 Writer、Writer 工具、Writer 工作流和 Writer 专项文档均不属于当前产品。
+
+`src/edgar/usegdal` 中可能存在 write、transaction 或 batch-write 示例，但这些文件不进入根 CMake target、安装包、package consumer 或发布门禁，其存在不构成 Writer 支持声明。
+
+## 当前读写边界
+
+### 支持
+
+```text
+关闭全部 fast-gdb Reader
+    → GDAL/OpenFileGDB 独占修改目标 .gdb
+    → 关闭全部 GDAL 对象
+    → 重新创建 fast-gdb Reader
+```
+
+重开后的 Reader 必须读取 GDAL 已提交的新数据。
+
+### 不支持
+
+```text
+fast-gdb Reader 保持打开
+    + GDAL 同时 update 同一个 .gdb 目录
+```
+
+并发期间可能出现 old/new/mixed/error，项目不承诺任何固定结果。旧 Reader 在 GDALClose 后也不能继续复用，必须销毁并完整重开。
+
+## 计划中的 Adaptive Reader 边界
+
+ADR-008 计划增加一个可选 Reader 编排层：
+
+```text
+稳定数据源
+  → fast-gdb 快路径
+
+活动 Writer / 读取期间源变化
+  → 丢弃结果
+  → SourceBusy / ReaderExpired
+
+写入结束且源稳定
+  → fresh GDAL read-only fallback
+  → 完整物化并关闭 Dataset
+  → 后置验证通过后返回
+```
+
+协调模式通过调用方提供的 `writer_active/generation` 获得确定性行为。未知外部 Writer 只能采用 best-effort 文件快照检测，不能承诺绝对无漏检。
+
+该计划不引入 Writer、GDAL update wrapper、事务、发布层或 marker 写入能力。ADR-008 Accepted 前，ADR-007 仍是唯一正式合同。
+
+## 使用文档
 
 | 文件 | 内容 |
 |---|---|
-| [03_测试数据准备与跨平台验证.md](usage/03_测试数据准备与跨平台验证.md) | 测试数据权威入口；GDAL/ArcGIS Pro 生成、三平台回归和性能验收 |
-| [04_功能与基准测试覆盖矩阵.md](usage/04_功能与基准测试覆盖矩阵.md) | 能力、测试证据、数据、平台、CI 门禁和基准状态矩阵 |
-| [05_fast-gdb真实数据验收资料清单.md](usage/05_fast-gdb真实数据验收资料清单.md) | 新增能力和真实数据的验收规范 |
-| [10_空间属性联合查询代码审核指南.md](usage/10_空间属性联合查询代码审核指南.md) | 当前分支代码审核入口 |
-| [01_组件库设计与使用.md](usage/01_组件库设计与使用.md) | usegdal 组件库设计、API 教程、查询与写入示例 |
-| [02_几何WKB曲线支持与迁移.md](usage/02_几何WKB曲线支持与迁移.md) | GeometryValue/Model、ISO WKB、Polygon、曲线、Hybrid FID 和兼容策略 |
+| [组件库设计与使用](usage/01_组件库设计与使用.md) | Reader、可选 GDAL Hybrid 和 reference-only `usegdal` 边界 |
+| [几何 WKB 曲线支持与迁移](usage/02_几何WKB曲线支持与迁移.md) | GeometryModel/GeometryValue、WKB、曲线和 Hybrid |
+| [测试数据准备与跨平台验证](usage/03_测试数据准备与跨平台验证.md) | 使用 GDAL/ArcGIS Pro 生成测试数据和验证 Reader |
+| [功能与基准测试覆盖矩阵](usage/04_功能与基准测试覆盖矩阵.md) | Reader 自动化、性能和真实数据缺口 |
+| [真实数据验收资料清单](usage/05_fast-gdb真实数据验收资料清单.md) | Reader 新能力的真实数据验收规范 |
+| [空间属性联合查询代码审核指南](usage/10_空间属性联合查询代码审核指南.md) | 查询路径、回退和审核点 |
+| [GDAL 写入与 fast-gdb 读取边界](usage/11_GDAL写入与fast-gdb读取边界.md) | 当前 Reader/Writer 阶段合同和 Adaptive Reader 计划用法 |
 
 ## 技术专题
 
 | 文件 | 内容 |
 |---|---|
-| [01_性能基准与优化.md](technical/01_性能基准与优化.md) | 基准测试、优化历程、性能差异根因 |
-| [02_索引构建方案.md](technical/02_索引构建方案.md) | 空间/属性索引构建策略和验证工具 |
-| [03_技术探索与教训.md](technical/03_技术探索与教训.md) | B+ 树、LRU、mmap、失败实验和经验沉淀 |
-| [04_GDB二进制格式图解教程.md](technical/04_GDB二进制格式图解教程.md) | FileGDB 二进制格式图解、查询链路和源码链接 |
-| [Reader QUERY_FLOW](../src/edgar/explorgdb/reader/QUERY_FLOW.md) | 空间、属性和 `SpatialWhere` 联合执行流程 |
+| [性能基准与优化](technical/01_性能基准与优化.md) | Reader 基准和性能根因 |
+| [索引构建方案](technical/02_索引构建方案.md) | `.spx/.atx` 读取、候选和验证 |
+| [技术探索与教训](technical/03_技术探索与教训.md) | B+ 树、LRU、mmap 和失败实验 |
+| [GDB 二进制格式图解教程](technical/04_GDB二进制格式图解教程.md) | FileGDB 二进制结构和 Reader 链路 |
+| [读查询性能与工程实践问答](technical/05_读查询性能与工程实践问答.md) | Reader 工程问题 |
+| [Reader 读取流程专题](technical/06_Reader读取流程专题.md) | Reader 端到端流程和生命周期 |
 
-## 规划与状态
+## 状态原则
 
-状态冲突时，以 [00_规划文档状态索引.md](planning/00_规划文档状态索引.md) 的阅读顺序为准。
-
-| 文件 | 状态 | 内容 |
-|---|:---:|---|
-| [00_规划文档状态索引.md](planning/00_规划文档状态索引.md) | 当前入口 | 当前分支审核顺序、进度和未完成证据 |
-| [01_项目状态与规划.md](planning/01_项目状态与规划.md) | 当前 | 项目总体状态、发布边界和联合查询分支状态 |
-| [02_GDAL功能对比矩阵.md](planning/02_GDAL功能对比矩阵.md) | 当前 | linear / hybrid / GDAL 实际能力差异 |
-| [21_空间属性联合查询实现计划.md](planning/21_空间属性联合查询实现计划.md) | 当前计划 | 联合查询实现、测试、自审、文档和验收状态 |
-| [18_writer跨平台测试统一与后续编辑计划.md](planning/18_writer跨平台测试统一与后续编辑计划.md) | 其他工作流 | Writer 能力、合同和验收边界 |
-| [13_fast-gdb最终等价与发布验收报告.md](evidence/13_fast-gdb最终等价与发布验收报告.md) | 发布证据 | v0.1.0 既有支持范围，不含本分支新增能力 |
-| [curve-polyline-m-real-acceptance-2026-07-13.md](evidence/curve-polyline-m-real-acceptance-2026-07-13.md) | 历史证据 | 真实 M 曲线逐要素、WKB、空间查询和 sanitizer 证据 |
-| [reader-fresh-open-macos-2026-07-15.md](evidence/reader-fresh-open-macos-2026-07-15.md) | 历史证据 | Point/MultiPoint/Polyline 10M fresh-open 正确性与性能失败档 |
-
-历史阶段计划和归档文档不再作为本分支完成度来源。
-
-## 当前结论
-
-- 既有正式输出仍为 ISO WKB-first；
-- `.spx` 和 `.atx` 都只提供候选；
-- `SpatialWhere` 在当前分支组合精确 bbox 与现有 WHERE 子集；
-- 所有 `.atx` 快速路径都执行最终 WHERE 复核；
-- 损坏索引必须 fail closed；
-- 当前分支本地代码审核和提交门禁已通过；跨平台、真实数据和大规模性能证据未完成；
-- MultiPatch 仍为 degraded；
-- 合成自动化、真实数据和正式 artifact 必须分开记录。
+- fast-gdb 正式产品只读；
+- 所有 FileGDB 编辑统一由 GDAL/OpenFileGDB 或 ArcGIS 完成；
+- `usegdal` 只保留为非产品参考，不建立 API/ABI 或运行时承诺；
+- 当前同一 GDB 的外部写入和 fast-gdb 并发读取不支持；
+- 当前写前关闭 Reader，写后完整重开；
+- 计划中的 Adaptive Reader 检测到活动 Writer 时 fail closed；
+- fresh GDAL fallback 只能在源稳定后执行，且必须前后验证；
+- 无协调外部 Writer 检测只能标记 best-effort；
+- 在线不停读更新需要业务系统实现副本和原子切换；
+- Reader 正式输出保持 ISO WKB-first；
+- `.spx/.atx` 候选必须最终复核；
+- MultiPatch、关系、域、层级、栅格和稀疏 64-bit ObjectID 仍按专项 profile 验收；
+- 观测性测试结果不能被解释为并发读写支持声明。

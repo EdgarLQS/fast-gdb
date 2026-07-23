@@ -10,16 +10,15 @@ include(CTest)
 
 option(ENABLE_COVERAGE "Enable code coverage with gcov/lcov" OFF)
 option(FAST_GDB_WITH_GDAL
-       "Build GDAL-dependent components and the hybrid curve bridge" ON)
+       "Build GDAL-backed Reader components and compatibility tests" ON)
 option(FAST_GDB_BUILD_TOOLS "Build command-line validation tools" ON)
 option(FAST_GDB_BUILD_FULL_TESTS
-       "Build the complete FileGDB reader/writer test suite" ON)
+       "Build the complete FileGDB Reader test suite" ON)
 
 set(FAST_GDB_CURVE_BACKEND "BUILTIN" CACHE STRING
     "Default curve backend: REJECT, BUILTIN, or GDAL")
 set_property(CACHE FAST_GDB_CURVE_BACKEND PROPERTY STRINGS
              REJECT BUILTIN GDAL)
-
 set(FAST_GDB_GEOMETRY_OUTPUT "STANDARD_WKB" CACHE STRING
     "Default geometry output: STANDARD_WKB, NATIVE_CURVE_WKB, or DEBUG_WKT")
 set_property(CACHE FAST_GDB_GEOMETRY_OUTPUT PROPERTY STRINGS
@@ -27,7 +26,6 @@ set_property(CACHE FAST_GDB_GEOMETRY_OUTPUT PROPERTY STRINGS
 
 string(TOUPPER "${FAST_GDB_CURVE_BACKEND}" FAST_GDB_CURVE_BACKEND)
 string(TOUPPER "${FAST_GDB_GEOMETRY_OUTPUT}" FAST_GDB_GEOMETRY_OUTPUT)
-
 if(NOT FAST_GDB_CURVE_BACKEND MATCHES "^(REJECT|BUILTIN|GDAL)$")
     message(FATAL_ERROR
         "FAST_GDB_CURVE_BACKEND must be REJECT, BUILTIN, or GDAL")
@@ -116,7 +114,6 @@ set(FAST_GDB_GEOMETRY_SOURCES
     src/edgar/explorgdb/reader/spatial_predicate.cpp
     src/edgar/explorgdb/reader/wkb_writer.cpp
     src/edgar/explorgdb/reader/wkt_writer.cpp)
-
 add_library(fast_gdb_geometry_core STATIC ${FAST_GDB_GEOMETRY_SOURCES})
 target_include_directories(fast_gdb_geometry_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader)
@@ -126,7 +123,7 @@ target_compile_features(fast_gdb_geometry_core PUBLIC cxx_std_17)
 fast_gdb_apply_geometry_configuration(fast_gdb_geometry_core)
 fast_gdb_enable_warnings(fast_gdb_geometry_core)
 
-# ===== Shared FileGDB infrastructure =====
+# ===== Shared FileGDB Reader infrastructure =====
 file(GLOB COMMON_SOURCES CONFIGURE_DEPENDS
      src/edgar/explorgdb/common/*.cpp)
 add_library(explorgdb_common_lib STATIC ${COMMON_SOURCES})
@@ -143,7 +140,6 @@ foreach(geometry_source IN LISTS FAST_GDB_GEOMETRY_SOURCES)
                            BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
     list(REMOVE_ITEM READER_SOURCES "${geometry_source_abs}")
 endforeach()
-
 add_library(explorgdb_reader_lib STATIC ${READER_SOURCES})
 target_include_directories(explorgdb_reader_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader)
@@ -152,41 +148,11 @@ target_link_libraries(explorgdb_reader_lib PUBLIC
 target_compile_features(explorgdb_reader_lib PUBLIC cxx_std_17)
 fast_gdb_enable_warnings(explorgdb_reader_lib)
 
-# The data writer is pure C++, while gdb_index_creator.cpp uses GDAL to ask
-# the reference driver to build indexes. Keep the index helper out of the
-# dependency-free product, and attach GDAL explicitly when it is enabled.
-file(GLOB WRITER_SOURCES CONFIGURE_DEPENDS
-     src/edgar/explorgdb/writer/*.cpp)
-if(NOT FAST_GDB_WITH_GDAL)
-    list(FILTER WRITER_SOURCES EXCLUDE REGEX ".*gdb_index_creator\\.cpp$")
-endif()
-add_library(explorgdb_writer_lib STATIC ${WRITER_SOURCES})
-target_include_directories(explorgdb_writer_lib PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/writer)
-target_link_libraries(explorgdb_writer_lib PUBLIC explorgdb_common_lib
-                                           PRIVATE explorgdb_reader_lib)
-if(FAST_GDB_WITH_GDAL)
-    target_compile_definitions(explorgdb_writer_lib PRIVATE
-        FAST_GDB_WITH_GDAL_ENABLED)
-    target_link_libraries(explorgdb_writer_lib PRIVATE ${FAST_GDB_GDAL_TARGET})
-endif()
-target_compile_features(explorgdb_writer_lib PUBLIC cxx_std_17)
-fast_gdb_enable_warnings(explorgdb_writer_lib)
-
 add_library(fast_gdb_linear INTERFACE)
 target_link_libraries(fast_gdb_linear INTERFACE explorgdb_reader_lib)
 
-# ===== Optional GDAL components and product B =====
+# ===== Optional GDAL-backed Reader fallback =====
 if(FAST_GDB_WITH_GDAL)
-    file(GLOB USEGDAL_SOURCES CONFIGURE_DEPENDS
-         src/edgar/usegdal/*.cpp)
-    add_library(gdb_component STATIC ${USEGDAL_SOURCES})
-    target_include_directories(gdb_component PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/usegdal)
-    target_link_libraries(gdb_component PRIVATE ${FAST_GDB_GDAL_TARGET})
-    target_compile_features(gdb_component PUBLIC cxx_std_17)
-    fast_gdb_enable_warnings(gdb_component)
-
     add_library(fast_gdb_curve_gdal STATIC
         src/edgar/explorgdb/curve_gdal/gdal_curve_backend.cpp
         src/edgar/explorgdb/curve_gdal/hybrid_geometry_reader.cpp)
@@ -229,7 +195,6 @@ if(BUILD_TESTING)
         tests/edgar/explorgdb/reader/test_geometry_model.cpp
         tests/edgar/explorgdb/reader/test_curve_geometry.cpp
         tests/edgar/explorgdb/reader/test_geometry_contracts.cpp)
-
     add_executable(fast_gdb_geometry_test_runner ${GEOMETRY_TEST_SOURCES})
     target_include_directories(fast_gdb_geometry_test_runner PRIVATE
         tests
@@ -242,9 +207,6 @@ if(BUILD_TESTING)
     gtest_discover_tests(fast_gdb_geometry_test_runner
                          TEST_PREFIX "geometry.")
 
-    # Release-gate Hybrid target intentionally excludes the legacy usegdal
-    # component and writer/tutorial suites. It validates only the GDAL bridge,
-    # real FileGDB read contracts, FID mapping, and pure reader integration.
     if(FAST_GDB_WITH_GDAL)
         add_executable(fast_gdb_hybrid_test_runner
             tests/test_runner.cpp
@@ -264,6 +226,28 @@ if(BUILD_TESTING)
         fast_gdb_enable_warnings(fast_gdb_hybrid_test_runner)
         gtest_discover_tests(fast_gdb_hybrid_test_runner
                              TEST_PREFIX "hybrid.")
+
+        find_package(Threads REQUIRED)
+        add_executable(fast_gdb_gdal_read_write_boundary_test_runner
+            tests/test_runner.cpp
+            tests/usegdal/test_gdal_write_fast_reader_visibility.cpp)
+        target_include_directories(
+            fast_gdb_gdal_read_write_boundary_test_runner PRIVATE
+            tests
+            tests/usegdal
+            tests/edgar/explorgdb
+            tests/edgar/explorgdb/common
+            tests/edgar/explorgdb/reader)
+        target_link_libraries(
+            fast_gdb_gdal_read_write_boundary_test_runner PRIVATE
+            GTest::gtest explorgdb_reader_lib ${FAST_GDB_GDAL_TARGET}
+            Threads::Threads)
+        fast_gdb_enable_warnings(
+            fast_gdb_gdal_read_write_boundary_test_runner)
+        gtest_discover_tests(
+            fast_gdb_gdal_read_write_boundary_test_runner
+            TEST_PREFIX "gdal-reader-boundary."
+            PROPERTIES RESOURCE_LOCK fast_gdb_gdal_reader_boundary_fixture)
     endif()
 
     if(FAST_GDB_BUILD_FULL_TESTS)
@@ -278,9 +262,6 @@ if(BUILD_TESTING)
                              "${geometry_test_abs}")
         endforeach()
 
-        # These tests intentionally compare against GDAL or use the shared
-        # GDAL fixture. They belong to the hybrid matrix, not the dependency-
-        # free Reader test target.
         if(NOT FAST_GDB_WITH_GDAL)
             list(FILTER EXPLORGDB_READER_TEST_SOURCES EXCLUDE REGEX
                  ".*test_metadata_reader\\.cpp$")
@@ -298,31 +279,23 @@ if(BUILD_TESTING)
             tests/test_runner.cpp
             ${EXPLORGDB_COMMON_TEST_SOURCES}
             ${EXPLORGDB_READER_TEST_SOURCES})
-
         if(FAST_GDB_WITH_GDAL)
-            file(GLOB USEGDAL_TEST_SOURCES CONFIGURE_DEPENDS
-                 tests/usegdal/*.cpp)
-            file(GLOB TUTORIAL_SOURCES CONFIGURE_DEPENDS
-                 tests/tutorials/*.cpp)
-            file(GLOB EXPLORGDB_WRITER_TEST_SOURCES CONFIGURE_DEPENDS
-                 tests/edgar/explorgdb/writer/*.cpp)
+            file(GLOB USEGDAL_READER_TEST_SOURCES CONFIGURE_DEPENDS
+                 tests/usegdal/test_*.cpp)
+            list(REMOVE_ITEM USEGDAL_READER_TEST_SOURCES
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/usegdal/test_gdal_write_fast_reader_visibility.cpp")
             list(APPEND FULL_TEST_SOURCES
-                 ${TUTORIAL_SOURCES}
-                 ${USEGDAL_TEST_SOURCES}
-                 ${EXPLORGDB_WRITER_TEST_SOURCES}
-                 tests/edgar/explorgdb/curve_gdal/test_hybrid_geometry_reader.cpp
-                 tests/benchmark_full_performance.cpp)
+                 ${USEGDAL_READER_TEST_SOURCES}
+                 tests/edgar/explorgdb/curve_gdal/test_hybrid_geometry_reader.cpp)
         endif()
 
         add_executable(gdb_tutorial_test_runner ${FULL_TEST_SOURCES})
         target_include_directories(gdb_tutorial_test_runner PRIVATE
             tests
-            tests/tutorials
             tests/usegdal
             tests/edgar/explorgdb
             tests/edgar/explorgdb/common
-            tests/edgar/explorgdb/reader
-            tests/edgar/explorgdb/writer)
+            tests/edgar/explorgdb/reader)
         target_compile_definitions(gdb_tutorial_test_runner PRIVATE
             FAST_GDB_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
         if(FAST_GDB_WITH_GDAL)
@@ -331,10 +304,10 @@ if(BUILD_TESTING)
                 src/edgar/explorgdb/curve_gdal)
         endif()
         target_link_libraries(gdb_tutorial_test_runner PRIVATE
-            GTest::gtest explorgdb_reader_lib explorgdb_writer_lib)
+            GTest::gtest explorgdb_reader_lib)
         if(FAST_GDB_WITH_GDAL)
             target_link_libraries(gdb_tutorial_test_runner PRIVATE
-                ${FAST_GDB_GDAL_TARGET} gdb_component fast_gdb_curve_gdal)
+                ${FAST_GDB_GDAL_TARGET} fast_gdb_curve_gdal)
         endif()
         fast_gdb_enable_warnings(gdb_tutorial_test_runner)
         gtest_discover_tests(
@@ -344,7 +317,7 @@ if(BUILD_TESTING)
     endif()
 endif()
 
-# ===== Optional validation tools =====
+# ===== Optional Reader validation tools =====
 if(FAST_GDB_BUILD_TOOLS)
     add_executable(verify_arcgis_indexes
         tests/tools/verify_arcgis_indexes.cpp)
@@ -365,38 +338,17 @@ if(FAST_GDB_BUILD_TOOLS)
         target_link_libraries(generate_large_gdb PRIVATE
                               ${FAST_GDB_GDAL_TARGET})
         fast_gdb_enable_warnings(generate_large_gdb)
-
-        add_executable(generate_100k_polygons
-            tests/tools/generate_100k_polygons.cpp)
-        target_include_directories(generate_100k_polygons PRIVATE src/edgar)
-        target_link_libraries(generate_100k_polygons PRIVATE
-            explorgdb_writer_lib ${FAST_GDB_GDAL_TARGET})
-        fast_gdb_enable_warnings(generate_100k_polygons)
-
-        add_executable(verify_binary_write_index
-            tests/tools/verify_binary_write_index.cpp)
-        target_include_directories(verify_binary_write_index PRIVATE src/edgar)
-        target_link_libraries(verify_binary_write_index PRIVATE
-            explorgdb_writer_lib ${FAST_GDB_GDAL_TARGET})
-        fast_gdb_enable_warnings(verify_binary_write_index)
-
-        add_executable(benchmark_index_creation
-            tests/tools/benchmark_index_creation.cpp)
-        target_include_directories(benchmark_index_creation PRIVATE src/edgar)
-        target_link_libraries(benchmark_index_creation PRIVATE
-            explorgdb_writer_lib ${FAST_GDB_GDAL_TARGET})
-        fast_gdb_enable_warnings(benchmark_index_creation)
     endif()
 endif()
 
 include(cmake/FastGdbInstall.cmake)
 
 message(STATUS "")
-message(STATUS "=== fast-gdb geometry build ===")
+message(STATUS "=== fast-gdb Reader build ===")
+message(STATUS "Product scope: Reader only; FileGDB edits belong to GDAL/OpenFileGDB")
 message(STATUS "Curve backend: ${FAST_GDB_CURVE_BACKEND}")
 message(STATUS "Geometry output: ${FAST_GDB_GEOMETRY_OUTPUT}")
 message(STATUS "GDAL components: ${FAST_GDB_WITH_GDAL}")
-message(STATUS "Portable geometry core: fast_gdb_geometry_core")
 message(STATUS "Pure C++ product: fast_gdb_linear")
 if(FAST_GDB_WITH_GDAL)
     message(STATUS "Hybrid product: fast_gdb_hybrid")
