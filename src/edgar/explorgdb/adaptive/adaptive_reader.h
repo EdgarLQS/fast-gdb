@@ -102,7 +102,8 @@ private:
  * 调用方外部 GDAL update 生命周期的无 GDAL 类型令牌。
  *
  * Pending 状态析构会撤销 Pending。Active 状态析构不会猜测外部 Dataset 已关闭，
- * 协调器保持 fail-closed。
+ * 协调器保持 fail-closed。调用方应在打开 update Dataset 前保存 coordination_id；
+ * 若 Active 令牌丢失，可在确认 Dataset 已关闭后通过协调器显式恢复。
  */
 class ExternalUpdateToken {
 public:
@@ -169,6 +170,18 @@ public:
     PrepareExternalUpdateResult prepare_external_update(
         const std::string& gdb_path,
         std::chrono::milliseconds drain_timeout) const;
+
+    /**
+     * Active 令牌丢失后的显式恢复入口。
+     *
+     * 仅在调用方已经关闭对应官方 GDAL update Dataset 后调用，并传入打开前保存的
+     * coordination_id。成功或关闭失败都会递增 generation；关闭失败使源继续禁止
+     * Verified fast 读取。
+     */
+    CoordinationStatus notify_external_update_closed(
+        const std::string& gdb_path,
+        uint64_t coordination_id,
+        bool close_succeeded) const;
 
     CoordinatedSourceState state(const std::string& gdb_path) const;
 
