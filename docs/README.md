@@ -13,7 +13,7 @@ fast-gdb 当前产品定位为 **FileGDB Reader only**。项目不提供受支�
 | [ADR-007：Reader-only 与 GDAL 编辑边界](adr/ADR-007-reader-only-gdal-edit-boundary.md) | 当前产品定位、决策理由、支持合同和非目标 |
 | [ADR-008：Adaptive Reader 写入检测与 fresh GDAL 回退](adr/ADR-008-adaptive-reader-write-detection-gdal-fallback.md) | Proposed：写期间 fail closed、源稳定后 fresh GDAL 只读恢复 |
 | [Adaptive Reader 实施计划](planning/22_AdaptiveReader写入检测与GDAL回退计划.md) | 文件快照、协调探针、Reader 失效、fresh GDAL、测试和平台验收阶段 |
-| [GDAL/Reader 边界架构说明](architecture/gdal-write-reader-boundary.md) | 生命周期、缓存失效、并发可见性和 Adaptive 计划架构 |
+| [GDAL/Reader 边界架构说明](technical/07_gdal-write-reader-boundary.md) | 生命周期、缓存失效、并发可见性和 Adaptive 计划架构 |
 | [并发可见性观测证据](evidence/gdal-write-fast-gdb-read-characterization-2026-07-22.md) | 真实 OpenFileGDB 测试设计、分类结果和证据边界 |
 | [`usegdal` 参考层说明](../src/edgar/usegdal/README.md) | 非产品 GDAL/OGR RAII、查询、事务和批量写入参考代码的边界 |
 | [Writer 历史归档](archive/writer/README.md) | 已废弃 Writer ADR、规划、评审和证据；仅用于历史追溯 |
@@ -79,10 +79,10 @@ ADR-008 计划增加一个可选 Reader 编排层：
 
 | 文件 | 内容 |
 |---|---|
-| [组件库设计与使用](usage/01_组件库设计与使用.md) | Reader、可选 GDAL Hybrid 和 reference-only `usegdal` 边界 |
-| [几何 WKB 曲线支持与迁移](usage/02_几何WKB曲线支持与迁移.md) | GeometryModel/GeometryValue、WKB、曲线和 Hybrid |
-| [真实数据验收资料清单](usage/05_fast-gdb真实数据验收资料清单.md) | Reader 新能力的真实数据验收规范 |
-| [空间属性联合查询代码审核指南](usage/10_空间属性联合查询代码审核指南.md) | 查询路径、回退和审核点 |
+| [组件库设计与使用](tutorial/01_组件库设计与使用.md) | Reader、可选 GDAL Hybrid 和 reference-only `usegdal` 边界 |
+| [几何 WKB 曲线支持与迁移](tutorial/02_几何WKB曲线支持与迁移.md) | GeometryModel/GeometryValue、WKB、曲线和 Hybrid |
+| [真实数据验收资料清单](testing/05_fast-gdb真实数据验收资料清单.md) | Reader 新能力的真实数据验收规范 |
+| [空间属性联合查询代码审核指南](testing/10_空间属性联合查询代码审核指南.md) | 查询路径、回退和审核点 |
 | [GDAL 写入与 fast-gdb 读取边界](testing/03_GDAL边界与读写测试.md) | 当前 Reader/Writer 阶段合同和 Adaptive Reader 计划用法 |
 | [GDB 二进制格式图解教程](tutorial/04_GDB二进制格式图解教程.md) | FileGDB 二进制结构和 Reader 链路 |
 
