@@ -90,12 +90,22 @@ private:
                     std::string normalized_path,
                     uint64_t generation);
 
+    // 后端 close 抛异常时无法证明 mmap/句柄已经释放。此时故意把注册表中的
+    // reader 计数留在原位并丢弃本地释放能力，使后续 Writer 永久 fail closed。
+    // 这是灾难恢复语义，不是正常资源释放路径。
+    void abandon_fail_closed() noexcept {
+        counted_ = false;
+        registry_.reset();
+        normalized_path_.clear();
+    }
+
     std::shared_ptr<detail::CoordinatorRegistry> registry_;
     std::string normalized_path_;
     uint64_t generation_ = 0;
     bool counted_ = false;
 
     friend class InProcessGdbCoordinator;
+    friend class AdaptiveFeatureCursor;
 };
 
 /**
