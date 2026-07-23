@@ -105,10 +105,10 @@ BackendCursor failed_read_cursor(std::string message) {
     return cursor;
 }
 
-bool is_gdal_dataset_open_failure(const std::string& error) {
-    return error.find("GDALOpenEx(OpenFileGDB readonly) failed") !=
-               std::string::npos ||
-           error.find("OpenFileGDB layer not found:") == 0;
+bool is_gdal_filter_setup_failure(const std::string& error) {
+    return error.find("attribute index is not bound to an OGR field:") == 0 ||
+           error.find("failed to clear OGR attribute filter") == 0 ||
+           error.find("OGR SetAttributeFilter failed:") == 0;
 }
 
 BackendCursor validating_cursor(BackendCursor raw,
@@ -231,7 +231,7 @@ AdaptiveReadSession make_adaptive_read_session(
             try {
                 return gdal->open_cursor(request);
             } catch (const std::runtime_error& exception) {
-                if (is_gdal_dataset_open_failure(exception.what())) throw;
+                if (!is_gdal_filter_setup_failure(exception.what())) throw;
                 return failed_read_cursor(exception.what());
             }
         });
