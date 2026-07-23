@@ -65,11 +65,11 @@ jobs:
           discovered="$(ctest --test-dir build-adaptive -N \
             -R '^adaptive-reader\.' | sed -n 's/^Total Tests: //p')"
           echo "Discovered adaptive tests: ${discovered:-0}"
-          test "${discovered:-0}" -ge 17
+          test "${discovered:-0}" -ge 21
           ctest --test-dir build-adaptive --output-on-failure \
             -R '^adaptive-reader\.' 2>&1 | tee test-adaptive.log
 
-      - name: Verify linear remains GDAL-free
+      - name: Verify installed linear consumer remains GDAL-free
         shell: bash
         run: |
           set -o pipefail
@@ -80,12 +80,40 @@ jobs:
             -DFAST_GDB_BUILD_TOOLS=OFF \
             -DFAST_GDB_BUILD_FULL_TESTS=OFF \
             -DBUILD_TESTING=OFF 2>&1 | tee configure-linear.log
-          cmake --build build-linear --target explorgdb_reader_lib \
+          cmake --build build-linear \
             --parallel --verbose 2>&1 | tee build-linear.log
-          if grep -E '(^|[ /])(-l)?gdal([ .]|$)' build-linear.log; then
-            echo "linear build unexpectedly references GDAL" >&2
-            exit 1
-          fi
+          cmake --install build-linear --prefix "$PWD/linear-install" \
+            2>&1 | tee install-linear.log
+
+          while IFS= read -r targets_file; do
+            if grep -E 'GDAL::GDAL|fast_gdb_gdal_dependency' "$targets_file"; then
+              echo "linear export unexpectedly references GDAL: $targets_file" >&2
+              exit 1
+            fi
+          done < <(find linear-install -name 'fast_gdbTargets*.cmake' -type f)
+
+          mkdir -p linear-consumer
+          cat > linear-consumer/CMakeLists.txt <<'CMAKE'
+          cmake_minimum_required(VERSION 3.15)
+          project(fast_gdb_linear_consumer LANGUAGES CXX)
+          find_package(fast_gdb CONFIG REQUIRED)
+          add_executable(linear_consumer main.cpp)
+          target_link_libraries(linear_consumer PRIVATE fast_gdb::linear)
+          CMAKE
+          cat > linear-consumer/main.cpp <<'CPP'
+          #include "explorgdb_types.h"
+          int main() {
+              return explorgdb::field_type_name(explorgdb::FieldType::Int32)
+                  == nullptr;
+          }
+          CPP
+
+          cmake -S linear-consumer -B build-linear-consumer -G Ninja \
+            -DCMAKE_PREFIX_PATH="$PWD/linear-install" \
+            -DCMAKE_DISABLE_FIND_PACKAGE_GDAL=TRUE \
+            2>&1 | tee configure-linear-consumer.log
+          cmake --build build-linear-consumer --parallel --verbose \
+            2>&1 | tee build-linear-consumer.log
 
       - name: Upload diagnostics
         if: always()
@@ -98,4 +126,7 @@ jobs:
             test-adaptive.log
             configure-linear.log
             build-linear.log
+            install-linear.log
+            configure-linear-consumer.log
+            build-linear-consumer.log
           if-no-files-found: warn
