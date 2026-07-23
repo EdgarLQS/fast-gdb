@@ -14,6 +14,8 @@ option(FAST_GDB_WITH_GDAL
 option(FAST_GDB_BUILD_TOOLS "Build command-line validation tools" ON)
 option(FAST_GDB_BUILD_FULL_TESTS
        "Build the complete FileGDB Reader test suite" ON)
+option(FAST_GDB_BUILD_ADAPTIVE_READER
+       "Build the coordinated Adaptive Reader" OFF)
 
 set(FAST_GDB_CURVE_BACKEND "BUILTIN" CACHE STRING
     "Default curve backend: REJECT, BUILTIN, or GDAL")
@@ -43,6 +45,10 @@ if(FAST_GDB_GEOMETRY_OUTPUT STREQUAL "NATIVE_CURVE_WKB" AND
    NOT FAST_GDB_WITH_GDAL)
     message(FATAL_ERROR
         "NATIVE_CURVE_WKB requires FAST_GDB_WITH_GDAL=ON")
+endif()
+if(FAST_GDB_BUILD_ADAPTIVE_READER AND NOT FAST_GDB_WITH_GDAL)
+    message(FATAL_ERROR
+        "FAST_GDB_BUILD_ADAPTIVE_READER=ON requires FAST_GDB_WITH_GDAL=ON")
 endif()
 
 if(ENABLE_COVERAGE)
@@ -168,6 +174,20 @@ if(FAST_GDB_WITH_GDAL)
     target_link_libraries(fast_gdb_hybrid INTERFACE fast_gdb_curve_gdal)
 endif()
 
+# ===== Optional coordinated Adaptive Reader =====
+if(FAST_GDB_BUILD_ADAPTIVE_READER)
+    find_package(Threads REQUIRED)
+    add_library(fast_gdb_adaptive STATIC
+        src/edgar/explorgdb/adaptive/adaptive_reader.cpp)
+    target_include_directories(fast_gdb_adaptive PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/adaptive
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader)
+    target_link_libraries(fast_gdb_adaptive PUBLIC
+        explorgdb_reader_lib ${FAST_GDB_GDAL_TARGET} Threads::Threads)
+    target_compile_features(fast_gdb_adaptive PUBLIC cxx_std_17)
+    fast_gdb_enable_warnings(fast_gdb_adaptive)
+endif()
+
 if(FAST_GDB_BUILD_TOOLS)
     add_executable(explorgdb_cli
         src/edgar/explorgdb/reader/explorgdb_cli.cpp)
@@ -248,6 +268,24 @@ if(BUILD_TESTING)
             fast_gdb_gdal_read_write_boundary_test_runner
             TEST_PREFIX "gdal-reader-boundary."
             PROPERTIES RESOURCE_LOCK fast_gdb_gdal_reader_boundary_fixture)
+    endif()
+
+    if(FAST_GDB_BUILD_ADAPTIVE_READER)
+        add_executable(fast_gdb_adaptive_reader_test_runner
+            tests/test_runner.cpp
+            tests/edgar/explorgdb/adaptive/test_adaptive_reader.cpp)
+        target_include_directories(fast_gdb_adaptive_reader_test_runner PRIVATE
+            tests
+            tests/edgar/explorgdb
+            tests/edgar/explorgdb/adaptive
+            tests/edgar/explorgdb/common
+            tests/edgar/explorgdb/reader
+            src/edgar/explorgdb/adaptive)
+        target_link_libraries(fast_gdb_adaptive_reader_test_runner PRIVATE
+            GTest::gtest fast_gdb_adaptive Threads::Threads)
+        fast_gdb_enable_warnings(fast_gdb_adaptive_reader_test_runner)
+        gtest_discover_tests(fast_gdb_adaptive_reader_test_runner
+                             TEST_PREFIX "adaptive-reader.")
     endif()
 
     if(FAST_GDB_BUILD_FULL_TESTS)
@@ -352,5 +390,8 @@ message(STATUS "GDAL components: ${FAST_GDB_WITH_GDAL}")
 message(STATUS "Pure C++ product: fast_gdb_linear")
 if(FAST_GDB_WITH_GDAL)
     message(STATUS "Hybrid product: fast_gdb_hybrid")
+endif()
+if(FAST_GDB_BUILD_ADAPTIVE_READER)
+    message(STATUS "Coordinated product: fast_gdb_adaptive")
 endif()
 message(STATUS "")
