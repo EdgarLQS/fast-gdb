@@ -46,7 +46,7 @@ TEST(AdaptiveReaderRecoveryTest,
 }
 
 TEST(AdaptiveReaderRecoveryTest,
-     ReportedCloseFailureInvalidatesGenerationAndStaysFailClosed) {
+     ReportedCloseFailureKeepsWriterActiveUntilConfirmedClosed) {
     InProcessGdbCoordinator coordinator;
     const std::string path = "failed-close-recovery.gdb";
 
@@ -56,26 +56,39 @@ TEST(AdaptiveReaderRecoveryTest,
 
     auto prepared = coordinator.prepare_external_update(path, 0ms);
     ASSERT_EQ(prepared.status, CoordinationStatus::Ok);
+    const uint64_t coordination_id = prepared.token.coordination_id();
+    ASSERT_NE(coordination_id, 0U);
     ASSERT_EQ(prepared.token.notify_update_opened(),
               CoordinationStatus::Ok);
     EXPECT_EQ(prepared.token.notify_update_closed(false),
               CoordinationStatus::ExternalUpdateNotClosed);
+    EXPECT_TRUE(prepared.token.active());
 
     const auto failed = coordinator.state(path);
-    EXPECT_FALSE(failed.writer_active);
+    EXPECT_TRUE(failed.writer_active);
     EXPECT_FALSE(failed.source_verified);
     EXPECT_EQ(failed.generation, 1U);
     EXPECT_TRUE(old_reader.expired_at_safe_point());
     EXPECT_FALSE(coordinator.try_acquire_fast_reader(path).valid());
 
-    auto repair = coordinator.prepare_external_update(path, 0ms);
-    ASSERT_EQ(repair.status, CoordinationStatus::Ok);
-    ASSERT_EQ(repair.token.notify_update_opened(), CoordinationStatus::Ok);
-    ASSERT_EQ(repair.token.notify_update_closed(true), CoordinationStatus::Ok);
+    auto blocked_writer = coordinator.prepare_external_update(path, 0ms);
+    EXPECT_EQ(blocked_writer.status,
+              CoordinationStatus::WriterAlreadyActive);
 
-    const auto repaired = coordinator.state(path);
-    EXPECT_TRUE(repaired.source_verified);
-    EXPECT_EQ(repaired.generation, 2U);
+    EXPECT_EQ(coordinator.notify_external_update_closed(
+                  path, coordination_id, false),
+              CoordinationStatus::ExternalUpdateNotClosed);
+    EXPECT_EQ(coordinator.state(path).generation, 1U);
+    EXPECT_TRUE(coordinator.state(path).writer_active);
+
+    ASSERT_EQ(prepared.token.notify_update_closed(true),
+              CoordinationStatus::Ok);
+    EXPECT_FALSE(prepared.token.active());
+
+    const auto recovered = coordinator.state(path);
+    EXPECT_FALSE(recovered.writer_active);
+    EXPECT_TRUE(recovered.source_verified);
+    EXPECT_EQ(recovered.generation, 1U);
     EXPECT_TRUE(coordinator.try_acquire_fast_reader(path).valid());
 }
 
