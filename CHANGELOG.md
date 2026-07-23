@@ -14,6 +14,8 @@ All notable changes to fast-gdb are documented in this file.
 - Same-directory GDAL update plus fast-gdb reading is explicitly classified as unsupported and may expose old, new, mixed or error states.
 - Online copy/edit/switch publication is an application responsibility outside fast-gdb.
 - `src/edgar/usegdal` is retained as reference-only historical GDAL/OGR wrapper code. It is not built, installed, exported, release-gated, or covered by API/ABI compatibility promises.
+- A future Adaptive Reader is now planned as a Reader-only orchestration layer. Writer-active requests fail closed; source changes expire old Reader state; recovery uses a fresh GDAL read-only Dataset only after the source is quiescent.
+- Coordinated `writer_active/generation` detection is the proposed deterministic contract. Uncoordinated external Writer detection is explicitly best-effort and cannot guarantee discovery of every Writer lifecycle.
 
 ### Added
 
@@ -24,6 +26,8 @@ All notable changes to fast-gdb are documented in this file.
 - Architecture, usage and evidence documents defining Reader quiescence, GDAL lifecycle and result interpretation.
 - CI checks that verify no Writer target or installed Writer headers remain.
 - `src/edgar/usegdal/README.md` documenting the non-product reference boundary.
+- Proposed ADR-008 defining Adaptive Reader write-activity detection, source-change validation, Reader invalidation and fresh GDAL read-only recovery.
+- Active design-first implementation plan `docs/planning/22_AdaptiveReader写入检测与GDAL回退计划.md`, including phased implementation, test names, stress gates and performance budgets.
 
 ### Removed
 
@@ -42,6 +46,7 @@ All notable changes to fast-gdb are documented in this file.
 - Formal acceptance requires usable CMake/CTest logs and artifacts for the pure Reader surface and the GDAL boundary target.
 - Characterization observations are diagnostic only and never constitute a concurrent read/write support statement.
 - Reference-only `usegdal` code is intentionally not claimed as build-validated or production-ready.
+- ADR-008 remains Proposed. Adaptive Reader runtime code, target and tests are not implemented or accepted yet; ADR-007 remains the only supported external-edit runtime contract.
 
 ## [0.1.0] - 2026-07-13
 
