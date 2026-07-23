@@ -36,6 +36,12 @@ namespace {
 
 using Clock = std::chrono::steady_clock;
 
+std::shared_ptr<detail::CoordinatorRegistry> process_registry() {
+    static const auto registry =
+        std::make_shared<detail::CoordinatorRegistry>();
+    return registry;
+}
+
 CoordinatedSourceState snapshot(
     const detail::CoordinatedSourceEntry& entry) {
     CoordinatedSourceState result;
@@ -270,7 +276,7 @@ void ExternalUpdateToken::abandon_current_state() noexcept {
 }
 
 InProcessGdbCoordinator::InProcessGdbCoordinator()
-    : registry_(std::make_shared<detail::CoordinatorRegistry>()) {}
+    : registry_(process_registry()) {}
 
 FastReaderLease InProcessGdbCoordinator::try_acquire_fast_reader(
     const std::string& gdb_path) const {
@@ -315,7 +321,8 @@ InProcessGdbCoordinator::prepare_external_update(
         return result;
     }
 
-    const uint64_t token_id = registry_->next_token_id++;
+    uint64_t token_id = registry_->next_token_id++;
+    if (token_id == 0) token_id = registry_->next_token_id++;
     initial.writer_pending = true;
     initial.writer_token_id = token_id;
     registry_->condition.notify_all();
