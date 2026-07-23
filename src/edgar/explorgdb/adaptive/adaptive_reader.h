@@ -316,6 +316,21 @@ public:
         ConcurrentReadPolicy policy = ConcurrentReadPolicy::SourceBusy) const;
 
 private:
+    static AdaptiveFeatureCursor failed_cursor(
+        AdaptiveReadStatus status,
+        AdaptiveReadBackend backend,
+        AdaptiveReadConsistency consistency,
+        std::string error);
+
+    static AdaptiveFeatureCursor open_fast_cursor_path(
+        const CursorFactory& factory,
+        const QueryRequest& request,
+        FastReaderLease lease);
+
+    static AdaptiveFeatureCursor open_gdal_cursor_path(
+        const CursorFactory& factory,
+        const QueryRequest& request);
+
     InProcessGdbCoordinator coordinator_;
     std::string gdb_path_;
     ReadExecutor fast_executor_;

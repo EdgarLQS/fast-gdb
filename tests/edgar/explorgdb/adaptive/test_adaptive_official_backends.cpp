@@ -111,6 +111,23 @@ std::vector<std::string> record_values(const FeatureRecord& record) {
     return values;
 }
 
+std::vector<uint8_t> meaningful_nullable_flags(
+    const FeatureRecord& record,
+    const AdaptiveLayerBinding& binding) {
+    size_t nullable_count = 0;
+    for (const FieldDescriptor& field : binding.fields) {
+        if ((field.flag & 1U) != 0) ++nullable_count;
+    }
+    std::vector<uint8_t> flags = record.nullable_flags;
+    const size_t byte_count = (nullable_count + 7U) / 8U;
+    flags.resize(byte_count, 0U);
+    if (byte_count != 0 && nullable_count % 8U != 0) {
+        flags.back() &= static_cast<uint8_t>(
+            (1U << (nullable_count % 8U)) - 1U);
+    }
+    return flags;
+}
+
 std::vector<QueryRequest> all_requests() {
     std::vector<QueryRequest> requests;
 
@@ -318,8 +335,11 @@ TEST_F(AdaptiveOfficialBackendsTest,
         if (request.kind == QueryKind::ReadByFid) {
             ASSERT_TRUE(fast_result.result.record.has_value());
             ASSERT_TRUE(gdal_result.result.record.has_value());
-            EXPECT_EQ(fast_result.result.record->nullable_flags,
-                      gdal_result.result.record->nullable_flags);
+            EXPECT_EQ(
+                meaningful_nullable_flags(*fast_result.result.record,
+                                           loaded.binding),
+                meaningful_nullable_flags(*gdal_result.result.record,
+                                           loaded.binding));
             EXPECT_EQ(record_values(*fast_result.result.record),
                       record_values(*gdal_result.result.record));
         }
@@ -343,8 +363,10 @@ TEST_F(AdaptiveOfficialBackendsTest,
         if (!fast_has) break;
 
         EXPECT_EQ(fast_feature.fid, gdal_feature.fid);
-        EXPECT_EQ(fast_feature.record.nullable_flags,
-                  gdal_feature.record.nullable_flags);
+        EXPECT_EQ(meaningful_nullable_flags(fast_feature.record,
+                                            loaded.binding),
+                  meaningful_nullable_flags(gdal_feature.record,
+                                            loaded.binding));
         EXPECT_EQ(record_values(fast_feature.record),
                   record_values(gdal_feature.record));
         EXPECT_EQ(fast_feature.geometry.status,

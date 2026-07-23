@@ -17,6 +17,175 @@ AdaptiveReadStatus backend_failure_status(BackendFailureKind failure) {
 
 }  // namespace
 
+AdaptiveFeatureCursor AdaptiveReadSession::failed_cursor(
+    AdaptiveReadStatus status,
+    AdaptiveReadBackend backend,
+    AdaptiveReadConsistency consistency,
+    std::string error) {
+    AdaptiveFeatureCursor cursor(status, backend, consistency, {}, {});
+    cursor.error_ = std::move(error);
+    return cursor;
+}
+
+AdaptiveFeatureCursor AdaptiveReadSession::open_fast_cursor_path(
+    const AdaptiveReadSession::CursorFactory& factory,
+    const QueryRequest& request,
+    FastReaderLease lease) {
+    if (!factory) {
+        lease.release();
+        return failed_cursor(
+            AdaptiveReadStatus::FastBackendReadFailed,
+            AdaptiveReadBackend::FastGdb,
+            AdaptiveReadConsistency::NotApplicable,
+            "fast cursor factory is not configured");
+    }
+
+    try {
+        BackendCursor backend_cursor = factory(request);
+        if (!backend_cursor.next) {
+            lease.release();
+            return failed_cursor(
+                AdaptiveReadStatus::FastBackendReadFailed,
+                AdaptiveReadBackend::FastGdb,
+                AdaptiveReadConsistency::NotApplicable,
+                "fast cursor factory returned no next callback");
+        }
+        return AdaptiveFeatureCursor(
+            AdaptiveReadStatus::Ok, AdaptiveReadBackend::FastGdb,
+            AdaptiveReadConsistency::Verified, std::move(lease),
+            std::move(backend_cursor));
+    } catch (const std::exception& exception) {
+        lease.release();
+        return failed_cursor(
+            AdaptiveReadStatus::FastBackendReadFailed,
+            AdaptiveReadBackend::FastGdb,
+            AdaptiveReadConsistency::NotApplicable, exception.what());
+    } catch (...) {
+        lease.release();
+        return failed_cursor(
+            AdaptiveReadStatus::FastBackendReadFailed,
+            AdaptiveReadBackend::FastGdb,
+            AdaptiveReadConsistency::NotApplicable,
+            "fast cursor factory threw an unknown exception");
+    }
+}
+
+AdaptiveFeatureCursor AdaptiveReadSession::open_gdal_cursor_path(
+    const AdaptiveReadSession::CursorFactory& factory,
+    const QueryRequest& request) {
+    if (!factory) {
+        return failed_cursor(
+            AdaptiveReadStatus::GdalOpenFailed,
+            AdaptiveReadBackend::GdalOpenFileGDB,
+            AdaptiveReadConsistency::UnverifiedConcurrentRead,
+            "fresh GDAL cursor factory is not configured");
+    }
+
+    try {
+        BackendCursor backend_cursor = factory(request);
+        if (!backend_cursor.next) {
+            return failed_cursor(
+                AdaptiveReadStatus::GdalOpenFailed,
+                AdaptiveReadBackend::GdalOpenFileGDB,
+                AdaptiveReadConsistency::UnverifiedConcurrentRead,
+                "GDAL cursor factory returned no next callback");
+        }
+        return AdaptiveFeatureCursor(
+            AdaptiveReadStatus::Ok, AdaptiveReadBackend::GdalOpenFileGDB,
+            AdaptiveReadConsistency::UnverifiedConcurrentRead, {},
+            std::move(backend_cursor));
+    } catch (const std::exception& exception) {
+        return failed_cursor(
+            AdaptiveReadStatus::GdalOpenFailed,
+            AdaptiveReadBackend::GdalOpenFileGDB,
+            AdaptiveReadConsistency::UnverifiedConcurrentRead,
+            exception.what());
+    } catch (...) {
+        return failed_cursor(
+            AdaptiveReadStatus::GdalOpenFailed,
+            AdaptiveReadBackend::GdalOpenFileGDB,
+            AdaptiveReadConsistency::UnverifiedConcurrentRead,
+            "GDAL cursor factory threw an unknown exception");
+    }
+}
+
+namespace {
+
+AdaptiveReadResult read_fast_path(
+    const InProcessGdbCoordinator& coordinator,
+    const std::string& gdb_path,
+    const AdaptiveReadSession::ReadExecutor& executor,
+    const QueryRequest& request,
+    FastReaderLease lease) {
+    AdaptiveReadResult output;
+    output.backend = AdaptiveReadBackend::FastGdb;
+    output.generation_before = lease.generation();
+    BackendReadResult backend;
+    try {
+        backend = executor
+            ? executor(request)
+            : BackendReadResult::read_failure(
+                  "fast executor is not configured");
+    } catch (const std::exception& exception) {
+        backend = BackendReadResult::read_failure(exception.what());
+    } catch (...) {
+        backend = BackendReadResult::read_failure(
+            "fast executor threw an unknown exception");
+    }
+    const auto during = coordinator.state(gdb_path);
+    output.generation_after = lease.generation();
+    output.writer_pending_seen = during.writer_pending;
+    output.writer_active_seen = during.writer_active;
+    lease.release();
+    output.consistency = backend.ok
+        ? AdaptiveReadConsistency::Verified
+        : AdaptiveReadConsistency::NotApplicable;
+    output.status = backend.ok
+        ? AdaptiveReadStatus::Ok
+        : AdaptiveReadStatus::FastBackendReadFailed;
+    if (backend.ok) output.result = std::move(backend.result);
+    else output.fast_error = std::move(backend.error);
+    return output;
+}
+
+AdaptiveReadResult read_gdal_path(
+    const InProcessGdbCoordinator& coordinator,
+    const std::string& gdb_path,
+    const AdaptiveReadSession::ReadExecutor& executor,
+    const QueryRequest& request,
+    AdaptiveReadResult output) {
+    output.backend = AdaptiveReadBackend::GdalOpenFileGDB;
+    output.consistency = AdaptiveReadConsistency::UnverifiedConcurrentRead;
+    BackendReadResult backend;
+    try {
+        backend = executor
+            ? executor(request)
+            : BackendReadResult::open_failure(
+                  "fresh GDAL executor is not configured");
+    } catch (const std::exception& exception) {
+        backend = BackendReadResult::read_failure(exception.what());
+    } catch (...) {
+        backend = BackendReadResult::read_failure(
+            "GDAL executor threw an unknown exception");
+    }
+    const auto after = coordinator.state(gdb_path);
+    output.generation_after = after.generation;
+    output.writer_pending_seen = output.writer_pending_seen ||
+                                 after.writer_pending;
+    output.writer_active_seen = output.writer_active_seen ||
+                                after.writer_active;
+    if (backend.ok) {
+        output.status = AdaptiveReadStatus::Ok;
+        output.result = std::move(backend.result);
+    } else {
+        output.status = backend_failure_status(backend.failure);
+        output.gdal_error = std::move(backend.error);
+    }
+    return output;
+}
+
+}  // namespace
+
 BackendReadResult BackendReadResult::success(QueryResult result) {
     BackendReadResult output;
     output.ok = true;
@@ -196,38 +365,9 @@ AdaptiveReadResult AdaptiveReadSession::read(
     auto fast_lease = coordinator_.try_acquire_fast_reader(gdb_path_);
 
     if (fast_lease.valid()) {
-        output.backend = AdaptiveReadBackend::FastGdb;
-        output.generation_before = fast_lease.generation();
-
-        BackendReadResult backend;
-        try {
-            backend = fast_executor_
-                ? fast_executor_(request)
-                : BackendReadResult::read_failure(
-                      "fast executor is not configured");
-        } catch (const std::exception& exception) {
-            backend = BackendReadResult::read_failure(exception.what());
-        } catch (...) {
-            backend = BackendReadResult::read_failure(
-                "fast executor threw an unknown exception");
-        }
-
-        const auto during = coordinator_.state(gdb_path_);
-        output.generation_after = fast_lease.generation();
-        output.writer_pending_seen = during.writer_pending;
-        output.writer_active_seen = during.writer_active;
-        fast_lease.release();
-
-        if (backend.ok) {
-            output.status = AdaptiveReadStatus::Ok;
-            output.consistency = AdaptiveReadConsistency::Verified;
-            output.result = std::move(backend.result);
-        } else {
-            output.status = AdaptiveReadStatus::FastBackendReadFailed;
-            output.consistency = AdaptiveReadConsistency::NotApplicable;
-            output.fast_error = std::move(backend.error);
-        }
-        return output;
+        return read_fast_path(
+            coordinator_, gdb_path_, fast_executor_, request,
+            std::move(fast_lease));
     }
 
     const auto before = coordinator_.state(gdb_path_);
@@ -243,38 +383,8 @@ AdaptiveReadResult AdaptiveReadSession::read(
         return output;
     }
 
-    output.backend = AdaptiveReadBackend::GdalOpenFileGDB;
-    output.consistency =
-        AdaptiveReadConsistency::UnverifiedConcurrentRead;
-
-    BackendReadResult backend;
-    try {
-        backend = gdal_executor_
-            ? gdal_executor_(request)
-            : BackendReadResult::open_failure(
-                  "fresh GDAL executor is not configured");
-    } catch (const std::exception& exception) {
-        backend = BackendReadResult::read_failure(exception.what());
-    } catch (...) {
-        backend = BackendReadResult::read_failure(
-            "GDAL executor threw an unknown exception");
-    }
-
-    const auto after = coordinator_.state(gdb_path_);
-    output.generation_after = after.generation;
-    output.writer_pending_seen = output.writer_pending_seen ||
-                                 after.writer_pending;
-    output.writer_active_seen = output.writer_active_seen ||
-                                after.writer_active;
-
-    if (backend.ok) {
-        output.status = AdaptiveReadStatus::Ok;
-        output.result = std::move(backend.result);
-    } else {
-        output.status = backend_failure_status(backend.failure);
-        output.gdal_error = std::move(backend.error);
-    }
-    return output;
+    return read_gdal_path(
+        coordinator_, gdb_path_, gdal_executor_, request, std::move(output));
 }
 
 AdaptiveFeatureCursor AdaptiveReadSession::open_cursor(
@@ -282,54 +392,8 @@ AdaptiveFeatureCursor AdaptiveReadSession::open_cursor(
     ConcurrentReadPolicy policy) const {
     auto fast_lease = coordinator_.try_acquire_fast_reader(gdb_path_);
     if (fast_lease.valid()) {
-        if (!fast_cursor_factory_) {
-            fast_lease.release();
-            AdaptiveFeatureCursor cursor(
-                AdaptiveReadStatus::FastBackendReadFailed,
-                AdaptiveReadBackend::FastGdb,
-                AdaptiveReadConsistency::NotApplicable,
-                {}, {});
-            cursor.error_ = "fast cursor factory is not configured";
-            return cursor;
-        }
-
-        try {
-            BackendCursor backend_cursor = fast_cursor_factory_(request);
-            if (!backend_cursor.next) {
-                fast_lease.release();
-                AdaptiveFeatureCursor cursor(
-                    AdaptiveReadStatus::FastBackendReadFailed,
-                    AdaptiveReadBackend::FastGdb,
-                    AdaptiveReadConsistency::NotApplicable,
-                    {}, {});
-                cursor.error_ = "fast cursor factory returned no next callback";
-                return cursor;
-            }
-            return AdaptiveFeatureCursor(
-                AdaptiveReadStatus::Ok,
-                AdaptiveReadBackend::FastGdb,
-                AdaptiveReadConsistency::Verified,
-                std::move(fast_lease),
-                std::move(backend_cursor));
-        } catch (const std::exception& exception) {
-            fast_lease.release();
-            AdaptiveFeatureCursor cursor(
-                AdaptiveReadStatus::FastBackendReadFailed,
-                AdaptiveReadBackend::FastGdb,
-                AdaptiveReadConsistency::NotApplicable,
-                {}, {});
-            cursor.error_ = exception.what();
-            return cursor;
-        } catch (...) {
-            fast_lease.release();
-            AdaptiveFeatureCursor cursor(
-                AdaptiveReadStatus::FastBackendReadFailed,
-                AdaptiveReadBackend::FastGdb,
-                AdaptiveReadConsistency::NotApplicable,
-                {}, {});
-            cursor.error_ = "fast cursor factory threw an unknown exception";
-            return cursor;
-        }
+        return open_fast_cursor_path(
+            fast_cursor_factory_, request, std::move(fast_lease));
     }
 
     if (policy == ConcurrentReadPolicy::SourceBusy) {
@@ -340,49 +404,7 @@ AdaptiveFeatureCursor AdaptiveReadSession::open_cursor(
             {}, {});
     }
 
-    if (!gdal_cursor_factory_) {
-        AdaptiveFeatureCursor cursor(
-            AdaptiveReadStatus::GdalOpenFailed,
-            AdaptiveReadBackend::GdalOpenFileGDB,
-            AdaptiveReadConsistency::UnverifiedConcurrentRead,
-            {}, {});
-        cursor.error_ = "fresh GDAL cursor factory is not configured";
-        return cursor;
-    }
-
-    try {
-        BackendCursor backend_cursor = gdal_cursor_factory_(request);
-        if (!backend_cursor.next) {
-            AdaptiveFeatureCursor cursor(
-                AdaptiveReadStatus::GdalOpenFailed,
-                AdaptiveReadBackend::GdalOpenFileGDB,
-                AdaptiveReadConsistency::UnverifiedConcurrentRead,
-                {}, {});
-            cursor.error_ = "GDAL cursor factory returned no next callback";
-            return cursor;
-        }
-        return AdaptiveFeatureCursor(
-            AdaptiveReadStatus::Ok,
-            AdaptiveReadBackend::GdalOpenFileGDB,
-            AdaptiveReadConsistency::UnverifiedConcurrentRead,
-            {}, std::move(backend_cursor));
-    } catch (const std::exception& exception) {
-        AdaptiveFeatureCursor cursor(
-            AdaptiveReadStatus::GdalOpenFailed,
-            AdaptiveReadBackend::GdalOpenFileGDB,
-            AdaptiveReadConsistency::UnverifiedConcurrentRead,
-            {}, {});
-        cursor.error_ = exception.what();
-        return cursor;
-    } catch (...) {
-        AdaptiveFeatureCursor cursor(
-            AdaptiveReadStatus::GdalOpenFailed,
-            AdaptiveReadBackend::GdalOpenFileGDB,
-            AdaptiveReadConsistency::UnverifiedConcurrentRead,
-            {}, {});
-        cursor.error_ = "GDAL cursor factory threw an unknown exception";
-        return cursor;
-    }
+    return open_gdal_cursor_path(gdal_cursor_factory_, request);
 }
 
 }  // namespace explorgdb

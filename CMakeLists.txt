@@ -178,7 +178,11 @@ endif()
 if(FAST_GDB_BUILD_ADAPTIVE_READER)
     find_package(Threads REQUIRED)
     add_library(fast_gdb_adaptive STATIC
-        src/edgar/explorgdb/adaptive/adaptive_reader.cpp)
+        src/edgar/explorgdb/adaptive/adaptive_backends.cpp
+        src/edgar/explorgdb/adaptive/adaptive_coordination.cpp
+        src/edgar/explorgdb/adaptive/adaptive_fast_backend.cpp
+        src/edgar/explorgdb/adaptive/adaptive_gdal_backend.cpp
+        src/edgar/explorgdb/adaptive/adaptive_session.cpp)
     target_include_directories(fast_gdb_adaptive PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/adaptive
         ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader)

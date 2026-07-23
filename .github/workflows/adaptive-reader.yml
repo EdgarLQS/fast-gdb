@@ -147,6 +147,36 @@ jobs:
           cmake --build build-linear-consumer --parallel --verbose \
             2>&1 | tee build-linear-consumer.log
 
+      - name: Verify installed adaptive consumer
+        shell: bash
+        run: |
+          set -o pipefail
+          cmake --build build-adaptive \
+            --target fast_gdb_adaptive fast_gdb_curve_gdal --parallel \
+            2>&1 | tee build-adaptive-package.log
+          cmake --install build-adaptive --prefix "$PWD/adaptive-install" \
+            2>&1 | tee install-adaptive.log
+          mkdir -p adaptive-consumer
+          cat > adaptive-consumer/CMakeLists.txt <<'CMAKE'
+          cmake_minimum_required(VERSION 3.15)
+          project(fast_gdb_adaptive_consumer LANGUAGES CXX)
+          find_package(fast_gdb CONFIG REQUIRED)
+          add_executable(adaptive_consumer main.cpp)
+          target_link_libraries(adaptive_consumer PRIVATE fast_gdb::adaptive)
+          CMAKE
+          cat > adaptive-consumer/main.cpp <<'CPP'
+          #include "adaptive_reader.h"
+          int main() {
+              explorgdb::InProcessGdbCoordinator coordinator;
+              return coordinator.state("consumer.gdb").generation != 0;
+          }
+          CPP
+          cmake -S adaptive-consumer -B build-adaptive-consumer -G Ninja \
+            -DCMAKE_PREFIX_PATH="$PWD/adaptive-install" \
+            2>&1 | tee configure-adaptive-consumer.log
+          cmake --build build-adaptive-consumer --parallel --verbose \
+            2>&1 | tee build-adaptive-consumer.log
+
       - name: Upload diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -162,4 +192,8 @@ jobs:
             install-linear.log
             configure-linear-consumer.log
             build-linear-consumer.log
+            install-adaptive.log
+            build-adaptive-package.log
+            configure-adaptive-consumer.log
+            build-adaptive-consumer.log
           if-no-files-found: warn

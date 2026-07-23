@@ -45,9 +45,9 @@ ctest --test-dir build-boundary --output-on-failure \
   -R '^gdal-reader-boundary\.'
 ```
 
-## Planned Adaptive Reader tests
+## Adaptive Reader tests
 
-ADR-008 and planning document 22 define a future test target. This target and its runtime code do not exist yet:
+ADR-008 and planning document 22 define the implemented Adaptive Reader target:
 
 ```text
 fast_gdb_adaptive_reader_test_runner
@@ -59,7 +59,7 @@ adaptive-reader.lifecycle.*
 adaptive-reader.stress.*
 ```
 
-Initial planned contracts:
+Contract tests:
 
 - `StableSourceUsesFastVerified`;
 - `WriterPendingStopsNewFastReads`;
@@ -98,10 +98,9 @@ scope and cannot be inferred from these planned tests.
 - `linear`;
 - `hybrid`.
 
-There is no Writer consumer mode, no `usegdal` consumer mode and no Adaptive
-Reader consumer mode yet. A future adaptive mode requires ADR-008 to be revised
-for `WriterPending` and explicit `GdalUnverified`, then accepted after the
-planned matrix passes.
+There is no Writer consumer mode or `usegdal` consumer mode. Adaptive package
+consumer coverage is provided by the CI install/consumer job and uses the same
+GDAL support baseline as the package build.
 
 ## Reference-only `usegdal`
 
@@ -128,5 +127,5 @@ The corresponding `usegdal` source may remain for reference, but it is not consi
 - runner failures without steps/logs are infrastructure failures;
 - characterization output is diagnostic and cannot establish concurrent read/write support;
 - `UnverifiedConcurrentRead` must never be counted as a verified data-correctness result;
-- planned Adaptive Reader test names are not evidence of implementation;
+- Adaptive Reader test discovery is a release-gate requirement;
 - reference-only source presence is not release evidence.

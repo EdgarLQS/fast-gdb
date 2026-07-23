@@ -4,6 +4,7 @@
 - **日期**：2026-07-23
 - **依赖**：[ADR-007：Reader-only 与 GDAL 编辑边界](ADR-007-reader-only-gdal-edit-boundary.md)
 - **实现计划**：[22：同进程 GDAL 写入与 Adaptive Reader 切换计划](../planning/22_AdaptiveReader写入检测与GDAL回退计划.md)
+- **当前验证基线**：macOS + GDAL 3.9.3；其它 GDAL 版本需单独验证，NULL 位图未使用填充位不属于字段 NULL 合同。
 
 ## 背景
 
