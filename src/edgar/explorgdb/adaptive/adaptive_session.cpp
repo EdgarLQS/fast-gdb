@@ -127,17 +127,51 @@ bool AdaptiveFeatureCursor::next(QueryFeature& feature) {
 }
 
 void AdaptiveFeatureCursor::close() {
+    bool cleanup_failed = false;
+    std::string cleanup_error;
+
     if (!backend_closed_) {
         if (backend_cursor_.close) {
             try {
                 backend_cursor_.close();
+            } catch (const std::exception& exception) {
+                cleanup_failed = true;
+                cleanup_error = exception.what();
             } catch (...) {
-                // Always release the fast lease even if backend cleanup fails.
+                cleanup_failed = true;
+                cleanup_error = "backend cursor close threw an unknown exception";
             }
         }
         backend_closed_ = true;
     }
-    fast_lease_.release();
+
+    if (cleanup_failed) {
+        if (backend_ == AdaptiveReadBackend::FastGdb && fast_lease_.valid()) {
+            // Releasing this lease would let an external Writer enter even
+            // though the backend failed to prove that mmap/handles were closed.
+            fast_lease_.abandon_fail_closed();
+        } else {
+            fast_lease_.release();
+        }
+
+        if (status_ == AdaptiveReadStatus::Ok) {
+            if (backend_ == AdaptiveReadBackend::GdalOpenFileGDB) {
+                status_ = AdaptiveReadStatus::GdalReadFailed;
+                consistency_ =
+                    AdaptiveReadConsistency::UnverifiedConcurrentRead;
+            } else {
+                status_ = AdaptiveReadStatus::FastBackendReadFailed;
+                consistency_ = AdaptiveReadConsistency::NotApplicable;
+            }
+        }
+        if (error_.empty()) {
+            error_ = cleanup_error.empty()
+                ? "backend cursor cleanup failed"
+                : "backend cursor cleanup failed: " + cleanup_error;
+        }
+    } else {
+        fast_lease_.release();
+    }
     done_ = true;
 }
 
