@@ -271,9 +271,11 @@ if(BUILD_TESTING)
     endif()
 
     if(FAST_GDB_BUILD_ADAPTIVE_READER)
+        file(GLOB ADAPTIVE_READER_TEST_SOURCES CONFIGURE_DEPENDS
+             tests/edgar/explorgdb/adaptive/*.cpp)
         add_executable(fast_gdb_adaptive_reader_test_runner
             tests/test_runner.cpp
-            tests/edgar/explorgdb/adaptive/test_adaptive_reader.cpp)
+            ${ADAPTIVE_READER_TEST_SOURCES})
         target_include_directories(fast_gdb_adaptive_reader_test_runner PRIVATE
             tests
             tests/edgar/explorgdb
