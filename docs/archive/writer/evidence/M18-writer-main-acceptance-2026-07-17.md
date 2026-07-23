@@ -6,7 +6,7 @@
 
 本记录覆盖 M18 Writer 正式收口。Reader 10M fresh-open 后续工作与本记录分开判定，但按用户要求继续保留在同一开发分支 `codex/m18-main-closeout`，最终统一审核和合并。
 
-Reader 工具与静态审查记录见：`docs/evidence/reader-fresh-open-followup-static-2026-07-17.md`。
+Reader 工具与静态审查记录已移除。
 
 ## 2. 基线
 

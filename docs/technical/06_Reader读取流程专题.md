@@ -270,4 +270,4 @@ ADR-008 计划新增：
 - [Reader-only ADR](../adr/ADR-007-reader-only-gdal-edit-boundary.md)
 - [Adaptive Reader ADR](../adr/ADR-008-adaptive-reader-write-detection-gdal-fallback.md)
 - [Adaptive Reader 实施计划](../planning/22_AdaptiveReader写入检测与GDAL回退计划.md)
-- [并发可见性观测证据](../evidence/gdal-write-fast-gdb-read-characterization-2026-07-22.md)
+- 并发读写仅按 [`GDAL 边界测试`](../testing/03_GDAL边界与读写测试.md) 的当前合同处理。

@@ -146,7 +146,7 @@ ctest --test-dir build-boundary --output-on-failure \
 - [Reader/GDAL 编辑边界 ADR](docs/adr/ADR-007-reader-only-gdal-edit-boundary.md)
 - [Adaptive Reader Proposed ADR](docs/adr/ADR-008-adaptive-reader-write-detection-gdal-fallback.md)
 - [Adaptive Reader 实施计划](docs/planning/22_AdaptiveReader写入检测与GDAL回退计划.md)
-- [并发可见性观测证据](docs/evidence/gdal-write-fast-gdb-read-characterization-2026-07-22.md)
+- 并发可见性观测：历史测试记录已移除，当前规则见 [GDAL 边界测试](docs/testing/03_GDAL边界与读写测试.md)
 
 ## 构建
 

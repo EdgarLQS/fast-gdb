@@ -216,4 +216,4 @@ Formal acceptance blocked
 ```
 
 自检证据：
-[`spatial-where-atx-planner-optimization-self-review-2026-07-17.md`](../evidence/spatial-where-atx-planner-optimization-self-review-2026-07-17.md)
+历史自审记录已移除；当前测试入口见 [`docs/testing/02_功能测试矩阵.md`](../testing/02_功能测试矩阵.md)。

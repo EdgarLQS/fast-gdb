@@ -8,7 +8,7 @@
 - **当前执行平台**：macOS
 - **暂缓平台**：Linux、Windows；不计入当前里程碑和完成率
 
-> M18 的 Append、Update、Delete、Transaction 和 Recovery 已由 squash 提交 `9dd7edf73763b56d84677c8a246bc85f80a1a0c1` 合入 `main`。本文不再把这些能力列为待实现事项。当前执行状态、阻塞和正式判定以 [M18 Writer 执行进度](18_writer执行进度.md) 与 [M18 main 验收记录](../evidence/M18-writer-main-acceptance-2026-07-17.md) 为准。
+> M18 的 Append、Update、Delete、Transaction 和 Recovery 已由 squash 提交 `9dd7edf73763b56d84677c8a246bc85f80a1a0c1` 合入 `main`。本文不再把这些能力列为待实现事项。相关验收记录已移除。
 
 ## 1. 当前基线与支持边界
 
@@ -176,7 +176,7 @@ Issue #12 记录 GitHub Actions 在 checkout 前失败、没有 steps/logs 的�
 ## 11. 关联入口
 
 - [M18 Writer 执行进度](18_writer执行进度.md)
-- [M18 Writer main 验收记录](../evidence/M18-writer-main-acceptance-2026-07-17.md)
+- M18 Writer main 验收记录已移除。
 - [M18 正式收口与 Reader 性能优化计划](19_M18正式收口与Reader性能优化计划.md)
 - [Writer Roadmap](../roadmap/writer-roadmap.md)
 - [Writer 生命周期](../architecture/writer-lifecycle.md)

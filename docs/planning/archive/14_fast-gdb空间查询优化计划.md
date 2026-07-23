@@ -200,7 +200,6 @@ query_bbox_bitmap(...)
 
 ## 7. 关联证据
 
-- [空间查询优化实施记录](../../evidence/spatial-query-optimization-2026-07-13.md)
-- [最终等价与发布验收报告](../../evidence/13_fast-gdb最终等价与发布验收报告.md)
+- 历史实施记录和发布验收报告已移除。
 - [性能基准与优化](../../testing/06_性能基准与回归门禁.md)
 - [真实数据验收资料清单](../../testing/05_fast-gdb真实数据验收资料清单.md)
