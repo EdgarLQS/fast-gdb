@@ -45,14 +45,40 @@ ctest --test-dir build-boundary --output-on-failure \
   -R '^gdal-reader-boundary\.'
 ```
 
+## Planned Adaptive Reader tests
+
+ADR-008 and planning document 22 define a future test target. This target and its runtime code do not exist yet:
+
+```text
+fast_gdb_adaptive_reader_test_runner
+adaptive-reader.unit.*
+adaptive-reader.coordinated.*
+adaptive-reader.uncoordinated.*
+adaptive-reader.gdal-fallback.*
+adaptive-reader.stress.*
+```
+
+Initial planned contracts:
+
+- `WriterActiveReturnsBusyWithoutCallingEitherBackend`;
+- `GenerationChangeExpiresExistingReader`;
+- `StableFastReadReturnsMaterializedFastResult`;
+- `ChangedSourceDiscardsFastResult`;
+- `StableUnsupportedFastReadUsesFreshGdal`;
+- `ChangedSourceDuringGdalReadDiscardsFallbackResult`;
+- `CompletedWriteFreshGdalReadsNewGeneration`;
+- `FreshGdalFallbackDoesNotReuseCachedDataset`.
+
+The coordinated stress gate may return only a complete old generation, a complete new generation, or `SourceBusy`; mixed results and process crashes are failures. Uncoordinated external Writer tests remain best-effort characterization and cannot establish universal detection guarantees.
+
 ## Product-surface tests
 
-`tests/package_consumer` supports only:
+`tests/package_consumer` currently supports only:
 
 - `linear`;
 - `hybrid`.
 
-There is no Writer consumer mode and no `usegdal` consumer mode.
+There is no Writer consumer mode, no `usegdal` consumer mode and no Adaptive Reader consumer mode yet. A future adaptive mode requires ADR-008 acceptance.
 
 ## Reference-only `usegdal`
 
@@ -78,4 +104,5 @@ The corresponding `usegdal` source may remain for reference, but it is not consi
 - `SKIPPED` is not acceptance;
 - runner failures without steps/logs are infrastructure failures;
 - characterization output is diagnostic and cannot establish concurrent read/write support;
+- planned Adaptive Reader test names are not evidence of implementation;
 - reference-only source presence is not release evidence.
