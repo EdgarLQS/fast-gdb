@@ -152,12 +152,12 @@ Reader 保持打开时 GDAL 修改同一目录，记录：
 - `include/fast_gdb/writer` 和 `src/edgar/explorgdb/writer` 不存在；
 - Writer 专项工作流和正式产品文档删除；
 - `src/edgar/usegdal` 明确标记 reference only，且不进入根构建、安装或导出；
-- package consumer 只验证 linear/hybrid；
+- package consumer 验证 linear、hybrid 和可选 adaptive；linear 必须在无 GDAL 构建中通过；
 - GDAL 写后 Reader 重开测试进入 CI；
 - 同目录并发测试明确标记为 characterization / unsupported；
 - README、文档索引、规划和 Changelog 使用一致表述。
 
-## 后续提案：Adaptive Reader
+## 关联决策：Adaptive Reader
 
 [ADR-008](ADR-008-adaptive-reader-write-detection-gdal-fallback.md) 提议增加一个 Reader-only 编排层：
 
@@ -167,4 +167,4 @@ Reader 保持打开时 GDAL 修改同一目录，记录：
 - 写入结束且源稳定后，使用全新 GDALDataset 只读恢复；
 - GDAL 结果也必须完整物化、关闭 Dataset 并通过读取后源状态验证。
 
-ADR-008 当前为 Proposed，不改变本 ADR 的当前支持合同，也不把 Reader/Writer 重叠变成受支持读取场景。只有完成三平台正确性、压力、性能和安装面验收后，Adaptive Reader 才能作为独立受支持能力发布。
+ADR-008 已 Accepted，但不改变本 ADR 的关闭、写入、重开合同，也不把 Reader/Writer 重叠变成受支持读取场景。Adaptive target 当前已实现并验证同进程协调、Busy、generation/过期和 fresh fallback；三平台正确性、压力、性能、多 GDAL 版本和安装包的独立证据完成后，才能扩大独立发布承诺。

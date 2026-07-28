@@ -31,7 +31,7 @@
 - 合同：基础 Writer、Append、Update、Delete、Transaction/Recovery schema-v2 manifests。
 - macOS workflows：基础合同、Append、Update、Delete、Transaction/Recovery、性能。
 - 自审入口：`docs/reviews/M18-final-writer-self-review.md`。
-- 正式收口记录：`docs/evidence/M18-writer-main-acceptance-2026-07-17.md`。
+- 正式收口记录已移除。
 
 ## 安全边界与 Deferred
 

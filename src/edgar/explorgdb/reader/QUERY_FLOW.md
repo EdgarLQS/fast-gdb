@@ -211,4 +211,4 @@ WHERE 支持比较、AND、OR、IN 和括号。字段名大小写不敏感，字
 | 联合查询 | `SpatialWhere*Test.*` |
 | package consumer | `tests/package_consumer/main.cpp` |
 
-代码审核指南：`docs/usage/10_空间属性联合查询代码审核指南.md`。
+代码审核指南：`docs/testing/10_空间属性联合查询代码审核指南.md`。

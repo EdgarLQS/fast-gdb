@@ -1,3 +1,15 @@
+#include <reader.h>
+
+#include <type_traits>
+
+static_assert(!std::is_copy_constructible<explorgdb::Reader>::value,
+              "installed Reader must be move-only");
+static_assert(!std::is_copy_constructible<explorgdb::Layer>::value,
+              "installed Layer must be move-only");
+constexpr auto kReadMetadata = &explorgdb::Layer::read_metadata;
+static_assert(kReadMetadata != nullptr,
+              "installed Layer must expose structured metadata reads");
+
 #ifdef FAST_GDB_CONSUMER_HYBRID
 #include <hybrid_geometry_reader.h>
 
@@ -5,12 +17,18 @@ int main() {
     explorgdb::HybridGeometryOptions options;
     return options.gdal_fid_offset == 1 ? 0 : 1;
 }
+#elif defined(FAST_GDB_CONSUMER_ADAPTIVE)
+#include <adaptive_reader.h>
+
+int main() {
+    explorgdb::InProcessGdbCoordinator coordinator;
+    return coordinator.state("consumer.gdb").generation == 0 ? 0 : 1;
+}
 #else
 #include <geometry_model.h>
 #include <query_engine.h>
 
 #include <cstdint>
-#include <type_traits>
 #include <utility>
 
 static_assert(!std::is_copy_constructible<explorgdb::FeatureCursor>::value,

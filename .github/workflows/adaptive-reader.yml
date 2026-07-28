@@ -1,0 +1,199 @@
+name: adaptive-reader
+
+on:
+  push:
+    branches:
+      - main
+      - 'agent/**'
+      - 'codex/**'
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: adaptive-reader-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  adaptive-contract:
+    name: adaptive-contract-linux
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libgdal-dev
+
+      - name: Verify adaptive requires GDAL
+        shell: bash
+        run: |
+          set -o pipefail
+          if cmake -S . -B build-invalid -G Ninja \
+              -DFAST_GDB_WITH_GDAL=OFF \
+              -DFAST_GDB_BUILD_ADAPTIVE_READER=ON \
+              -DFAST_GDB_BUILD_TOOLS=OFF \
+              -DFAST_GDB_BUILD_FULL_TESTS=OFF \
+              -DBUILD_TESTING=OFF 2>&1 | tee configure-invalid.log; then
+            echo "Adaptive configure unexpectedly succeeded without GDAL" >&2
+            exit 1
+          fi
+          grep -F "FAST_GDB_BUILD_ADAPTIVE_READER=ON requires FAST_GDB_WITH_GDAL=ON" configure-invalid.log
+
+      - name: Configure adaptive target
+        run: >-
+          cmake -S . -B build-adaptive -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DFAST_GDB_WITH_GDAL=ON
+          -DFAST_GDB_BUILD_ADAPTIVE_READER=ON
+          -DFAST_GDB_CURVE_BACKEND=BUILTIN
+          -DFAST_GDB_GEOMETRY_OUTPUT=STANDARD_WKB
+          -DFAST_GDB_BUILD_TOOLS=OFF
+          -DFAST_GDB_BUILD_FULL_TESTS=OFF
+          -DBUILD_TESTING=ON
+
+      - name: Build adaptive tests
+        shell: bash
+        run: |
+          set -o pipefail
+          cmake --build build-adaptive \
+            --target fast_gdb_adaptive_reader_test_runner \
+            --parallel --verbose 2>&1 | tee build-adaptive.log
+
+      - name: Run adaptive tests
+        shell: bash
+        run: |
+          set -o pipefail
+          ctest --test-dir build-adaptive -N \
+            -R '^adaptive-reader\.' | tee discovered-adaptive-tests.log
+
+          required_tests=(
+            AdaptiveReaderTest.StableSourceUsesFastVerified
+            AdaptiveReaderTest.WriterPendingStopsNewFastReads
+            AdaptiveReaderTest.FastCursorExpiresAtNextSafePoint
+            AdaptiveReaderTest.PendingTimeoutClearsPendingAndRecovers
+            AdaptiveReaderTest.UpdatePermitRequiresFastReadersDrained
+            AdaptiveReaderTest.UpdateOpenFailureCancelsPending
+            AdaptiveReaderTest.AbandonedActiveTokenRemainsFailClosed
+            AdaptiveReaderTest.DefaultPolicyReturnsBusyWithoutCallingBackends
+            AdaptiveReaderTest.ExplicitPolicyUsesFreshGdalUnverified
+            AdaptiveReaderTest.UnverifiedResultIsNeverReportedVerified
+            AdaptiveReaderTest.GdalFailureKeepsDiagnosticAndConsistency
+            AdaptiveReaderTest.ClosedUpdateNotificationIncrementsGeneration
+            AdaptiveReaderTest.OldReaderExpiresAfterClosedUpdateNotification
+            AdaptiveReaderTest.PostWriteRebuildReturnsFastVerified
+            AdaptiveReaderTest.AllQueryKindsMatchOnStableSource
+            AdaptiveReaderTest.RepackNeverOverlapsFastMmap
+            AdaptiveReaderTest.MultipleReadersSingleWriterStress
+            AdaptiveReviewRegressionTest.ThrowingFastCursorCloseKeepsWriterFailClosed
+            AdaptiveReviewRegressionTest.ThrowingGdalCursorCloseIsReportedAsUnverifiedReadFailure
+            AdaptiveGdalContractRegressionTest.EmptyWhereAndSpatialWhereNeverBecomeFullScans
+            AdaptiveGdalContractRegressionTest.NullInNonNullableBindingFailsQueryAndCursor
+            AdaptiveGdalContractRegressionTest.FilterSetupFailureIsClassifiedAsGdalReadFailure
+            AdaptiveGdalOpenFailureRegressionTest.MissingDatasetRemainsGdalOpenFailed
+          )
+          for required_test in "${required_tests[@]}"; do
+            grep -F "adaptive-reader.${required_test}" \
+              discovered-adaptive-tests.log >/dev/null || {
+                echo "Required adaptive test was not discovered: ${required_test}" >&2
+                exit 1
+              }
+          done
+
+          ctest --test-dir build-adaptive --output-on-failure \
+            -R '^adaptive-reader\.' 2>&1 | tee test-adaptive.log
+
+      - name: Verify installed linear consumer remains GDAL-free
+        shell: bash
+        run: |
+          set -o pipefail
+          cmake -S . -B build-linear -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DFAST_GDB_WITH_GDAL=OFF \
+            -DFAST_GDB_BUILD_ADAPTIVE_READER=OFF \
+            -DFAST_GDB_BUILD_TOOLS=OFF \
+            -DFAST_GDB_BUILD_FULL_TESTS=OFF \
+            -DBUILD_TESTING=OFF 2>&1 | tee configure-linear.log
+          cmake --build build-linear \
+            --parallel --verbose 2>&1 | tee build-linear.log
+          cmake --install build-linear --prefix "$PWD/linear-install" \
+            2>&1 | tee install-linear.log
+
+          while IFS= read -r targets_file; do
+            if grep -E 'GDAL::GDAL|fast_gdb_gdal_dependency' "$targets_file"; then
+              echo "linear export unexpectedly references GDAL: $targets_file" >&2
+              exit 1
+            fi
+          done < <(find linear-install -name 'fast_gdbTargets*.cmake' -type f)
+
+          mkdir -p linear-consumer
+          cat > linear-consumer/CMakeLists.txt <<'CMAKE'
+          cmake_minimum_required(VERSION 3.15)
+          project(fast_gdb_linear_consumer LANGUAGES CXX)
+          find_package(fast_gdb CONFIG REQUIRED)
+          add_executable(linear_consumer main.cpp)
+          target_link_libraries(linear_consumer PRIVATE fast_gdb::linear)
+          CMAKE
+          cat > linear-consumer/main.cpp <<'CPP'
+          #include "explorgdb_types.h"
+          int main() {
+              return explorgdb::field_type_name(explorgdb::FieldType::Int32)
+                  == nullptr;
+          }
+          CPP
+
+          cmake -S linear-consumer -B build-linear-consumer -G Ninja \
+            -DCMAKE_PREFIX_PATH="$PWD/linear-install" \
+            -DCMAKE_DISABLE_FIND_PACKAGE_GDAL=TRUE \
+            2>&1 | tee configure-linear-consumer.log
+          cmake --build build-linear-consumer --parallel --verbose \
+            2>&1 | tee build-linear-consumer.log
+
+      - name: Verify installed adaptive consumer
+        shell: bash
+        run: |
+          set -o pipefail
+          cmake --build build-adaptive \
+            --target fast_gdb_adaptive fast_gdb_curve_gdal --parallel \
+            2>&1 | tee build-adaptive-package.log
+          cmake --install build-adaptive --prefix "$PWD/adaptive-install" \
+            2>&1 | tee install-adaptive.log
+          mkdir -p adaptive-consumer
+          cat > adaptive-consumer/CMakeLists.txt <<'CMAKE'
+          cmake_minimum_required(VERSION 3.15)
+          project(fast_gdb_adaptive_consumer LANGUAGES CXX)
+          find_package(fast_gdb CONFIG REQUIRED)
+          add_executable(adaptive_consumer main.cpp)
+          target_link_libraries(adaptive_consumer PRIVATE fast_gdb::adaptive)
+          CMAKE
+          cat > adaptive-consumer/main.cpp <<'CPP'
+          #include "adaptive_reader.h"
+          int main() {
+              explorgdb::InProcessGdbCoordinator coordinator;
+              return coordinator.state("consumer.gdb").generation != 0;
+          }
+          CPP
+          cmake -S adaptive-consumer -B build-adaptive-consumer -G Ninja \
+            -DCMAKE_PREFIX_PATH="$PWD/adaptive-install" \
+            2>&1 | tee configure-adaptive-consumer.log
+          cmake --build build-adaptive-consumer --parallel --verbose \
+            2>&1 | tee build-adaptive-consumer.log
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: adaptive-reader-linux-logs
+          path: |
+            configure-invalid.log
+            build-adaptive.log
+            discovered-adaptive-tests.log
+            test-adaptive.log
+            configure-linear.log
+            build-linear.log
+            install-linear.log
+            configure-linear-consumer.log
+            build-linear-consumer.log
+            install-adaptive.log
+            build-adaptive-package.log
+            configure-adaptive-consumer.log
+            build-adaptive-consumer.log
+          if-no-files-found: warn

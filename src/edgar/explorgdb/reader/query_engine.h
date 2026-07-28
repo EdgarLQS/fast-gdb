@@ -11,6 +11,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -29,6 +30,20 @@ enum class QueryKind {
     SpatialWhere
 };
 
+/** 查询执行的结构化结果状态；fallback_reason 仅保留兼容诊断文本。 */
+enum class QueryStatus {
+    Ok,
+    InvalidRequest,
+    EngineNotOpen,
+    CursorActive,
+    Unsupported,
+    SourceChanged,
+    Cancelled,
+    ResultLimitExceeded
+};
+
+const char* query_status_name(QueryStatus status) noexcept;
+
 /** 查询参数；不同 QueryKind 只读取与自身相关的字段。 */
 struct QueryRequest {
     QueryKind kind = QueryKind::SequentialScan;
@@ -42,6 +57,15 @@ struct QueryRequest {
     std::string string_value;
     std::string where_clause;
     AttrOp attr_op = AttrOp::Eq;
+
+    // 空值表示返回全部字段；非空时只保证列出字段有值，其余槽位为 NULL，
+    // FeatureRecord::materialized_fields 标明哪些槽位实际物化。
+    std::optional<std::vector<size_t>> field_projection;
+    size_t offset = 0;
+    size_t limit = 0;
+    size_t max_result_features = 0;
+    bool sort_fids = false;
+    std::function<bool()> cancel_requested;
 
     // 显式启用 Cursor 阶段计时；默认关闭以避免 steady_clock 热路径开销。
     bool profile_feature_reads = false;
@@ -110,6 +134,8 @@ struct FeatureCursorMetrics {
 
 /** 查询结果、执行路径和可选完整记录。 */
 struct QueryResult {
+    QueryStatus status = QueryStatus::Ok;
+    std::string error;
     std::vector<uint32_t> matched_fids;
     std::optional<FeatureRecord> record;
     std::string execution_path;
@@ -136,6 +162,8 @@ class QueryEngine;
  */
 class FeatureCursor {
 public:
+    FeatureCursor();
+    static FeatureCursor failed(QueryResult result, std::string error);
     FeatureCursor(FeatureCursor&& other) noexcept;
     FeatureCursor& operator=(FeatureCursor&& other) noexcept;
     FeatureCursor(const FeatureCursor&) = delete;
@@ -208,7 +236,7 @@ private:
                             double xmin, double ymin,
                             double xmax, double ymax,
                             bool* skipped_unsupported_curve = nullptr);
-    QueryResult query_sequential_scan() const;
+    QueryResult query_sequential_scan(const QueryRequest& request) const;
     QueryResult query_spatial(const QueryRequest& request);
     QueryResult query_attribute(const QueryRequest& request);
     QueryResult query_where(const QueryRequest& request);

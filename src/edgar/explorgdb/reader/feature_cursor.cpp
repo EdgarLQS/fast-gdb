@@ -9,6 +9,7 @@
 #include <functional>
 #include <limits>
 #include <sstream>
+#include <unordered_set>
 #include <utility>
 
 namespace explorgdb {
@@ -24,6 +25,7 @@ bool has_invalid_execution_path(const QueryResult& result) {
 
 bool query_result_is_error(const QueryRequest& request,
                            const QueryResult& result) {
+    if (result.status != QueryStatus::Ok) return true;
     if (has_invalid_execution_path(result) ||
         result.execution_path == kPathQueryBlocked ||
         result.fallback_reason == kFallbackInvalidQueryKind) {
@@ -73,6 +75,16 @@ public:
     using AcquireCallback = std::function<uint64_t()>;
     using ReleaseCallback = std::function<void(uint64_t)>;
     using EngineValidCallback = std::function<bool()>;
+
+    void set_cancel_callback(std::function<bool()> callback) {
+        cancel_requested_ = std::move(callback);
+    }
+
+    void set_field_projection(const std::optional<std::vector<size_t>>& projection) {
+        field_projection_ = projection;
+    }
+
+    void set_fids_sorted(bool sorted) noexcept { fids_sorted_ = sorted; }
 
     Impl(QueryResult query_result, std::string error)
         : state_(State::Failed),
@@ -134,6 +146,12 @@ public:
     bool next(QueryFeature& output) {
         if (state_ != State::Ready) return false;
         if (!engine_is_current()) return false;
+        if (cancel_requested_ && cancel_requested_()) {
+            query_result_.status = QueryStatus::Cancelled;
+            query_result_.error = "query cancelled";
+            fail(query_result_.error);
+            return false;
+        }
 
         uint32_t fid = 0;
         if (!next_fid(fid)) {
@@ -153,7 +171,8 @@ public:
         FeatureReadMetrics* metrics_ptr =
             profile_enabled_ ? &metrics : nullptr;
         if (!parser->read_feature_by_fid(
-                fid, candidate.record, candidate.geometry, metrics_ptr)) {
+                fid, candidate.record, candidate.geometry, metrics_ptr,
+                field_projection_.has_value() ? &*field_projection_ : nullptr)) {
             std::string message = candidate.geometry.diagnostic.empty()
                 ? fid_error(kErrReadFailed, fid)
                 : fid_error(kErrDecodeFailed, fid) +
@@ -181,10 +200,25 @@ public:
 
         if (mode_ == Mode::CandidateFids) {
             const auto& fids = query_result_.matched_fids;
-            const auto iterator =
-                std::lower_bound(fids.begin(), fids.end(), fid);
-            fid_index_ = static_cast<size_t>(iterator - fids.begin());
-            if (iterator == fids.end()) {
+            if (fids_sorted_) {
+                const auto iterator =
+                    std::lower_bound(fids.begin(), fids.end(), fid);
+                fid_index_ = static_cast<size_t>(iterator - fids.begin());
+                if (iterator == fids.end()) {
+                    exhaust();
+                    return false;
+                }
+            } else {
+                fid_index_ = 0;
+                while (fid_index_ < fids.size() && fids[fid_index_] < fid) {
+                    ++fid_index_;
+                }
+                if (fid_index_ == fids.size()) {
+                    exhaust();
+                    return false;
+                }
+            }
+            if (fid_index_ >= fids.size()) {
                 exhaust();
                 return false;
             }
@@ -321,6 +355,9 @@ private:
     State state_ = State::Ready;
     QueryResult query_result_;
     std::string error_;
+    std::function<bool()> cancel_requested_;
+    std::optional<std::vector<size_t>> field_projection_;
+    bool fids_sorted_ = true;
     size_t fid_index_ = 0;
     size_t next_sequential_fid_ = 0;
     size_t feature_limit_ = 0;
@@ -331,6 +368,11 @@ private:
 FeatureCursor::FeatureCursor(std::unique_ptr<Impl> impl)
     : impl_(std::move(impl)) {}
 
+FeatureCursor::FeatureCursor() = default;
+FeatureCursor FeatureCursor::failed(QueryResult result, std::string error) {
+    return FeatureCursor(std::make_unique<FeatureCursor::Impl>(
+        std::move(result), std::move(error)));
+}
 FeatureCursor::FeatureCursor(FeatureCursor&& other) noexcept = default;
 FeatureCursor& FeatureCursor::operator=(FeatureCursor&& other) noexcept = default;
 FeatureCursor::~FeatureCursor() = default;
@@ -360,12 +402,16 @@ const std::string& FeatureCursor::error() const noexcept {
 FeatureCursor QueryEngine::open_cursor(const QueryRequest& request) {
     QueryResult result;
     if (parser_ == nullptr) {
+        result.status = QueryStatus::EngineNotOpen;
+        result.error = kFallbackTableNotOpen;
         result.execution_path = kPathCursorInvalid;
         result.fallback_reason = kFallbackTableNotOpen;
         return FeatureCursor(std::make_unique<FeatureCursor::Impl>(
             std::move(result), kFallbackTableNotOpen));
     }
     if (cursor_control_->feature_cursor_active()) {
+        result.status = QueryStatus::CursorActive;
+        result.error = kFallbackAnotherCursorActive;
         result.execution_path = kPathCursorInvalid;
         result.fallback_reason = kFallbackAnotherCursorActive;
         return FeatureCursor(std::make_unique<FeatureCursor::Impl>(
@@ -385,7 +431,11 @@ FeatureCursor QueryEngine::open_cursor(const QueryRequest& request) {
         return control->open_generation == planned_open_generation;
     };
 
-    if (request.kind == QueryKind::SequentialScan) {
+    const bool materialized_options = request.offset != 0 ||
+        request.limit != 0 || request.max_result_features != 0 ||
+        request.sort_fids || request.field_projection.has_value() ||
+        static_cast<bool>(request.cancel_requested);
+    if (request.kind == QueryKind::SequentialScan && !materialized_options) {
         result.execution_path = kPathCursorSequential;
         const size_t feature_limit = parser_->feature_count();
         if (parser_->active_feature_count() == 0) {
@@ -399,6 +449,8 @@ FeatureCursor QueryEngine::open_cursor(const QueryRequest& request) {
         const uint64_t generation =
             control->register_feature_cursor();
         if (generation == 0) {
+            result.status = QueryStatus::CursorActive;
+            result.error = kFallbackAnotherCursorActive;
             result.execution_path = kPathCursorInvalid;
             result.fallback_reason = kFallbackAnotherCursorActive;
             return FeatureCursor(std::make_unique<FeatureCursor::Impl>(
@@ -416,16 +468,28 @@ FeatureCursor QueryEngine::open_cursor(const QueryRequest& request) {
         std::string error = result.fallback_reason.empty()
             ? kFallbackInvalidRequest
             : result.fallback_reason;
+        if (result.status == QueryStatus::Ok) {
+            result.status = QueryStatus::InvalidRequest;
+            result.error = error;
+        }
         return FeatureCursor(std::make_unique<FeatureCursor::Impl>(
             std::move(result), std::move(error)));
     }
 
-    std::sort(result.matched_fids.begin(),
-              result.matched_fids.end());
-    result.matched_fids.erase(
-        std::unique(result.matched_fids.begin(),
-                    result.matched_fids.end()),
-        result.matched_fids.end());
+    if (request.sort_fids) {
+        std::sort(result.matched_fids.begin(),
+                  result.matched_fids.end());
+        result.matched_fids.erase(
+            std::unique(result.matched_fids.begin(),
+                        result.matched_fids.end()),
+            result.matched_fids.end());
+    } else {
+        std::unordered_set<uint32_t> seen;
+        auto end = std::remove_if(
+            result.matched_fids.begin(), result.matched_fids.end(),
+            [&seen](uint32_t fid) { return !seen.insert(fid).second; });
+        result.matched_fids.erase(end, result.matched_fids.end());
+    }
     result.record.reset();
     if (result.matched_fids.empty()) {
         return FeatureCursor(std::make_unique<FeatureCursor::Impl>(
@@ -437,16 +501,22 @@ FeatureCursor QueryEngine::open_cursor(const QueryRequest& request) {
     const uint64_t generation =
         control->register_feature_cursor();
     if (generation == 0) {
+        result.status = QueryStatus::CursorActive;
+        result.error = kFallbackAnotherCursorActive;
         result.execution_path = kPathCursorInvalid;
         result.fallback_reason = kFallbackAnotherCursorActive;
         return FeatureCursor(std::make_unique<FeatureCursor::Impl>(
             std::move(result), kFallbackAnotherCursorActive));
     }
 
-    return FeatureCursor(std::make_unique<FeatureCursor::Impl>(
+    auto cursor = std::make_unique<FeatureCursor::Impl>(
         parser_.get(), generation, std::move(acquire),
         std::move(release), std::move(engine_valid),
-        std::move(result), request.profile_feature_reads));
+        std::move(result), request.profile_feature_reads);
+    cursor->set_cancel_callback(request.cancel_requested);
+    cursor->set_field_projection(request.field_projection);
+    cursor->set_fids_sorted(request.sort_fids);
+    return FeatureCursor(std::move(cursor));
 }
 
 uint64_t QueryEngine::register_feature_cursor() noexcept {

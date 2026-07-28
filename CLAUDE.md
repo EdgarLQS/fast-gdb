@@ -52,7 +52,8 @@ Never keep `GdbCatalog`, `GdbTableParser`, `QueryEngine`, `FeatureCursor`, mmap,
 
 Same-directory overlap is unsupported and may produce old/new/mixed/error. Characterization tests must never be described as support evidence.
 
-ADR-008 is Proposed and does not change the current runtime contract. Its planned behavior is fail-closed:
+ADR-008 is Accepted for the optional Adaptive target and does not change the
+Reader-only external-edit contract. Its implemented behavior is fail-closed:
 
 - coordinated `writer_active=true` returns `SourceBusy` without calling either backend;
 - a source or generation change discards the result and expires the old Reader graph;
@@ -67,10 +68,15 @@ Current targets:
 - `fast_gdb_hybrid`
 - `fast_gdb_geometry_test_runner`
 - `fast_gdb_hybrid_test_runner`
+- `fast_gdb_adaptive`
+- `fast_gdb_adaptive_reader_test_runner`
 - `gdb_tutorial_test_runner`
 - `fast_gdb_gdal_read_write_boundary_test_runner`
 
-There is no Writer target, no `usegdal` target and no Adaptive Reader target yet. A future `fast_gdb::adaptive` target requires ADR-008 acceptance and its full test/install gates.
+There is no Writer target and no `usegdal` target. The optional
+`fast_gdb::adaptive` target is implemented when
+`FAST_GDB_BUILD_ADAPTIVE_READER=ON`; cross-platform and multi-GDAL evidence
+remain separate release gates.
 
 ## Review rules
 
@@ -98,7 +104,8 @@ For Reader changes, prefer:
 4. linear and hybrid builds;
 5. installed package consumer;
 6. boundary tests when external GDAL edits are involved;
-7. coordinated and uncoordinated Adaptive Reader tests when ADR-008 implementation begins.
+7. coordinated and uncoordinated Adaptive Reader tests, with uncoordinated
+   overlap remaining characterization only.
 
 Reference-only `usegdal` source is not considered release-validated unless a future standalone component explicitly adds its own gates.
 

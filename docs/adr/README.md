@@ -5,7 +5,7 @@
 | ADR | 状态 | 决策范围 |
 |---|---|---|
 | [ADR-007：Reader-only 与 GDAL 编辑边界](ADR-007-reader-only-gdal-edit-boundary.md) | Accepted | fast-gdb 只提供 Reader；FileGDB 编辑交给 GDAL/OpenFileGDB；同目录并发读写不支持 |
-| [ADR-008：Adaptive Reader 写入检测与 fresh GDAL 回退](ADR-008-adaptive-reader-write-detection-gdal-fallback.md) | Proposed | 通过协调状态或 best-effort 文件快照发现源变化；写期间返回 Busy；稳定后使用全新 GDAL 只读连接恢复 |
+| [ADR-008：Adaptive Reader 写入检测与 fresh GDAL 回退](ADR-008-adaptive-reader-write-detection-gdal-fallback.md) | Accepted | 可选同进程协调；通过协调状态或 best-effort 文件快照发现源变化；写期间返回 Busy；稳定后使用全新 GDAL 只读连接恢复 |
 
 ADR-001～ADR-005 和旧版 ADR-007 对应的自研 Writer、字段级 Append/Update/Delete、事务、恢复和版本发布方案已被 ADR-007 取代；历史材料保留在 [Writer 历史归档](../archive/writer/README.md)，不属于当前决策集。
 
@@ -16,7 +16,7 @@ fast-gdb
   ├─ fast_gdb::linear
   ├─ fast_gdb::hybrid
   ├─ FileGDB Reader / Query / Geometry / Index
-  ├─ proposed Adaptive Reader orchestration
+  ├─ optional Adaptive Reader orchestration
   └─ no Writer product
 
 GDAL/OpenFileGDB
@@ -24,7 +24,13 @@ GDAL/OpenFileGDB
   └─ fresh read-only fallback after source becomes stable
 ```
 
-ADR-008 仍为 Proposed。在实现和验收完成前，ADR-007 的“关闭 Reader → GDAL 写 → GDALClose → 重开 Reader”仍是唯一正式支持合同。
+ADR-008 已 Accepted，当前实现和测试覆盖同进程协调、WriterPending 排空、Busy、
+generation/过期、关闭异常、Unverified fresh fallback，以及 GDAL 写后完整重开矩阵。
+未知外部 Writer、跨平台、多 GDAL 版本、sanitizer、压力和性能仍需独立证据；未采用
+Adaptive 的调用方仍遵守 ADR-007 的“关闭 Reader → GDAL 写 → GDALClose → 重开 Reader”合同。
+
+安装 consumer 当前覆盖 `linear`、`hybrid` 和可选 `adaptive`；其中 `linear` 的
+安装验收必须在无 GDAL 构建中执行。
 
 ## 变更规则
 

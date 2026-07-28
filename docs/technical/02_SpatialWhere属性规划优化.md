@@ -2,7 +2,7 @@
 
 ## 1. 背景
 
-本说明承接 [`01_性能基准与优化.md`](01_性能基准与优化.md) 第 1.10 节和
+本说明承接 [`性能基准与回归门禁`](../testing/06_性能基准与回归门禁.md) 第 1.10 节和
 `docs/planning/21_空间属性联合查询实现计划.md` 中记录的 100K full-feature 基线。
 
 `8f23001` 的五轮结果中位数为：
@@ -216,4 +216,4 @@ Formal acceptance blocked
 ```
 
 自检证据：
-[`spatial-where-atx-planner-optimization-self-review-2026-07-17.md`](../evidence/spatial-where-atx-planner-optimization-self-review-2026-07-17.md)
+历史自审记录已移除；当前测试入口见 [`docs/testing/02_功能测试矩阵.md`](../testing/02_功能测试矩阵.md)。

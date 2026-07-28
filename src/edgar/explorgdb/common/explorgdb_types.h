@@ -122,6 +122,8 @@ struct FeatureRecord {
     uint32_t blob_len = 0;                     // 记录 blob 总长度（4 字节前缀）
     std::vector<uint8_t> nullable_flags;       // nullable 位图（1 bit per nullable 字段）
     std::vector<FieldValue> field_values;      // 各字段值（与字段描述符顺序一致）
+    // 非空时表示字段投影后的物化槽位；空值表示所有字段均可用。
+    std::vector<uint8_t> materialized_fields;
 };
 
 // ────────────────────────────────────────────────

@@ -19,7 +19,6 @@
 - [`architecture/`](architecture/) 与 [`design/`](design/)：旧 Writer 生命周期、限制和事务设计；
 - [`planning/`](planning/) 与 [`roadmap/`](roadmap/)：旧 Writer 执行、跨平台和生产化计划；
 - [`reviews/`](reviews/)：旧 API freeze、自审和收口评审；
-- [`evidence/`](evidence/)：旧 Writer 验收和性能证据；
 - [`usage/`](usage/)：旧 Writer API、CI、性能和本地验收说明。
 
 ## 历史源码与产物

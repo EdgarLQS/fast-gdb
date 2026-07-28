@@ -11,7 +11,7 @@
 
 ## 1. 当前基线与目标
 
-Phase A–H 的空间查询实现已合入 `main`。当前正式性能证据覆盖 1K–10M 的 Point、MultiPoint、Polyline、Polygon steady-state，以及 10M Polygon fresh-open；最新证据见 [空间查询公平基准验收记录](../../evidence/spatial-query-baseline-2026-07-14.md)。这些结果作为冻结回归基线，不代表 50M、35GB/5 亿级真实生产数据已经验收。
+Phase A–H 的空间查询实现已合入 `main`。历史性能证据已移除，本文不再作为当前性能基线。
 
 合入后的后续工作不再围绕已达标的 10M 合成路径盲目优化，目标是：
 

@@ -38,6 +38,7 @@ public:
 
     std::optional<ResolvedTable> resolve(const std::string& table_name) const;
     bool contains(const std::string& table_name) const;
+    std::vector<std::string> table_names() const;
 
 private:
     static std::string normalize(std::string value);

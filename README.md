@@ -10,6 +10,7 @@ fast-gdb 是面向 ESRI FileGDB 的 C++17 读取、查询和几何解析库。�
 |---|---|---:|
 | `fast_gdb::linear` | 纯 C++ FileGDB Reader、几何与查询 | 无 |
 | `fast_gdb::hybrid` | fast-gdb 主路径 + GDAL 复杂几何回退 | 有 |
+| `fast_gdb::adaptive` | 同进程协调、Reader 失效和 fresh GDAL 只读回退 | 有 |
 
 安装包不导出 `fast_gdb::writer`。仓库不维护受支持的 FileGDB Writer 产品；`src/edgar/usegdal` 仅作为历史 GDAL/OGR 包装探索代码保留，不构建、不安装、不导出，也不提供兼容性承诺。
 
@@ -79,9 +80,9 @@ GDAL/OpenFileGDB 独占修改目标 .gdb
 
 需要不停读服务时，应由业务系统在 fast-gdb 之外实现副本编辑和原子路径切换。
 
-### 规划中：Adaptive Reader
+### 可选 Adaptive Reader（已实现，跨平台证据仍在补齐）
 
-[ADR-008](docs/adr/ADR-008-adaptive-reader-write-detection-gdal-fallback.md) 提议增加一个可选 Reader 编排层，但该能力目前尚未实现或发布：
+[ADR-008](docs/adr/ADR-008-adaptive-reader-write-detection-gdal-fallback.md) 已 Accepted，并已实现为可选的 `fast_gdb::adaptive` target。它覆盖同进程协调、WriterPending 排空、generation/过期和 fresh GDAL 未验证回退；默认仍不启用，三平台、压力、性能和多 GDAL 版本证据尚未闭环：
 
 ```text
 稳定源
@@ -98,7 +99,9 @@ GDAL/OpenFileGDB 独占修改目标 .gdb
 
 协调模式由调用方提供只读的 `writer_active/generation` 信号，写入期间两个读取后端都不执行。未知外部 Writer 只能采用明确标记为 best-effort 的文件快照检测。
 
-该计划不会增加 Writer API、GDAL update wrapper、事务、marker 写入或在线发布能力。ADR-008 验收前，上述“关闭 Reader → GDAL 写 → 重开 Reader”仍是唯一正式合同。
+该计划不会增加 Writer API、GDAL update wrapper、事务、marker 写入或在线发布能力。对未协调外部 Writer，
+上述“关闭 Reader → GDAL 写 → 重开 Reader”仍是唯一正式正确性合同；Adaptive 只覆盖显式同进程协调和
+本地验证过的 fresh fallback。
 
 ## `usegdal` 参考目录
 
@@ -142,11 +145,12 @@ ctest --test-dir build-boundary --output-on-failure \
 
 详见：
 
-- [GDAL 写入与 fast-gdb 读取边界](docs/usage/11_GDAL写入与fast-gdb读取边界.md)
+- [GDAL 写入与 fast-gdb 读取边界](docs/testing/03_GDAL边界与读写测试.md)
+- [只读并发与 GDAL 冲突验收](docs/testing/11_只读并发与GDAL冲突验收.md)
 - [Reader/GDAL 编辑边界 ADR](docs/adr/ADR-007-reader-only-gdal-edit-boundary.md)
-- [Adaptive Reader Proposed ADR](docs/adr/ADR-008-adaptive-reader-write-detection-gdal-fallback.md)
+- [Adaptive Reader Accepted ADR](docs/adr/ADR-008-adaptive-reader-write-detection-gdal-fallback.md)
 - [Adaptive Reader 实施计划](docs/planning/22_AdaptiveReader写入检测与GDAL回退计划.md)
-- [并发可见性观测证据](docs/evidence/gdal-write-fast-gdb-read-characterization-2026-07-22.md)
+- 并发可见性观测：历史测试记录已移除，当前规则见 [GDAL 边界测试](docs/testing/03_GDAL边界与读写测试.md)
 
 ## 构建
 
@@ -175,6 +179,22 @@ ctest --test-dir build-hybrid --output-on-failure
 ```
 
 CMake 使用 `find_package(GDAL)`，不绑定本机安装路径。
+
+### Adaptive Reader
+
+```bash
+cmake -S . -B build-adaptive \
+  -DFAST_GDB_WITH_GDAL=ON \
+  -DFAST_GDB_BUILD_ADAPTIVE_READER=ON \
+  -DBUILD_TESTING=ON
+cmake --build build-adaptive --parallel
+ctest --test-dir build-adaptive --output-on-failure \
+  -R 'adaptive-reader\.'
+```
+
+安装后可用 `tests/package_consumer` 的
+`-DFAST_GDB_CONSUMER_TARGET=adaptive` 检查可选 target；`linear` consumer
+仍必须在 GDAL 关闭的安装中单独通过。
 
 ## WKB-first 示例
 
@@ -208,7 +228,8 @@ if (table.read_geometry_value(fid, geometry) && geometry.valid()) {
 - 当前 GDAL 编辑目标 GDB 时，所有 fast-gdb Reader 必须停止并释放；
 - `GDALClose()` 后必须完整重开 fast-gdb Reader；
 - 当前同一 `.gdb` 的 GDAL 写入与 fast-gdb 并发读取明确不支持；
-- 计划中的 Adaptive Reader 只负责检测、拒绝、失效和 fresh 只读回退；
+- Adaptive Reader 只负责检测、拒绝、失效和 fresh 只读回退；它不提供 Writer，也不保证未知外部 Writer 的绝对检测；
+- 多个独立 Reader 可并发读取；共享同一个 Reader/Layer/QueryEngine/Cursor 不属于支持合同；
 - 无协调外部 Writer 检测不提供绝对保证；
 - 在线副本发布、跨进程锁、版本管理和垃圾回收由业务系统实现；
 - `.spx` 和 `.atx` 只提供候选，最终结果必须复核；

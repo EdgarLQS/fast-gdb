@@ -235,6 +235,10 @@ bool GdbTableParser::load_tablx(const std::string& tablx_path) {
         if (TablxCache::make_key(tablx_path, key)) {
             auto cached = TablxCache::instance().get(key);
             if (cached) {
+                if (cached->offsets.size() >
+                    static_cast<size_t>(std::numeric_limits<uint32_t>::max())) {
+                    return false;
+                }
                 feature_offsets_ = cached->offsets;
                 active_feature_count_ = cached->feature_count;
                 active_feature_count_known_ = true;
@@ -246,7 +250,19 @@ bool GdbTableParser::load_tablx(const std::string& tablx_path) {
     // 缓存未命中或绕过：完整解析
     GdbTablxParser parser(tablx_path);
     if (!parser.parse()) return false;
+    if (parser.header().version == 4 &&
+        parser.header().nfeatures_v4 >
+            static_cast<uint64_t>(std::numeric_limits<uint32_t>::max())) {
+        return false;
+    }
     feature_offsets_ = parser.offsets();
+    if (feature_offsets_.size() >
+        static_cast<size_t>(std::numeric_limits<uint32_t>::max())) {
+        feature_offsets_.clear();
+        active_feature_count_ = 0;
+        active_feature_count_known_ = false;
+        return false;
+    }
     active_feature_count_ = parser.feature_count();
     active_feature_count_known_ = true;
 

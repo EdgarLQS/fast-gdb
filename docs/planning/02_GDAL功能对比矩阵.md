@@ -4,7 +4,7 @@
 
 fast-gdb 负责高性能读取；GDAL/OpenFileGDB 负责 FileGDB 编辑，并作为正确性对照和可选读取 fallback。
 
-ADR-008 规划一个 Reader-only Adaptive 编排层：观察 Writer 活动和 generation，校验数据源变化，并在写入结束且数据源稳定后使用 fresh GDAL 只读连接恢复。该能力尚未实现。
+ADR-008 已实现一个 Reader-only Adaptive 编排层：观察 Writer 活动和 generation，校验数据源变化，并在写入结束且数据源稳定后使用 fresh GDAL 只读连接恢复。跨平台、压力、性能、多 GDAL 版本和安装包证据仍待补齐。
 
 | 能力 | fast-gdb | GDAL/OpenFileGDB | 结论 |
 |---|---|---|---|
@@ -18,9 +18,9 @@ ADR-008 规划一个 Reader-only Adaptive 编排层：观察 Writer 活动和 ge
 | ISO WKB | 是 | 是 | fast-gdb 正式输出 |
 | 曲线 | 内置线性化/Hybrid | 是 | 复杂场景 fallback |
 | MultiPatch | degraded | 较完整 | 专项 profile |
-| Writer 活动/generation 观察 | Proposed，只读消费调用方信号 | 非 fast-gdb 管理职责 | 协调模式确定性 Busy/失效 |
-| 无协调外部 Writer 变化检测 | Proposed best-effort | 无统一跨 Writer 合同 | 不保证绝对发现 |
-| 写后稳定源读取恢复 | Proposed fresh GDAL 编排 | read-only Dataset | 必须 fresh open/close 和前后校验 |
+| Writer 活动/generation 观察 | 已实现，可选只读消费调用方信号 | 非 fast-gdb 管理职责 | 协调模式确定性 Busy/失效 |
+| 无协调外部 Writer 变化检测 | best-effort | 无统一跨 Writer 合同 | 不保证绝对发现 |
+| 写后稳定源读取恢复 | 已实现，可选 fresh GDAL 编排 | read-only Dataset | 必须 fresh open/close 和前后校验 |
 | CreateFeature | 否 | 是 | 交给 GDAL |
 | SetFeature | 否 | 是 | 交给 GDAL |
 | DeleteFeature | 否 | 是 | 交给 GDAL |
@@ -48,9 +48,10 @@ fast-gdb Reader open
 + GDAL update same .gdb
 ```
 
-并发期间 old/new/mixed/error 均可能出现。ADR-008 未接受前，不能依赖自动检测或 GDAL recovery。
+并发期间 old/new/mixed/error 均可能出现。未协调外部 Writer 仍不能依赖自动检测或
+GDAL recovery；只有显式同进程协调和 fresh fallback 合同可被 Adaptive 识别。
 
-## Proposed Adaptive 行为
+## Adaptive 行为
 
 ```text
 writer_active=true
@@ -97,7 +98,7 @@ writer_active=false 且源稳定
 - 同目录重叠测试只记录可见性类别；
 - 任何单平台 old/new 结果都不是并发支持证明；
 - 当前正式门禁只覆盖完整关闭和重开后的正确性；
-- ADR-008 测试在实现前只是规划，不构成能力证明；
+- Adaptive 测试验证已实现的同进程协调和本地 fresh fallback；未协调重叠测试仍只是 characterization；
 - 协调模式目标是完整旧、完整新或 Busy；无协调模式不能建立普遍检测保证。
 
 ## 相关文档

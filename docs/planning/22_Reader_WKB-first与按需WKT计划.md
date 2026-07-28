@@ -130,7 +130,7 @@ package consumer 已引用 `GeometryValue::to_wkt()`，验证公开头声明和�
 - `git diff --check` 通过。
 
 完整命令、环境和边界见
-[2026-07-18 审核与验证证据](../evidence/branch-review-and-validation-2026-07-18.md)。
+历史审核与验证记录已移除。
 Windows/Linux、真实数据、10M、strict-cold 和 peak RSS 仍未完成，因此不标记正式验收完成。
 
 ## 6. 验收标准

@@ -91,7 +91,8 @@ public:
     bool read_feature_by_fid(uint32_t fid,
                              FeatureRecord& record,
                              GeometryValue& geometry,
-                             FeatureReadMetrics* metrics = nullptr);
+                             FeatureReadMetrics* metrics = nullptr,
+                             const std::vector<size_t>* projection = nullptr);
 
     /**
      * 定位一行中的规范几何 blob。
@@ -163,7 +164,8 @@ private:
         uint32_t fid,
         FeatureRecord& record,
         GeometryValue& geometry,
-        FeatureReadMetrics* metrics);
+        FeatureReadMetrics* metrics,
+        const std::vector<size_t>* projection);
 
     std::string file_path_;
     std::vector<uint8_t> file_data_;

@@ -2,7 +2,7 @@
 
 # M18 Writer 最终自审
 
-> **历史快照**：本文记录 2026-07-16 原功能分支自审结论。M18 随后由 squash 提交 `9dd7edf73763b56d84677c8a246bc85f80a1a0c1` 进入 `main`，PR #11 已作为 superseded 关闭。当前正式状态以 `docs/evidence/M18-writer-main-acceptance-2026-07-17.md` 为准。
+> **历史快照**：本文记录 2026-07-16 原功能分支自审结论。相关验收证据已移除。
 
 - 日期：2026-07-16
 - 历史分支：`codex/m18-1-macos-test-contract-ci`

@@ -1,5 +1,7 @@
 # Test Index
 
+文档说明与验收规则见 [`docs/testing/07_测试索引.md`](../docs/testing/07_测试索引.md)。
+
 ## Reader release gates
 
 | Target | Scope |
@@ -8,6 +10,7 @@
 | `fast_gdb_hybrid_test_runner` | GDAL-backed curve fallback and real-data release contracts |
 | `gdb_tutorial_test_runner` | Full Reader, query, index and direct-GDAL parity suite |
 | `fast_gdb_gdal_read_write_boundary_test_runner` | GDAL edit / fast-gdb Reader lifecycle boundary |
+| `fast_gdb_adaptive_reader_test_runner` | Adaptive coordinator, independent Reader concurrency and GDAL matrix |
 
 ## GDAL boundary tests
 
@@ -45,9 +48,9 @@ ctest --test-dir build-boundary --output-on-failure \
   -R '^gdal-reader-boundary\.'
 ```
 
-## Planned Adaptive Reader tests
+## Adaptive Reader tests
 
-ADR-008 and planning document 22 define a future test target. This target and its runtime code do not exist yet:
+ADR-008 and planning document 22 define the implemented Adaptive Reader target:
 
 ```text
 fast_gdb_adaptive_reader_test_runner
@@ -59,10 +62,12 @@ adaptive-reader.lifecycle.*
 adaptive-reader.stress.*
 ```
 
-Initial planned contracts:
+Contract tests:
 
 - `StableSourceUsesFastVerified`;
 - `WriterPendingStopsNewFastReads`;
+- `DeterministicPendingDrainKeepsLeaseUntilMaterialized`;
+- `PendingCancellationIsRecordedByFastRead`;
 - `FastCursorExpiresAtNextSafePoint`;
 - `PendingTimeoutClearsPendingAndRecovers`;
 - `UpdatePermitRequiresFastReadersDrained`;
@@ -79,6 +84,11 @@ Initial planned contracts:
 - `RepackNeverOverlapsFastMmap`;
 - `MultipleReadersSingleWriterStress`.
 
+The full Reader runner also includes:
+
+- `ReaderConcurrencyTest.IndependentReadersReturnIdenticalFeatureDigests`;
+- `CorruptInputConformance.*`.
+
 The coordinated gate distinguishes two contracts:
 
 - stable fast reads and post-write rebuilds are correctness gates and must be
@@ -91,17 +101,21 @@ The Writer may open its update Dataset only after all fast Reader leases are
 released. External-process Writer detection is outside the first implementation
 scope and cannot be inferred from these planned tests.
 
+The local GDAL reopen matrix additionally covers Create/DeleteFeature,
+Create/DeleteField, index creation and extent refresh; index deletion is recorded
+as `SKIPPED` when the selected OpenFileGDB driver does not implement that edit.
+
 ## Product-surface tests
 
-`tests/package_consumer` currently supports only:
+`tests/package_consumer` supports:
 
 - `linear`;
-- `hybrid`.
+- `hybrid`;
+- `adaptive`.
 
-There is no Writer consumer mode, no `usegdal` consumer mode and no Adaptive
-Reader consumer mode yet. A future adaptive mode requires ADR-008 to be revised
-for `WriterPending` and explicit `GdalUnverified`, then accepted after the
-planned matrix passes.
+There is no Writer consumer mode or `usegdal` consumer mode. `adaptive` is an
+optional GDAL/threaded package variant; the `linear` consumer is separately
+verified with GDAL disabled.
 
 ## Reference-only `usegdal`
 
@@ -128,5 +142,5 @@ The corresponding `usegdal` source may remain for reference, but it is not consi
 - runner failures without steps/logs are infrastructure failures;
 - characterization output is diagnostic and cannot establish concurrent read/write support;
 - `UnverifiedConcurrentRead` must never be counted as a verified data-correctness result;
-- planned Adaptive Reader test names are not evidence of implementation;
+- Adaptive Reader test discovery is a release-gate requirement;
 - reference-only source presence is not release evidence.

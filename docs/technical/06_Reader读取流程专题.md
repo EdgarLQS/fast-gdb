@@ -4,7 +4,7 @@
 
 本文描述 fast-gdb 从 FileGDB 目录到查询结果的完整 Reader 链路。fast-gdb 不提供 FileGDB Writer；外部 GDAL 编辑必须与当前 Reader 生命周期完全隔离。
 
-ADR-008 另外规划一个位于低层 Reader 之上的 Adaptive 编排层，用于观察 Writer 活动、校验数据源变化、使旧 Reader 失效，并在写入结束且数据源稳定后使用 fresh GDAL 只读连接恢复。该能力尚未实现，当前正式合同仍由 ADR-007 定义。
+ADR-008 定义一个位于低层 Reader 之上的可选 Adaptive 编排层，用于观察 Writer 活动、校验数据源变化、使旧 Reader 失效，并在写入结束且数据源稳定后使用 fresh GDAL 只读连接恢复。该能力已实现但默认关闭；未采用协调入口时，当前正式合同仍由 ADR-007 定义。
 
 ## 2. 总体流程
 
@@ -30,7 +30,7 @@ FeatureRecord + GeometryValue
 ISO WKB-first output
 ```
 
-规划中的 Adaptive 层不会改变上述低层解析链，而是在调用前后增加 activity/generation 和 source snapshot 校验。
+Adaptive 层不会改变上述低层解析链，而是在调用前后增加 activity/generation 和 source snapshot 校验。
 
 ## 3. 目录和系统表
 
@@ -49,7 +49,8 @@ ISO WKB-first output
 - 可选 `.atx`；
 - 图层和空间参考元数据。
 
-ADR-008 Phase 1 计划为这些依赖增加跨平台文件身份、大小和高精度 mtime 快照，但当前 `GdbCatalog` 还没有该完整能力。
+Adaptive 当前通过协调 generation 和 best-effort 源快照观察这些依赖；跨平台文件身份、
+高精度 mtime 和多 GDAL 版本的独立发布证据仍未闭环。
 
 ## 4. 表和 FID
 
@@ -176,9 +177,9 @@ new catalog scan
 new resolver / table / engine / cursor
 ```
 
-## 11. Proposed Adaptive Reader 流程
+## 11. Adaptive Reader 流程（已实现的同进程合同）
 
-该流程是 ADR-008 的设计目标，不是当前 API：
+该流程由可选 `fast_gdb::adaptive` target 提供；未知外部 Writer 检测仍仅为 best-effort：
 
 ```text
 observe writer activity/generation
@@ -221,7 +222,7 @@ Reader 应失败关闭而不是猜测：
 - geometry 编码未知；
 - 外部写入导致文件状态变化。
 
-ADR-008 计划进一步区分：
+Adaptive 当前进一步区分：
 
 - `SourceBusy`；
 - `SourceChangedDuringRead`；
@@ -255,19 +256,19 @@ ADR-008 计划进一步区分：
 - 写前关闭 Reader、GDAL 写入、写后完整重开；
 - 同目录并发读写的观测性分类。
 
-ADR-008 计划新增：
+本轮已新增并纳入本地门禁：
 
 - Writer active 时两个后端调用数均为零；
 - generation/source 变化使旧 Reader 过期；
 - fast 和 GDAL 读取期间变化均丢弃结果；
 - 写后 fresh GDAL 读取完整新状态；
 - fresh fallback 不复用缓存 Dataset；
-- 三平台压力测试无 mixed、无崩溃。
+- 独立 Reader 2/4/8 并发 digest、确定性 Pending 排空和本地 GDAL 写后重开矩阵；三平台压力测试仍待外部验收。
 
 相关文档：
 
-- [GDAL 写入与 fast-gdb 读取边界](../usage/11_GDAL写入与fast-gdb读取边界.md)
+- [GDAL 写入与 fast-gdb 读取边界](../testing/03_GDAL边界与读写测试.md)
 - [Reader-only ADR](../adr/ADR-007-reader-only-gdal-edit-boundary.md)
 - [Adaptive Reader ADR](../adr/ADR-008-adaptive-reader-write-detection-gdal-fallback.md)
 - [Adaptive Reader 实施计划](../planning/22_AdaptiveReader写入检测与GDAL回退计划.md)
-- [并发可见性观测证据](../evidence/gdal-write-fast-gdb-read-characterization-2026-07-22.md)
+- 并发读写仅按 [`GDAL 边界测试`](../testing/03_GDAL边界与读写测试.md) 的当前合同处理。
