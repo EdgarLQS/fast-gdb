@@ -173,9 +173,9 @@ GDAL 永远只编辑未被 Reader 使用的工作副本。业务系统负责验�
 - 将观测性测试的单平台结果写成并发支持声明；
 - 在安装导出中重新加入 Writer target。
 
-## 11. 计划中的 Adaptive Reader 扩展
+## 11. 可选 Adaptive Reader 扩展
 
-> 本节是 [ADR-008](../adr/ADR-008-adaptive-reader-write-detection-gdal-fallback.md) 的 Proposed 架构，尚未构成当前发布能力。
+> 本节对应已 Accepted 的 [ADR-008](../adr/ADR-008-adaptive-reader-write-detection-gdal-fallback.md)。同进程协调实现已进入可选 target；跨平台、压力、性能和多 GDAL 版本仍需独立发布验收。
 
 Adaptive Reader 不尝试支持边写边读，而是把不安全重叠转换为：
 

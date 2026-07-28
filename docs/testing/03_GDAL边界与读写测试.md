@@ -4,7 +4,7 @@
 
 fast-gdb 只负责读取 FileGDB。FileGDB 的创建、追加、更新、删除、Schema 编辑、索引维护和压缩统一交给 GDAL/OpenFileGDB。
 
-本文首先定义当前调用方必须遵守的读写阶段切换规则，然后说明计划中的 Adaptive Reader 使用语义。Adaptive Reader 尚未实现，当前正式合同仍是写前关闭、写后完整重开。
+本文首先定义当前调用方必须遵守的读写阶段切换规则，然后说明可选 Adaptive Reader 使用语义。Adaptive Reader 已实现同进程协调合同；未采用它时，当前正式合同仍是写前关闭、写后完整重开。
 
 ## 2. 当前正确用法
 
@@ -227,9 +227,9 @@ ctest --test-dir build-boundary --output-on-failure \
 - [ ] 没有其他 update 连接；
 - [ ] Reader 将从零重新构建。
 
-## 8. 计划中的 Adaptive Reader
+## 8. 可选 Adaptive Reader
 
-> 本节对应 [ADR-008](../adr/ADR-008-adaptive-reader-write-detection-gdal-fallback.md) 和[实施计划](../planning/22_AdaptiveReader写入检测与GDAL回退计划.md)，目前尚未实现。
+> 本节对应已 Accepted 的 [ADR-008](../adr/ADR-008-adaptive-reader-write-detection-gdal-fallback.md) 和[实施计划](../planning/22_AdaptiveReader写入检测与GDAL回退计划.md)。当前实现验证同进程协调、Busy、过期和 fresh fallback；未知外部 Writer 与跨平台发布证据仍待补齐。
 
 目标调用语义：
 

@@ -167,4 +167,4 @@ Reader 保持打开时 GDAL 修改同一目录，记录：
 - 写入结束且源稳定后，使用全新 GDALDataset 只读恢复；
 - GDAL 结果也必须完整物化、关闭 Dataset 并通过读取后源状态验证。
 
-ADR-008 当前为 Proposed，不改变本 ADR 的当前支持合同，也不把 Reader/Writer 重叠变成受支持读取场景。只有完成三平台正确性、压力、性能和安装面验收后，Adaptive Reader 才能作为独立受支持能力发布。
+ADR-008 已 Accepted，但不改变本 ADR 的关闭、写入、重开合同，也不把 Reader/Writer 重叠变成受支持读取场景。Adaptive target 当前只承诺同进程协调语义；三平台正确性、压力、性能、多 GDAL 版本和安装包证据完成后，才能扩大独立发布承诺。

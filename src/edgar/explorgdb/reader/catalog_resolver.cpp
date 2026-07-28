@@ -5,6 +5,7 @@
 #include "gdb_table.h"
 #include <algorithm>
 #include <cctype>
+#include <vector>
 #include "explorgdb_constants.h"
 
 namespace explorgdb {
@@ -84,6 +85,17 @@ std::optional<ResolvedTable> CatalogResolver::resolve(const std::string& table_n
 
 bool CatalogResolver::contains(const std::string& table_name) const {
     return rows_by_name_.find(normalize(table_name)) != rows_by_name_.end();
+}
+
+std::vector<std::string> CatalogResolver::table_names() const {
+    std::vector<std::string> names;
+    names.reserve(rows_by_name_.size());
+    for (const auto& entry : rows_by_name_) names.push_back(entry.second.name);
+    std::sort(names.begin(), names.end(), [](const std::string& lhs,
+                                             const std::string& rhs) {
+        return normalize(lhs) < normalize(rhs);
+    });
+    return names;
 }
 
 } // namespace explorgdb

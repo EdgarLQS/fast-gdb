@@ -1,9 +1,9 @@
 # 同进程 GDAL 写入与 Adaptive Reader 切换计划
 
-- **状态**：Active / Design first
+- **状态**：Active / Evidence pending
 - **日期**：2026-07-23
 - **当前正式合同**：[ADR-007：Reader-only 与 GDAL 编辑边界](../adr/ADR-007-reader-only-gdal-edit-boundary.md)
-- **待修订提案**：[ADR-008：Adaptive Reader 写入检测与 fresh GDAL 只读回退](../adr/ADR-008-adaptive-reader-write-detection-gdal-fallback.md)
+- **决策依据**：[ADR-008：Adaptive Reader 写入检测与 fresh GDAL 只读回退](../adr/ADR-008-adaptive-reader-write-detection-gdal-fallback.md)
 - **产品边界**：fast-gdb 仍是 Reader only；所有 FileGDB 修改继续由原生 GDAL/OpenFileGDB 执行
 
 ## 1. 计划结论
@@ -31,7 +31,7 @@ Writer 关闭
 `UnverifiedConcurrentRead` 只表示“读取行为交给原生 GDAL 执行”。它不保证结果属于
 完整旧版本或完整新版本，也不把同目录重叠读写提升为 fast-gdb 的支持合同。
 
-在 ADR-008 完成修订和实现验收前，唯一具有一致性保证的流程仍然是：
+未采用 Adaptive 协调入口时，唯一具有一致性保证的流程仍然是：
 
 ```text
 关闭全部 Reader → GDAL 写入 → GDALClose → 重开 Reader
@@ -108,7 +108,7 @@ option(FAST_GDB_BUILD_ADAPTIVE_READER
 - 新增可选安装 target `fast_gdb::adaptive`；
 - `fast_gdb::linear` 保持无 GDAL 依赖；
 - Adaptive 编译宏只属于新 target，不进入低层 Reader 公共头；
-- 计划阶段不新增 runtime target，以上内容必须在 ADR-008 修订后实施。
+- Adaptive runtime target 已实现；本计划剩余工作集中于三平台、压力、性能、多 GDAL 版本和安装包证据，不扩大 Reader/Writer 边界。
 
 ### 4.2 `InProcessGdbCoordinator`
 
@@ -455,7 +455,7 @@ GDAL 未验证路径单独记录：
 | GDAL Dataset 被缓存复用 | query fresh session；cursor 独占 session |
 | 调用方报告 close 失败 | 增加 generation、保留诊断并使旧 Reader 过期 |
 | Active 关闭通知丢失 | 保持 fail-closed，待调用方确认 Dataset 已关闭后恢复 |
-| 计划与 ADR 冲突 | Phase 0 先修订 Proposed ADR-008，不修改 ADR-007 当前合同 |
+| 计划与 ADR 冲突 | ADR-008 已 Accepted；新增行为仍不得修改 ADR-007 的 Reader/Writer 当前合同 |
 
 ## 11. 完成定义
 

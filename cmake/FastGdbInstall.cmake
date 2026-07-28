@@ -123,12 +123,9 @@ install(FILES
 install(FILES README.md CHANGELOG.md
     DESTINATION ${CMAKE_INSTALL_DATADIR}/fast_gdb)
 install(FILES
-    docs/evidence/13_fast-gdb最终等价与发布验收报告.md
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/fast_gdb/evidence
-    RENAME release-acceptance-report.md)
-install(FILES
-    docs/evidence/curve-polyline-m-real-acceptance-2026-07-13.md
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/fast_gdb/evidence)
+    docs/releases/v0.1.0.md
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/fast_gdb
+    RENAME release-notes.md)
 
 set(CPACK_PACKAGE_NAME "fast-gdb")
 set(CPACK_PACKAGE_VENDOR "EdgarLQS")

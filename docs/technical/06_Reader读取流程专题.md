@@ -4,7 +4,7 @@
 
 本文描述 fast-gdb 从 FileGDB 目录到查询结果的完整 Reader 链路。fast-gdb 不提供 FileGDB Writer；外部 GDAL 编辑必须与当前 Reader 生命周期完全隔离。
 
-ADR-008 另外规划一个位于低层 Reader 之上的 Adaptive 编排层，用于观察 Writer 活动、校验数据源变化、使旧 Reader 失效，并在写入结束且数据源稳定后使用 fresh GDAL 只读连接恢复。该能力尚未实现，当前正式合同仍由 ADR-007 定义。
+ADR-008 定义一个位于低层 Reader 之上的可选 Adaptive 编排层，用于观察 Writer 活动、校验数据源变化、使旧 Reader 失效，并在写入结束且数据源稳定后使用 fresh GDAL 只读连接恢复。该能力已实现但默认关闭；未采用协调入口时，当前正式合同仍由 ADR-007 定义。
 
 ## 2. 总体流程
 
@@ -30,7 +30,7 @@ FeatureRecord + GeometryValue
 ISO WKB-first output
 ```
 
-规划中的 Adaptive 层不会改变上述低层解析链，而是在调用前后增加 activity/generation 和 source snapshot 校验。
+Adaptive 层不会改变上述低层解析链，而是在调用前后增加 activity/generation 和 source snapshot 校验。
 
 ## 3. 目录和系统表
 
@@ -176,9 +176,9 @@ new catalog scan
 new resolver / table / engine / cursor
 ```
 
-## 11. Proposed Adaptive Reader 流程
+## 11. Adaptive Reader 流程（已实现的同进程合同）
 
-该流程是 ADR-008 的设计目标，不是当前 API：
+该流程由可选 `fast_gdb::adaptive` target 提供；未知外部 Writer 检测仍仅为 best-effort：
 
 ```text
 observe writer activity/generation

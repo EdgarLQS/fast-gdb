@@ -79,9 +79,9 @@ GDAL/OpenFileGDB 独占修改目标 .gdb
 
 需要不停读服务时，应由业务系统在 fast-gdb 之外实现副本编辑和原子路径切换。
 
-### 规划中：Adaptive Reader
+### 可选 Adaptive Reader（已实现，证据仍在补齐）
 
-[ADR-008](docs/adr/ADR-008-adaptive-reader-write-detection-gdal-fallback.md) 提议增加一个可选 Reader 编排层，但该能力目前尚未实现或发布：
+[ADR-008](docs/adr/ADR-008-adaptive-reader-write-detection-gdal-fallback.md) 已 Accepted，并已实现为可选的 `fast_gdb::adaptive` target。它只覆盖同进程协调语义；默认仍不启用，三平台、压力、性能和多 GDAL 版本证据尚未闭环：
 
 ```text
 稳定源
@@ -144,7 +144,7 @@ ctest --test-dir build-boundary --output-on-failure \
 
 - [GDAL 写入与 fast-gdb 读取边界](docs/testing/03_GDAL边界与读写测试.md)
 - [Reader/GDAL 编辑边界 ADR](docs/adr/ADR-007-reader-only-gdal-edit-boundary.md)
-- [Adaptive Reader Proposed ADR](docs/adr/ADR-008-adaptive-reader-write-detection-gdal-fallback.md)
+- [Adaptive Reader Accepted ADR](docs/adr/ADR-008-adaptive-reader-write-detection-gdal-fallback.md)
 - [Adaptive Reader 实施计划](docs/planning/22_AdaptiveReader写入检测与GDAL回退计划.md)
 - 并发可见性观测：历史测试记录已移除，当前规则见 [GDAL 边界测试](docs/testing/03_GDAL边界与读写测试.md)
 
@@ -208,7 +208,7 @@ if (table.read_geometry_value(fid, geometry) && geometry.valid()) {
 - 当前 GDAL 编辑目标 GDB 时，所有 fast-gdb Reader 必须停止并释放；
 - `GDALClose()` 后必须完整重开 fast-gdb Reader；
 - 当前同一 `.gdb` 的 GDAL 写入与 fast-gdb 并发读取明确不支持；
-- 计划中的 Adaptive Reader 只负责检测、拒绝、失效和 fresh 只读回退；
+- Adaptive Reader 只负责检测、拒绝、失效和 fresh 只读回退；它不提供 Writer，也不保证未知外部 Writer 的绝对检测；
 - 无协调外部 Writer 检测不提供绝对保证；
 - 在线副本发布、跨进程锁、版本管理和垃圾回收由业务系统实现；
 - `.spx` 和 `.atx` 只提供候选，最终结果必须复核；

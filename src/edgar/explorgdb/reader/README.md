@@ -13,9 +13,28 @@ This directory contains the fast-gdb FileGDB Reader implementation.
 - FeatureCursor;
 - geometry decoding and ISO WKB output.
 
+The embedded public seam is `Reader → Layer → QueryRequest/FeatureCursor`. It
+keeps catalog resolution, table paths and index files behind the facade while
+still exposing `Layer::metadata()` and `Layer::capabilities()` for advanced
+readers. Query requests support field projection, offset/limit, result budgets,
+optional FID ordering and cancellation callbacks.
+
+The current public FID contract is zero-based `uint32_t`. Every tablx loading
+path rejects a physical slot domain larger than `UINT32_MAX`; it never silently
+truncates a v4 64-bit feature count. A future 64-bit FID change must be an
+end-to-end API decision rather than a parser-only widening.
+
+`Reader`, `Layer` and `QueryEngine` are not shared mutable thread-safe objects.
+Independent Reader/Layer object graphs may be used concurrently; one
+`QueryEngine` permits at most one active cursor. Cursors borrow that Layer's
+open source and must be destroyed before the source is edited or the Layer is
+reopened. Any source change invalidates the complete object graph; callers must
+close it and build a fresh Reader. `Layer::capabilities()` reports supported or
+degraded behavior, while query status/error fields classify execution failures.
+
 fast-gdb does not implement FileGDB editing. There is no Writer dependency from this directory.
 
-ADR-008 proposes a future higher-level Adaptive Reader orchestration layer for writer-activity observation, source-change validation, Reader invalidation and fresh GDAL read-only recovery. That layer is not implemented here yet and must not add FileGDB write behavior to this directory.
+ADR-008 defines a higher-level Adaptive Reader orchestration layer for writer-activity observation, source-change validation, Reader invalidation and fresh GDAL read-only recovery. The implementation lives in the optional `fast_gdb::adaptive` target; this low-level directory remains Writer-free.
 
 ## Main flow
 
@@ -28,7 +47,7 @@ GdbCatalog
   → FeatureRecord + GeometryValue
 ```
 
-The proposed Adaptive layer remains above this low-level flow:
+The optional Adaptive layer remains above this low-level flow:
 
 ```text
 activity/generation + source snapshot
@@ -59,7 +78,7 @@ open fast-gdb Reader + GDAL update same directory = unsupported
 
 The overlap may expose old, new, mixed or error states. Tests that characterize this behavior do not establish a support contract.
 
-The proposed Adaptive behavior is fail-closed rather than concurrent-read support:
+The implemented Adaptive behavior is fail-closed rather than concurrent-read support:
 
 - `writer_active=true` returns `SourceBusy` without invoking either read backend;
 - source/generation change discards the result and expires this Reader state;
@@ -68,7 +87,7 @@ The proposed Adaptive behavior is fail-closed rather than concurrent-read suppor
 
 ## Build boundary
 
-Current Reader targets are `fast_gdb::linear` and optional `fast_gdb::hybrid`. There is no Adaptive target yet. Any future `fast_gdb::adaptive` target must remain Reader-only, must not link `src/edgar/usegdal`, and requires ADR-008 acceptance plus independent correctness, stress, performance and install gates.
+Current Reader targets are `fast_gdb::linear`, optional `fast_gdb::hybrid`, and optional `fast_gdb::adaptive`. Adaptive is disabled by default, requires GDAL, must not link `src/edgar/usegdal`, and is currently verified only for its same-process coordination, Busy, expiry and fresh-fallback contracts.
 
 ## Related documents
 

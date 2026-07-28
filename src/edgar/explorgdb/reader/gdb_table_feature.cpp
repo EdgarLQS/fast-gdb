@@ -59,6 +59,13 @@ bool is_zero_padding(const uint8_t* cursor, const uint8_t* end) {
     return true;
 }
 
+bool field_is_selected(const std::vector<size_t>* projection,
+                       size_t field_index) {
+    if (projection == nullptr) return true;
+    return std::find(projection->begin(), projection->end(), field_index) !=
+        projection->end();
+}
+
 bool read_fixed_field_value(BinaryReader& reader,
                             FieldType type,
                             uint32_t implicit_object_id,
@@ -152,7 +159,8 @@ bool GdbTableParser::read_feature_by_fid_wkb_internal(
     uint32_t fid,
     FeatureRecord& record,
     GeometryValue& geometry,
-    FeatureReadMetrics* metrics) {
+    FeatureReadMetrics* metrics,
+    const std::vector<size_t>* projection) {
     if (metrics != nullptr) *metrics = FeatureReadMetrics{};
 
     const auto lookup_start = metric_start(metrics);
@@ -293,7 +301,9 @@ bool GdbTableParser::read_feature_by_fid_wkb_internal(
                                 valid = false;
                                 break;
                             }
-                            candidate.field_values.push_back(std::move(value));
+                            candidate.field_values.push_back(
+                                field_is_selected(projection, field_index)
+                                    ? std::move(value) : FieldValue(nullptr));
                             continue;
                         }
 
@@ -304,6 +314,11 @@ bool GdbTableParser::read_feature_by_fid_wkb_internal(
                                 if (length > std::numeric_limits<size_t>::max() ||
                                     !reader.can_read(static_cast<size_t>(length))) {
                                     valid = false;
+                                    break;
+                                }
+                                if (!field_is_selected(projection, field_index)) {
+                                    reader.skip(static_cast<size_t>(length));
+                                    candidate.field_values.push_back(nullptr);
                                     break;
                                 }
                                 std::string text(static_cast<size_t>(length), '\0');
@@ -317,6 +332,11 @@ bool GdbTableParser::read_feature_by_fid_wkb_internal(
                                 if (length > std::numeric_limits<size_t>::max() ||
                                     !reader.can_read(static_cast<size_t>(length))) {
                                     valid = false;
+                                    break;
+                                }
+                                if (!field_is_selected(projection, field_index)) {
+                                    reader.skip(static_cast<size_t>(length));
+                                    candidate.field_values.push_back(nullptr);
                                     break;
                                 }
                                 candidate.field_values.push_back(
@@ -345,7 +365,10 @@ bool GdbTableParser::read_feature_by_fid_wkb_internal(
                                 candidate_geometry.field_index = field_index;
                                 candidate_geometry.offset = reader.tell();
                                 candidate_geometry.size = static_cast<size_t>(length);
-                                candidate.field_values.push_back(std::string{});
+                                candidate.field_values.push_back(
+                                    field_is_selected(projection, field_index)
+                                        ? FieldValue(std::string{})
+                                        : FieldValue(nullptr));
                                 reader.skip(candidate_geometry.size);
                                 break;
                             }

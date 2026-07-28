@@ -8,9 +8,105 @@
 #include "gdb_geometry.h"
 #include "query_where_internal.h"
 
+#include <algorithm>
 #include <utility>
 
 namespace explorgdb {
+
+const char* query_status_name(QueryStatus status) noexcept {
+    switch (status) {
+        case QueryStatus::Ok: return "ok";
+        case QueryStatus::InvalidRequest: return "invalid_request";
+        case QueryStatus::EngineNotOpen: return "engine_not_open";
+        case QueryStatus::CursorActive: return "cursor_active";
+        case QueryStatus::Cancelled: return "cancelled";
+        case QueryStatus::ResultLimitExceeded: return "result_limit_exceeded";
+    }
+    return "unknown";
+}
+
+namespace {
+
+bool projection_is_valid(const QueryRequest& request,
+                         const GdbTableParser* parser) {
+    if (!request.field_projection.has_value() || parser == nullptr) return true;
+    for (size_t index : *request.field_projection) {
+        if (index >= parser->fields().size()) return false;
+    }
+    return true;
+}
+
+void apply_result_window(QueryResult& result, const QueryRequest& request) {
+    if (request.sort_fids) {
+        std::sort(result.matched_fids.begin(), result.matched_fids.end());
+    }
+    if (request.offset >= result.matched_fids.size()) {
+        result.matched_fids.clear();
+    } else if (request.offset != 0) {
+        result.matched_fids.erase(
+            result.matched_fids.begin(),
+            result.matched_fids.begin() +
+                static_cast<std::ptrdiff_t>(request.offset));
+    }
+    if (request.limit != 0 && result.matched_fids.size() > request.limit) {
+        result.matched_fids.resize(request.limit);
+    }
+    if (result.record.has_value() && result.matched_fids.empty()) {
+        result.record.reset();
+    }
+}
+
+void apply_record_projection(QueryResult& result,
+                             const QueryRequest& request) {
+    if (!result.record.has_value() || !request.field_projection.has_value()) {
+        return;
+    }
+    result.record->materialized_fields.assign(
+        result.record->field_values.size(), 0U);
+    for (size_t index : *request.field_projection) {
+        result.record->materialized_fields[index] = 1U;
+    }
+    for (size_t index = 0; index < result.record->field_values.size(); ++index) {
+        if (result.record->materialized_fields[index] == 0U) {
+            result.record->field_values[index] = nullptr;
+        }
+    }
+}
+
+QueryResult apply_request_options(QueryResult result,
+                                  const QueryRequest& request,
+                                  const GdbTableParser* parser) {
+    if (!projection_is_valid(request, parser)) {
+        result.status = QueryStatus::InvalidRequest;
+        result.error = "field projection index is out of range";
+        result.fallback_reason = result.error;
+        result.matched_fids.clear();
+        result.record.reset();
+        return result;
+    }
+    if (request.cancel_requested && request.cancel_requested()) {
+        result.status = QueryStatus::Cancelled;
+        result.error = "query cancelled";
+        result.matched_fids.clear();
+        result.record.reset();
+        return result;
+    }
+
+    apply_result_window(result, request);
+    if (request.max_result_features != 0 &&
+        result.matched_fids.size() > request.max_result_features) {
+        result.status = QueryStatus::ResultLimitExceeded;
+        result.error = "query result exceeds max_result_features";
+        result.fallback_reason = result.error;
+        result.matched_fids.clear();
+        result.record.reset();
+        return result;
+    }
+    if (parser != nullptr) apply_record_projection(result, request);
+    return result;
+}
+
+} // namespace
 
 // ────────────────────────────────────────────────
 // 1. 引擎与游标代次控制
@@ -97,14 +193,30 @@ QueryResult QueryEngine::query(const QueryRequest& request) {
     // FeatureCursor 依赖底层映射和共享扫描状态，活动期间阻止旁路查询。
     if (feature_cursor_active()) {
         QueryResult result;
+        result.status = QueryStatus::CursorActive;
+        result.error = kFallbackCursorActive;
         result.execution_path = kPathQueryBlocked;
         result.fallback_reason = kFallbackCursorActive;
         return result;
     }
+    if (!parser_) {
+        QueryResult result;
+        result.status = QueryStatus::EngineNotOpen;
+        result.error = kFallbackTableNotOpen;
+        result.fallback_reason = kFallbackTableNotOpen;
+        return result;
+    }
+    if (!projection_is_valid(request, parser_.get())) {
+        QueryResult result;
+        result.status = QueryStatus::InvalidRequest;
+        result.error = "field projection index is out of range";
+        result.fallback_reason = result.error;
+        return result;
+    }
 
+    QueryResult result;
     switch (request.kind) {
         case QueryKind::ReadByFid: {
-            QueryResult result;
             result.execution_path = kPathReadByFid;
             FeatureRecord record;
             if (read_by_fid(request.fid, record)) {
@@ -113,24 +225,31 @@ QueryResult QueryEngine::query(const QueryRequest& request) {
             } else {
                 result.fallback_reason = kFallbackFidNotFound;
             }
-            return result;
+            break;
         }
         case QueryKind::SequentialScan:
-            return query_sequential_scan();
+            result = query_sequential_scan(request);
+            break;
         case QueryKind::SpatialBbox:
-            return query_spatial(request);
+            result = query_spatial(request);
+            break;
         case QueryKind::AttributeDouble:
         case QueryKind::AttributeString:
-            return query_attribute(request);
+            result = query_attribute(request);
+            break;
         case QueryKind::WhereClause:
-            return query_where(request);
+            result = query_where(request);
+            break;
         case QueryKind::SpatialWhere:
-            return query_spatial_where(request);
+            result = query_spatial_where(request);
+            break;
+        default:
+            result.status = QueryStatus::InvalidRequest;
+            result.error = kFallbackInvalidQueryKind;
+            result.fallback_reason = kFallbackInvalidQueryKind;
+            break;
     }
-
-    QueryResult result;
-    result.fallback_reason = kFallbackInvalidQueryKind;
-    return result;
+    return apply_request_options(std::move(result), request, parser_.get());
 }
 
 bool QueryEngine::read_by_fid(uint32_t fid, FeatureRecord& record) {
@@ -143,7 +262,7 @@ uint64_t QueryEngine::scan(GdbTableParser::ScanCallback callback) {
     return parser_ ? parser_->sequential_scan(std::move(callback)) : 0;
 }
 
-QueryResult QueryEngine::query_sequential_scan() const {
+QueryResult QueryEngine::query_sequential_scan(const QueryRequest& request) const {
     QueryResult result;
     result.execution_path = kPathScanSequential;
     if (!parser_) {
@@ -154,7 +273,7 @@ QueryResult QueryEngine::query_sequential_scan() const {
     parser_->sequential_scan(
         [&](uint32_t fid, const FieldRef*, int) {
             result.matched_fids.push_back(fid);
-            return true;
+            return !request.cancel_requested || !request.cancel_requested();
         });
     return result;
 }
@@ -316,7 +435,7 @@ QueryResult QueryEngine::query_where(const QueryRequest& request) {
             if (evaluate_where(expression, fields, field_count)) {
                 result.matched_fids.push_back(fid);
             }
-            return true;
+            return !request.cancel_requested || !request.cancel_requested();
         });
     return result;
 }
