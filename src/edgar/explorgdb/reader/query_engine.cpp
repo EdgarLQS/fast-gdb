@@ -9,6 +9,7 @@
 #include "query_where_internal.h"
 
 #include <algorithm>
+#include <limits>
 #include <utility>
 
 namespace explorgdb {
@@ -19,6 +20,8 @@ const char* query_status_name(QueryStatus status) noexcept {
         case QueryStatus::InvalidRequest: return "invalid_request";
         case QueryStatus::EngineNotOpen: return "engine_not_open";
         case QueryStatus::CursorActive: return "cursor_active";
+        case QueryStatus::Unsupported: return "unsupported";
+        case QueryStatus::SourceChanged: return "source_changed";
         case QueryStatus::Cancelled: return "cancelled";
         case QueryStatus::ResultLimitExceeded: return "result_limit_exceeded";
     }
@@ -70,6 +73,48 @@ void apply_record_projection(QueryResult& result,
         if (result.record->materialized_fields[index] == 0U) {
             result.record->field_values[index] = nullptr;
         }
+    }
+}
+
+size_t saturated_add(size_t lhs, size_t rhs) {
+    const size_t maximum = std::numeric_limits<size_t>::max();
+    return lhs > maximum - rhs ? maximum : lhs + rhs;
+}
+
+size_t scan_stop_after(const QueryRequest& request) {
+    size_t stop_after = std::numeric_limits<size_t>::max();
+    if (request.limit != 0) {
+        stop_after = saturated_add(request.offset, request.limit);
+    }
+    if (request.max_result_features != 0) {
+        const size_t budget = saturated_add(request.offset,
+                                            request.max_result_features);
+        stop_after = std::min(stop_after, saturated_add(budget, 1U));
+    }
+    return stop_after == std::numeric_limits<size_t>::max()
+        ? 0 : stop_after;
+}
+
+void classify_query_status(const QueryRequest& request, QueryResult& result) {
+    if (result.status != QueryStatus::Ok) return;
+    const bool invalid_path = result.execution_path.size() >= 8U &&
+        result.execution_path.compare(
+            result.execution_path.size() - 8U, 8U, ":invalid") == 0;
+    if (result.fallback_reason == kFallbackInvalidQueryKind || invalid_path ||
+        (request.kind == QueryKind::WhereClause &&
+         !result.fallback_reason.empty())) {
+        result.status = QueryStatus::InvalidRequest;
+        result.error = result.fallback_reason.empty()
+            ? kFallbackInvalidRequest : result.fallback_reason;
+        return;
+    }
+    if (request.kind == QueryKind::SpatialBbox &&
+        (result.execution_path == kPathBboxUnavailable ||
+         result.execution_path == kPathBboxModelUnavailable)) {
+        result.status = QueryStatus::Unsupported;
+        result.error = result.fallback_reason.empty()
+            ? "spatial bbox is unsupported for this layer"
+            : result.fallback_reason;
     }
 }
 
@@ -249,6 +294,7 @@ QueryResult QueryEngine::query(const QueryRequest& request) {
             result.fallback_reason = kFallbackInvalidQueryKind;
             break;
     }
+    classify_query_status(request, result);
     return apply_request_options(std::move(result), request, parser_.get());
 }
 
@@ -270,10 +316,14 @@ QueryResult QueryEngine::query_sequential_scan(const QueryRequest& request) cons
         return result;
     }
 
+    const size_t stop_after = scan_stop_after(request);
     parser_->sequential_scan(
         [&](uint32_t fid, const FieldRef*, int) {
             result.matched_fids.push_back(fid);
-            return !request.cancel_requested || !request.cancel_requested();
+            const bool cancelled = request.cancel_requested &&
+                request.cancel_requested();
+            return !cancelled &&
+                (stop_after == 0 || result.matched_fids.size() < stop_after);
         });
     return result;
 }
@@ -430,12 +480,16 @@ QueryResult QueryEngine::query_where(const QueryRequest& request) {
     }
 
     // FieldRef 只在当前扫描回调有效；求值器不得把底层指针保存到回调外。
+    const size_t stop_after = scan_stop_after(request);
     parser_->sequential_scan(
         [&](uint32_t fid, const FieldRef* fields, int field_count) {
             if (evaluate_where(expression, fields, field_count)) {
                 result.matched_fids.push_back(fid);
             }
-            return !request.cancel_requested || !request.cancel_requested();
+            const bool cancelled = request.cancel_requested &&
+                request.cancel_requested();
+            return !cancelled &&
+                (stop_after == 0 || result.matched_fids.size() < stop_after);
         });
     return result;
 }

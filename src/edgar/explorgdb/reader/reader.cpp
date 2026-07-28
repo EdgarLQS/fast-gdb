@@ -4,14 +4,80 @@
 #include "gdb_catalog.h"
 
 #include <filesystem>
+#include <unordered_map>
 #include <utility>
 
 namespace explorgdb {
 namespace detail {
 
 struct ReaderState {
+    struct SourceStamp {
+        uintmax_t size = 0;
+        intmax_t modified = 0;
+    };
+
     std::shared_ptr<GdbCatalog> catalog;
     std::shared_ptr<CatalogResolver> resolver;
+    std::unordered_map<std::string, SourceStamp> source_snapshot;
+
+    bool capture_source_snapshot() {
+        source_snapshot.clear();
+        std::error_code error;
+        std::filesystem::directory_iterator iterator(
+            catalog->path(), error);
+        if (error) return false;
+        for (const auto& entry : iterator) {
+            if (!entry.is_regular_file(error)) {
+                if (error) return false;
+                continue;
+            }
+            const auto size = entry.file_size(error);
+            if (error) return false;
+            const auto modified = entry.last_write_time(error);
+            if (error) return false;
+            source_snapshot.emplace(
+                entry.path().filename().string(),
+                SourceStamp{size, static_cast<intmax_t>(
+                    modified.time_since_epoch().count())});
+        }
+        return true;
+    }
+
+    bool source_is_current() const noexcept {
+        try {
+            std::error_code error;
+            std::filesystem::directory_iterator iterator(
+                catalog->path(), error);
+            if (error) return false;
+            std::unordered_map<std::string, SourceStamp> current;
+            for (const auto& entry : iterator) {
+                if (!entry.is_regular_file(error)) {
+                    if (error) return false;
+                    continue;
+                }
+                const auto size = entry.file_size(error);
+                if (error) return false;
+                const auto modified = entry.last_write_time(error);
+                if (error) return false;
+                current.emplace(
+                    entry.path().filename().string(),
+                    SourceStamp{size, static_cast<intmax_t>(
+                        modified.time_since_epoch().count())});
+            }
+            if (current.size() != source_snapshot.size()) return false;
+            for (const auto& item : source_snapshot) {
+                const auto found = current.find(item.first);
+                if (found == current.end() ||
+                    found->second.size != item.second.size ||
+                    found->second.modified != item.second.modified) {
+                    return false;
+                }
+            }
+            return true;
+        } catch (...) {
+            return false;
+        }
+    }
 };
 
 }  // namespace detail
@@ -33,6 +99,8 @@ const char* reader_status_name(ReaderStatus status) noexcept {
         case ReaderStatus::SourceNotFound: return "source_not_found";
         case ReaderStatus::CatalogScanFailed: return "catalog_scan_failed";
         case ReaderStatus::CatalogResolveFailed: return "catalog_resolve_failed";
+        case ReaderStatus::SourceSnapshotFailed: return "source_snapshot_failed";
+        case ReaderStatus::SourceChanged: return "source_changed";
         case ReaderStatus::LayerNotFound: return "layer_not_found";
         case ReaderStatus::LayerOpenFailed: return "layer_open_failed";
         case ReaderStatus::FidRangeUnsupported: return "fid_range_unsupported";
@@ -63,17 +131,48 @@ const CapabilityReport& Layer::capabilities() const {
     return engine_ != nullptr ? engine_->capabilities() : empty;
 }
 
+LayerMetadataSnapshot Layer::metadata_snapshot() const {
+    LayerMetadataSnapshot snapshot;
+    snapshot.name = name();
+    snapshot.fields = fields();
+    snapshot.capabilities = capabilities();
+    snapshot.layer = metadata_.read_layer_metadata(name());
+    snapshot.field_domains = metadata_.read_field_domain_bindings(name());
+    snapshot.relationships = metadata_.read_relationship_summaries();
+    snapshot.dataset_groups = metadata_.read_dataset_group_summaries();
+    return snapshot;
+}
+
 QueryResult Layer::query(const QueryRequest& request) {
+    if (!source_is_current()) {
+        QueryResult result;
+        result.status = QueryStatus::SourceChanged;
+        result.error = "GDB source changed after Layer open; reopen the Reader";
+        result.fallback_reason = result.error;
+        return result;
+    }
     return engine_ != nullptr ? engine_->query(request) : QueryResult{};
 }
 
 FeatureCursor Layer::open_cursor(const QueryRequest& request) {
+    if (!source_is_current()) {
+        QueryResult result;
+        result.status = QueryStatus::SourceChanged;
+        result.error = "GDB source changed after Layer open; reopen the Reader";
+        result.fallback_reason = result.error;
+        return FeatureCursor::failed(result, result.error);
+    }
     if (engine_ != nullptr) return engine_->open_cursor(request);
     return FeatureCursor{};
 }
 
 bool Layer::read_by_fid(uint32_t fid, FeatureRecord& record) {
-    return engine_ != nullptr && engine_->read_by_fid(fid, record);
+    return source_is_current() && engine_ != nullptr &&
+        engine_->read_by_fid(fid, record);
+}
+
+bool Layer::source_is_current() const noexcept {
+    return state_ != nullptr && state_->source_is_current();
 }
 
 std::optional<Reader> Reader::open(const std::string& gdb_path,
@@ -107,6 +206,11 @@ std::optional<Reader> Reader::open(const std::string& gdb_path,
                       "; verify the system catalog files and retry");
         return std::nullopt;
     }
+    if (!state->capture_source_snapshot()) {
+        set_error(error, ReaderStatus::SourceSnapshotFailed,
+                  "failed to capture the GDB source snapshot; verify file access and retry");
+        return std::nullopt;
+    }
 
     Reader reader;
     reader.state_ = std::move(state);
@@ -123,11 +227,20 @@ std::vector<std::string> Reader::layer_names() const {
         : std::vector<std::string>{};
 }
 
+bool Reader::source_is_current() const noexcept {
+    return state_ != nullptr && state_->source_is_current();
+}
+
 std::optional<Layer> Reader::open_layer(const std::string& layer_name,
                                         ReaderError* error) const {
     if (state_ == nullptr || state_->resolver == nullptr) {
         set_error(error, ReaderStatus::CatalogResolveFailed,
                   "Reader is not open; call Reader::open with a valid .gdb directory");
+        return std::nullopt;
+    }
+    if (!source_is_current()) {
+        set_error(error, ReaderStatus::SourceChanged,
+                  "GDB source changed after Reader::open; discard this Reader and reopen it");
         return std::nullopt;
     }
     const auto resolved = state_->resolver->resolve(layer_name);

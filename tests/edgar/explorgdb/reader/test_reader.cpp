@@ -48,6 +48,12 @@ TEST(ReaderContractTest, OpensLayerAndAppliesCursorOptions) {
     }
     ASSERT_TRUE(layer.has_value()) << error.message;
 
+    const LayerMetadataSnapshot metadata = layer->metadata_snapshot();
+    EXPECT_EQ(metadata.name, layer->name());
+    EXPECT_EQ(metadata.fields.size(), layer->fields().size());
+    EXPECT_EQ(metadata.capabilities.can_read_layer(),
+              layer->capabilities().can_read_layer());
+
     QueryRequest request;
     request.kind = QueryKind::SequentialScan;
     request.limit = 2;
@@ -73,7 +79,11 @@ TEST(ReaderContractTest, OpensLayerAndAppliesCursorOptions) {
     const QueryResult cancelled = layer->query(request);
     EXPECT_EQ(cancelled.status, QueryStatus::Cancelled);
 
+    request.kind = QueryKind::WhereClause;
+    request.where_clause = "not a valid where expression";
     request.cancel_requested = {};
+    EXPECT_EQ(layer->query(request).status, QueryStatus::InvalidRequest);
+
     request.field_projection =
         std::vector<size_t>{layer->fields().size()};
     const QueryResult invalid_projection = layer->query(request);

@@ -20,6 +20,8 @@ enum class ReaderStatus {
     SourceNotFound,
     CatalogScanFailed,
     CatalogResolveFailed,
+    SourceSnapshotFailed,
+    SourceChanged,
     LayerNotFound,
     LayerOpenFailed,
     FidRangeUnsupported
@@ -38,6 +40,17 @@ struct ReaderOptions {
     size_t max_fid_slots = static_cast<size_t>(std::numeric_limits<uint32_t>::max());
 };
 
+/** Layer 对外可消费的只读元数据快照；不暴露 catalog 物理表路径细节。 */
+struct LayerMetadataSnapshot {
+    std::string name;
+    std::vector<FieldDescriptor> fields;
+    std::optional<LayerMetadata> layer;
+    std::vector<FieldDomainBinding> field_domains;
+    std::vector<RelationshipSummary> relationships;
+    std::vector<DatasetGroupSummary> dataset_groups;
+    CapabilityReport capabilities;
+};
+
 namespace detail {
 struct ReaderState;
 }
@@ -53,10 +66,12 @@ public:
     const std::string& name() const noexcept { return resolved_.name; }
     const std::vector<FieldDescriptor>& fields() const;
     const CapabilityReport& capabilities() const;
+    LayerMetadataSnapshot metadata_snapshot() const;
 
     QueryResult query(const QueryRequest& request);
     FeatureCursor open_cursor(const QueryRequest& request);
     bool read_by_fid(uint32_t fid, FeatureRecord& record);
+    bool source_is_current() const noexcept;
     const MetadataReader& metadata() const noexcept { return metadata_; }
 
 private:
@@ -88,6 +103,7 @@ public:
     const std::string& path() const noexcept { return path_; }
     const ReaderOptions& options() const noexcept { return options_; }
     const ReaderError& error() const noexcept { return error_; }
+    bool source_is_current() const noexcept;
     std::vector<std::string> layer_names() const;
     std::optional<Layer> open_layer(
         const std::string& layer_name,

@@ -369,6 +369,10 @@ FeatureCursor::FeatureCursor(std::unique_ptr<Impl> impl)
     : impl_(std::move(impl)) {}
 
 FeatureCursor::FeatureCursor() = default;
+FeatureCursor FeatureCursor::failed(QueryResult result, std::string error) {
+    return FeatureCursor(std::make_unique<FeatureCursor::Impl>(
+        std::move(result), std::move(error)));
+}
 FeatureCursor::FeatureCursor(FeatureCursor&& other) noexcept = default;
 FeatureCursor& FeatureCursor::operator=(FeatureCursor&& other) noexcept = default;
 FeatureCursor::~FeatureCursor() = default;

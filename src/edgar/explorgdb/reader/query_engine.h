@@ -36,6 +36,8 @@ enum class QueryStatus {
     InvalidRequest,
     EngineNotOpen,
     CursorActive,
+    Unsupported,
+    SourceChanged,
     Cancelled,
     ResultLimitExceeded
 };
@@ -161,6 +163,7 @@ class QueryEngine;
 class FeatureCursor {
 public:
     FeatureCursor();
+    static FeatureCursor failed(QueryResult result, std::string error);
     FeatureCursor(FeatureCursor&& other) noexcept;
     FeatureCursor& operator=(FeatureCursor&& other) noexcept;
     FeatureCursor(const FeatureCursor&) = delete;

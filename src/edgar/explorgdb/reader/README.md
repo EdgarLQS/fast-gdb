@@ -18,11 +18,18 @@ keeps catalog resolution, table paths and index files behind the facade while
 still exposing `Layer::metadata()` and `Layer::capabilities()` for advanced
 readers. Query requests support field projection, offset/limit, result budgets,
 optional FID ordering and cancellation callbacks.
+Sequential and WHERE scans stop once the requested result window or budget is
+known; index-backed and spatial plans still preserve their existing candidate
+diagnostics before applying the public window.
 
 The current public FID contract is zero-based `uint32_t`. Every tablx loading
 path rejects a physical slot domain larger than `UINT32_MAX`; it never silently
 truncates a v4 64-bit feature count. A future 64-bit FID change must be an
 end-to-end API decision rather than a parser-only widening.
+
+`Layer::metadata_snapshot()` is the stable facade for layer fields, definition,
+domains, relationships, dataset grouping and capabilities. `MetadataReader`
+remains available for advanced catalog-specific lookups.
 
 `Reader`, `Layer` and `QueryEngine` are not shared mutable thread-safe objects.
 Independent Reader/Layer object graphs may be used concurrently; one
@@ -69,6 +76,8 @@ activity/generation + source snapshot
 ## Lifetime rules
 
 Reader objects may retain mmap regions, file descriptors, table schema, FID offsets and index pages. Before GDAL/OpenFileGDB updates the same `.gdb` directory, the current supported contract requires destroying every Reader object and closing every mapping/handle.
+
+`Reader` stores a snapshot of the catalog's immediate regular files. `Reader::source_is_current()` and `Layer::source_is_current()` provide explicit safe-point checks; opening a layer, starting a cursor or reading by FID after a detected change returns `SourceChanged`. Callers must still discard the old object graph and reopen it. A mutation during an already-running cursor is not made safe by this check.
 
 After GDALClose, build a new Reader object graph beginning with `GdbCatalog::scan()`. Reusing an old parser, engine, cursor or mapping is unsupported.
 
