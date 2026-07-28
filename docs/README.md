@@ -10,6 +10,7 @@ fast-gdb 当前产品定位为 **FileGDB Reader only**。项目不提供受支�
 |---|---|
 | [Reader 读取流程专题](technical/06_Reader读取流程专题.md) | 目录扫描、系统表、表解析、索引规划、FeatureCursor、WKB-first 和对象生命周期 |
 | [GDAL 写入与 fast-gdb 读取边界](testing/03_GDAL边界与读写测试.md) | 当前停读→GDAL 写→重开合同，以及可选 Adaptive Reader 使用语义 |
+| [只读并发与 GDAL 冲突验收](testing/11_只读并发与GDAL冲突验收.md) | 独立 Reader 并发、同进程协调、外部 Writer characterization 和验证命令 |
 | [ADR-007：Reader-only 与 GDAL 编辑边界](adr/ADR-007-reader-only-gdal-edit-boundary.md) | 当前产品定位、决策理由、支持合同和非目标 |
 | [ADR-008：Adaptive Reader 写入检测与 fresh GDAL 回退](adr/ADR-008-adaptive-reader-write-detection-gdal-fallback.md) | Accepted：可选同进程协调、写期间 fail closed、源稳定后 fresh GDAL 只读恢复 |
 | [Adaptive Reader 实施计划](planning/22_AdaptiveReader写入检测与GDAL回退计划.md) | 文件快照、协调探针、Reader 失效、fresh GDAL、测试和平台验收阶段 |
@@ -23,6 +24,7 @@ fast-gdb 当前产品定位为 **FileGDB Reader only**。项目不提供受支�
 |---|---|
 | `fast_gdb::linear` | 无 GDAL 依赖的纯 C++ Reader |
 | `fast_gdb::hybrid` | fast-gdb Reader 主路径 + GDAL 复杂几何回退 |
+| `fast_gdb::adaptive` | 可选同进程协调、Reader 失效和 fresh GDAL 只读回退 |
 
 Adaptive Reader 已作为可选安装 target 实现；默认不启用，未知外部 Writer、跨平台、压力、性能和多 GDAL 版本仍需独立验收。
 
@@ -54,7 +56,7 @@ fast-gdb Reader 保持打开
 
 ## 可选 Adaptive Reader 边界
 
-ADR-008 计划增加一个可选 Reader 编排层：
+ADR-008 已 Accepted 并实现为可选 Reader 编排层：
 
 ```text
 稳定数据源
@@ -92,7 +94,8 @@ ADR-008 计划增加一个可选 Reader 编排层：
 | [测试总览与验收规则](testing/01_测试总览与验收规则.md) | 结果分类和发布门禁 |
 | [功能测试矩阵](testing/02_功能测试矩阵.md) | 功能、GDAL parity、真实数据和 Adaptive 覆盖 |
 | [GDAL 边界与读写测试](testing/03_GDAL边界与读写测试.md) | 写前关闭、写后重开和并发观测边界 |
-| [构建与平台矩阵](testing/04_构建与平台矩阵.md) | GDAL 3.9.3 基线和后续平台验收 |
+| [构建与平台矩阵](testing/04_构建与平台矩阵.md) | GDAL 3.13.0 基线和后续平台验收 |
+| [只读并发与 GDAL 冲突验收](testing/11_只读并发与GDAL冲突验收.md) | 独立 Reader 并发、Adaptive 状态机和 GDAL 写后重开门禁 |
 | [测试数据与真实数据验收](testing/05_测试数据与真实数据验收.md) | fixture、manifest 和真实数据 |
 | [性能基准与回归门禁](testing/06_性能基准与回归门禁.md) | benchmark 和回归规则 |
 | [测试索引](testing/07_测试索引.md) | 文档到测试 target 的索引 |
@@ -115,6 +118,7 @@ ADR-008 计划增加一个可选 Reader 编排层：
 - 当前同一 GDB 的外部写入和 fast-gdb 并发读取不支持；
 - 当前写前关闭 Reader，写后完整重开；
 - Adaptive Reader 检测到活动 Writer 时 fail closed；
+- 多个独立 Reader 可并发读取；共享同一个 Reader/Layer/QueryEngine/Cursor 不属于支持合同；
 - fresh GDAL fallback 只能在源稳定后执行，且必须前后验证；
 - 无协调外部 Writer 检测只能标记 best-effort；
 - 在线不停读更新需要业务系统实现副本和原子切换；

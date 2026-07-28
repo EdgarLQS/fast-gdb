@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.15)
 project(fast_gdb_package_consumer LANGUAGES CXX)
 
+include(CTest)
+
 set(FAST_GDB_CONSUMER_TARGET "linear" CACHE STRING
     "Installed fast-gdb Reader target to test: linear, hybrid, or adaptive")
 set_property(CACHE FAST_GDB_CONSUMER_TARGET PROPERTY STRINGS
@@ -24,3 +26,6 @@ if(FAST_GDB_CONSUMER_TARGET STREQUAL "adaptive")
     target_compile_definitions(fast_gdb_package_consumer PRIVATE
         FAST_GDB_CONSUMER_ADAPTIVE=1)
 endif()
+
+add_test(NAME fast_gdb_package_consumer
+         COMMAND fast_gdb_package_consumer)

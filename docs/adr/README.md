@@ -24,7 +24,13 @@ GDAL/OpenFileGDB
   └─ fresh read-only fallback after source becomes stable
 ```
 
-ADR-008 已 Accepted，当前实现和测试覆盖同进程协调、Busy、过期和 fresh fallback；未知外部 Writer、跨平台、压力、性能和安装包的独立证据仍未完成。未采用 Adaptive 的调用方仍遵守 ADR-007 的“关闭 Reader → GDAL 写 → GDALClose → 重开 Reader”合同。
+ADR-008 已 Accepted，当前实现和测试覆盖同进程协调、WriterPending 排空、Busy、
+generation/过期、关闭异常、Unverified fresh fallback，以及 GDAL 写后完整重开矩阵。
+未知外部 Writer、跨平台、多 GDAL 版本、sanitizer、压力和性能仍需独立证据；未采用
+Adaptive 的调用方仍遵守 ADR-007 的“关闭 Reader → GDAL 写 → GDALClose → 重开 Reader”合同。
+
+安装 consumer 当前覆盖 `linear`、`hybrid` 和可选 `adaptive`；其中 `linear` 的
+安装验收必须在无 GDAL 构建中执行。
 
 ## 变更规则
 

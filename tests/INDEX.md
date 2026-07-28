@@ -10,6 +10,7 @@
 | `fast_gdb_hybrid_test_runner` | GDAL-backed curve fallback and real-data release contracts |
 | `gdb_tutorial_test_runner` | Full Reader, query, index and direct-GDAL parity suite |
 | `fast_gdb_gdal_read_write_boundary_test_runner` | GDAL edit / fast-gdb Reader lifecycle boundary |
+| `fast_gdb_adaptive_reader_test_runner` | Adaptive coordinator, independent Reader concurrency and GDAL matrix |
 
 ## GDAL boundary tests
 
@@ -65,6 +66,8 @@ Contract tests:
 
 - `StableSourceUsesFastVerified`;
 - `WriterPendingStopsNewFastReads`;
+- `DeterministicPendingDrainKeepsLeaseUntilMaterialized`;
+- `PendingCancellationIsRecordedByFastRead`;
 - `FastCursorExpiresAtNextSafePoint`;
 - `PendingTimeoutClearsPendingAndRecovers`;
 - `UpdatePermitRequiresFastReadersDrained`;
@@ -81,6 +84,11 @@ Contract tests:
 - `RepackNeverOverlapsFastMmap`;
 - `MultipleReadersSingleWriterStress`.
 
+The full Reader runner also includes:
+
+- `ReaderConcurrencyTest.IndependentReadersReturnIdenticalFeatureDigests`;
+- `CorruptInputConformance.*`.
+
 The coordinated gate distinguishes two contracts:
 
 - stable fast reads and post-write rebuilds are correctness gates and must be
@@ -93,16 +101,21 @@ The Writer may open its update Dataset only after all fast Reader leases are
 released. External-process Writer detection is outside the first implementation
 scope and cannot be inferred from these planned tests.
 
+The local GDAL reopen matrix additionally covers Create/DeleteFeature,
+Create/DeleteField, index creation and extent refresh; index deletion is recorded
+as `SKIPPED` when the selected OpenFileGDB driver does not implement that edit.
+
 ## Product-surface tests
 
-`tests/package_consumer` currently supports only:
+`tests/package_consumer` supports:
 
 - `linear`;
-- `hybrid`.
+- `hybrid`;
+- `adaptive`.
 
-There is no Writer consumer mode or `usegdal` consumer mode. Adaptive package
-consumer coverage is provided by the CI install/consumer job and uses the same
-GDAL support baseline as the package build.
+There is no Writer consumer mode or `usegdal` consumer mode. `adaptive` is an
+optional GDAL/threaded package variant; the `linear` consumer is separately
+verified with GDAL disabled.
 
 ## Reference-only `usegdal`
 

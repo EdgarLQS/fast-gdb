@@ -293,7 +293,7 @@ Adaptive recovery 必须：
 
 ## 16. Adaptive 审核规则
 
-在 ADR-008 Accepted 前，相关实现必须满足：
+在扩大 ADR-008 的跨平台和发布承诺前，相关实现必须满足：
 
 - 所有 API 和 target 只描述 Reader、fallback、busy 和 invalidation；
 - 活动 Writer 时 fail closed；

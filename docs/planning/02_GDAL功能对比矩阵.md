@@ -48,7 +48,8 @@ fast-gdb Reader open
 + GDAL update same .gdb
 ```
 
-并发期间 old/new/mixed/error 均可能出现。ADR-008 未接受前，不能依赖自动检测或 GDAL recovery。
+并发期间 old/new/mixed/error 均可能出现。未协调外部 Writer 仍不能依赖自动检测或
+GDAL recovery；只有显式同进程协调和 fresh fallback 合同可被 Adaptive 识别。
 
 ## Adaptive 行为
 
@@ -97,7 +98,7 @@ writer_active=false 且源稳定
 - 同目录重叠测试只记录可见性类别；
 - 任何单平台 old/new 结果都不是并发支持证明；
 - 当前正式门禁只覆盖完整关闭和重开后的正确性；
-- ADR-008 测试在实现前只是规划，不构成能力证明；
+- Adaptive 测试验证已实现的同进程协调和本地 fresh fallback；未协调重叠测试仍只是 characterization；
 - 协调模式目标是完整旧、完整新或 Busy；无协调模式不能建立普遍检测保证。
 
 ## 相关文档

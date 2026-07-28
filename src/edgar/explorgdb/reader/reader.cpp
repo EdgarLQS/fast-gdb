@@ -3,6 +3,7 @@
 #include "catalog_resolver.h"
 #include "gdb_catalog.h"
 
+#include <exception>
 #include <filesystem>
 #include <unordered_map>
 #include <utility>
@@ -101,6 +102,7 @@ const char* reader_status_name(ReaderStatus status) noexcept {
         case ReaderStatus::CatalogResolveFailed: return "catalog_resolve_failed";
         case ReaderStatus::SourceSnapshotFailed: return "source_snapshot_failed";
         case ReaderStatus::SourceChanged: return "source_changed";
+        case ReaderStatus::MetadataReadFailed: return "metadata_read_failed";
         case ReaderStatus::LayerNotFound: return "layer_not_found";
         case ReaderStatus::LayerOpenFailed: return "layer_open_failed";
         case ReaderStatus::FidRangeUnsupported: return "fid_range_unsupported";
@@ -131,16 +133,50 @@ const CapabilityReport& Layer::capabilities() const {
     return engine_ != nullptr ? engine_->capabilities() : empty;
 }
 
+MetadataReadResult Layer::read_metadata() const {
+    MetadataReadResult result;
+    if (!source_is_current()) {
+        set_error(&result.error, ReaderStatus::SourceChanged,
+                  "GDB source changed while reading metadata; reopen the Reader");
+        return result;
+    }
+    try {
+        result.snapshot.name = name();
+        result.snapshot.fields = fields();
+        result.snapshot.capabilities = capabilities();
+        result.snapshot.layer = metadata_.read_layer_metadata(name());
+        result.snapshot.field_domains =
+            metadata_.read_field_domain_bindings(name());
+        result.snapshot.relationships = metadata_.read_relationship_summaries();
+        result.snapshot.dataset_groups =
+            metadata_.read_dataset_group_summaries();
+        if (!result.snapshot.layer.has_value()) {
+            result.snapshot = {};
+            set_error(&result.error, ReaderStatus::MetadataReadFailed,
+                      "layer metadata is unavailable; inspect the GDB system tables");
+            return result;
+        }
+    } catch (const std::exception& exception) {
+        result.snapshot = {};
+        set_error(&result.error, ReaderStatus::MetadataReadFailed,
+                  std::string("metadata read failed: ") + exception.what());
+        return result;
+    } catch (...) {
+        result.snapshot = {};
+        set_error(&result.error, ReaderStatus::MetadataReadFailed,
+                  "metadata read failed with an unknown exception");
+        return result;
+    }
+    if (!source_is_current()) {
+        result.snapshot = {};
+        set_error(&result.error, ReaderStatus::SourceChanged,
+                  "GDB source changed while reading metadata; reopen the Reader");
+    }
+    return result;
+}
+
 LayerMetadataSnapshot Layer::metadata_snapshot() const {
-    LayerMetadataSnapshot snapshot;
-    snapshot.name = name();
-    snapshot.fields = fields();
-    snapshot.capabilities = capabilities();
-    snapshot.layer = metadata_.read_layer_metadata(name());
-    snapshot.field_domains = metadata_.read_field_domain_bindings(name());
-    snapshot.relationships = metadata_.read_relationship_summaries();
-    snapshot.dataset_groups = metadata_.read_dataset_group_summaries();
-    return snapshot;
+    return read_metadata().snapshot;
 }
 
 QueryResult Layer::query(const QueryRequest& request) {

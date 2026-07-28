@@ -59,6 +59,7 @@ struct CoordinatedSourceState {
     bool writer_active = false;
     bool source_verified = true;
     uint64_t generation = 0;
+    uint64_t pending_events = 0;
     size_t fast_reader_count = 0;
 };
 
@@ -83,12 +84,14 @@ public:
     bool valid() const noexcept { return counted_; }
     uint64_t generation() const noexcept { return generation_; }
     bool expired_at_safe_point() const;
+    bool writer_pending_observed() const;
     void release();
 
 private:
     FastReaderLease(std::shared_ptr<detail::CoordinatorRegistry> registry,
                     std::string normalized_path,
-                    uint64_t generation);
+                    uint64_t generation,
+                    uint64_t pending_events);
 
     // 后端 close 抛异常时无法证明 mmap/句柄已经释放。此时故意把注册表中的
     // reader 计数留在原位并丢弃本地释放能力，使后续 Writer 永久 fail closed。
@@ -102,6 +105,7 @@ private:
     std::shared_ptr<detail::CoordinatorRegistry> registry_;
     std::string normalized_path_;
     uint64_t generation_ = 0;
+    uint64_t pending_events_ = 0;
     bool counted_ = false;
 
     friend class InProcessGdbCoordinator;

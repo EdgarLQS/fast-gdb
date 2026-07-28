@@ -49,7 +49,8 @@ Adaptive 层不会改变上述低层解析链，而是在调用前后增加 acti
 - 可选 `.atx`；
 - 图层和空间参考元数据。
 
-ADR-008 Phase 1 计划为这些依赖增加跨平台文件身份、大小和高精度 mtime 快照，但当前 `GdbCatalog` 还没有该完整能力。
+Adaptive 当前通过协调 generation 和 best-effort 源快照观察这些依赖；跨平台文件身份、
+高精度 mtime 和多 GDAL 版本的独立发布证据仍未闭环。
 
 ## 4. 表和 FID
 
@@ -221,7 +222,7 @@ Reader 应失败关闭而不是猜测：
 - geometry 编码未知；
 - 外部写入导致文件状态变化。
 
-ADR-008 计划进一步区分：
+Adaptive 当前进一步区分：
 
 - `SourceBusy`；
 - `SourceChangedDuringRead`；
@@ -255,14 +256,14 @@ ADR-008 计划进一步区分：
 - 写前关闭 Reader、GDAL 写入、写后完整重开；
 - 同目录并发读写的观测性分类。
 
-ADR-008 计划新增：
+本轮已新增并纳入本地门禁：
 
 - Writer active 时两个后端调用数均为零；
 - generation/source 变化使旧 Reader 过期；
 - fast 和 GDAL 读取期间变化均丢弃结果；
 - 写后 fresh GDAL 读取完整新状态；
 - fresh fallback 不复用缓存 Dataset；
-- 三平台压力测试无 mixed、无崩溃。
+- 独立 Reader 2/4/8 并发 digest、确定性 Pending 排空和本地 GDAL 写后重开矩阵；三平台压力测试仍待外部验收。
 
 相关文档：
 

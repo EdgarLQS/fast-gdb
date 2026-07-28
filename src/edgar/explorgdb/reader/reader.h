@@ -24,7 +24,8 @@ enum class ReaderStatus {
     SourceChanged,
     LayerNotFound,
     LayerOpenFailed,
-    FidRangeUnsupported
+    FidRangeUnsupported,
+    MetadataReadFailed
 };
 
 struct ReaderError {
@@ -51,6 +52,13 @@ struct LayerMetadataSnapshot {
     CapabilityReport capabilities;
 };
 
+struct MetadataReadResult {
+    LayerMetadataSnapshot snapshot;
+    ReaderError error;
+
+    bool ok() const noexcept { return error.ok(); }
+};
+
 namespace detail {
 struct ReaderState;
 }
@@ -66,6 +74,7 @@ public:
     const std::string& name() const noexcept { return resolved_.name; }
     const std::vector<FieldDescriptor>& fields() const;
     const CapabilityReport& capabilities() const;
+    MetadataReadResult read_metadata() const;
     LayerMetadataSnapshot metadata_snapshot() const;
 
     QueryResult query(const QueryRequest& request);

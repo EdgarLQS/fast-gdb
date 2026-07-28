@@ -4,7 +4,7 @@
 
 fast-gdb 只负责读取 FileGDB。FileGDB 的创建、追加、更新、删除、Schema 编辑、索引维护和压缩统一交给 GDAL/OpenFileGDB。
 
-本文首先定义当前调用方必须遵守的读写阶段切换规则，然后说明可选 Adaptive Reader 使用语义。Adaptive Reader 已实现同进程协调合同；未采用它时，当前正式合同仍是写前关闭、写后完整重开。
+本文首先定义当前调用方必须遵守的读写阶段切换规则，然后说明可选 Adaptive Reader 使用语义。Adaptive Reader 的同进程协调合同和本地 GDAL 操作矩阵已实现；未采用它时，当前正式合同仍是写前关闭、写后完整重开。
 
 ## 2. 当前正确用法
 
@@ -208,6 +208,20 @@ ctest --test-dir build-boundary --output-on-failure \
 - 允许 old/new/mixed/error；
 - 最终销毁旧 Reader并重开后必须读取 new。
 
+Adaptive 测试目标还覆盖以下写后重开矩阵：
+
+- `OfficialCreateFeatureIsVisibleOnlyAfterCompleteReopen`；
+- `OfficialDeleteFeatureIsVisibleOnlyAfterCompleteReopen`；
+- `OfficialSchemaChangeIsVisibleOnlyAfterCompleteReopen`；
+- `OfficialDeleteFieldIsVisibleOnlyAfterCompleteReopen`；
+- `OfficialDeleteAttributeIndexRequiresFreshReader`（当前 GDAL 驱动不支持时为 `SKIPPED`）；
+- `OfficialIndexAndExtentChangesRequireFreshReader`；
+- `OfficialGdalRepackRunsOnlyAfterFastMmapDrain`。
+
+每个操作都在 Reader 对象图销毁后执行，并在 GDAL Dataset 关闭后重新创建完整
+fast Reader。Feature、SQL result set 和 Dataset 的新测试路径使用拥有型清理；失败
+路径不得留下可复用的 Reader 或 GDAL 资源。
+
 ## 7. 当前审核清单
 
 在调用 GDAL update 前确认：
@@ -229,7 +243,7 @@ ctest --test-dir build-boundary --output-on-failure \
 
 ## 8. 可选 Adaptive Reader
 
-> 本节对应已 Accepted 的 [ADR-008](../adr/ADR-008-adaptive-reader-write-detection-gdal-fallback.md) 和[实施计划](../planning/22_AdaptiveReader写入检测与GDAL回退计划.md)。当前实现验证同进程协调、Busy、过期和 fresh fallback；未知外部 Writer 与跨平台发布证据仍待补齐。
+> 本节对应已 Accepted 的 [ADR-008](../adr/ADR-008-adaptive-reader-write-detection-gdal-fallback.md) 和[实施计划](../planning/22_AdaptiveReader写入检测与GDAL回退计划.md)。当前实现验证同进程协调、Busy、过期、generation 诊断、fresh fallback 和本地 GDAL 写后重开；未知外部 Writer 与跨平台发布证据仍待补齐。
 
 目标调用语义：
 

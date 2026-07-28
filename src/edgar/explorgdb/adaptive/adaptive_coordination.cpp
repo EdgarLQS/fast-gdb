@@ -19,6 +19,7 @@ struct CoordinatedSourceEntry {
     bool source_verified = true;
     bool writer_generation_invalidated = false;
     uint64_t generation = 0;
+    uint64_t pending_events = 0;
     size_t fast_reader_count = 0;
     uint64_t writer_token_id = 0;
 };
@@ -49,6 +50,7 @@ CoordinatedSourceState snapshot(
     result.writer_active = entry.writer_active;
     result.source_verified = entry.source_verified;
     result.generation = entry.generation;
+    result.pending_events = entry.pending_events;
     result.fast_reader_count = entry.fast_reader_count;
     return result;
 }
@@ -99,19 +101,23 @@ CoordinationStatus complete_external_update(
 FastReaderLease::FastReaderLease(
     std::shared_ptr<detail::CoordinatorRegistry> registry,
     std::string normalized_path,
-    uint64_t generation)
+    uint64_t generation,
+    uint64_t pending_events)
     : registry_(std::move(registry)),
       normalized_path_(std::move(normalized_path)),
       generation_(generation),
+      pending_events_(pending_events),
       counted_(true) {}
 
 FastReaderLease::FastReaderLease(FastReaderLease&& other) noexcept
     : registry_(std::move(other.registry_)),
       normalized_path_(std::move(other.normalized_path_)),
       generation_(other.generation_),
+      pending_events_(other.pending_events_),
       counted_(other.counted_) {
     other.counted_ = false;
     other.generation_ = 0;
+    other.pending_events_ = 0;
 }
 
 FastReaderLease& FastReaderLease::operator=(FastReaderLease&& other) noexcept {
@@ -120,9 +126,11 @@ FastReaderLease& FastReaderLease::operator=(FastReaderLease&& other) noexcept {
     registry_ = std::move(other.registry_);
     normalized_path_ = std::move(other.normalized_path_);
     generation_ = other.generation_;
+    pending_events_ = other.pending_events_;
     counted_ = other.counted_;
     other.counted_ = false;
     other.generation_ = 0;
+    other.pending_events_ = 0;
     return *this;
 }
 
@@ -139,6 +147,15 @@ bool FastReaderLease::expired_at_safe_point() const {
     const auto& entry = found->second;
     return entry.writer_pending || entry.writer_active ||
            !entry.source_verified || entry.generation != generation_;
+}
+
+bool FastReaderLease::writer_pending_observed() const {
+    if (!registry_ || normalized_path_.empty()) return false;
+
+    std::lock_guard<std::mutex> lock(registry_->mutex);
+    const auto found = registry_->sources.find(normalized_path_);
+    if (found == registry_->sources.end()) return false;
+    return found->second.pending_events != pending_events_;
 }
 
 void FastReaderLease::release() {
@@ -295,7 +312,8 @@ FastReaderLease InProcessGdbCoordinator::try_acquire_fast_reader(
         return {};
     }
     ++entry.fast_reader_count;
-    return FastReaderLease(registry_, normalized, entry.generation);
+    return FastReaderLease(
+        registry_, normalized, entry.generation, entry.pending_events);
 }
 
 PrepareExternalUpdateResult
@@ -329,6 +347,7 @@ InProcessGdbCoordinator::prepare_external_update(
     uint64_t token_id = registry_->next_token_id++;
     if (token_id == 0) token_id = registry_->next_token_id++;
     initial.writer_pending = true;
+    ++initial.pending_events;
     initial.writer_token_id = token_id;
     registry_->condition.notify_all();
 

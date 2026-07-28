@@ -27,9 +27,13 @@ path rejects a physical slot domain larger than `UINT32_MAX`; it never silently
 truncates a v4 64-bit feature count. A future 64-bit FID change must be an
 end-to-end API decision rather than a parser-only widening.
 
-`Layer::metadata_snapshot()` is the stable facade for layer fields, definition,
-domains, relationships, dataset grouping and capabilities. `MetadataReader`
-remains available for advanced catalog-specific lookups.
+`Layer::read_metadata()` is the canonical facade for layer fields, definition,
+domains, relationships, dataset grouping and capabilities. It returns a
+`MetadataReadResult` with a structured `ReaderError`; a source change is
+reported as `SourceChanged` and the snapshot must be discarded. The older
+`Layer::metadata_snapshot()` remains as a compatibility convenience and does
+not replace structured error handling. `MetadataReader` remains available for
+advanced catalog-specific lookups.
 
 `Reader`, `Layer` and `QueryEngine` are not shared mutable thread-safe objects.
 Independent Reader/Layer object graphs may be used concurrently; one
@@ -90,7 +94,12 @@ The overlap may expose old, new, mixed or error states. Tests that characterize 
 The implemented Adaptive behavior is fail-closed rather than concurrent-read support:
 
 - `writer_active=true` returns `SourceBusy` without invoking either read backend;
-- source/generation change discards the result and expires this Reader state;
+- fast query records `generation_before` and `generation_after`; a generation or
+  source-verification change discards the fully materialized result and expires
+  this Reader state;
+- a query that acquired its fast lease may finish while `WriterPending` is
+  observed; it remains a verified old-generation result and records
+  `writer_pending_seen`;
 - GDAL recovery is allowed only after quiescence and must use a fresh read-only Dataset;
 - uncoordinated external Writer detection is best-effort only.
 

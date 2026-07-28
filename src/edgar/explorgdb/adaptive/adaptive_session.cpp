@@ -133,10 +133,21 @@ AdaptiveReadResult read_fast_path(
             "fast executor threw an unknown exception");
     }
     const auto during = coordinator.state(gdb_path);
-    output.generation_after = lease.generation();
-    output.writer_pending_seen = during.writer_pending;
+    output.generation_after = during.generation;
+    output.writer_pending_seen = lease.writer_pending_observed() ||
+                                 during.writer_pending;
     output.writer_active_seen = during.writer_active;
+    const bool source_changed =
+        output.generation_before != output.generation_after ||
+        during.writer_active || !during.source_verified;
     lease.release();
+    if (source_changed) {
+        output.status = AdaptiveReadStatus::ReaderExpired;
+        output.consistency = AdaptiveReadConsistency::NotApplicable;
+        output.fast_error =
+            "fast reader generation changed during query; discard and reopen";
+        return output;
+    }
     output.consistency = backend.ok
         ? AdaptiveReadConsistency::Verified
         : AdaptiveReadConsistency::NotApplicable;
@@ -153,7 +164,8 @@ AdaptiveReadResult read_gdal_path(
     const std::string& gdb_path,
     const AdaptiveReadSession::ReadExecutor& executor,
     const QueryRequest& request,
-    AdaptiveReadResult output) {
+    AdaptiveReadResult output,
+    uint64_t pending_events_before) {
     output.backend = AdaptiveReadBackend::GdalOpenFileGDB;
     output.consistency = AdaptiveReadConsistency::UnverifiedConcurrentRead;
     BackendReadResult backend;
@@ -171,7 +183,8 @@ AdaptiveReadResult read_gdal_path(
     const auto after = coordinator.state(gdb_path);
     output.generation_after = after.generation;
     output.writer_pending_seen = output.writer_pending_seen ||
-                                 after.writer_pending;
+                                 after.writer_pending ||
+                                 after.pending_events != pending_events_before;
     output.writer_active_seen = output.writer_active_seen ||
                                 after.writer_active;
     if (backend.ok) {
@@ -384,7 +397,8 @@ AdaptiveReadResult AdaptiveReadSession::read(
     }
 
     return read_gdal_path(
-        coordinator_, gdb_path_, gdal_executor_, request, std::move(output));
+        coordinator_, gdb_path_, gdal_executor_, request, std::move(output),
+        before.pending_events);
 }
 
 AdaptiveFeatureCursor AdaptiveReadSession::open_cursor(

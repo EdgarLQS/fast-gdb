@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <future>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <sstream>
@@ -92,6 +93,71 @@ bool rewrite_features(OGRLayer* layer, std::string& error) {
     return true;
 }
 
+struct GdalDatasetCloser {
+    void operator()(GDALDataset* dataset) const {
+        if (dataset != nullptr) GDALClose(dataset);
+    }
+};
+
+struct GdalFeatureCloser {
+    void operator()(OGRFeature* feature) const {
+        if (feature != nullptr) OGRFeature::DestroyFeature(feature);
+    }
+};
+
+using GdalDatasetHandle = std::unique_ptr<GDALDataset, GdalDatasetCloser>;
+using GdalFeatureHandle = std::unique_ptr<OGRFeature, GdalFeatureCloser>;
+
+bool update_layer(const std::string& path,
+                  const std::function<bool(GDALDataset*, OGRLayer*,
+                                            std::string&)>& operation,
+                  std::string& error) {
+    const char* allowed_drivers[] = {"OpenFileGDB", nullptr};
+    GdalDatasetHandle dataset(static_cast<GDALDataset*>(GDALOpenEx(
+        path.c_str(), GDAL_OF_VECTOR | GDAL_OF_UPDATE,
+        allowed_drivers, nullptr, nullptr)));
+    if (!dataset) {
+        error = "GDALOpenEx(update) failed";
+        return false;
+    }
+    OGRLayer* layer = dataset->GetLayerByName(kLayerName);
+    if (layer == nullptr) {
+        error = "GDAL update layer is missing";
+        return false;
+    }
+    if (!operation(dataset.get(), layer, error)) return false;
+    dataset->FlushCache();
+    return true;
+}
+
+bool add_indexed_feature(GDALDataset* dataset,
+                         OGRLayer* layer,
+                         std::string& error) {
+    GdalFeatureHandle feature(OGRFeature::CreateFeature(
+        layer->GetLayerDefn()));
+    if (!feature) {
+        error = "feature allocation failed";
+        return false;
+    }
+    feature->SetField(kValueField, 35);
+    feature->SetField(kPhaseField, "indexed");
+    feature->SetField(kNameField, "indexed");
+    feature->SetField(kCategoryField, "C");
+    OGRPoint point(2000.0, 2000.0);
+    feature->SetGeometry(&point);
+    if (layer->CreateFeature(feature.get()) != OGRERR_NONE) {
+        error = "CreateFeature for index fixture failed";
+        return false;
+    }
+    return execute_sql(dataset,
+                       std::string("RECOMPUTE EXTENT ON ") + kLayerName,
+                       error) &&
+           execute_sql(dataset,
+                       std::string("CREATE INDEX post_cat_idx ON ") +
+                           kLayerName + "(" + kCategoryField + ")",
+                       error);
+}
+
 std::string attr_operator(AttrOp op) {
     switch (op) {
         case AttrOp::Eq: return "=";
@@ -153,6 +219,14 @@ public:
             return result;
         }
         return engine_->query(request);
+    }
+
+    bool has_field(const std::string& field_name) const {
+        if (!engine_ || engine_->table() == nullptr) return false;
+        for (const auto& field : engine_->table()->fields()) {
+            if (field.name == field_name) return true;
+        }
+        return false;
     }
 
     std::optional<ObservedFeature> read_first(std::string& error) {
@@ -501,6 +575,212 @@ TEST_F(AdaptiveReaderGdalIntegrationTest,
     EXPECT_EQ(after->value, 22);
     EXPECT_EQ(after->phase, "new");
     EXPECT_EQ(coordinator.state(path).generation, 1U);
+}
+
+TEST_F(AdaptiveReaderGdalIntegrationTest,
+       OfficialCreateFeatureIsVisibleOnlyAfterCompleteReopen) {
+    const std::string path = gdb_path_.string();
+    std::string error;
+    {
+        FastEngineSession reader;
+        ASSERT_TRUE(reader.open(path, error)) << error;
+        QueryRequest scan;
+        scan.kind = QueryKind::SequentialScan;
+        EXPECT_EQ(reader.query(scan).matched_fids.size(), 5U);
+    }
+
+    ASSERT_TRUE(update_layer(
+        path,
+        [](GDALDataset*, OGRLayer* layer, std::string& error) {
+            GdalFeatureHandle feature(OGRFeature::CreateFeature(
+                layer->GetLayerDefn()));
+            if (!feature) {
+                error = "feature allocation failed";
+                return false;
+            }
+            feature->SetField(kValueField, 30);
+            feature->SetField(kPhaseField, "created");
+            feature->SetField(kNameField, "created");
+            feature->SetField(kCategoryField, "C");
+            OGRPoint point(1000.0, 1000.0);
+            feature->SetGeometry(&point);
+            if (layer->CreateFeature(feature.get()) != OGRERR_NONE) {
+                error = "OGRLayer::CreateFeature failed";
+                return false;
+            }
+            if (layer->SyncToDisk() != OGRERR_NONE) {
+                error = "CreateFeature SyncToDisk failed";
+                return false;
+            }
+            return true;
+        }, error)) << error;
+
+    FastEngineSession reopened;
+    ASSERT_TRUE(reopened.open(path, error)) << error;
+    QueryRequest scan;
+    scan.kind = QueryKind::SequentialScan;
+    const auto result = reopened.query(scan);
+    ASSERT_EQ(result.status, QueryStatus::Ok);
+    ASSERT_EQ(result.matched_fids.size(), 6U);
+    EXPECT_NE(std::find(result.matched_fids.begin(), result.matched_fids.end(), 5U),
+              result.matched_fids.end());
+}
+
+TEST_F(AdaptiveReaderGdalIntegrationTest,
+       OfficialDeleteFeatureIsVisibleOnlyAfterCompleteReopen) {
+    const std::string path = gdb_path_.string();
+    std::string error;
+    {
+        FastEngineSession reader;
+        ASSERT_TRUE(reader.open(path, error)) << error;
+    }
+    ASSERT_TRUE(update_layer(
+        path,
+        [](GDALDataset*, OGRLayer* layer, std::string& error) {
+            if (layer->DeleteFeature(1) != OGRERR_NONE) {
+                error = "OGRLayer::DeleteFeature failed";
+                return false;
+            }
+            if (layer->SyncToDisk() != OGRERR_NONE) {
+                error = "DeleteFeature SyncToDisk failed";
+                return false;
+            }
+            return true;
+        }, error)) << error;
+
+    FastEngineSession reopened;
+    ASSERT_TRUE(reopened.open(path, error)) << error;
+    QueryRequest scan;
+    scan.kind = QueryKind::SequentialScan;
+    const auto result = reopened.query(scan);
+    ASSERT_EQ(result.status, QueryStatus::Ok);
+    ASSERT_EQ(result.matched_fids.size(), 4U);
+    EXPECT_EQ(std::find(result.matched_fids.begin(), result.matched_fids.end(), 0U),
+              result.matched_fids.end());
+}
+
+TEST_F(AdaptiveReaderGdalIntegrationTest,
+       OfficialSchemaChangeIsVisibleOnlyAfterCompleteReopen) {
+    const std::string path = gdb_path_.string();
+    std::string error;
+    {
+        FastEngineSession reader;
+        ASSERT_TRUE(reader.open(path, error)) << error;
+        EXPECT_FALSE(reader.has_field("post_schema"));
+    }
+    ASSERT_TRUE(update_layer(
+        path,
+        [](GDALDataset*, OGRLayer* layer, std::string& error) {
+            OGRFieldDefn field("post_schema", OFTInteger);
+            if (layer->CreateField(&field) != OGRERR_NONE) {
+                error = "OGRLayer::CreateField failed";
+                return false;
+            }
+            if (layer->SyncToDisk() != OGRERR_NONE) {
+                error = "CreateField SyncToDisk failed";
+                return false;
+            }
+            return true;
+        }, error)) << error;
+
+    FastEngineSession reopened;
+    ASSERT_TRUE(reopened.open(path, error)) << error;
+    EXPECT_TRUE(reopened.has_field("post_schema"));
+}
+
+TEST_F(AdaptiveReaderGdalIntegrationTest,
+       OfficialDeleteFieldIsVisibleOnlyAfterCompleteReopen) {
+    const std::string path = gdb_path_.string();
+    std::string error;
+    {
+        FastEngineSession reader;
+        ASSERT_TRUE(reader.open(path, error)) << error;
+        EXPECT_TRUE(reader.has_field(kCategoryField));
+    }
+    ASSERT_TRUE(update_layer(
+        path,
+        [](GDALDataset*, OGRLayer* layer, std::string& error) {
+            const int field_index = layer->FindFieldIndex(kCategoryField, true);
+            if (field_index < 0 || layer->DeleteField(field_index) != OGRERR_NONE) {
+                error = "OGRLayer::DeleteField failed";
+                return false;
+            }
+            if (layer->SyncToDisk() != OGRERR_NONE) {
+                error = "DeleteField SyncToDisk failed";
+                return false;
+            }
+            return true;
+        }, error)) << error;
+
+    FastEngineSession reopened;
+    ASSERT_TRUE(reopened.open(path, error)) << error;
+    EXPECT_FALSE(reopened.has_field(kCategoryField));
+}
+
+TEST_F(AdaptiveReaderGdalIntegrationTest,
+       OfficialDeleteAttributeIndexRequiresFreshReader) {
+    const std::string path = gdb_path_.string();
+    std::string error;
+    {
+        FastEngineSession reader;
+        ASSERT_TRUE(reader.open(path, error)) << error;
+    }
+    const bool index_deleted = update_layer(
+        path,
+        [](GDALDataset* dataset, OGRLayer*, std::string& error) {
+            return execute_sql(dataset,
+                               std::string("DROP INDEX ON ") + kLayerName +
+                                   " USING " + kNameField,
+                               error);
+        }, error);
+    if (!index_deleted && error.find("Indexes not supported") != std::string::npos) {
+        GTEST_SKIP() << "OpenFileGDB does not support DeleteIndex in this GDAL build";
+    }
+    ASSERT_TRUE(index_deleted) << error;
+
+    FastEngineSession reopened;
+    ASSERT_TRUE(reopened.open(path, error)) << error;
+    QueryRequest attribute;
+    attribute.kind = QueryKind::AttributeString;
+    attribute.index_name = "name_idx";
+    attribute.string_value = "beta";
+    attribute.attr_op = AttrOp::Eq;
+    const auto result = reopened.query(attribute);
+    EXPECT_TRUE(result.matched_fids.empty());
+    EXPECT_EQ(result.fallback_reason, "attribute index missing");
+}
+
+TEST_F(AdaptiveReaderGdalIntegrationTest,
+       OfficialIndexAndExtentChangesRequireFreshReader) {
+    const std::string path = gdb_path_.string();
+    std::string error;
+    {
+        FastEngineSession reader;
+        ASSERT_TRUE(reader.open(path, error)) << error;
+    }
+    ASSERT_TRUE(update_layer(
+        path,
+        add_indexed_feature, error)) << error;
+
+    FastEngineSession reopened;
+    ASSERT_TRUE(reopened.open(path, error)) << error;
+    QueryRequest attribute;
+    attribute.kind = QueryKind::AttributeString;
+    attribute.index_name = "post_cat_idx";
+    attribute.string_value = "C";
+    const auto attribute_result = reopened.query(attribute);
+    ASSERT_EQ(attribute_result.status, QueryStatus::Ok);
+    ASSERT_EQ(attribute_result.matched_fids.size(), 1U);
+
+    QueryRequest spatial;
+    spatial.kind = QueryKind::SpatialBbox;
+    spatial.xmin = 1999.0;
+    spatial.ymin = 1999.0;
+    spatial.xmax = 2001.0;
+    spatial.ymax = 2001.0;
+    const auto spatial_result = reopened.query(spatial);
+    ASSERT_EQ(spatial_result.status, QueryStatus::Ok);
+    ASSERT_EQ(spatial_result.matched_fids.size(), 1U);
 }
 
 TEST_F(AdaptiveReaderGdalIntegrationTest,

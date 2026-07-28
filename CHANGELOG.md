@@ -8,14 +8,14 @@ All notable changes to fast-gdb are documented in this file.
 
 - fast-gdb is now explicitly a **Reader-only** FileGDB product.
 - FileGDB creation and editing are delegated to GDAL/OpenFileGDB or ArcGIS.
-- The installed package exports only Reader products: `fast_gdb::linear` and optional `fast_gdb::hybrid`.
+- The installed package exports only Reader products: `fast_gdb::linear`, optional `fast_gdb::hybrid`, and optional `fast_gdb::adaptive`.
 - The supported edit workflow is now: close all fast-gdb Reader objects, edit exclusively with GDAL, close all GDAL objects, then construct a fresh Reader.
 - Reader objects, mmap regions, table parsers, catalogs, query engines, cursors, FID mappings and index caches must not survive an external GDAL edit.
 - Same-directory GDAL update plus fast-gdb reading is explicitly classified as unsupported and may expose old, new, mixed or error states.
 - Online copy/edit/switch publication is an application responsibility outside fast-gdb.
 - `src/edgar/usegdal` is retained as reference-only historical GDAL/OGR wrapper code. It is not built, installed, exported, release-gated, or covered by API/ABI compatibility promises.
-- A future Adaptive Reader is now planned as a Reader-only orchestration layer. Writer-active requests fail closed; source changes expire old Reader state; recovery uses a fresh GDAL read-only Dataset only after the source is quiescent.
-- Coordinated `writer_active/generation` detection is the proposed deterministic contract. Uncoordinated external Writer detection is explicitly best-effort and cannot guarantee discovery of every Writer lifecycle.
+- The optional Adaptive Reader is implemented as a Reader-only orchestration layer. Writer-active requests fail closed; source changes expire old Reader state; recovery uses a fresh GDAL read-only Dataset only after the source is quiescent.
+- Coordinated `writer_active/generation` detection is the accepted deterministic contract. Uncoordinated external Writer detection is explicitly best-effort and cannot guarantee discovery of every Writer lifecycle.
 
 ### Added
 
@@ -26,7 +26,7 @@ All notable changes to fast-gdb are documented in this file.
 - Architecture, usage and evidence documents defining Reader quiescence, GDAL lifecycle and result interpretation.
 - CI checks that verify no Writer target or installed Writer headers remain.
 - `src/edgar/usegdal/README.md` documenting the non-product reference boundary.
-- Proposed ADR-008 defining Adaptive Reader write-activity detection, source-change validation, Reader invalidation and fresh GDAL read-only recovery.
+- Accepted ADR-008 defining Adaptive Reader write-activity detection, source-change validation, Reader invalidation and fresh GDAL read-only recovery.
 - Active design-first implementation plan `docs/planning/22_AdaptiveReader写入检测与GDAL回退计划.md`, including phased implementation, test names, stress gates and performance budgets.
 
 ### Removed
@@ -46,7 +46,7 @@ All notable changes to fast-gdb are documented in this file.
 - Formal acceptance requires usable CMake/CTest logs and artifacts for the pure Reader surface and the GDAL boundary target.
 - Characterization observations are diagnostic only and never constitute a concurrent read/write support statement.
 - Reference-only `usegdal` code is intentionally not claimed as build-validated or production-ready.
-- ADR-008 remains Proposed. Adaptive Reader runtime code, target and tests are not implemented or accepted yet; ADR-007 remains the only supported external-edit runtime contract.
+- ADR-008 is Accepted for the optional Adaptive target. Its local runtime, coordination tests, GDAL write/reopen matrix and install consumer are implemented; cross-platform, sanitizer, multi-GDAL and performance evidence remain separate gates. ADR-007 remains the external-edit contract for uncoordinated Writer workflows.
 
 ## [0.1.0] - 2026-07-13
 

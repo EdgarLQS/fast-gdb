@@ -45,6 +45,38 @@ BackendReadResult successful_result(const QueryRequest& request,
     return BackendReadResult::success(result_for(request, generation));
 }
 
+struct PendingDrainSignals {
+    std::mutex mutex;
+    std::condition_variable condition;
+    bool fast_started = false;
+    bool writer_requested = false;
+    bool pending_observed = false;
+    bool allow_fast_finish = false;
+};
+
+AdaptiveReadSession make_pending_drain_session(
+    InProcessGdbCoordinator& coordinator,
+    const std::string& path,
+    PendingDrainSignals& signals) {
+    return AdaptiveReadSession(
+        coordinator, path,
+        [&](const QueryRequest& request) {
+            std::unique_lock<std::mutex> lock(signals.mutex);
+            signals.fast_started = true;
+            signals.condition.notify_all();
+            signals.condition.wait(lock, [&] { return signals.writer_requested; });
+            while (!coordinator.state(path).writer_pending &&
+                   !signals.allow_fast_finish) {
+                signals.condition.wait_for(lock, 1ms);
+            }
+            signals.pending_observed = coordinator.state(path).writer_pending;
+            signals.condition.notify_all();
+            signals.condition.wait(lock, [&] { return signals.allow_fast_finish; });
+            return successful_result(request);
+        },
+        [](const QueryRequest& request) { return successful_result(request); });
+}
+
 std::array<QueryKind, 7> all_query_kinds() {
     return {
         QueryKind::ReadByFid,
@@ -111,6 +143,97 @@ TEST(AdaptiveReaderTest, WriterPendingStopsNewFastReads) {
     ASSERT_EQ(prepared.status, CoordinationStatus::Ok);
     EXPECT_EQ(prepared.token.cancel_before_update(), CoordinationStatus::Ok);
     EXPECT_FALSE(coordinator.state(path).writer_pending);
+}
+
+TEST(AdaptiveReaderTest, DeterministicPendingDrainKeepsLeaseUntilMaterialized) {
+    InProcessGdbCoordinator coordinator;
+    const std::string path = "deterministic-drain.gdb";
+    PendingDrainSignals signals;
+    auto session = make_pending_drain_session(coordinator, path, signals);
+
+    auto read = std::async(std::launch::async, [&] {
+        QueryRequest request;
+        request.kind = QueryKind::SequentialScan;
+        return session.read(request);
+    });
+    {
+        std::unique_lock<std::mutex> lock(signals.mutex);
+        EXPECT_TRUE(signals.condition.wait_for(
+            lock, 1s, [&] { return signals.fast_started; }));
+    }
+
+    auto writer = std::async(std::launch::async, [&] {
+        return coordinator.prepare_external_update(path, 1s);
+    });
+    {
+        std::lock_guard<std::mutex> lock(signals.mutex);
+        signals.writer_requested = true;
+    }
+    signals.condition.notify_all();
+    {
+        std::unique_lock<std::mutex> lock(signals.mutex);
+        EXPECT_TRUE(signals.condition.wait_for(
+            lock, 1s, [&] { return signals.pending_observed; }));
+        EXPECT_EQ(coordinator.state(path).fast_reader_count, 1U);
+        EXPECT_TRUE(coordinator.state(path).writer_pending);
+        signals.allow_fast_finish = true;
+    }
+    signals.condition.notify_all();
+
+    const auto result = read.get();
+    auto prepared = writer.get();
+    ASSERT_EQ(prepared.status, CoordinationStatus::Ok);
+    EXPECT_TRUE(result.writer_pending_seen);
+    EXPECT_EQ(result.status, AdaptiveReadStatus::Ok);
+    EXPECT_EQ(result.consistency, AdaptiveReadConsistency::Verified);
+    EXPECT_EQ(result.generation_before, 0U);
+    EXPECT_EQ(result.generation_after, 0U);
+    ASSERT_EQ(prepared.token.notify_update_opened(), CoordinationStatus::Ok);
+    ASSERT_EQ(prepared.token.notify_update_closed(true), CoordinationStatus::Ok);
+    EXPECT_EQ(coordinator.state(path).generation, 1U);
+}
+
+TEST(AdaptiveReaderTest, PendingCancellationIsRecordedByFastRead) {
+    InProcessGdbCoordinator coordinator;
+    const std::string path = "pending-cancel-observed.gdb";
+    std::mutex mutex;
+    std::condition_variable condition;
+    bool started = false;
+    bool allow_finish = false;
+
+    AdaptiveReadSession session(
+        coordinator, path,
+        [&](const QueryRequest& request) {
+            std::unique_lock<std::mutex> lock(mutex);
+            started = true;
+            condition.notify_all();
+            condition.wait(lock, [&] { return allow_finish; });
+            return successful_result(request);
+        },
+        [](const QueryRequest& request) { return successful_result(request); });
+
+    auto read = std::async(std::launch::async, [&] {
+        QueryRequest request;
+        return session.read(request);
+    });
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        ASSERT_TRUE(condition.wait_for(lock, 1s, [&] { return started; }));
+    }
+
+    const auto timed_out = coordinator.prepare_external_update(path, 0ms);
+    ASSERT_EQ(timed_out.status, CoordinationStatus::ReadersActive);
+    ASSERT_FALSE(coordinator.state(path).writer_pending);
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        allow_finish = true;
+    }
+    condition.notify_all();
+
+    const auto result = read.get();
+    EXPECT_TRUE(result.writer_pending_seen);
+    EXPECT_EQ(result.status, AdaptiveReadStatus::Ok);
+    EXPECT_EQ(result.consistency, AdaptiveReadConsistency::Verified);
 }
 
 TEST(AdaptiveReaderTest, FastCursorExpiresAtNextSafePoint) {
