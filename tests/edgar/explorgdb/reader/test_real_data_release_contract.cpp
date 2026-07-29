@@ -13,6 +13,7 @@
 
 #include "catalog_resolver.h"
 #include "gdb_catalog.h"
+#include "metadata_reader.h"
 #include "query_engine.h"
 
 using namespace explorgdb;
@@ -184,6 +185,32 @@ TEST(RealDataReleaseContractTest, RegularFileGdbMatchesCoreReadContract) {
     EXPECT_GT(inspected_records, 0u);
     EXPECT_EQ(explicit_curve_records, 0u)
         << "FAST_GDB_REAL_DATASET is intended to be the regular non-curve release sample";
+}
+
+TEST(RealDataReleaseContractTest, ArcGisMetadataSidecarShapesAreReadable) {
+    const char* dataset_path = required_dataset_from_env("FAST_GDB_REAL_DATASET");
+    if (dataset_path == nullptr) {
+        GTEST_SKIP() << "Set FAST_GDB_REAL_DATASET to acceptance_metadata.gdb";
+    }
+
+    GdbCatalog catalog;
+    ASSERT_TRUE(catalog.scan(dataset_path));
+    CatalogResolver resolver(catalog);
+    ASSERT_TRUE(resolver.load());
+
+    MetadataReader reader(resolver);
+    const auto domains = reader.read_workspace_domains();
+    const auto relationships = reader.read_relationship_class_definitions();
+    const auto groups = reader.read_dataset_group_summaries();
+
+    EXPECT_GE(domains.size(), 4u);
+    EXPECT_GE(relationships.size(), 3u);
+    EXPECT_GE(groups.size(), 2u);
+
+    const auto roads = reader.read_layer_metadata("roads");
+    ASSERT_TRUE(roads.has_value());
+    EXPECT_FALSE(roads->definition.empty());
+    EXPECT_FALSE(reader.read_field_domain_bindings("roads").empty());
 }
 
 TEST(RealDataReleaseContractTest, CurveFileGdbIsExplicitlyUnsupported) {

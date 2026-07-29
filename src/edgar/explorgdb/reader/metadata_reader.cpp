@@ -81,11 +81,18 @@ std::string extract_tag_text(const std::string& xml, const std::string& tag) {
 
 /** 提取 XML 属性值（如 xsi:type="..." → "..."）。 */
 std::string extract_attribute(const std::string& xml, const std::string& key) {
-    const std::string token = key + "=\"";
-    const auto start = xml.find(token);
+    const std::string double_token = key + "=\"";
+    const std::string single_token = key + "='";
+    const auto double_start = xml.find(double_token);
+    const auto single_start = xml.find(single_token);
+    const bool use_single = single_start != std::string::npos &&
+                            (double_start == std::string::npos ||
+                             single_start < double_start);
+    const std::string token = use_single ? single_token : double_token;
+    const auto start = use_single ? single_start : double_start;
     if (start == std::string::npos) return {};
     const auto value_start = start + token.size();
-    const auto end = xml.find('"', value_start);
+    const auto end = xml.find(use_single ? '\'' : '"', value_start);
     if (end == std::string::npos) return {};
     return xml.substr(value_start, end - value_start);
 }
@@ -301,6 +308,10 @@ std::vector<DomainInfo> MetadataReader::decode_workspace_domains_xml(const std::
     std::vector<DomainInfo> domains;
     auto blocks = extract_blocks(xml, "<Domain ", "</Domain>");
     if (blocks.empty()) blocks = extract_blocks(xml, "<Domain>", "</Domain>");
+    if (blocks.empty() && (xml.find("Domain2") != std::string::npos ||
+                           xml.find("<DomainName>") != std::string::npos)) {
+        blocks.push_back(xml);
+    }
     for (const auto& block : blocks) {
         DomainInfo domain;
         domain.type = extract_attribute(block, "xsi:type");
@@ -324,9 +335,19 @@ std::vector<DomainInfo> MetadataReader::decode_workspace_domains_xml(const std::
 
 /** 读取工作空间层级的域定义。 */
 std::vector<DomainInfo> MetadataReader::read_workspace_domains() const {
-    const auto workspace = read_layer_metadata("Workspace");
-    if (!workspace) return {};
-    return decode_workspace_domains_xml(workspace->definition);
+    ParsedTableRows items;
+    if (!load_table_rows(resolver_, "GDB_Items", items)) return {};
+    std::vector<DomainInfo> domains;
+    for (const auto& row : items.rows) {
+        const std::string definition = lookup_text(items.columns, row, "Definition");
+        if (definition.find("Domain2") == std::string::npos &&
+            definition.find("<DomainName>") == std::string::npos) {
+            continue;
+        }
+        auto decoded = decode_workspace_domains_xml(definition);
+        domains.insert(domains.end(), decoded.begin(), decoded.end());
+    }
+    return domains;
 }
 
 /** 从图层 XML Definition 中解析字段-域绑定关系。 */

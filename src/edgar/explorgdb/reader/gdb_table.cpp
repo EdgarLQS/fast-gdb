@@ -12,6 +12,7 @@
 #include <fcntl.h>
 #include <fstream>
 #include <iostream>
+#include <sstream>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -429,6 +430,12 @@ void GdbTableParser::parse_field_descriptor(BinaryReader& reader,
             break;
         }
         case FieldType::Binary:
+            // ArcGIS Pro emits the same width/flag prefix used by the
+            // fixed-width scalar descriptors.  The width is currently zero,
+            // but it is still part of the descriptor and must be consumed.
+            field.width = reader.read_u8();
+            field.flag = reader.read_u8();
+            break;
         case FieldType::Raster:
             field.flag = reader.read_u8();
             if (field.type == FieldType::Raster) {
@@ -446,7 +453,13 @@ void GdbTableParser::parse_field_descriptor(BinaryReader& reader,
             field.flag = reader.read_u8();
             break;
         default:
-            throw std::runtime_error("unknown FileGDB field type");
+            {
+                std::ostringstream message;
+                message << "unknown FileGDB field type "
+                        << static_cast<unsigned>(field.type)
+                        << " for field " << field.name;
+                throw std::runtime_error(message.str());
+            }
     }
 
     fields_.push_back(std::move(field));
