@@ -11,6 +11,7 @@ fast-gdb 当前产品定位为 **FileGDB Reader only**。项目不提供受支�
 | [Reader 读取流程专题](technical/06_Reader读取流程专题.md) | 目录扫描、系统表、表解析、索引规划、FeatureCursor、WKB-first 和对象生命周期 |
 | [GDAL 写入与 fast-gdb 读取边界](testing/03_GDAL边界与读写测试.md) | 当前停读→GDAL 写→重开合同，以及可选 Adaptive Reader 使用语义 |
 | [只读并发与 GDAL 冲突验收](testing/11_只读并发与GDAL冲突验收.md) | 独立 Reader 并发、同进程协调、外部 Writer characterization 和验证命令 |
+| [元数据完整解析验收数据清单](testing/12_元数据完整解析验收数据清单.md) | Domain、Relationship、Feature Dataset、系统表和无损字段读取的真实数据生成要求 |
 | [ADR-007：Reader-only 与 GDAL 编辑边界](adr/ADR-007-reader-only-gdal-edit-boundary.md) | 当前产品定位、决策理由、支持合同和非目标 |
 | [ADR-008：Adaptive Reader 写入检测与 fresh GDAL 回退](adr/ADR-008-adaptive-reader-write-detection-gdal-fallback.md) | Accepted：可选同进程协调、写期间 fail closed、源稳定后 fresh GDAL 只读恢复 |
 | [Adaptive Reader 实施计划](planning/22_AdaptiveReader写入检测与GDAL回退计划.md) | 文件快照、协调探针、Reader 失效、fresh GDAL、测试和平台验收阶段 |
@@ -97,6 +98,7 @@ ADR-008 已 Accepted 并实现为可选 Reader 编排层：
 | [构建与平台矩阵](testing/04_构建与平台矩阵.md) | GDAL 3.13.0 基线和后续平台验收 |
 | [只读并发与 GDAL 冲突验收](testing/11_只读并发与GDAL冲突验收.md) | 独立 Reader 并发、Adaptive 状态机和 GDAL 写后重开门禁 |
 | [测试数据与真实数据验收](testing/05_测试数据与真实数据验收.md) | fixture、manifest 和真实数据 |
+| [元数据完整解析验收数据清单](testing/12_元数据完整解析验收数据清单.md) | 元数据完整性、关系类、域和 Feature Dataset 验收数据 |
 | [性能基准与回归门禁](testing/06_性能基准与回归门禁.md) | benchmark 和回归规则 |
 | [测试索引](testing/07_测试索引.md) | 文档到测试 target 的索引 |
 
