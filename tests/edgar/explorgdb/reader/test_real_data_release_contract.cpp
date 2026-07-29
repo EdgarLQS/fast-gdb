@@ -4,7 +4,10 @@
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
+#include <memory>
 #include <string>
+#include <unordered_map>
 #include <variant>
 #include <vector>
 
@@ -72,6 +75,28 @@ bool geometry_is_curve_like(const OGRGeometry* geometry) {
     }
     CPLFree(wkt);
     return false;
+}
+
+std::vector<std::string> csv_prefix(const std::string& line, size_t count) {
+    std::vector<std::string> values;
+    std::string value;
+    bool quoted = false;
+    for (const char ch : line) {
+        if (ch == '"') {
+            quoted = !quoted;
+        } else if (ch == ',' && !quoted && values.size() + 1 < count) {
+            values.push_back(value);
+            value.clear();
+        } else {
+            value.push_back(ch);
+        }
+    }
+    values.push_back(value);
+    if (values.size() == count) {
+        const auto extra = values.back().find(',');
+        if (extra != std::string::npos) values.back().resize(extra);
+    }
+    return values.size() == count ? values : std::vector<std::string>();
 }
 
 void expect_no_silent_geometry_decode(const FeatureRecord& record,
@@ -256,6 +281,61 @@ TEST(RealDataReleaseContractTest, ArcGisFieldTypeInventoryAndSparseFidsAreExplic
     ASSERT_TRUE(sparse.load_tablx(parcels->tablx_path));
     EXPECT_GT(sparse.feature_count(), sparse.active_feature_count());
     EXPECT_EQ(sparse.active_feature_count(), 18u);
+}
+
+TEST(RealDataReleaseContractTest, ArcGisExpectedValuesResolveAndPreserveNulls) {
+    const char* dataset_path = required_dataset_from_env("FAST_GDB_REAL_DATASET");
+    if (dataset_path == nullptr) {
+        GTEST_SKIP() << "Set FAST_GDB_REAL_DATASET to acceptance_metadata.gdb";
+    }
+
+    GdbCatalog catalog;
+    ASSERT_TRUE(catalog.scan(dataset_path));
+    CatalogResolver resolver(catalog);
+    ASSERT_TRUE(resolver.load());
+
+    const auto expected_path = std::filesystem::path(dataset_path).parent_path() /
+                               "acceptance_metadata" / "field-values-expected.csv";
+    std::ifstream expected(expected_path);
+    ASSERT_TRUE(expected.is_open()) << expected_path;
+    std::string line;
+    ASSERT_TRUE(std::getline(expected, line));
+
+    std::unordered_map<std::string, std::unique_ptr<GdbTableParser>> tables;
+    size_t checked = 0;
+    while (std::getline(expected, line)) {
+        if (line.empty()) continue;
+        const auto columns = csv_prefix(line, 5);
+        ASSERT_EQ(columns.size(), 5u) << line;
+        const auto resolved = resolver.resolve(columns[0]);
+        ASSERT_TRUE(resolved.has_value()) << columns[0];
+        auto& table = tables[columns[0]];
+        if (!table) {
+            table = std::make_unique<GdbTableParser>(resolved->table_path);
+            ASSERT_TRUE(table->open()) << columns[0];
+            ASSERT_TRUE(table->load_tablx(resolved->tablx_path)) << columns[0];
+        }
+
+        const uint32_t object_id = static_cast<uint32_t>(std::stoul(columns[1]));
+        ASSERT_GT(object_id, 0u);
+        ASSERT_TRUE(table->has_feature(object_id - 1))
+            << columns[0] << " OBJECTID=" << object_id;
+        const auto field = std::find_if(
+            table->fields().begin(), table->fields().end(),
+            [&](const FieldDescriptor& candidate) { return candidate.name == columns[2]; });
+        ASSERT_NE(field, table->fields().end()) << columns[0] << "." << columns[2];
+
+        FeatureRecord record;
+        ASSERT_TRUE(table->read_record_by_fid(object_id - 1, record));
+        ASSERT_LT(static_cast<size_t>(field - table->fields().begin()),
+                  record.field_values.size());
+        const bool actual_null = std::holds_alternative<std::nullptr_t>(
+            record.field_values[static_cast<size_t>(field - table->fields().begin())]);
+        EXPECT_EQ(actual_null, columns[4] == "Y")
+            << columns[0] << " OBJECTID=" << object_id << "." << columns[2];
+        ++checked;
+    }
+    EXPECT_EQ(checked, 404u);
 }
 
 TEST(RealDataReleaseContractTest, CurveFileGdbIsExplicitlyUnsupported) {
