@@ -213,6 +213,51 @@ TEST(RealDataReleaseContractTest, ArcGisMetadataSidecarShapesAreReadable) {
     EXPECT_FALSE(reader.read_field_domain_bindings("roads").empty());
 }
 
+TEST(RealDataReleaseContractTest, ArcGisFieldTypeInventoryAndSparseFidsAreExplicit) {
+    const char* dataset_path = required_dataset_from_env("FAST_GDB_REAL_DATASET");
+    if (dataset_path == nullptr) {
+        GTEST_SKIP() << "Set FAST_GDB_REAL_DATASET to acceptance_metadata.gdb";
+    }
+
+    GdbCatalog catalog;
+    ASSERT_TRUE(catalog.scan(dataset_path));
+    CatalogResolver resolver(catalog);
+    ASSERT_TRUE(resolver.load());
+
+    const auto resolved = resolver.resolve("all_field_types");
+    ASSERT_TRUE(resolved.has_value());
+    GdbTableParser types(resolved->table_path);
+    ASSERT_TRUE(types.open());
+    ASSERT_TRUE(types.load_tablx(resolved->tablx_path));
+
+    const std::vector<std::pair<std::string, FieldType>> expected = {
+        {"short_fld", FieldType::Int16}, {"long_fld", FieldType::Int32},
+        {"float_fld", FieldType::Float32}, {"double_fld", FieldType::Float64},
+        {"text_fld", FieldType::String}, {"date_fld", FieldType::DateTime},
+        {"guid_fld", FieldType::UUID_1}, {"globalid_fld", FieldType::UUID_2},
+        {"blob_fld", FieldType::Binary}, {"bigint_fld", FieldType::Int64},
+        {"dateonly_fld", FieldType::Date}, {"timeonly_fld", FieldType::Time},
+        {"timestampoffset_fld", FieldType::DateTimeWithOffset},
+    };
+    for (const auto& item : expected) {
+        const auto field = std::find_if(
+            types.fields().begin(), types.fields().end(),
+            [&](const FieldDescriptor& candidate) {
+                return candidate.name == item.first;
+            });
+        ASSERT_NE(field, types.fields().end()) << item.first;
+        EXPECT_EQ(field->type, item.second) << item.first;
+    }
+
+    const auto parcels = resolver.resolve("parcels");
+    ASSERT_TRUE(parcels.has_value());
+    GdbTableParser sparse(parcels->table_path);
+    ASSERT_TRUE(sparse.open());
+    ASSERT_TRUE(sparse.load_tablx(parcels->tablx_path));
+    EXPECT_GT(sparse.feature_count(), sparse.active_feature_count());
+    EXPECT_EQ(sparse.active_feature_count(), 18u);
+}
+
 TEST(RealDataReleaseContractTest, CurveFileGdbIsExplicitlyUnsupported) {
     const char* dataset_path = required_dataset_from_env("FAST_GDB_CURVE_DATASET");
     if (dataset_path == nullptr) {
