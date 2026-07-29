@@ -5,8 +5,11 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <memory>
+#include <sstream>
 #include <string>
+#include <cctype>
 #include <unordered_map>
 #include <variant>
 #include <vector>
@@ -17,6 +20,7 @@
 #include "catalog_resolver.h"
 #include "gdb_catalog.h"
 #include "metadata_reader.h"
+#include "ole_date.h"
 #include "query_engine.h"
 
 using namespace explorgdb;
@@ -97,6 +101,49 @@ std::vector<std::string> csv_prefix(const std::string& line, size_t count) {
         if (extra != std::string::npos) values.back().resize(extra);
     }
     return values.size() == count ? values : std::vector<std::string>();
+}
+
+bool expected_value_matches(const std::string& expected,
+                            const FieldDescriptor& field,
+                            const FieldValue& actual) {
+    if (const auto* value = std::get_if<std::string>(&actual)) {
+        if (field.type == FieldType::UUID_1 || field.type == FieldType::UUID_2) {
+            std::string normalized = expected;
+            if (!normalized.empty() && normalized.front() == '{') normalized.erase(0, 1);
+            if (!normalized.empty() && normalized.back() == '}') normalized.pop_back();
+            std::transform(normalized.begin(), normalized.end(), normalized.begin(),
+                           [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+            return *value == normalized || *value == expected;
+        }
+        return *value == expected;
+    }
+    if (const auto* value = std::get_if<int32_t>(&actual)) {
+        return std::stoll(expected) == *value;
+    }
+    if (const auto* value = std::get_if<int64_t>(&actual)) {
+        return std::stoll(expected) == *value;
+    }
+    if (const auto* value = std::get_if<double>(&actual)) {
+        if (field.type == FieldType::DateTime) {
+            return ole_to_string(*value, false, false) == expected;
+        }
+        if (field.type == FieldType::Date) return ole_to_string(*value, true, false) == expected;
+        if (field.type == FieldType::Time) return ole_to_string(*value, false, true) == expected;
+        return std::abs(*value - std::stod(expected)) <=
+               std::max(1e-9, std::abs(std::stod(expected)) * 1e-12);
+    }
+    if (const auto* value = std::get_if<DateTimeOffsetValue>(&actual)) {
+        const int hours = value->offset_minutes / 60;
+        const int minutes = std::abs(value->offset_minutes % 60);
+        std::ostringstream suffix;
+        suffix << (hours >= 0 ? "+" : "-") << std::setw(2) << std::setfill('0')
+               << std::abs(hours) << ":" << std::setw(2) << minutes;
+        return ole_to_string(value->date, false, false) + suffix.str() == expected;
+    }
+    if (std::holds_alternative<std::vector<uint8_t>>(actual)) {
+        return expected.find("<memory at") != std::string::npos;
+    }
+    return false;
 }
 
 void expect_no_silent_geometry_decode(const FeatureRecord& record,
@@ -333,6 +380,12 @@ TEST(RealDataReleaseContractTest, ArcGisExpectedValuesResolveAndPreserveNulls) {
             record.field_values[static_cast<size_t>(field - table->fields().begin())]);
         EXPECT_EQ(actual_null, columns[4] == "Y")
             << columns[0] << " OBJECTID=" << object_id << "." << columns[2];
+        if (!actual_null) {
+            EXPECT_TRUE(expected_value_matches(
+                columns[3], *field,
+                record.field_values[static_cast<size_t>(field - table->fields().begin())]))
+                << columns[0] << " OBJECTID=" << object_id << "." << columns[2];
+        }
         ++checked;
     }
     EXPECT_EQ(checked, 404u);
