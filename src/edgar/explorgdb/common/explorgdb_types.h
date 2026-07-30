@@ -69,6 +69,8 @@ struct FieldDescriptor {
     uint32_t width = 0;      // 字段宽度（String 类型表示最大字符数，数值类型表示字节数）
     uint8_t flag = 0;        // 字段标志位（见上方说明）
     std::string default_value; // 默认值（仅当 flag & 0x04 时存在）
+    // 默认值的原始编码；用于无法无损转换为公共标量的类型。
+    std::vector<uint8_t> default_value_raw;
 
     // ── 几何字段专用属性 ──
     // 当 type == Geometry 时，字段描述符包含大量坐标系和范围元数据。

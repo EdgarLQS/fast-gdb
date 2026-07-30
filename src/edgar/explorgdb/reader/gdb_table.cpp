@@ -373,16 +373,19 @@ void GdbTableParser::parse_field_descriptor(BinaryReader& reader,
             field.width = reader.read_u8();
             field.flag = reader.read_u8();
             const uint8_t default_length = reader.read_u8();
-            if (default_length > 0 && (field.flag & 4U) != 0)
-                reader.skip(default_length);
+            if (default_length > 0 && (field.flag & 4U) != 0) {
+                field.default_value_raw = reader.read_bytes(default_length);
+            }
             break;
         }
         case FieldType::String: {
             field.width = reader.read_u32();
             field.flag = reader.read_u8();
             const uint64_t default_length = reader.read_varuint();
-            if (default_length > 0 && (field.flag & 4U) != 0)
-                reader.skip(static_cast<size_t>(default_length));
+            if (default_length > 0 && (field.flag & 4U) != 0) {
+                field.default_value_raw = reader.read_bytes(
+                    static_cast<size_t>(default_length));
+            }
             break;
         }
         case FieldType::ObjectId:

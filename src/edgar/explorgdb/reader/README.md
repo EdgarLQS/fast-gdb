@@ -28,12 +28,17 @@ truncates a v4 64-bit feature count. A future 64-bit FID change must be an
 end-to-end API decision rather than a parser-only widening.
 
 `Layer::read_metadata()` is the canonical facade for layer fields, definition,
-domains, relationships, dataset grouping and capabilities. It returns a
+workspace domains, field-domain bindings, relationship summaries and complete
+relationship definitions, dataset grouping and capabilities. It returns a
 `MetadataReadResult` with a structured `ReaderError`; a source change is
 reported as `SourceChanged` and the snapshot must be discarded. The older
 `Layer::metadata_snapshot()` remains as a compatibility convenience and does
 not replace structured error handling. `MetadataReader` remains available for
 advanced catalog-specific lookups.
+
+Field descriptors retain default-value bytes in `default_value_raw`. The
+bytes are deliberately exposed without guessing a scalar representation;
+callers can decode them according to the field type and source version.
 
 `Reader`, `Layer` and `QueryEngine` are not shared mutable thread-safe objects.
 Independent Reader/Layer object graphs may be used concurrently; one

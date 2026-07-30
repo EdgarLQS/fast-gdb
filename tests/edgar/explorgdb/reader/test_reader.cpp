@@ -253,6 +253,10 @@ TEST(ReaderContractTest, OpensLayerAndAppliesCursorOptions) {
     EXPECT_EQ(metadata_result.snapshot.fields.size(), metadata.fields.size());
     EXPECT_EQ(metadata_result.snapshot.capabilities.can_read_layer(),
               metadata.capabilities.can_read_layer());
+    EXPECT_EQ(metadata_result.snapshot.workspace_domains.size(),
+              metadata.workspace_domains.size());
+    EXPECT_EQ(metadata_result.snapshot.relationship_definitions.size(),
+              metadata.relationship_definitions.size());
 
     QueryRequest request;
     request.kind = QueryKind::SequentialScan;

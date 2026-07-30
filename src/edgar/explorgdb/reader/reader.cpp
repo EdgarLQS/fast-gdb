@@ -141,9 +141,12 @@ MetadataReadResult Layer::read_metadata() const {
         result.snapshot.fields = fields();
         result.snapshot.capabilities = capabilities();
         result.snapshot.layer = metadata_.read_layer_metadata(name());
+        result.snapshot.workspace_domains = metadata_.read_workspace_domains();
         result.snapshot.field_domains =
             metadata_.read_field_domain_bindings(name());
         result.snapshot.relationships = metadata_.read_relationship_summaries();
+        result.snapshot.relationship_definitions =
+            metadata_.read_relationship_class_definitions();
         result.snapshot.dataset_groups =
             metadata_.read_dataset_group_summaries();
         if (!result.snapshot.layer.has_value()) {

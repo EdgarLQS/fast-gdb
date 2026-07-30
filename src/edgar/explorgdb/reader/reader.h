@@ -47,7 +47,9 @@ struct LayerMetadataSnapshot {
     std::vector<FieldDescriptor> fields;
     std::optional<LayerMetadata> layer;
     std::vector<FieldDomainBinding> field_domains;
+    std::vector<DomainInfo> workspace_domains;
     std::vector<RelationshipSummary> relationships;
+    std::vector<RelationshipClassDefinition> relationship_definitions;
     std::vector<DatasetGroupSummary> dataset_groups;
     CapabilityReport capabilities;
 };
