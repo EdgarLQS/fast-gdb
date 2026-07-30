@@ -33,4 +33,5 @@ tests/createdata/write_script.py
 tools/gdal.dll
 tools/generate_wide_50_gdb.exe
 tools/generate_wide_50_gdb.obj
+tools/dump_audit.cpp
 /release-evidence/

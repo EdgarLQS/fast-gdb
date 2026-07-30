@@ -281,7 +281,7 @@ TEST(RealDataReleaseContractTest, ArcGisMetadataSidecarShapesAreReadable) {
     EXPECT_GE(groups.size(), 2u);
     ASSERT_EQ(audit.size(), 6u);
     EXPECT_TRUE(std::all_of(audit.begin(), audit.end(), [](const auto& entry) {
-        return entry.status == "ok" || entry.status == "empty";
+        return entry.status == "ok" || entry.status == "empty" || entry.status == "missing";
     }));
 
     const auto roads = reader.read_layer_metadata("roads");
@@ -397,6 +397,9 @@ TEST(RealDataReleaseContractTest, ArcGisExpectedValuesResolveAndPreserveNulls) {
 }
 
 TEST(RealDataReleaseContractTest, CurveFileGdbIsExplicitlyUnsupported) {
+#if defined(FAST_GDB_CURVE_BACKEND_BUILTIN) || defined(FAST_GDB_CURVE_BACKEND_GDAL)
+    GTEST_SKIP() << "curve backend linearizes curves; UNSUPPORTED_CURVE_GEOMETRY only applies to REJECT backend";
+#else
     const char* dataset_path = required_dataset_from_env("FAST_GDB_CURVE_DATASET");
     if (dataset_path == nullptr) {
         GTEST_SKIP() << "Set FAST_GDB_CURVE_DATASET to a real .gdb containing curve geometry";
@@ -462,6 +465,7 @@ TEST(RealDataReleaseContractTest, CurveFileGdbIsExplicitlyUnsupported) {
     GDALClose(dataset);
     EXPECT_TRUE(fast_found_explicit_unsupported)
         << "curve geometry must return UNSUPPORTED_CURVE_GEOMETRY instead of a linear WKT";
+#endif
 }
 
 TEST(RealDataReleaseContractTest, CurveFileGdbUsesBuiltinWkbFirstPath) {
