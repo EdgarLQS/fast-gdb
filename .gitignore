@@ -18,3 +18,13 @@ __pycache__/
 *.py[cod]
 /build_off
 /.idea
+claude.exe
+
+# Development artifacts in tests/createdata
+tests/createdata/append_export.py
+tests/createdata/check_script.py
+tests/createdata/check_subtype.py
+tests/createdata/gen_b64.py
+tests/createdata/generate_acceptance_metadata.py.b64
+tests/createdata/test_write.txt
+tests/createdata/write_script.py
