@@ -28,3 +28,9 @@ tests/createdata/gen_b64.py
 tests/createdata/generate_acceptance_metadata.py.b64
 tests/createdata/test_write.txt
 tests/createdata/write_script.py
+/build_adaptive
+/build_consumer_linear
+tools/gdal.dll
+tools/generate_wide_50_gdb.exe
+tools/generate_wide_50_gdb.obj
+/release-evidence/

@@ -147,3 +147,17 @@ The corresponding `usegdal` source may remain for reference, but it is not consi
 - `UnverifiedConcurrentRead` must never be counted as a verified data-correctness result;
 - Adaptive Reader test discovery is a release-gate requirement;
 - reference-only source presence is not release evidence.
+
+## Windows acceptance (2026-07-30)
+
+Full acceptance report: [`ACCEPTANCE_REPORT.md`](../ACCEPTANCE_REPORT.md)
+Evidence archive: `release-evidence/2026-07-30-win-acceptance/`
+
+| Test runner | Total | Pass | Skip | Fail | Notes |
+|---|---|---|---|---|---|
+| `gdb_tutorial_test_runner` | 302 | 284 | 17 | 1 | 1 env-limit (GDAL data lacks XML metadata) |
+| `fast_gdb_geometry_test_runner` | 101 | 101 | 0 | 0 |  |
+| `fast_gdb_hybrid_test_runner` | 11 | 4 | 7 | 0 | All overlap with tutorial runner |
+| `fast_gdb_adaptive_reader_test_runner` | 41 | 40 | 1 | 0 | 1 skip (OpenFileGDB no index delete) |
+| `fast_gdb_gdal_read_write_boundary_test_runner` | 2 | 2 | 0 | 0 |  |
+| **Unique total** | **446** | **428** | **17** | **1** | **0 product code defects** |
