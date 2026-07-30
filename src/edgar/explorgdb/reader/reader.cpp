@@ -50,31 +50,27 @@ struct ReaderState {
             std::filesystem::directory_iterator iterator(
                 catalog->path(), error);
             if (error) return false;
-            std::unordered_map<std::string, SourceStamp> current;
+            size_t regular_file_count = 0;
             for (const auto& entry : iterator) {
                 if (!entry.is_regular_file(error)) {
                     if (error) return false;
                     continue;
                 }
+                ++regular_file_count;
                 const auto size = entry.file_size(error);
                 if (error) return false;
                 const auto modified = entry.last_write_time(error);
                 if (error) return false;
-                current.emplace(
-                    entry.path().filename().string(),
-                    SourceStamp{size, static_cast<intmax_t>(
-                        modified.time_since_epoch().count())});
-            }
-            if (current.size() != source_snapshot.size()) return false;
-            for (const auto& item : source_snapshot) {
-                const auto found = current.find(item.first);
-                if (found == current.end() ||
-                    found->second.size != item.second.size ||
-                    found->second.modified != item.second.modified) {
+                const auto found = source_snapshot.find(
+                    entry.path().filename().string());
+                if (found == source_snapshot.end() ||
+                    found->second.size != size ||
+                    found->second.modified != static_cast<intmax_t>(
+                        modified.time_since_epoch().count())) {
                     return false;
                 }
             }
-            return true;
+            return regular_file_count == source_snapshot.size();
         } catch (...) {
             return false;
         }

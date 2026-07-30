@@ -169,6 +169,30 @@ TEST(GeometryTopologySafety, OrientationHandlesFullInt64Range) {
     EXPECT_LT(orientation(minimum, north_east, east), 0);
 }
 
+TEST(GeometryTopologySafety, OrientationHandlesNegativeExtremeProducts) {
+    const GridPoint a{std::numeric_limits<int64_t>::min(), 7};
+    const GridPoint b{std::numeric_limits<int64_t>::max(), 7};
+    const GridPoint c{std::numeric_limits<int64_t>::min(), -9};
+
+    EXPECT_LT(orientation(a, b, c), 0);
+    EXPECT_GT(orientation(a, c, b), 0);
+}
+
+TEST(GeometryTopologySafety, SegmentRelationsRemainStableAtInt64Bounds) {
+    const int64_t minimum = std::numeric_limits<int64_t>::min();
+    const int64_t maximum = std::numeric_limits<int64_t>::max();
+    const GridPoint left{minimum, 0};
+    const GridPoint right{maximum, 0};
+    const GridPoint lower{0, minimum};
+    const GridPoint upper{0, maximum};
+
+    EXPECT_EQ(segment_relation(left, right, lower, upper),
+              SegmentRelation::Cross);
+    EXPECT_EQ(segment_relation(left, right,
+                               {minimum, 0}, {maximum, 0}),
+              SegmentRelation::Overlap);
+}
+
 TEST(GeometrySpatialSafety, ContinuousGridBboxCrossesSegment) {
     GeometryModel line;
     line.kind = GeometryKind::LineString;
