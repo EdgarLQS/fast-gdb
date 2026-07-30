@@ -155,9 +155,13 @@ Evidence archive: `release-evidence/2026-07-30-win-acceptance/`
 
 | Test runner | Total | Pass | Skip | Fail | Notes |
 |---|---|---|---|---|---|
-| `gdb_tutorial_test_runner` | 303 | 289 | 13 | 1 | 1 env-limit (GDAL data lacks XML metadata) |
+| `gdb_tutorial_test_runner` | 303 | 291 | 11 | 1 | 1 env-limit (GDAL data lacks XML metadata) |
 | `fast_gdb_geometry_test_runner` | 101 | 101 | 0 | 0 |  |
 | `fast_gdb_hybrid_test_runner` | 11 | 4 | 7 | 0 | All overlap with tutorial runner |
 | `fast_gdb_adaptive_reader_test_runner` | 41 | 40 | 1 | 0 | 1 skip (OpenFileGDB no index delete) |
 | `fast_gdb_gdal_read_write_boundary_test_runner` | 2 | 2 | 0 | 0 |  |
+<<<<<<< HEAD
 | **Unique total** | **447** | **429** | **17** | **1** | **0 product code defects** |
+=======
+| **Unique total** | **447** | **433** | **12** | **1** | **0 product code defects** |
+>>>>>>> 2fc99f8 (docs: Windows acceptance completed - 433/447 pass, 0 product defects)
