@@ -274,10 +274,15 @@ TEST(RealDataReleaseContractTest, ArcGisMetadataSidecarShapesAreReadable) {
     const auto domains = reader.read_workspace_domains();
     const auto relationships = reader.read_relationship_class_definitions();
     const auto groups = reader.read_dataset_group_summaries();
+    const auto audit = reader.audit_system_tables();
 
     EXPECT_GE(domains.size(), 4u);
     EXPECT_GE(relationships.size(), 3u);
     EXPECT_GE(groups.size(), 2u);
+    ASSERT_EQ(audit.size(), 6u);
+    EXPECT_TRUE(std::all_of(audit.begin(), audit.end(), [](const auto& entry) {
+        return entry.status == "ok" || entry.status == "empty";
+    }));
 
     const auto roads = reader.read_layer_metadata("roads");
     ASSERT_TRUE(roads.has_value());

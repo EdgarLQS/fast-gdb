@@ -235,6 +235,20 @@ TEST(MetadataReaderTest, DecodesRelationshipClassAttributesXml) {
     EXPECT_EQ(attrs.destination_foreign_key, "CHILD_GUID");
 }
 
+TEST(MetadataReaderTest, DecodesSubtypeDefinitionsWithoutLosingCodes) {
+    const auto subtypes = MetadataReader::decode_subtypes_xml(
+        "<Subtypes><Subtype><SubtypeCode>1</SubtypeCode>"
+        "<SubtypeName>Highway</SubtypeName><DefaultValue>60</DefaultValue>"
+        "</Subtype><Subtype><SubtypeCode>2</SubtypeCode>"
+        "<Name>Local</Name></Subtype></Subtypes>");
+    ASSERT_EQ(subtypes.size(), 2u);
+    EXPECT_EQ(subtypes[0].code, 1);
+    EXPECT_EQ(subtypes[0].name, "Highway");
+    EXPECT_EQ(subtypes[0].default_value, "60");
+    EXPECT_EQ(subtypes[1].code, 2);
+    EXPECT_EQ(subtypes[1].name, "Local");
+}
+
 class MetadataReaderIntegrationTest : public GdbTutorialFixture {};
 
 TEST_F(MetadataReaderIntegrationTest, ReadsDefinitionFromGdbItemsForGeneratedLayer) {

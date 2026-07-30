@@ -149,6 +149,8 @@ MetadataReadResult Layer::read_metadata() const {
             metadata_.read_relationship_class_definitions();
         result.snapshot.dataset_groups =
             metadata_.read_dataset_group_summaries();
+        result.snapshot.system_table_audit = metadata_.audit_system_tables();
+        result.snapshot.subtypes = metadata_.read_subtypes(name());
         if (!result.snapshot.layer.has_value()) {
             result.snapshot = {};
             set_error(&result.error, ReaderStatus::MetadataReadFailed,

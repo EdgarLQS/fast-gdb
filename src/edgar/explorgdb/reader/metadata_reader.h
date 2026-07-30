@@ -28,6 +28,15 @@ struct LayerMetadata {
     std::string catalog_path;
     std::string dataset_type;
     std::unordered_map<std::string, std::string> items;
+    std::unordered_map<std::string, std::vector<uint8_t>> raw_items;
+};
+
+struct MetadataTableAudit {
+    std::string table_name;
+    std::string status;
+    std::string diagnostic;
+    size_t row_count = 0;
+    std::string digest;
 };
 
 struct DomainCodedValue {
@@ -51,6 +60,13 @@ struct FieldDomainBinding {
     std::string field_name;
     std::string domain_name;
     std::optional<DomainInfo> domain;
+};
+
+struct SubtypeInfo {
+    int code = 0;
+    std::string name;
+    std::string default_value;
+    std::vector<FieldDomainBinding> field_domains;
 };
 
 struct RelationshipSummary {
@@ -114,6 +130,9 @@ public:
     std::vector<RelationshipSummary> read_relationship_summaries() const;
     std::vector<RelationshipClassDefinition> read_relationship_class_definitions() const;
     std::vector<DatasetGroupSummary> read_dataset_group_summaries() const;
+    std::vector<MetadataTableAudit> audit_system_tables() const;
+    std::vector<SubtypeInfo> read_subtypes(const std::string& layer_name) const;
+    static std::vector<SubtypeInfo> decode_subtypes_xml(const std::string& xml);
 
     // Public, side-effect-free seam used by tests and alternate catalog readers.
     static std::optional<SpatialReferenceInfo> decode_spatial_reference_row(

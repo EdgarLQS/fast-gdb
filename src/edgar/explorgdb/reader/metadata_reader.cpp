@@ -5,7 +5,9 @@
 #include "gdb_table.h"
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include <map>
+#include <sstream>
 #include <unordered_map>
 
 namespace explorgdb {
@@ -43,6 +45,31 @@ std::string as_text(const FieldValue& value) {
     if (const auto* v = std::get_if<int64_t>(&value)) return std::to_string(*v);
     if (const auto* v = std::get_if<double>(&value)) return std::to_string(*v);
     return {};
+}
+
+std::string digest_rows(const ParsedTableRows& table) {
+    uint64_t hash = 1469598103934665603ULL;
+    const auto mix = [&](uint8_t byte) { hash = (hash ^ byte) * 1099511628211ULL; };
+    std::vector<std::string> column_names;
+    column_names.reserve(table.columns.size());
+    for (const auto& column : table.columns) column_names.push_back(column.first);
+    std::sort(column_names.begin(), column_names.end());
+    for (const auto& column : column_names) {
+        for (const auto byte : column) mix(static_cast<uint8_t>(byte));
+    }
+    for (const auto& row : table.rows) {
+        for (const auto& value : row.field_values) {
+            const auto text = as_text(value);
+            for (const auto byte : text) mix(static_cast<uint8_t>(byte));
+            if (const auto* bytes = std::get_if<std::vector<uint8_t>>(&value)) {
+                for (const auto byte : *bytes) mix(byte);
+            }
+            mix(0xffU);
+        }
+    }
+    std::ostringstream result;
+    result << std::hex << hash;
+    return result.str();
 }
 
 /** 从行记录的指定列名查询文本值。 */
@@ -184,6 +211,10 @@ std::optional<LayerMetadata> decode_layer_metadata_by_uuid(
     for (const auto& entry : columns) {
         if (entry.second >= row.field_values.size()) continue;
         metadata.items.emplace(entry.first, as_text(row.field_values[entry.second]));
+        if (const auto* bytes = std::get_if<std::vector<uint8_t>>(
+                &row.field_values[entry.second])) {
+            metadata.raw_items.emplace(entry.first, *bytes);
+        }
     }
     return metadata;
 }
@@ -251,6 +282,10 @@ std::optional<LayerMetadata> MetadataReader::decode_layer_metadata_row(
     for (const auto& entry : columns) {
         if (entry.second >= row.field_values.size()) continue;
         metadata.items.emplace(entry.first, as_text(row.field_values[entry.second]));
+        if (const auto* bytes = std::get_if<std::vector<uint8_t>>(
+                &row.field_values[entry.second])) {
+            metadata.raw_items.emplace(entry.first, *bytes);
+        }
     }
     return metadata;
 }
@@ -348,6 +383,60 @@ std::vector<DomainInfo> MetadataReader::read_workspace_domains() const {
         domains.insert(domains.end(), decoded.begin(), decoded.end());
     }
     return domains;
+}
+
+std::vector<SubtypeInfo> MetadataReader::decode_subtypes_xml(const std::string& xml) {
+    std::vector<SubtypeInfo> subtypes;
+    for (const auto& block : extract_blocks(xml, "<Subtype", "</Subtype>")) {
+        SubtypeInfo subtype;
+        subtype.code = static_cast<int>(std::strtol(
+            extract_tag_text(block, "SubtypeCode").c_str(), nullptr, 10));
+        subtype.name = extract_tag_text(block, "SubtypeName");
+        if (subtype.name.empty()) subtype.name = extract_tag_text(block, "Name");
+        subtype.default_value = extract_tag_text(block, "DefaultValue");
+        if (subtype.code != 0 || !subtype.name.empty()) {
+            subtypes.push_back(std::move(subtype));
+        }
+    }
+    return subtypes;
+}
+
+std::vector<SubtypeInfo> MetadataReader::read_subtypes(
+        const std::string& layer_name) const {
+    const auto metadata = read_layer_metadata(layer_name);
+    return metadata ? decode_subtypes_xml(metadata->definition)
+                    : std::vector<SubtypeInfo>{};
+}
+
+std::vector<MetadataTableAudit> MetadataReader::audit_system_tables() const {
+    const std::vector<std::string> names = {
+        "GDB_Items", "GDB_ItemRelationships", "GDB_ItemRelationshipTypes",
+        "GDB_ItemTypes", "GDB_Datasets", "GDB_DatasetRelationships"};
+    std::vector<MetadataTableAudit> audits;
+    audits.reserve(names.size());
+    for (const auto& name : names) {
+        MetadataTableAudit audit;
+        audit.table_name = name;
+        const auto resolved = resolver_.resolve(name);
+        if (!resolved) {
+            audit.status = "missing";
+            audit.diagnostic = "system table is not present in GDB_SystemCatalog";
+            audits.push_back(std::move(audit));
+            continue;
+        }
+        ParsedTableRows rows;
+        if (!load_table_rows(resolver_, name, rows)) {
+            audit.status = "unreadable";
+            audit.diagnostic = "system table or tablx could not be parsed";
+        } else {
+            audit.status = "ok";
+            audit.row_count = rows.rows.size();
+            audit.digest = digest_rows(rows);
+            if (rows.rows.empty()) audit.status = "empty";
+        }
+        audits.push_back(std::move(audit));
+    }
+    return audits;
 }
 
 /** 从图层 XML Definition 中解析字段-域绑定关系。 */

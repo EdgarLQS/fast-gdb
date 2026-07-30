@@ -40,17 +40,17 @@
 
 ### P0：公共元数据模型
 
-- 扩展 `MetadataReadResult`，增加 Workspace Domains、完整 Relationship Class Definition、Feature Dataset Definition、成员关系、Subtype 和结构化诊断。
-- 增加高级元数据审计入口，提供系统表名、FID、字段定义、原始 XML/Binary 和未识别字段。
+- 扩展 `MetadataReadResult`，增加 Workspace Domains、完整 Relationship Class Definition、Feature Dataset 分组、Subtype 和系统表结构化诊断。
+- 增加高级元数据审计入口，提供系统表名、行数、稳定 digest、原始 XML/Binary 字段和未识别字段。
 - 保留现有 `metadata_snapshot()`、`RelationshipSummary` 和 `MetadataReader` 兼容入口。
-- `read_metadata()` 不再丢失完整关系定义，也不再把缺失系统表误报为空结果。
+- `read_metadata()` 不再丢失完整关系定义；系统表审计区分缺失、空表和不可读，避免误报为空结果。
 
 当前公开快照的字段范围见 `src/edgar/explorgdb/reader/reader.h`；当前 `read_metadata()` 的组装逻辑见 `src/edgar/explorgdb/reader/reader.cpp`。
 
 ### P0：无损字段和系统表读取
 
-- 读取并保存字段默认值。目前字段描述解析只跳过默认值字节，见 `src/edgar/explorgdb/reader/gdb_table.cpp`。
-- XML 保留原文，Binary 保留原始字节，并同时提供规范化摘要。
+- 读取并保存字段默认值原始字节；规范化标量仍待真实 ArcGIS 数据确认。
+- XML 保留原文，系统表 Binary 保留原始字节，并同时提供规范化摘要。
 - 对 `GDB_Items`、`GDB_ItemRelationships`、`GDB_ItemRelationshipTypes`、`GDB_ItemTypes`、`GDB_Datasets` 和 `GDB_DatasetRelationships` 建立逐表 digest。
 - 增加缺失、截断、损坏 XML、损坏 Binary 和未知列的 fail-closed 测试。
 

@@ -36,6 +36,15 @@ reported as `SourceChanged` and the snapshot must be discarded. The older
 not replace structured error handling. `MetadataReader` remains available for
 advanced catalog-specific lookups.
 
+Subtype definitions are exposed as code/name/default-value records when the
+layer definition contains them. Per-field subtype defaults and domain
+assignments remain source-version dependent and are not inferred when absent.
+
+`LayerMetadataSnapshot::system_table_audit` reports each relevant metadata
+system table as `ok`, `empty`, `missing`, or `unreadable`, with row count and a
+deterministic digest when readable. This prevents a missing system table from
+being confused with a valid empty metadata result.
+
 Field descriptors retain default-value bytes in `default_value_raw`. The
 bytes are deliberately exposed without guessing a scalar representation;
 callers can decode them according to the field type and source version.

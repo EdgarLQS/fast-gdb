@@ -51,6 +51,8 @@ struct LayerMetadataSnapshot {
     std::vector<RelationshipSummary> relationships;
     std::vector<RelationshipClassDefinition> relationship_definitions;
     std::vector<DatasetGroupSummary> dataset_groups;
+    std::vector<MetadataTableAudit> system_table_audit;
+    std::vector<SubtypeInfo> subtypes;
     CapabilityReport capabilities;
 };
 
