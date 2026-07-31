@@ -1,13 +1,14 @@
 test_data/
 /benchmark_results/
-/benchmark-results/
+/artifacts/benchmark-results/
 .DS_Store
 /build/
+/cmake-build-debug/
 /build-*/
 /build_win
 /stderr.txt
 /stdout.txt
-/local-acceptance
+/artifacts/local-acceptance/
 /install-accept-nogdal
 /install-accept-gdal
 /install-perf-current
@@ -17,6 +18,7 @@ test_data/
 __pycache__/
 *.py[cod]
 /build_off
+/install/
 /.idea
 claude.exe
 

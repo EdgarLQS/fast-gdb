@@ -11,7 +11,7 @@
 - 当前唯一支持的切换合同是关闭全部 Reader、完成外部编辑、`GDALClose()`、完整重开 Reader；
 - 同一 `.gdb` 的 Reader/Writer 重叠不属于支持范围。
 
-现行决策见 [ADR-007：Reader-only 与 GDAL 编辑边界](../../adr/ADR-007-reader-only-gdal-edit-boundary.md)。
+现行决策见 [ADR-007：Reader-only 与 GDAL 编辑边界](../../governance/adr/ADR-007-reader-only-gdal-edit-boundary.md)。
 
 ## 归档内容
 

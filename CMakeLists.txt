@@ -523,7 +523,7 @@ if(FAST_GDB_BUILD_TOOLS)
 
     if(FAST_GDB_WITH_GDAL)
         add_executable(generate_large_gdb
-            tests/edgar/explorgdb/generate_large_gdb.cpp)
+            tests/createdata/cpp/generate_large_gdb.cpp)
         target_link_libraries(generate_large_gdb PRIVATE
                               ${FAST_GDB_GDAL_TARGET})
         fast_gdb_enable_warnings(generate_large_gdb)

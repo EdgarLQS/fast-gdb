@@ -56,7 +56,7 @@ jobs:
       - name: Run 100K full-feature benchmark
         env:
           FAST_GDB_RUN_FEATURE_CURSOR_BENCHMARKS: '1'
-          FAST_GDB_BENCHMARK_OUTPUT_DIR: ${{ github.workspace }}/benchmark-results
+          FAST_GDB_BENCHMARK_OUTPUT_DIR: ${{ github.workspace }}/artifacts/benchmark-results
         run: >-
           ctest --test-dir build-perf --output-on-failure
           -R 'FeatureCursorBenchmarkTest.Point100KFullFeatureEvidence'
@@ -67,7 +67,7 @@ jobs:
           import json
           from pathlib import Path
 
-          path = Path('benchmark-results/feature-cursor-100k-schema-v2.json')
+          path = Path('artifacts/benchmark-results/feature-cursor-100k-schema-v2.json')
           data = json.loads(path.read_text(encoding='utf-8'))
           cursor = float(data['cursor_median_ms'])
           gdal = float(data['gdal_median_ms'])
@@ -87,5 +87,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: spatial-where-performance-${{ github.sha }}
-          path: benchmark-results/*.json
+          path: artifacts/benchmark-results/*.json
           if-no-files-found: warn

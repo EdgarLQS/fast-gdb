@@ -82,7 +82,7 @@ GDAL/OpenFileGDB 独占修改目标 .gdb
 
 ### 可选 Adaptive Reader（已实现，跨平台证据仍在补齐）
 
-[ADR-008](docs/adr/ADR-008-adaptive-reader-write-detection-gdal-fallback.md) 已 Accepted，并已实现为可选的 `fast_gdb::adaptive` target。它覆盖同进程协调、WriterPending 排空、generation/过期和 fresh GDAL 未验证回退；默认仍不启用，三平台、压力、性能和多 GDAL 版本证据尚未闭环：
+[ADR-008](docs/governance/adr/ADR-008-adaptive-reader-write-detection-gdal-fallback.md) 已 Accepted，并已实现为可选的 `fast_gdb::adaptive` target。它覆盖同进程协调、WriterPending 排空、generation/过期和 fresh GDAL 未验证回退；默认仍不启用，三平台、压力、性能和多 GDAL 版本证据尚未闭环：
 
 ```text
 稳定源
@@ -163,8 +163,8 @@ return 0;
 
 详见：
 
-- [统一访问与 GDAL/S3 路由计划](docs/planning/24_fast-gdb统一访问与GDAL_S3路由计划.md)
-- [ADR-009：统一 FileGDB 访问与 GDAL/S3 路由](docs/adr/ADR-009-unified-filegdb-routing.md)
+- [统一访问与 GDAL/S3 路由计划](docs/gdal/03_fast-gdb统一访问与GDAL_S3路由计划.md)
+- [ADR-009：统一 FileGDB 访问与 GDAL/S3 路由](docs/governance/adr/ADR-009-unified-filegdb-routing.md)
 
 ## `usegdal` 参考目录
 
@@ -208,12 +208,12 @@ ctest --test-dir build-boundary --output-on-failure \
 
 详见：
 
-- [GDAL 写入与 fast-gdb 读取边界](docs/testing/03_GDAL边界与读写测试.md)
-- [只读并发与 GDAL 冲突验收](docs/testing/11_只读并发与GDAL冲突验收.md)
-- [Reader/GDAL 编辑边界 ADR](docs/adr/ADR-007-reader-only-gdal-edit-boundary.md)
-- [Adaptive Reader Accepted ADR](docs/adr/ADR-008-adaptive-reader-write-detection-gdal-fallback.md)
-- [Adaptive Reader 实施计划](docs/planning/22_AdaptiveReader写入检测与GDAL回退计划.md)
-- 并发可见性观测：历史测试记录已移除，当前规则见 [GDAL 边界测试](docs/testing/03_GDAL边界与读写测试.md)
+- [GDAL 写入与 fast-gdb 读取边界](docs/quality/03_GDAL边界与读写测试.md)
+- [只读并发与 GDAL 冲突验收](docs/quality/11_只读并发与GDAL冲突验收.md)
+- [Reader/GDAL 编辑边界 ADR](docs/governance/adr/ADR-007-reader-only-gdal-edit-boundary.md)
+- [Adaptive Reader Accepted ADR](docs/governance/adr/ADR-008-adaptive-reader-write-detection-gdal-fallback.md)
+- [Adaptive Reader 实施计划](docs/gdal/02_AdaptiveReader写入检测与GDAL回退计划.md)
+- 并发可见性观测：历史测试记录已移除，当前规则见 [GDAL 边界测试](docs/quality/03_GDAL边界与读写测试.md)
 
 ## 构建
 

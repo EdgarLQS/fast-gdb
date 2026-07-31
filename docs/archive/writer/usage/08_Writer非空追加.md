@@ -1,4 +1,4 @@
-> **历史归档**：本文记录已废弃的 Writer 方案或阶段性证据，不代表当前产品能力。fast-gdb 当前仅提供 Reader；现行边界见 [ADR-007](../../../adr/ADR-007-reader-only-gdal-edit-boundary.md)，归档说明见 [Writer 历史索引](../README.md)。
+> **历史归档**：本文记录已废弃的 Writer 方案或阶段性证据，不代表当前产品能力。fast-gdb 当前仅提供 Reader；现行边界见 [ADR-007](../../../governance/adr/ADR-007-reader-only-gdal-edit-boundary.md)，归档说明见 [Writer 历史索引](../README.md)。
 
 # Writer 非空追加（M18.4.1）
 
@@ -97,7 +97,7 @@ backup 删除失败会返回错误并保留 backup，但已发布源目录有效
 
 ## 7. 验收入口
 
-- ADR：`docs/adr/ADR-002-non-empty-append.md`
+- ADR：`docs/governance/adr/ADR-002-non-empty-append.md`
 - manifest：`tests/contracts/writer-append-macos-v1.json`
 - workflow：`.github/workflows/writer-append-macos.yml`
 - Google Test：`WriterAppendSessionTest.*`、`WriterAppendValidationTest.*`、`WriterAppendIndexTest.*`

@@ -1,4 +1,4 @@
-> **历史归档**：本文记录已废弃的 Writer 方案或阶段性证据，不代表当前产品能力。fast-gdb 当前仅提供 Reader；现行边界见 [ADR-007](../../../adr/ADR-007-reader-only-gdal-edit-boundary.md)，归档说明见 [Writer 历史索引](../README.md)。
+> **历史归档**：本文记录已废弃的 Writer 方案或阶段性证据，不代表当前产品能力。fast-gdb 当前仅提供 Reader；现行边界见 [ADR-007](../../../governance/adr/ADR-007-reader-only-gdal-edit-boundary.md)，归档说明见 [Writer 历史索引](../README.md)。
 
 # ADR-004 — Writer Transaction Model
 
@@ -28,9 +28,9 @@ Append、Update、Delete 各自具有完整 staging、验证和发布逻辑。�
 ```cpp
 WriterTransaction tx;
 tx.open(source_gdb, layer);
-tx.append([](WriterAppendSession& edit) { /* ... */ return true; });
-tx.update([](WriterUpdateSession& edit) { /* ... */ return true; });
-tx.erase([](WriterDeleteSession& edit) { /* ... */ return true; });
+tx.append([WriterAppendSession edit) { /* ... */ return true; });
+tx.update([WriterUpdateSession edit) { /* ... */ return true; });
+tx.erase([WriterDeleteSession edit) { /* ... */ return true; });
 tx.commit();
 // or tx.abort();
 ```
