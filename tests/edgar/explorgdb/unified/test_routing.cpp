@@ -29,6 +29,12 @@ TEST(UnifiedSourceTest, RejectsUnsupportedVsiAndCredentialUris) {
               ErrorCode::InvalidUri);
     EXPECT_EQ(parse_source("/vsis3/bucket/../data.gdb", source).code,
               ErrorCode::InvalidUri);
+    EXPECT_EQ(parse_source("s3://UPPER/data.gdb", source).code,
+              ErrorCode::InvalidUri);
+    EXPECT_EQ(parse_source("s3://ab/data.gdb", source).code,
+              ErrorCode::InvalidUri);
+    EXPECT_EQ(parse_source("s3://bad..bucket/data.gdb", source).code,
+              ErrorCode::InvalidUri);
 }
 
 TEST(UnifiedRouteTest, AutoUsesFastForLocalSource) {

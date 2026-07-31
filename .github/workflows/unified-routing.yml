@@ -1,0 +1,125 @@
+name: unified-routing
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: unified-routing-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gdal-version-matrix:
+    name: gdal-${{ matrix.gdal }}-ubuntu
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        gdal:
+          - "3.9"
+          - "3.10"
+          - "3.11"
+          - "3.12"
+          - "3.13"
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-update-conda: true
+          activate-environment: fast-gdb-ci
+          channels: conda-forge
+          channel-priority: strict
+          python-version: "3.12"
+      - name: Install GDAL and build tools
+        run: conda install -y "gdal=${{ matrix.gdal }}.*" cmake ninja
+      - name: Configure
+        run: >-
+          cmake -S . -B build-unified -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_PREFIX_PATH="$CONDA_PREFIX"
+          -DFAST_GDB_WITH_GDAL=ON
+          -DFAST_GDB_BUILD_UNIFIED=ON
+          -DFAST_GDB_BUILD_GDAL_DRIVER=ON
+          -DFAST_GDB_BUILD_ADAPTIVE_READER=OFF
+          -DFAST_GDB_BUILD_FULL_TESTS=OFF
+          -DFAST_GDB_BUILD_TOOLS=OFF
+          -DBUILD_TESTING=ON
+      - name: Build
+        run: >-
+          cmake --build build-unified
+          --target fast_gdb_unified_test_runner
+          fast_gdb_driver_test_runner
+          fast_gdb_driver_mismatch_test_runner
+          gdal_FastFileGDB --parallel
+      - name: Test unified facade and plugin
+        run: >-
+          ctest --test-dir build-unified --output-on-failure
+          -R '^(unified|fastfilegdb|fastfilegdb-mismatch)\.'
+      - name: Install and consume unified package
+        run: |
+          cmake --install build-unified --prefix "$PWD/install-unified"
+          cmake -S tests/package_consumer -B build-consumer -G Ninja \
+            -DCMAKE_PREFIX_PATH="$PWD/install-unified;$CONDA_PREFIX" \
+            -DFAST_GDB_CONSUMER_TARGET=unified
+          cmake --build build-consumer --parallel
+          ctest --test-dir build-consumer --output-on-failure
+      - name: Verify ordinary and explicit driver selection
+        run: |
+          plugin_dir="$PWD/install-unified/lib/gdalplugins/${{ matrix.gdal }}"
+          ordinary=$(GDAL_DRIVER_PATH="$plugin_dir" \
+            ogrinfo -ro test_data/benchmark/wide_50_gdal.gdb -so 2>&1)
+          grep -q "using driver .*OpenFileGDB" <<<"$ordinary"
+          explicit=$(GDAL_DRIVER_PATH="$plugin_dir" \
+            ogrinfo -ro -if FastFileGDB \
+              test_data/benchmark/wide_50_gdal.gdb -so 2>&1)
+          grep -q "using driver .*FastFileGDB" <<<"$explicit"
+
+  platform-matrix:
+    name: unified-${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-latest
+          - windows-latest
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-update-conda: true
+          activate-environment: fast-gdb-ci
+          channels: conda-forge
+          channel-priority: strict
+          python-version: "3.12"
+      - name: Install GDAL and build tools
+        run: conda install -y "gdal=3.13.*" cmake ninja
+      - name: Configure
+        run: >-
+          cmake -S . -B build-unified -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_PREFIX_PATH="$CONDA_PREFIX"
+          -DFAST_GDB_WITH_GDAL=ON
+          -DFAST_GDB_BUILD_UNIFIED=ON
+          -DFAST_GDB_BUILD_GDAL_DRIVER=ON
+          -DFAST_GDB_BUILD_ADAPTIVE_READER=OFF
+          -DFAST_GDB_BUILD_FULL_TESTS=OFF
+          -DFAST_GDB_BUILD_TOOLS=OFF
+          -DBUILD_TESTING=ON
+      - name: Build and test
+        run: |
+          cmake --build build-unified --parallel
+          ctest --test-dir build-unified --output-on-failure \
+            -R '^(unified|fastfilegdb|fastfilegdb-mismatch)\.'

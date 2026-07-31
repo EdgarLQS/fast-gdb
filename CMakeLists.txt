@@ -334,6 +334,28 @@ if(BUILD_TESTING)
         fast_gdb_enable_warnings(fast_gdb_driver_test_runner)
         gtest_discover_tests(fast_gdb_driver_test_runner
                              TEST_PREFIX "fastfilegdb.")
+
+        add_executable(fast_gdb_driver_mismatch_test_runner
+            tests/test_runner.cpp
+            tests/edgar/explorgdb/gdal_driver/test_build_id_mismatch.cpp
+            src/edgar/explorgdb/gdal_driver/fastfilegdb_driver.cpp)
+        target_include_directories(
+            fast_gdb_driver_mismatch_test_runner PRIVATE
+            tests
+            tests/edgar/explorgdb
+            src/edgar/explorgdb/unified)
+        target_compile_definitions(
+            fast_gdb_driver_mismatch_test_runner PRIVATE
+            FAST_GDB_RUNTIME_VERSION="${PROJECT_VERSION}"
+            FAST_GDB_PLUGIN_BUILD_ID="intentional-mismatch")
+        target_link_libraries(
+            fast_gdb_driver_mismatch_test_runner PRIVATE
+            GTest::gtest fast_gdb_runtime ${FAST_GDB_GDAL_TARGET})
+        fast_gdb_enable_warnings(
+            fast_gdb_driver_mismatch_test_runner)
+        gtest_discover_tests(
+            fast_gdb_driver_mismatch_test_runner
+            TEST_PREFIX "fastfilegdb-mismatch.")
     endif()
 
     set(GEOMETRY_TEST_SOURCES

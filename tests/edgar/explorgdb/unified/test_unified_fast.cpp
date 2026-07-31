@@ -6,6 +6,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cstdlib>
 
 namespace {
 
@@ -66,6 +67,12 @@ TEST(UnifiedFastFacadeTest, ReadAllPublishesWithinLimits) {
     ASSERT_TRUE(batch) << batch.error().message;
     EXPECT_LE(batch.value().features.size(), 3U);
     EXPECT_GT(batch.value().materialized_bytes, 0U);
+
+    ReadAllOptions tiny;
+    tiny.max_materialized_bytes = sizeof(Feature) - 1;
+    auto limited = layer.value().read_all(query, tiny);
+    EXPECT_FALSE(limited);
+    EXPECT_EQ(limited.error().code, ErrorCode::ResultLimitExceeded);
 }
 
 TEST(UnifiedFastFacadeTest, RejectsInvalidPublicFid) {
@@ -79,6 +86,40 @@ TEST(UnifiedFastFacadeTest, RejectsInvalidPublicFid) {
     auto feature = layer.value().read_by_fid(-1);
     EXPECT_FALSE(feature);
     EXPECT_EQ(feature.error().code, ErrorCode::Unsupported);
+}
+
+TEST(UnifiedFastFacadeTest, DeadlineFailsBeforeCursorPublication) {
+    auto dataset = Dataset::open(fixture_path());
+    ASSERT_TRUE(dataset);
+    auto names = dataset.value().layer_names();
+    ASSERT_TRUE(names);
+    auto layer = dataset.value().open_layer(names.value().front());
+    ASSERT_TRUE(layer);
+
+    Query query;
+    query.deadline = std::chrono::steady_clock::now();
+    auto cursor = layer.value().open_cursor(query);
+    EXPECT_FALSE(cursor);
+    EXPECT_EQ(cursor.error().code, ErrorCode::DeadlineExceeded);
+}
+
+TEST(UnifiedFastFacadeTest, CancellationBeforeFirstPublicationIsAtomic) {
+    auto dataset = Dataset::open(fixture_path());
+    ASSERT_TRUE(dataset);
+    auto names = dataset.value().layer_names();
+    ASSERT_TRUE(names);
+    auto layer = dataset.value().open_layer(names.value().front());
+    ASSERT_TRUE(layer);
+
+    bool cancelled = false;
+    Query query;
+    query.cancel_requested = [&cancelled] { return cancelled; };
+    auto cursor = layer.value().open_cursor(query);
+    ASSERT_TRUE(cursor);
+    cancelled = true;
+    auto first = cursor.value().next();
+    EXPECT_FALSE(first);
+    EXPECT_EQ(first.error().code, ErrorCode::Cancelled);
 }
 
 TEST(UnifiedFastFacadeTest, ExposesFeatureDatasetGroups) {
@@ -242,6 +283,91 @@ TEST(UnifiedGdalFacadeTest, GdalOnlyUsesOfficialOpenFileGdb) {
     EXPECT_EQ(batch.value().backend_report.selected,
               Backend::GdalOpenFileGDB);
     EXPECT_FALSE(layer.value().fast_extensions());
+}
+
+TEST(UnifiedGdalFacadeTest, GdalDeadlineFailsBeforeCursorPublication) {
+    OpenOptions options;
+    options.backend = BackendPreference::GdalOnly;
+    auto dataset = Dataset::open(fixture_path(), options);
+    ASSERT_TRUE(dataset);
+    auto names = dataset.value().layer_names();
+    ASSERT_TRUE(names);
+    auto layer = dataset.value().open_layer(names.value().front());
+    ASSERT_TRUE(layer);
+
+    Query query;
+    query.deadline = std::chrono::steady_clock::now();
+    auto cursor = layer.value().open_cursor(query);
+    EXPECT_FALSE(cursor);
+    EXPECT_EQ(cursor.error().code, ErrorCode::DeadlineExceeded);
+}
+
+TEST(UnifiedGdalFacadeTest, FastAndGdalSchemasExposeParityInputs) {
+    const auto source = explorgdb_test_paths::test_data_path(
+        "test_data/gdb/acceptance_metadata.gdb").string();
+    auto fast_dataset = Dataset::open(source);
+    ASSERT_TRUE(fast_dataset);
+    OpenOptions options;
+    options.backend = BackendPreference::GdalOnly;
+    auto gdal_dataset = Dataset::open(source, options);
+    ASSERT_TRUE(gdal_dataset);
+    auto fast_layer = fast_dataset.value().open_layer("all_field_types");
+    auto gdal_layer = gdal_dataset.value().open_layer("all_field_types");
+    ASSERT_TRUE(fast_layer);
+    ASSERT_TRUE(gdal_layer);
+    const auto& fast = fast_layer.value().schema();
+    const auto& gdal = gdal_layer.value().schema();
+    ASSERT_EQ(fast.fields.size(), gdal.fields.size());
+    for (std::size_t i = 0; i < fast.fields.size(); ++i) {
+        SCOPED_TRACE(fast.fields[i].name);
+        EXPECT_EQ(fast.fields[i].domain_name, gdal.fields[i].domain_name);
+        EXPECT_EQ(fast.fields[i].default_value, gdal.fields[i].default_value);
+    }
+}
+
+TEST(UnifiedGdalFacadeTest, GdalOnlyPreservesFeatureDatasetGroups) {
+    const auto source = explorgdb_test_paths::test_data_path(
+        "test_data/gdb/acceptance_metadata.gdb").string();
+    OpenOptions options;
+    options.backend = BackendPreference::GdalOnly;
+    auto dataset = Dataset::open(source, options);
+    ASSERT_TRUE(dataset) << dataset.error().message;
+    auto root = dataset.value().root_group();
+    ASSERT_TRUE(root);
+    auto groups = root.value().groups();
+    ASSERT_TRUE(groups);
+    EXPECT_NE(std::find_if(
+        groups.value().begin(), groups.value().end(),
+        [](const GroupInfo& group) {
+            return group.name == "TransportFD";
+        }), groups.value().end());
+    auto roads = dataset.value().open_layer_by_path("/TransportFD/roads");
+    ASSERT_TRUE(roads) << roads.error().message;
+}
+
+TEST(UnifiedGdalFacadeTest, RealAwsImmutablePrefixReadsWhenConfigured) {
+    const char* fixture = std::getenv("FAST_GDB_AWS_S3_FIXTURE");
+    if (fixture == nullptr || *fixture == '\0') {
+        GTEST_SKIP() << "FAST_GDB_AWS_S3_FIXTURE is not configured";
+    }
+    OpenOptions options;
+    options.backend = BackendPreference::GdalOnly;
+    options.remote_source = RemoteSourcePolicy::ImmutablePrefixRequired;
+    auto dataset = Dataset::open(fixture, options);
+    ASSERT_TRUE(dataset) << dataset.error().message;
+    EXPECT_EQ(dataset.value().consistency_report().consistency,
+              Consistency::ImmutablePrefixAssumed);
+    auto names = dataset.value().layer_names();
+    ASSERT_TRUE(names);
+    ASSERT_FALSE(names.value().empty());
+    auto layer = dataset.value().open_layer(names.value().front());
+    ASSERT_TRUE(layer);
+    Query query;
+    query.limit = 1;
+    auto cursor = layer.value().open_cursor(query);
+    ASSERT_TRUE(cursor) << cursor.error().message;
+    auto first = cursor.value().next();
+    ASSERT_TRUE(first) << first.error().message;
 }
 #endif
 

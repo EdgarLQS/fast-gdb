@@ -4,6 +4,7 @@
 #include <gtest/gtest.h>
 #include <ogrsf_frmts.h>
 
+#include <algorithm>
 #include <memory>
 
 extern "C" void GDALRegister_FastFileGDB();
@@ -53,6 +54,64 @@ TEST(FastFileGdbDriverTest, RejectsUpdateOpen) {
         fixture_path().c_str(), GDAL_OF_VECTOR | GDAL_OF_UPDATE,
         allowed, nullptr, nullptr)), GDALClose);
     EXPECT_EQ(dataset, nullptr);
+}
+
+TEST(FastFileGdbDriverTest, ExposesFeatureDatasetGroupHierarchy) {
+    GDALAllRegister();
+    GDALRegister_FastFileGDB();
+    const auto source = explorgdb_test_paths::test_data_path(
+        "test_data/gdb/acceptance_metadata.gdb").string();
+    const char* allowed[] = {"FastFileGDB", nullptr};
+    DatasetPtr dataset(static_cast<GDALDataset*>(GDALOpenEx(
+        source.c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY,
+        allowed, nullptr, nullptr)), GDALClose);
+    ASSERT_NE(dataset, nullptr) << CPLGetLastErrorMsg();
+
+    auto root = dataset->GetRootGroup();
+    ASSERT_NE(root, nullptr);
+    const auto group_names = root->GetGroupNames();
+    EXPECT_NE(std::find(group_names.begin(), group_names.end(),
+                        "TransportFD"),
+              group_names.end());
+    auto transport = root->OpenGroup("TransportFD");
+    ASSERT_NE(transport, nullptr);
+    const auto layer_names = transport->GetVectorLayerNames();
+    EXPECT_NE(std::find(layer_names.begin(), layer_names.end(), "roads"),
+              layer_names.end());
+    OGRLayer* roads = transport->OpenVectorLayer("roads");
+    ASSERT_NE(roads, nullptr);
+    dataset.reset();
+    EXPECT_STREQ(roads->GetName(), "roads");
+}
+
+TEST(FastFileGdbDriverTest, ImplementsReadFilterAndResetContract) {
+    GDALAllRegister();
+    GDALRegister_FastFileGDB();
+    const char* allowed[] = {"FastFileGDB", nullptr};
+    DatasetPtr dataset(static_cast<GDALDataset*>(GDALOpenEx(
+        fixture_path().c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY,
+        allowed, nullptr, nullptr)), GDALClose);
+    ASSERT_NE(dataset, nullptr);
+    OGRLayer* layer = dataset->GetLayer(0);
+    ASSERT_NE(layer, nullptr);
+
+    EXPECT_EQ(layer->GetFeatureCount(FALSE), -1);
+    OGREnvelope extent;
+    EXPECT_EQ(layer->GetExtent(&extent, false), OGRERR_FAILURE);
+    EXPECT_EQ(layer->SetAttributeFilter("value_000 >= 0"), OGRERR_NONE);
+    layer->SetSpatialFilterRect(0, 0, 5, 5);
+    std::unique_ptr<OGRFeature> first(layer->GetNextFeature());
+    ASSERT_NE(first, nullptr) << CPLGetLastErrorMsg();
+    const auto fid = first->GetFID();
+
+    layer->ResetReading();
+    std::unique_ptr<OGRFeature> reset_first(layer->GetNextFeature());
+    ASSERT_NE(reset_first, nullptr);
+    EXPECT_EQ(reset_first->GetFID(), fid);
+
+    std::unique_ptr<OGRFeature> random(layer->GetFeature(fid));
+    ASSERT_NE(random, nullptr);
+    EXPECT_EQ(random->GetFID(), fid);
 }
 
 }  // namespace

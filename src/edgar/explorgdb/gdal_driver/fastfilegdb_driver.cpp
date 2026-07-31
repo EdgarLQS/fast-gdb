@@ -5,9 +5,11 @@
 #include <ogrsf_frmts.h>
 
 #include <algorithm>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -210,6 +212,21 @@ public:
 #endif
     }
 
+#if GDAL_VERSION_NUM >= GDAL_COMPUTE_VERSION(3, 13, 0)
+    OGRErr IGetExtent(int geometry_field, OGREnvelope* extent,
+                      bool force) override {
+        if (!force) return OGRERR_FAILURE;
+        return OGRLayer::IGetExtent(geometry_field, extent, true);
+    }
+#else
+public:
+    OGRErr GetExtent(OGREnvelope* extent,
+                     int force = TRUE) override {
+        if (!force) return OGRERR_FAILURE;
+        return OGRLayer::GetExtent(extent, TRUE);
+    }
+#endif
+
 public:
     GIntBig GetFeatureCount(int force) override {
         if (!force) return -1;
@@ -291,19 +308,117 @@ private:
     std::optional<unified::Envelope> spatial_filter_;
 };
 
+class FastFileGdbGroup final : public GDALGroup {
+public:
+    using LayerLookup = std::function<OGRLayer*(const std::string&)>;
+
+    static std::shared_ptr<FastFileGdbGroup> create(
+            std::string parent, std::string name,
+            unified::Group group, LayerLookup lookup) {
+        auto result = std::shared_ptr<FastFileGdbGroup>(
+            new FastFileGdbGroup(std::move(parent), std::move(name),
+                                 std::move(group), std::move(lookup)));
+        result->SetSelf(result);
+        return result;
+    }
+
+    std::vector<std::string> GetGroupNames(
+            CSLConstList = nullptr) const override {
+        auto groups = group_.groups();
+        if (!groups) {
+            CPLError(CE_Failure, CPLE_AppDefined, "%s",
+                     groups.error().message.c_str());
+            return {};
+        }
+        std::vector<std::string> names;
+        names.reserve(groups.value().size());
+        for (const auto& group : groups.value()) {
+            names.push_back(group.name);
+        }
+        return names;
+    }
+
+    std::shared_ptr<GDALGroup> OpenGroup(
+            const std::string& name,
+            CSLConstList = nullptr) const override {
+        const auto cached = children_.find(name);
+        if (cached != children_.end()) return cached->second;
+        auto child = group_.open_group(name);
+        if (!child) {
+            CPLError(CE_Failure, CPLE_AppDefined, "%s",
+                     child.error().message.c_str());
+            return nullptr;
+        }
+        auto result = create(
+            GetFullName(), name, std::move(child).value(), lookup_);
+        children_[name] = result;
+        return result;
+    }
+
+    std::vector<std::string> GetVectorLayerNames(
+            CSLConstList = nullptr) const override {
+        auto layers = group_.layers();
+        if (!layers) {
+            CPLError(CE_Failure, CPLE_AppDefined, "%s",
+                     layers.error().message.c_str());
+            return {};
+        }
+        std::vector<std::string> names;
+        names.reserve(layers.value().size());
+        for (const auto& layer : layers.value()) {
+            names.push_back(layer.name);
+        }
+        return names;
+    }
+
+    OGRLayer* OpenVectorLayer(
+            const std::string& name,
+            CSLConstList = nullptr) const override {
+        auto layers = group_.layers();
+        if (!layers) {
+            CPLError(CE_Failure, CPLE_AppDefined, "%s",
+                     layers.error().message.c_str());
+            return nullptr;
+        }
+        const auto found = std::find_if(
+            layers.value().begin(), layers.value().end(),
+            [&name](const unified::LayerInfo& layer) {
+                return layer.name == name;
+            });
+        return found == layers.value().end()
+            ? nullptr : lookup_(found->path);
+    }
+
+private:
+    FastFileGdbGroup(std::string parent, std::string name,
+                     unified::Group group, LayerLookup lookup)
+        : GDALGroup(parent, name),
+          group_(std::move(group)),
+          lookup_(std::move(lookup)) {}
+
+    unified::Group group_;
+    LayerLookup lookup_;
+    mutable std::unordered_map<
+        std::string, std::shared_ptr<FastFileGdbGroup>> children_;
+};
+
 class FastFileGdbDataset final : public GDALDataset {
 public:
     explicit FastFileGdbDataset(unified::Dataset dataset)
         : dataset_(std::move(dataset)) {
-        auto names = dataset_.layer_names();
-        if (!names) return;
-        for (const auto& name : names.value()) {
-            auto layer = dataset_.open_layer(name);
-            if (layer) {
-                layers_.push_back(std::make_unique<FastFileGdbLayer>(
-                    std::move(layer).value()));
-            }
+        auto root = dataset_.root_group();
+        if (!root) {
+            init_error_ = root.error();
+            return;
         }
+        if (!add_group_layers(root.value())) return;
+        root_group_ = FastFileGdbGroup::create(
+            "", "", std::move(root).value(),
+            [registry = layer_registry_](const std::string& path) {
+                const auto found = registry->find(path);
+                return found == registry->end()
+                    ? nullptr : found->second.get();
+            });
         SetDescription("FastFileGDB");
         SetMetadataItem("FAST_GDB_BACKEND",
             dataset_.backend_report().selected ==
@@ -350,9 +465,57 @@ public:
         return FALSE;
     }
 
+    std::shared_ptr<GDALGroup> GetRootGroup() const override {
+        return root_group_;
+    }
+
+    bool valid() const noexcept { return !init_error_; }
+    const unified::Error& init_error() const noexcept {
+        return init_error_;
+    }
+
 private:
+    bool add_group_layers(const unified::Group& group) {
+        auto layer_infos = group.layers();
+        if (!layer_infos) {
+            init_error_ = layer_infos.error();
+            return false;
+        }
+        for (const auto& info : layer_infos.value()) {
+            auto layer = dataset_.open_layer_by_path(info.path);
+            if (!layer) {
+                init_error_ = layer.error();
+                return false;
+            }
+            auto wrapper = std::make_shared<FastFileGdbLayer>(
+                std::move(layer).value());
+            (*layer_registry_)[info.path] = wrapper;
+            layers_.push_back(std::move(wrapper));
+        }
+        auto group_infos = group.groups();
+        if (!group_infos) {
+            init_error_ = group_infos.error();
+            return false;
+        }
+        for (const auto& info : group_infos.value()) {
+            auto child = group.open_group(info.name);
+            if (!child) {
+                init_error_ = child.error();
+                return false;
+            }
+            if (!add_group_layers(child.value())) return false;
+        }
+        return true;
+    }
+
     unified::Dataset dataset_;
-    std::vector<std::unique_ptr<FastFileGdbLayer>> layers_;
+    using LayerRegistry = std::unordered_map<
+        std::string, std::shared_ptr<FastFileGdbLayer>>;
+    std::vector<std::shared_ptr<FastFileGdbLayer>> layers_;
+    std::shared_ptr<LayerRegistry> layer_registry_ =
+        std::make_shared<LayerRegistry>();
+    std::shared_ptr<FastFileGdbGroup> root_group_;
+    unified::Error init_error_;
 };
 
 bool is_file_gdb_name(const char* filename) {
@@ -386,7 +549,14 @@ GDALDataset* open_dataset(GDALOpenInfo* info) {
                  dataset.error().message.c_str());
         return nullptr;
     }
-    return new FastFileGdbDataset(std::move(dataset).value());
+    auto result = std::make_unique<FastFileGdbDataset>(
+        std::move(dataset).value());
+    if (!result->valid()) {
+        CPLError(CE_Failure, CPLE_OpenFailed, "%s",
+                 result->init_error().message.c_str());
+        return nullptr;
+    }
+    return result.release();
 }
 
 }  // namespace

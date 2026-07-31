@@ -51,6 +51,9 @@ struct GroupState {
 };
 
 struct CursorState {
+    // Declared first so reverse member destruction releases the lease only
+    // after Cursor, Layer and Reader have dropped every mmap/fd.
+    std::optional<explorgdb::FastReaderLease> fast_lease;
     std::optional<explorgdb::Reader> reader;
     std::optional<explorgdb::Layer> layer;
     explorgdb::FeatureCursor cursor;
@@ -59,7 +62,8 @@ struct CursorState {
     QueryReport query_report;
     std::optional<Feature> prefetched;
     bool closed = false;
-    std::optional<explorgdb::FastReaderLease> fast_lease;
+    std::function<bool()> cancel_requested;
+    std::optional<std::chrono::steady_clock::time_point> deadline;
 #if defined(FAST_GDB_UNIFIED_WITH_GDAL)
     GDALDataset* gdal_dataset = nullptr;
     OGRLayer* gdal_layer = nullptr;
@@ -154,6 +158,12 @@ void populate_fast_groups(detail::DatasetState& state,
             const auto group_path = canonical_path(group.group_path);
             index_group(state, group_path);
             for (std::size_t i = 0; i < group.member_names.size(); ++i) {
+                if (std::find(state.layer_names.begin(),
+                              state.layer_names.end(),
+                              group.member_names[i]) ==
+                    state.layer_names.end()) {
+                    continue;
+                }
                 const auto path = i < group.member_paths.size()
                     ? group.member_paths[i]
                     : group_path + "/" + group.member_names[i];
@@ -179,6 +189,8 @@ Error reader_error(const explorgdb::ReaderError& error) {
             return make_error(ErrorCode::LayerNotFound, error.message);
         case explorgdb::ReaderStatus::SourceChanged:
             return make_error(ErrorCode::SourceChanged, error.message);
+        case explorgdb::ReaderStatus::FidRangeUnsupported:
+            return make_error(ErrorCode::Unsupported, error.message);
         default:
             return make_error(ErrorCode::OpenFailed, error.message);
     }
@@ -209,10 +221,13 @@ FieldType public_field_type(explorgdb::FieldType type) {
     }
 }
 
-LayerSchema freeze_schema(explorgdb::Layer& layer,
-                          std::vector<std::size_t>& indices) {
+Result<LayerSchema> freeze_schema(
+        explorgdb::Layer& layer,
+        std::vector<std::size_t>& indices) {
     LayerSchema schema;
     schema.name = layer.name();
+    const auto metadata = layer.read_metadata();
+    if (!metadata.ok()) return reader_error(metadata.error);
     const auto& descriptors = layer.fields();
     for (std::size_t i = 0; i < descriptors.size(); ++i) {
         const auto& descriptor = descriptors[i];
@@ -230,8 +245,18 @@ LayerSchema freeze_schema(explorgdb::Layer& layer,
         field.alias = descriptor.alias;
         field.type = public_field_type(descriptor.type);
         field.nullable = (descriptor.flag & 0x01U) != 0;
-        if ((descriptor.flag & 0x04U) != 0) {
+        if ((descriptor.flag & 0x04U) != 0 &&
+            !descriptor.default_value.empty()) {
             field.default_value = descriptor.default_value;
+        }
+        const auto binding = std::find_if(
+            metadata.snapshot.field_domains.begin(),
+            metadata.snapshot.field_domains.end(),
+            [&descriptor](const explorgdb::FieldDomainBinding& value) {
+                return value.field_name == descriptor.name;
+            });
+        if (binding != metadata.snapshot.field_domains.end()) {
+            field.domain_name = binding->domain_name;
         }
         indices.push_back(i);
         schema.fields.push_back(std::move(field));
@@ -399,8 +424,8 @@ bool fast_query_has_known_capability_gap(const Query& query) {
            upper.find(" IS NOT NULL") != std::string::npos;
 }
 
-std::uint64_t feature_bytes(const Feature& feature) {
-    std::uint64_t bytes = sizeof(Feature) + feature.geometry.wkb.capacity() +
+std::uint64_t feature_payload_bytes(const Feature& feature) {
+    std::uint64_t bytes = feature.geometry.wkb.capacity() +
                           feature.geometry.srs_wkt.capacity();
     bytes += feature.fields.capacity() * sizeof(Field);
     for (const auto& field : feature.fields) {
@@ -420,6 +445,33 @@ std::uint64_t feature_bytes(const Feature& feature) {
         }
     }
     return bytes;
+}
+
+std::uint64_t feature_bytes(const Feature& feature) {
+    const auto payload = feature_payload_bytes(feature);
+    return payload > std::numeric_limits<std::uint64_t>::max() -
+                         sizeof(Feature)
+        ? std::numeric_limits<std::uint64_t>::max()
+        : payload + sizeof(Feature);
+}
+
+ErrorCode query_error_code(
+        explorgdb::QueryStatus status,
+        const std::optional<std::chrono::steady_clock::time_point>& deadline) {
+    switch (status) {
+        case explorgdb::QueryStatus::Unsupported:
+            return ErrorCode::Unsupported;
+        case explorgdb::QueryStatus::SourceChanged:
+            return ErrorCode::SourceChanged;
+        case explorgdb::QueryStatus::ResultLimitExceeded:
+            return ErrorCode::ResultLimitExceeded;
+        case explorgdb::QueryStatus::Cancelled:
+            return deadline &&
+                           std::chrono::steady_clock::now() >= *deadline
+                ? ErrorCode::DeadlineExceeded : ErrorCode::Cancelled;
+        default:
+            return ErrorCode::ReadFailed;
+    }
 }
 
 Result<FeatureCursor> open_fast_cursor(
@@ -445,23 +497,9 @@ Result<FeatureCursor> open_fast_cursor(
     }
     auto cursor = layer->open_cursor(request);
     if (cursor.query_result().status != explorgdb::QueryStatus::Ok) {
-        ErrorCode code = ErrorCode::ReadFailed;
-        if (cursor.query_result().status ==
-            explorgdb::QueryStatus::Unsupported) {
-            code = ErrorCode::Unsupported;
-        } else if (cursor.query_result().status ==
-                   explorgdb::QueryStatus::Cancelled) {
-            code = query.deadline &&
-                           std::chrono::steady_clock::now() >= *query.deadline
-                ? ErrorCode::DeadlineExceeded : ErrorCode::Cancelled;
-        } else if (cursor.query_result().status ==
-                   explorgdb::QueryStatus::SourceChanged) {
-            code = ErrorCode::SourceChanged;
-        } else if (cursor.query_result().status ==
-                   explorgdb::QueryStatus::ResultLimitExceeded) {
-            code = ErrorCode::ResultLimitExceeded;
-        }
-        return make_error(code, cursor.query_result().error);
+        return make_error(
+            query_error_code(cursor.query_result().status, query.deadline),
+            cursor.query_result().error);
     }
     auto cursor_state = std::make_unique<detail::CursorState>();
     cursor_state->reader.emplace(std::move(*reader));
@@ -470,6 +508,8 @@ Result<FeatureCursor> open_fast_cursor(
     cursor_state->layer_state = state;
     cursor_state->report = state->report;
     cursor_state->fast_lease.emplace(std::move(lease));
+    cursor_state->cancel_requested = query.cancel_requested;
+    cursor_state->deadline = query.deadline;
     cursor_state->query_report.execution_path =
         cursor_state->cursor.query_result().execution_path;
 
@@ -478,11 +518,8 @@ Result<FeatureCursor> open_fast_cursor(
         cursor_state->prefetched =
             map_feature(prefetched, *state, *cursor_state->layer);
     } else if (!cursor_state->cursor.error().empty()) {
-        return make_error(
-            cursor_state->cursor.query_result().status ==
-                    explorgdb::QueryStatus::Cancelled
-                ? ErrorCode::Cancelled
-                : ErrorCode::ReadFailed,
+        return make_error(query_error_code(
+                cursor_state->cursor.query_result().status, query.deadline),
             cursor_state->cursor.error());
     }
     return FeatureCursor(std::move(cursor_state));
@@ -508,12 +545,56 @@ GDALDataset* open_openfilegdb(const std::string& uri) {
 }
 
 Error gdal_error(ErrorCode code, std::string prefix) {
-    const char* message = CPLGetLastErrorMsg();
-    if (message != nullptr && *message != '\0') {
+    const auto error_number = CPLGetLastErrorNo();
+    if (error_number != 0) {
         prefix += ": ";
-        prefix += message;
+        prefix += "GDAL error ";
+        prefix += std::to_string(error_number);
     }
     return make_error(code, std::move(prefix));
+}
+
+Error populate_gdal_groups(
+        detail::DatasetState& state,
+        const std::shared_ptr<GDALGroup>& group,
+        const std::string& path = "/") {
+    if (!group) return {};
+    CPLErrorReset();
+    const auto layer_names = group->GetVectorLayerNames();
+    if (CPLGetLastErrorType() >= CE_Failure) {
+        return gdal_error(ErrorCode::ReadFailed,
+                          "OpenFileGDB Group Layer enumeration failed");
+    }
+    for (const auto& name : layer_names) {
+        if (state.options.include_system_tables ||
+            !is_system_layer(name)) {
+            index_group_layer(
+                state, name,
+                path == "/" ? "/" + name : path + "/" + name);
+        }
+    }
+    CPLErrorReset();
+    const auto group_names = group->GetGroupNames();
+    if (CPLGetLastErrorType() >= CE_Failure) {
+        return gdal_error(ErrorCode::ReadFailed,
+                          "OpenFileGDB Group enumeration failed");
+    }
+    for (const auto& name : group_names) {
+        const auto child_path =
+            path == "/" ? "/" + name : path + "/" + name;
+        index_group(state, child_path);
+        CPLErrorReset();
+        auto child = group->OpenGroup(name);
+        if (!child || CPLGetLastErrorType() >= CE_Failure) {
+            return gdal_error(ErrorCode::ReadFailed,
+                              "OpenFileGDB Group open failed");
+        }
+        if (auto error = populate_gdal_groups(
+                state, child, child_path)) {
+            return error;
+        }
+    }
+    return {};
 }
 
 FieldType public_field_type(OGRFieldType type) {
@@ -551,6 +632,9 @@ LayerSchema freeze_gdal_schema(OGRLayer& layer) {
         if (source->GetDefault() != nullptr) {
             field.default_value = source->GetDefault();
         }
+        if (!source->GetDomainName().empty()) {
+            field.domain_name = source->GetDomainName();
+        }
         schema.fields.push_back(std::move(field));
     }
     if (definition->GetGeomFieldCount() > 0) {
@@ -577,7 +661,9 @@ bool schemas_compatible(const LayerSchema& frozen,
         const auto& lhs = frozen.fields[i];
         const auto& rhs = candidate.fields[i];
         if (lhs.name != rhs.name || lhs.type != rhs.type ||
-            lhs.nullable != rhs.nullable) {
+            lhs.nullable != rhs.nullable ||
+            lhs.default_value != rhs.default_value ||
+            lhs.domain_name != rhs.domain_name) {
             return false;
         }
     }
@@ -601,6 +687,9 @@ bool schemas_compatible(const LayerSchema& frozen,
     return frozen_srs.IsSame(&candidate_srs);
 }
 
+Feature map_gdal_feature(const OGRFeature& source,
+                         const detail::LayerState& state);
+
 Result<std::shared_ptr<detail::LayerState>> make_gdal_fallback_state(
         const std::shared_ptr<detail::LayerState>& state,
         FailureKind reason) {
@@ -610,6 +699,7 @@ Result<std::shared_ptr<detail::LayerState>> make_gdal_fallback_state(
         return gdal_error(ErrorCode::OpenFailed,
                           "OpenFileGDB fallback open failed");
     }
+    CPLErrorReset();
     OGRLayer* layer = dataset->GetLayerByName(state->name.c_str());
     if (!layer) {
         return gdal_error(ErrorCode::LayerNotFound,
@@ -627,6 +717,32 @@ Result<std::shared_ptr<detail::LayerState>> make_gdal_fallback_state(
     fallback->report.reason = RouteReason::FastCapabilityGap;
     fallback->report.fallback_reason = reason;
     return fallback;
+}
+
+Result<Feature> read_gdal_feature_by_fid(
+        const std::shared_ptr<detail::LayerState>& state, Fid fid) {
+    std::unique_ptr<GDALDataset, decltype(&GDALClose)> dataset(
+        open_openfilegdb(state->dataset->source.normalized_uri), GDALClose);
+    if (!dataset) {
+        return gdal_error(ErrorCode::OpenFailed,
+                          "OpenFileGDB Dataset open failed");
+    }
+    CPLErrorReset();
+    OGRLayer* layer = dataset->GetLayerByName(state->name.c_str());
+    if (!layer) {
+        return gdal_error(ErrorCode::LayerNotFound,
+                          "OpenFileGDB Layer open failed");
+    }
+    CPLErrorReset();
+    std::unique_ptr<OGRFeature> feature(layer->GetFeature(fid));
+    if (!feature) {
+        if (CPLGetLastErrorType() >= CE_Failure) {
+            return gdal_error(ErrorCode::ReadFailed,
+                              "OpenFileGDB feature read failed");
+        }
+        return make_error(ErrorCode::ReadFailed, "FID does not exist");
+    }
+    return map_gdal_feature(*feature, *state);
 }
 
 std::string format_ogr_temporal(const OGRField& field, bool date, bool time) {
@@ -751,9 +867,30 @@ std::unique_ptr<OGRFeature> next_gdal_source(detail::CursorState& state) {
 }
 
 Result<std::optional<Feature>> next_gdal(detail::CursorState& state) {
+    const auto stop_error = [&]() -> std::optional<Error> {
+        if (state.deadline &&
+            std::chrono::steady_clock::now() >= *state.deadline) {
+            return make_error(ErrorCode::DeadlineExceeded,
+                              "OpenFileGDB read deadline exceeded");
+        }
+        if (state.cancel_requested && state.cancel_requested()) {
+            return make_error(ErrorCode::Cancelled,
+                              "OpenFileGDB read cancelled");
+        }
+        return std::nullopt;
+    };
+    if (auto error = stop_error()) return *error;
     while (state.remaining_skip > 0) {
+        CPLErrorReset();
         auto skipped = next_gdal_source(state);
-        if (!skipped) return std::optional<Feature>{};
+        if (!skipped) {
+            if (CPLGetLastErrorType() >= CE_Failure) {
+                return gdal_error(ErrorCode::ReadFailed,
+                                  "OpenFileGDB feature skip failed");
+            }
+            return std::optional<Feature>{};
+        }
+        if (auto error = stop_error()) return *error;
         --state.remaining_skip;
     }
     if (state.limit_enabled && state.remaining_limit == 0) {
@@ -768,6 +905,7 @@ Result<std::optional<Feature>> next_gdal(detail::CursorState& state) {
         }
         return std::optional<Feature>{};
     }
+    if (auto error = stop_error()) return *error;
     if (state.limit_enabled) --state.remaining_limit;
     return std::optional<Feature>{
         map_gdal_feature(*source, *state.layer_state)};
@@ -783,6 +921,7 @@ Result<FeatureCursor> open_gdal_cursor(
         return gdal_error(ErrorCode::OpenFailed,
                           "OpenFileGDB Dataset open failed");
     }
+    CPLErrorReset();
     cursor_state->gdal_layer =
         cursor_state->gdal_dataset->GetLayerByName(state->name.c_str());
     if (!cursor_state->gdal_layer) {
@@ -790,15 +929,21 @@ Result<FeatureCursor> open_gdal_cursor(
                           "OpenFileGDB Layer open failed");
     }
     if (!query.attribute_filter.empty() &&
-        cursor_state->gdal_layer->SetAttributeFilter(
-            query.attribute_filter.c_str()) != OGRERR_NONE) {
+        (CPLErrorReset(),
+         cursor_state->gdal_layer->SetAttributeFilter(
+             query.attribute_filter.c_str())) != OGRERR_NONE) {
         return gdal_error(ErrorCode::Unsupported,
                           "OpenFileGDB attribute filter rejected");
     }
     if (query.spatial_filter) {
         const auto& box = *query.spatial_filter;
+        CPLErrorReset();
         cursor_state->gdal_layer->SetSpatialFilterRect(
             box.xmin, box.ymin, box.xmax, box.ymax);
+        if (CPLGetLastErrorType() >= CE_Failure) {
+            return gdal_error(ErrorCode::Unsupported,
+                              "OpenFileGDB spatial filter rejected");
+        }
     }
     if (!query.projected_fields.empty()) {
         std::vector<std::string> ignored_names;
@@ -820,6 +965,7 @@ Result<FeatureCursor> open_gdal_cursor(
             ignored.push_back(field.c_str());
         }
         ignored.push_back(nullptr);
+        CPLErrorReset();
         if (cursor_state->gdal_layer->SetIgnoredFields(
                 ignored.data()) != OGRERR_NONE) {
             return gdal_error(ErrorCode::Unsupported,
@@ -827,9 +973,14 @@ Result<FeatureCursor> open_gdal_cursor(
         }
     }
     if (query.order == ResultOrder::FidAscending) {
+        CPLErrorReset();
         while (auto feature = std::unique_ptr<OGRFeature>(
                    cursor_state->gdal_layer->GetNextFeature())) {
             cursor_state->ordered_fids.push_back(feature->GetFID());
+        }
+        if (CPLGetLastErrorType() >= CE_Failure) {
+            return gdal_error(ErrorCode::ReadFailed,
+                              "OpenFileGDB FID materialization failed");
         }
         std::sort(cursor_state->ordered_fids.begin(),
                   cursor_state->ordered_fids.end());
@@ -837,6 +988,8 @@ Result<FeatureCursor> open_gdal_cursor(
     cursor_state->remaining_skip = query.offset;
     cursor_state->remaining_limit = query.limit;
     cursor_state->limit_enabled = query.limit != 0;
+    cursor_state->cancel_requested = query.cancel_requested;
+    cursor_state->deadline = query.deadline;
     cursor_state->layer_state = state;
     cursor_state->report = state->report;
     cursor_state->query_report.execution_path =
@@ -864,6 +1017,17 @@ FeatureCursor::~FeatureCursor() = default;
 
 Result<std::optional<Feature>> FeatureCursor::next() {
     if (!state_ || state_->closed) return std::optional<Feature>{};
+    if (state_->deadline &&
+        std::chrono::steady_clock::now() >= *state_->deadline) {
+        state_->closed = true;
+        return make_error(ErrorCode::DeadlineExceeded,
+                          "feature cursor deadline exceeded");
+    }
+    if (state_->cancel_requested && state_->cancel_requested()) {
+        state_->closed = true;
+        return make_error(ErrorCode::Cancelled,
+                          "feature cursor cancelled");
+    }
     if (state_->prefetched) {
         auto feature = std::move(state_->prefetched);
         state_->prefetched.reset();
@@ -892,10 +1056,10 @@ Result<std::optional<Feature>> FeatureCursor::next() {
         return std::optional<Feature>{std::move(feature)};
     }
     if (!state_->cursor.error().empty()) {
-        const auto code = state_->cursor.query_result().status ==
-                                  explorgdb::QueryStatus::Cancelled
-            ? ErrorCode::Cancelled : ErrorCode::ReadFailed;
-        return make_error(code, state_->cursor.error());
+        return make_error(
+            query_error_code(state_->cursor.query_result().status,
+                             state_->deadline),
+            state_->cursor.error());
     }
     state_->closed = true;
     return std::optional<Feature>{};
@@ -992,23 +1156,18 @@ Result<Feature> Layer::read_by_fid(Fid fid) const {
         auto fallback = make_gdal_fallback_state(
             state_, FailureKind::UnsupportedFid);
         if (!fallback) return fallback.error();
-        auto cursor_result = open_gdal_cursor(fallback.value(), {});
-        if (!cursor_result) return cursor_result.error();
-        auto cursor = std::move(cursor_result).value();
-        while (true) {
-            auto next = cursor.next();
-            if (!next) return next.error();
-            if (!next.value() || next.value()->fid > fid) {
-                return make_error(ErrorCode::ReadFailed,
-                                  "FID does not exist");
-            }
-            if (next.value()->fid == fid) return std::move(*next.value());
-        }
+        return read_gdal_feature_by_fid(fallback.value(), fid);
 #else
         return make_error(ErrorCode::BackendUnavailable,
                           "FID fallback requires OpenFileGDB");
 #endif
     }
+#if defined(FAST_GDB_UNIFIED_WITH_GDAL)
+    if (state_ &&
+        state_->report.selected == Backend::GdalOpenFileGDB) {
+        return read_gdal_feature_by_fid(state_, fid);
+    }
+#endif
     Query query;
     auto cursor_result = open_cursor(query);
     if (!cursor_result) return cursor_result.error();
@@ -1033,22 +1192,51 @@ Result<ReadBatch> Layer::read_all(const Query& query,
     auto cursor = std::move(cursor_result).value();
     ReadBatch batch;
     batch.backend_report = cursor.backend_report();
+    std::uint64_t payload_bytes = 0;
     while (true) {
         auto next = cursor.next();
         if (!next) return next.error();
         if (!next.value()) break;
-        const auto bytes = feature_bytes(*next.value());
+        const auto bytes = feature_payload_bytes(*next.value());
+        std::size_t next_capacity = batch.features.capacity();
+        if (batch.features.size() == next_capacity) {
+            next_capacity = next_capacity == 0
+                ? 1
+                : (next_capacity >
+                           std::numeric_limits<std::size_t>::max() / 2
+                       ? std::numeric_limits<std::size_t>::max()
+                       : next_capacity * 2);
+        }
+        const bool container_overflow =
+            next_capacity >
+            std::numeric_limits<std::uint64_t>::max() / sizeof(Feature);
+        const auto container_bytes = container_overflow
+            ? std::numeric_limits<std::uint64_t>::max()
+            : static_cast<std::uint64_t>(next_capacity) * sizeof(Feature);
+        const bool total_overflow =
+            container_overflow ||
+            bytes > std::numeric_limits<std::uint64_t>::max() -
+                        payload_bytes ||
+            container_bytes >
+                std::numeric_limits<std::uint64_t>::max() -
+                    (payload_bytes + std::min(
+                        bytes,
+                        std::numeric_limits<std::uint64_t>::max() -
+                            payload_bytes));
+        const auto projected_bytes = total_overflow
+            ? std::numeric_limits<std::uint64_t>::max()
+            : payload_bytes + bytes + container_bytes;
         if (!options.unlimited &&
             (bytes > options.max_feature_bytes ||
              batch.features.size() >= options.max_features ||
-             bytes > options.max_materialized_bytes -
-                         std::min(batch.materialized_bytes,
-                                  options.max_materialized_bytes))) {
+             projected_bytes > options.max_materialized_bytes)) {
             return make_error(ErrorCode::ResultLimitExceeded,
                               "read_all materialization limit exceeded");
         }
-        batch.materialized_bytes += bytes;
+        payload_bytes += bytes;
         batch.features.push_back(std::move(*next.value()));
+        batch.materialized_bytes =
+            payload_bytes + batch.features.capacity() * sizeof(Feature);
     }
     return batch;
 }
@@ -1196,6 +1384,10 @@ Result<Dataset> Dataset::open(std::string uri, OpenOptions options) {
             OGRLayer* layer = dataset->GetLayer(i);
             if (layer != nullptr) state->layer_names.push_back(layer->GetName());
         }
+        if (auto error = populate_gdal_groups(
+                *state, dataset->GetRootGroup())) {
+            return error;
+        }
 #else
         return make_error(ErrorCode::BackendUnavailable,
                           "GDAL adapter is unavailable");
@@ -1214,7 +1406,7 @@ Result<Dataset> Dataset::open(std::string uri, OpenOptions options) {
             state->source.normalized_uri, {}, &status);
         if (!reader) return reader_error(status);
         populate_fast_groups(*state, *reader);
-    } else {
+    } else if (state->paths_by_name.empty()) {
         for (const auto& name : state->layer_names) {
             index_group_layer(*state, name, "/" + name);
         }
@@ -1242,30 +1434,80 @@ Result<Layer> Dataset::open_layer(std::string_view name) const {
     layer_state->name = selected_name;
     layer_state->path = paths->second.front();
     layer_state->report = state_->report;
+#if defined(FAST_GDB_UNIFIED_WITH_GDAL)
+    const auto use_gdal_schema =
+        [&](FailureKind reason) -> Error {
+            std::unique_ptr<GDALDataset, decltype(&GDALClose)> dataset(
+                open_openfilegdb(state_->source.normalized_uri),
+                GDALClose);
+            if (!dataset) {
+                return gdal_error(
+                    ErrorCode::OpenFailed,
+                    "OpenFileGDB schema open failed");
+            }
+            CPLErrorReset();
+            OGRLayer* layer =
+                dataset->GetLayerByName(selected_name.c_str());
+            if (!layer) {
+                return gdal_error(
+                    ErrorCode::LayerNotFound,
+                    "OpenFileGDB schema Layer open failed");
+            }
+            layer_state->schema = freeze_gdal_schema(*layer);
+            layer_state->report.selected =
+                Backend::GdalOpenFileGDB;
+            if (reason != FailureKind::None) {
+                layer_state->report.reason =
+                    RouteReason::FastCapabilityGap;
+                layer_state->report.fallback_reason = reason;
+            }
+            return {};
+        };
+#endif
     if (state_->report.selected == Backend::FastGdb) {
         explorgdb::ReaderError status;
         auto reader = explorgdb::Reader::open(
             state_->source.normalized_uri, {}, &status);
         if (!reader) return reader_error(status);
         auto source_layer = reader->open_layer(selected_name, &status);
-        if (!source_layer) return reader_error(status);
-        layer_state->schema =
-            freeze_schema(*source_layer, layer_state->source_field_indices);
+        if (!source_layer) {
+#if defined(FAST_GDB_UNIFIED_WITH_GDAL)
+            if (status.status ==
+                    explorgdb::ReaderStatus::FidRangeUnsupported &&
+                state_->options.backend == BackendPreference::Auto) {
+                if (auto error = use_gdal_schema(
+                        FailureKind::UnsupportedFid)) {
+                    return error;
+                }
+            } else {
+                return reader_error(status);
+            }
+#else
+            return reader_error(status);
+#endif
+        } else {
+            auto schema = freeze_schema(
+                *source_layer, layer_state->source_field_indices);
+            if (schema) {
+                layer_state->schema = std::move(schema).value();
+#if defined(FAST_GDB_UNIFIED_WITH_GDAL)
+            } else if (state_->options.backend ==
+                       BackendPreference::Auto) {
+                layer_state->source_field_indices.clear();
+                if (auto error = use_gdal_schema(
+                        FailureKind::CapabilityGap)) {
+                    return error;
+                }
+#endif
+            } else {
+                return schema.error();
+            }
+        }
     } else {
 #if defined(FAST_GDB_UNIFIED_WITH_GDAL)
-        std::unique_ptr<GDALDataset, decltype(&GDALClose)> dataset(
-            open_openfilegdb(state_->source.normalized_uri), GDALClose);
-        if (!dataset) {
-            return gdal_error(ErrorCode::OpenFailed,
-                              "OpenFileGDB Dataset open failed");
+        if (auto error = use_gdal_schema(FailureKind::None)) {
+            return error;
         }
-        OGRLayer* source_layer =
-            dataset->GetLayerByName(selected_name.c_str());
-        if (!source_layer) {
-            return gdal_error(ErrorCode::LayerNotFound,
-                              "OpenFileGDB Layer open failed");
-        }
-        layer_state->schema = freeze_gdal_schema(*source_layer);
 #else
         return make_error(ErrorCode::BackendUnavailable,
                           "GDAL adapter is unavailable");

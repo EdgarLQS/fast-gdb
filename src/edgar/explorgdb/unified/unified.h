@@ -109,6 +109,7 @@ struct FieldDefinition {
     FieldType type = FieldType::String;
     bool nullable = false;
     std::optional<std::string> default_value;
+    std::optional<std::string> domain_name;
 };
 
 struct Geometry {

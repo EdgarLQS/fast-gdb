@@ -11,12 +11,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-v0.1.0-${{ github.ref }}
+  group: release-v0.2.0-${{ github.ref }}
   cancel-in-progress: false
 
 env:
-  RELEASE_VERSION: 0.1.0
-  RELEASE_TAG: v0.1.0
+  RELEASE_VERSION: 0.2.0
+  RELEASE_TAG: v0.2.0
 
 jobs:
   verify:
@@ -28,7 +28,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y ninja-build libgdal-dev
       - name: Verify project version
         shell: bash
-        run: grep -Eq 'project\(fast_gdb VERSION 0\.1\.0 LANGUAGES CXX\)' CMakeLists.txt
+        run: grep -Eq 'project\(fast_gdb VERSION 0\.2\.0 LANGUAGES CXX\)' CMakeLists.txt
       - name: Configure
         run: >-
           cmake -S . -B build-verify -G Ninja
@@ -40,9 +40,18 @@ jobs:
           -DFAST_GDB_BUILD_FULL_TESTS=OFF
           -DBUILD_TESTING=ON
       - name: Build release gates
-        run: cmake --build build-verify --target fast_gdb_geometry_test_runner fast_gdb_hybrid_test_runner --parallel
+        run: >-
+          cmake --build build-verify --target
+          fast_gdb_geometry_test_runner
+          fast_gdb_hybrid_test_runner
+          fast_gdb_unified_test_runner
+          fast_gdb_driver_test_runner
+          fast_gdb_driver_mismatch_test_runner
+          gdal_FastFileGDB --parallel
       - name: Test release gates
-        run: ctest --test-dir build-verify --output-on-failure -R '^(geometry|hybrid)\.'
+        run: >-
+          ctest --test-dir build-verify --output-on-failure
+          -R '^(geometry|hybrid|unified|fastfilegdb|fastfilegdb-mismatch)\.'
 
   package:
     name: package-${{ matrix.asset }}
@@ -63,6 +72,12 @@ jobs:
             variant: hybrid
             generator: TGZ
             build_target: fast_gdb_curve_gdal
+          - os: ubuntu-latest
+            asset: linux-x64-unified
+            with_gdal: ON
+            variant: unified
+            generator: TGZ
+            build_target: gdal_FastFileGDB
           - os: windows-latest
             asset: windows-x64-linear
             with_gdal: OFF
@@ -75,6 +90,12 @@ jobs:
             variant: linear
             generator: TGZ
             build_target: explorgdb_reader_lib
+          - os: macos-latest
+            asset: macos-unified
+            with_gdal: ON
+            variant: unified
+            generator: TGZ
+            build_target: gdal_FastFileGDB
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -89,7 +110,11 @@ jobs:
           fi
       - name: Install macOS dependencies
         if: runner.os == 'macOS'
-        run: brew install ninja
+        run: |
+          brew install ninja
+          if [[ '${{ matrix.with_gdal }}' == 'ON' ]]; then
+            brew install gdal
+          fi
       - name: Configure POSIX
         if: runner.os != 'Windows'
         run: >-
@@ -162,7 +187,7 @@ jobs:
           if-no-files-found: error
 
   publish:
-    name: publish-v0.1.0
+    name: publish-v0.2.0
     needs:
       - verify
       - package
@@ -195,5 +220,5 @@ jobs:
           git push origin "$RELEASE_TAG"
           gh release create "$RELEASE_TAG" release-assets/* \
             --title "fast-gdb $RELEASE_TAG" \
-            --notes-file docs/releases/v0.1.0.md \
+            --notes-file docs/releases/v0.2.0.md \
             --verify-tag

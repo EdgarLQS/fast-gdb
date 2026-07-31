@@ -46,6 +46,28 @@ bool has_parent_segment(std::string_view path) {
     return false;
 }
 
+bool valid_s3_bucket(std::string_view path) {
+    const auto slash = path.find('/');
+    const auto bucket = path.substr(0, slash);
+    if (slash == std::string_view::npos ||
+        bucket.size() < 3 || bucket.size() > 63 ||
+        !std::isalnum(static_cast<unsigned char>(bucket.front())) ||
+        !std::isalnum(static_cast<unsigned char>(bucket.back()))) {
+        return false;
+    }
+    bool previous_dot = false;
+    for (const unsigned char value : bucket) {
+        const bool dot = value == '.';
+        if (!(std::islower(value) || std::isdigit(value) ||
+              value == '-' || dot) ||
+            (dot && previous_dot)) {
+            return false;
+        }
+        previous_dot = dot;
+    }
+    return true;
+}
+
 Error invalid_uri(std::string message) {
     return {ErrorCode::InvalidUri, std::move(message)};
 }
@@ -93,6 +115,7 @@ Error parse_source(const std::string& uri, Source& source) {
             path.find('@') != std::string_view::npos ||
             path.find("//") != std::string_view::npos ||
             has_parent_segment(path) ||
+            !valid_s3_bucket(path) ||
             !ends_with_ascii_case_insensitive(path, ".gdb")) {
             return invalid_uri("invalid or credential-bearing S3 FileGDB URI");
         }
@@ -106,6 +129,7 @@ Error parse_source(const std::string& uri, Source& source) {
             path.find('@') != std::string_view::npos ||
             path.find("//") != std::string_view::npos ||
             has_parent_segment(path) ||
+            !valid_s3_bucket(path) ||
             !ends_with_ascii_case_insensitive(path, ".gdb")) {
             return invalid_uri("invalid or credential-bearing /vsis3/ FileGDB URI");
         }

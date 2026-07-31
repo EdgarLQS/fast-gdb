@@ -1,0 +1,60 @@
+name: s3-characterization
+
+on:
+  workflow_dispatch:
+    inputs:
+      fixture:
+        description: Versioned s3://.../*.gdb prefix
+        required: true
+        type: string
+      no_sign:
+        description: Use unsigned public S3 access
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  real-aws-read:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-update-conda: true
+          activate-environment: fast-gdb-s3
+          channels: conda-forge
+          channel-priority: strict
+          python-version: "3.12"
+      - name: Install dependencies
+        run: conda install -y "gdal=3.13.*" cmake ninja
+      - name: Configure and build S3 acceptance test
+        run: |
+          cmake -S . -B build-s3 -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$CONDA_PREFIX" \
+            -DFAST_GDB_WITH_GDAL=ON \
+            -DFAST_GDB_BUILD_UNIFIED=ON \
+            -DFAST_GDB_BUILD_GDAL_DRIVER=OFF \
+            -DFAST_GDB_BUILD_ADAPTIVE_READER=OFF \
+            -DFAST_GDB_BUILD_FULL_TESTS=OFF \
+            -DFAST_GDB_BUILD_TOOLS=OFF \
+            -DBUILD_TESTING=ON
+          cmake --build build-s3 --target fast_gdb_unified_test_runner \
+            --parallel
+      - name: Read immutable AWS S3 fixture
+        env:
+          FAST_GDB_AWS_S3_FIXTURE: ${{ inputs.fixture }}
+          AWS_NO_SIGN_REQUEST: ${{ inputs.no_sign && 'YES' || 'NO' }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.FAST_GDB_AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.FAST_GDB_AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.FAST_GDB_AWS_SESSION_TOKEN }}
+          CPL_CURL_VERBOSE: "NO"
+        run: >-
+          ctest --test-dir build-s3 --output-on-failure
+          -R 'RealAwsImmutablePrefixReadsWhenConfigured'

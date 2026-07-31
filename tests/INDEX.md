@@ -15,7 +15,8 @@
 | `fast_gdb_gdal_read_write_boundary_test_runner` | GDAL edit / fast-gdb Reader lifecycle boundary |
 | `fast_gdb_adaptive_reader_test_runner` | Adaptive coordinator, independent Reader concurrency and GDAL matrix |
 | `fast_gdb_unified_test_runner` | Dataset/Group/Layer/Cursor、路由、扩展、共享 coordinator |
-| `fast_gdb_driver_test_runner` | FastFileGDB 注册、读取、只读负向合同 |
+| `fast_gdb_driver_test_runner` | FastFileGDB 注册、Group、filter/reset、读取和只读负向合同 |
+| `fast_gdb_driver_mismatch_test_runner` | runtime/plugin build ID 不匹配时拒绝注册 |
 
 ## GDAL boundary tests
 

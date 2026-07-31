@@ -582,9 +582,12 @@ ConsistencyReport
 - 更新支持矩阵；
 - 生成 v0.2.0 release notes 和 rollback 指南。
 
-当前本地证据：macOS/AppleClang、GDAL 3.13 的全量普通测试和安装 consumer 已通过；
-其它平台、GDAL 3.9–3.12、TSan、真实 AWS、build-ID 负向装载、完整 Group/plugin、
-默认值/domain parity 和资源故障注入仍为 `SKIPPED` 或待实现，不能视为发布门禁通过。
+当前本地证据：macOS/AppleClang、GDAL 3.13 的 478 项全量普通测试、GDAL 3.9.3
+的 28 项统一入口定向测试、GDAL OFF 的 117 项测试、安装
+consumer、ASan/UBSan、TSan、build-ID 负向装载、fast/GDAL Group、default/domain
+parity 输入和插件 filter/reset 合同已通过。GDAL 3.10–3.12、Linux/Windows 和真实 AWS
+已有可执行 CI/手动工作流，但尚无本分支远端运行结果；远程 403/404/timeout/disconnect
+与性能证据仍待补，不能视为发布门禁通过。
 
 ## 14. 测试与验收门禁
 
