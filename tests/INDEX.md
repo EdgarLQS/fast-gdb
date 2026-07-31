@@ -14,9 +14,56 @@
 | `gdb_tutorial_test_runner` | Full Reader, query, index and direct-GDAL parity suite |
 | `fast_gdb_gdal_read_write_boundary_test_runner` | GDAL edit / fast-gdb Reader lifecycle boundary |
 | `fast_gdb_adaptive_reader_test_runner` | Adaptive coordinator, independent Reader concurrency and GDAL matrix |
-| `fast_gdb_unified_test_runner` | Dataset/Group/Layer/Cursor、路由、扩展、共享 coordinator |
-| `fast_gdb_driver_test_runner` | FastFileGDB 注册、Group、filter/reset、读取和只读负向合同 |
-| `fast_gdb_driver_mismatch_test_runner` | runtime/plugin build ID 不匹配时拒绝注册 |
+| `fast_gdb_unified_test_runner` | Dataset/Group/Layer/Cursor unified facade, routing, GDAL fallback, shared coordinator |
+| `fast_gdb_driver_test_runner` | FastFileGDB GDAL driver registration, Group/filter/reset, read-only contract |
+| `fast_gdb_driver_mismatch_test_runner` | runtime/plugin build ID mismatch rejects registration |
+
+## Unified facade tests
+
+File:
+
+```text
+tests/edgar/explorgdb/unified/test_unified_fast.cpp
+tests/edgar/explorgdb/unified/test_routing.cpp
+```
+
+Tests:
+
+- `UnifiedFastFacadeTest.*` (20 tests)
+  - Dataset open, schema freeze, streaming, cursor, read_all, backend report, etc.
+- `UnifiedGdalFacadeTest.*` (6 tests)
+  - GDAL fallback, concurrent policy, S3 routing (1 skip)
+- `UnifiedRoutingTest.*` (1 test)
+  - Source URI parsing
+
+Run:
+
+```bash
+cmake -S . -B build-unified \
+  -DFAST_GDB_WITH_GDAL=ON \
+  -DFAST_GDB_BUILD_UNIFIED=ON \
+  -DFAST_GDB_BUILD_GDAL_DRIVER=ON
+cmake --build build-unified \
+  --target fast_gdb_unified_test_runner --parallel
+ctest --test-dir build-unified --output-on-failure \
+  -R '^unified\.'
+```
+
+## FastFileGDB GDAL driver tests
+
+File:
+
+```text
+tests/edgar/explorgdb/gdal_driver/test_fastfilegdb_driver.cpp
+tests/edgar/explorgdb/gdal_driver/test_build_id_mismatch.cpp
+```
+
+Tests:
+
+- `FastFileGdbDriverTest.*` (4 tests)
+  - Registration, read-only, filter/reset, Feature Dataset hierarchy
+- `FastFileGdbDriverMismatchTest.*` (1 test)
+  - Build ID mismatch rejects registration
 
 ## GDAL boundary tests
 
@@ -120,9 +167,9 @@ as `SKIPPED` when the selected OpenFileGDB driver does not implement that edit.
 - `adaptive`;
 - `unified`.
 
-There is no Writer consumer mode or `usegdal` consumer mode. `adaptive` is an
-optional GDAL/threaded package variant; the `linear` consumer is separately
-verified with GDAL disabled.
+There is no Writer consumer mode or `usegdal` consumer mode. `adaptive` and
+`unified` are optional GDAL/threaded package variants; the `linear` consumer is
+separately verified with GDAL disabled.
 
 统一 facade 和 `FastFileGDB` 是 v0.2.0 本地 release gate。真实 `/vsis3/`
 characterization 尚未执行，因此 S3 仍是 Experimental / Unverified。
@@ -155,16 +202,19 @@ The corresponding `usegdal` source may remain for reference, but it is not consi
 - Adaptive Reader test discovery is a release-gate requirement;
 - reference-only source presence is not release evidence.
 
-## Windows acceptance (2026-07-30)
+## Windows acceptance (2026-07-31)
 
 Full acceptance report: [`ACCEPTANCE_REPORT.md`](../ACCEPTANCE_REPORT.md)
-Evidence archive: `release-evidence/2026-07-30-win-acceptance/`
+Evidence archive: `release-evidence/2026-07-31-win-acceptance/`
 
 | Test runner | Total | Pass | Skip | Fail | Notes |
 |---|---|---|---|---|---|
 | `gdb_tutorial_test_runner` | 303 | 291 | 11 | 1 | 1 env-limit (GDAL data lacks XML metadata) |
 | `fast_gdb_geometry_test_runner` | 101 | 101 | 0 | 0 |  |
-| `fast_gdb_hybrid_test_runner` | 11 | 4 | 7 | 0 | All overlap with tutorial runner |
-| `fast_gdb_adaptive_reader_test_runner` | 41 | 40 | 1 | 0 | 1 skip (OpenFileGDB no index delete) |
+| `fast_gdb_adaptive_reader_test_runner` | 41 | 40 | 1 | 0 | 1 skip (OpenFileGDB 不支持删除索引) |
+| `fast_gdb_unified_test_runner` | 27 | 26 | 1 | 0 | 1 skip (S3 fixture) |
+| `fast_gdb_driver_test_runner` | 4 | 4 | 0 | 0 |  |
+| `fast_gdb_driver_mismatch_test_runner` | 1 | 1 | 0 | 0 |  |
 | `fast_gdb_gdal_read_write_boundary_test_runner` | 2 | 2 | 0 | 0 |  |
-| **Unique total** | **447** | **433** | **12** | **1** | **0 product code defects** |
+| `fast_gdb_hybrid_test_runner` | 11 | 4 | 7 | 0 | All overlap with tutorial runner |
+| **Unique total** | **479** | **465** | **13** | **1** | **0 product code defects** |

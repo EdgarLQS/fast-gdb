@@ -504,7 +504,11 @@ Result<LayerSchema> freeze_schema(
         const auto& descriptor = descriptors[i];
         if (descriptor.type == explorgdb::FieldType::Geometry) {
             schema.geometry_field = 0;
-            schema.srs_wkt = descriptor.wkt;
+            // 跳过 GUID 形式的未知空间参考（如 {B286C06B-0879-11D2-AACA-00C04FA33C20}），
+            // 使其与 OpenFileGDB 的 null 空间参考行为一致。仅保留有效 WKT。
+            if (!descriptor.wkt.empty() && descriptor.wkt.front() != '{') {
+                schema.srs_wkt = descriptor.wkt;
+            }
             continue;
         }
         if (descriptor.type == explorgdb::FieldType::Raster ||

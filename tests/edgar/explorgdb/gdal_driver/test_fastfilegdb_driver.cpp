@@ -115,7 +115,7 @@ TEST(FastFileGdbDriverTest, ImplementsReadFilterAndResetContract) {
     EXPECT_EQ(layer->GetFeatureCount(FALSE), -1);
     OGREnvelope extent;
     EXPECT_EQ(layer->GetExtent(&extent, false), OGRERR_FAILURE);
-    EXPECT_EQ(layer->SetAttributeFilter("value_000 >= 0"), OGRERR_NONE);
+    EXPECT_EQ(layer->SetAttributeFilter("int_0 >= 0"), OGRERR_NONE);
     layer->SetSpatialFilterRect(0, 0, 5, 5);
     std::unique_ptr<OGRFeature> first(layer->GetNextFeature());
     ASSERT_NE(first, nullptr) << CPLGetLastErrorMsg();

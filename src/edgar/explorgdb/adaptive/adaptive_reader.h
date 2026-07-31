@@ -13,6 +13,17 @@
 #include <memory>
 #include <string>
 
+// 当 unified runtime 启用时，协调类由 fast_gdb_runtime.dll 导出；
+// 静态库模式（FAST_GDB_BUILD_UNIFIED=OFF）则不需要 DLL 修饰。
+// 此宏确保两种模式下均正确链接。
+#ifdef FAST_GDB_RUNTIME_BUILD
+#  define EXPLORGDB_ADAPTIVE_API __declspec(dllexport)
+#elif defined(FAST_GDB_RUNTIME_API)
+#  define EXPLORGDB_ADAPTIVE_API FAST_GDB_RUNTIME_API
+#else
+#  define EXPLORGDB_ADAPTIVE_API
+#endif
+
 namespace explorgdb {
 
 namespace detail {
@@ -72,7 +83,7 @@ class InProcessGdbCoordinator;
  * release() 只释放活动计数；对象仍保留 generation 快照，可用于判断旧 Reader
  * 对象图是否已经过期。
  */
-class FastReaderLease {
+class EXPLORGDB_ADAPTIVE_API FastReaderLease {
 public:
     FastReaderLease() = default;
     FastReaderLease(FastReaderLease&& other) noexcept;
@@ -123,7 +134,7 @@ private:
  * fail-closed 状态全部保留。调用方之后必须使用同一令牌或保存的 coordination_id
  * 再次报告 true；每个 Writer 生命周期最多递增一次 generation。
  */
-class ExternalUpdateToken {
+class EXPLORGDB_ADAPTIVE_API ExternalUpdateToken {
 public:
     ExternalUpdateToken() = default;
     ExternalUpdateToken(ExternalUpdateToken&& other) noexcept;
@@ -164,7 +175,7 @@ private:
     friend class InProcessGdbCoordinator;
 };
 
-struct PrepareExternalUpdateResult {
+struct EXPLORGDB_ADAPTIVE_API PrepareExternalUpdateResult {
     CoordinationStatus status = CoordinationStatus::InvalidCoordinationToken;
     ExternalUpdateToken token;
     size_t active_readers = 0;
@@ -180,7 +191,7 @@ struct PrepareExternalUpdateResult {
  * 所有默认构造对象共享同一进程级注册表；复制对象也共享该注册表，因此同一进程中
  * 不同组件无法通过创建新的 coordinator 绕过同一路径的互斥状态。
  */
-class InProcessGdbCoordinator {
+class EXPLORGDB_ADAPTIVE_API InProcessGdbCoordinator {
 public:
     InProcessGdbCoordinator();
 
