@@ -6,13 +6,13 @@
 #   - Temporary test GDBs in build directory
 #   - Coverage build artifacts (optional)
 #
-# Usage: bash scripts/cleanup_temp.sh [--all]
+# Usage: bash tools/ci/cleanup_temp.sh [--all]
 #   --all    Also remove coverage build directory
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 echo "=== GDB Index Creator Cleanup ==="
 echo "Project root: $PROJECT_ROOT"

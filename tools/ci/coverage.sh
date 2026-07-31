@@ -1,11 +1,11 @@
 #!/bin/bash
 # 代码覆盖率报告生成脚本
-# 用法: bash scripts/coverage.sh
+# 用法: bash tools/ci/coverage.sh
 # 前提: 需要安装 lcov (brew install lcov)
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BUILD_DIR="$PROJECT_DIR/build_coverage"
 
 echo "=== explorgdb 代码覆盖率 ==="

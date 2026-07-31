@@ -9,7 +9,7 @@
 ## 1. 固定入口
 
 - 场景 manifest：`tests/contracts/writer-macos-v2.json`
-- 统一执行器：`scripts/run_test_contract.py`
+- 统一执行器：`tools/ci/run_test_contract.py`
 - GitHub Actions：`.github/workflows/writer-macos-contract.yml`
 - 自动证据目录：`writer-contract-results/`
 - 稳定 API ADR：`docs/governance/adr/ADR-001-writer-session-api.md`
@@ -92,7 +92,7 @@ cmake --build build-contract --target gdb_tutorial_test_runner --parallel
 package consumer 的无 GDAL、GDAL 和 legacy 安装构建完成后，运行：
 
 ```bash
-python3 scripts/run_test_contract.py \
+python3 tools/ci/run_test_contract.py \
   --manifest tests/contracts/writer-macos-v2.json \
   --full-test-binary build-contract/bin/gdb_tutorial_test_runner \
   --workspace "$PWD" \
@@ -104,7 +104,7 @@ python3 scripts/run_test_contract.py \
 只运行指定场景可重复传入 `--scenario`：
 
 ```bash
-python3 scripts/run_test_contract.py \
+python3 tools/ci/run_test_contract.py \
   --manifest tests/contracts/writer-macos-v2.json \
   --full-test-binary build-contract/bin/gdb_tutorial_test_runner \
   --output-dir "$PWD/writer-contract-results" \
@@ -116,7 +116,7 @@ python3 scripts/run_test_contract.py \
 
 ```bash
 FAST_GDB_RUN_WRITER_4GB_TEST=1 \
-python3 scripts/run_test_contract.py \
+python3 tools/ci/run_test_contract.py \
   --manifest tests/contracts/writer-macos-v2.json \
   --full-test-binary build-contract/bin/gdb_tutorial_test_runner \
   --output-dir "$PWD/writer-contract-results-4gib" \

@@ -17,6 +17,7 @@ test_data/
 __pycache__/
 *.py[cod]
 /build_off
+/install/
 /.idea
 claude.exe
 

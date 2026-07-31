@@ -6,8 +6,8 @@ on:
     paths:
       - 'src/edgar/explorgdb/reader/**'
       - 'tests/edgar/explorgdb/reader/test_spatial_benchmark.cpp'
-      - 'tests/edgar/explorgdb/generate_large_gdb.cpp'
-      - 'scripts/run_spatial_regression.py'
+      - 'tests/createdata/cpp/generate_large_gdb.cpp'
+      - 'tools/ci/run_spatial_regression.py'
       - '.github/workflows/posix-spatial-regression.yml'
       - 'CMakeLists.txt'
       - 'cmake/**'
@@ -116,7 +116,7 @@ jobs:
           # for both binaries while retaining FID and invalid-geometry checks.
           FAST_GDB_SPATIAL_PROFILE: '1'
         run: |
-          python3 scripts/run_spatial_regression.py \
+          python3 tools/ci/run_spatial_regression.py \
             --current-build build-posix \
             --baseline-build baseline/build-posix \
             --gdb test_data/spatial_matrix/posix/point_10m/point_10m.gdb \

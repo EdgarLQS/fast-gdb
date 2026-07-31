@@ -68,7 +68,7 @@ codex/m18-main-closeout
 - M18 当前状态文档同步；
 - PR #11 关闭，Issue #12 保持 Open；
 - M18 正式验收记录建立，判定为 `Code accepted / Formal acceptance blocked`；
-- `scripts/run_spatial_regression.py` 多数据集、fresh-open、交替执行、JSON/CSV/环境摘要及正确性检查扩展；
+- `tools/ci/run_spatial_regression.py` 多数据集、fresh-open、交替执行、JSON/CSV/环境摘要及正确性检查扩展；
 - 保留原 `--gdb` 调用兼容；
 - 参数验证、动态模块加载、性能回退、result count 和 FID 签名比较的纯 Python 测试代码；
 - Reader 后续静态证据与可复现命令；
@@ -168,7 +168,7 @@ Point、MultiPoint、Polyline 各覆盖 1%、10%、30%、80%、100%，每档保�
 
 ### 5.3 性能比较工具
 
-`scripts/run_spatial_regression.py` 支持：
+`tools/ci/run_spatial_regression.py` 支持：
 
 ```text
 --mode steady-state|fresh-open
