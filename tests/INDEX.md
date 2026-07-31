@@ -157,7 +157,7 @@ The corresponding `usegdal` source may remain for reference, but it is not consi
 
 ## Windows acceptance (2026-07-30)
 
-Full acceptance report: [`ACCEPTANCE_REPORT.md`](../ACCEPTANCE_REPORT.md)
+Full acceptance report: [`ACCEPTANCE_REPORT.md`](../docs/quality/acceptance/ACCEPTANCE_REPORT.md)
 Evidence archive: `release-evidence/2026-07-30-win-acceptance/`
 
 | Test runner | Total | Pass | Skip | Fail | Notes |
