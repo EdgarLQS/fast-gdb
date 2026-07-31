@@ -1,12 +1,12 @@
 # ADR-009：统一 FileGDB 访问与 GDAL/S3 路由
 
-**状态**：Proposed
+**状态**：Accepted（本地实现进行中；发布门禁待闭环；S3 Experimental / Unverified）
 
 **日期**：2026-07-31
 
 ## 决策
 
-未来新增一个 source-neutral 的 `fast_gdb` 统一访问 seam：
+新增一个 source-neutral 的 `fast_gdb` 统一访问 seam：
 
 ```text
 fast_gdb::Dataset / Layer / Feature / Cursor
@@ -26,8 +26,10 @@ fast_gdb::Dataset / Layer / Feature / Cursor
 | `FastOnly` | fast-gdb | 不允许静默 fallback |
 | `GdalOnly` | GDAL/OpenFileGDB | 不创建 fast-gdb Reader |
 
-该决策是未来设计，不改变当前 `fast_gdb::linear`、`fast_gdb::hybrid`、
-`fast_gdb::adaptive` 的已发布合同，也不表示当前已支持 S3。
+该决策已有 `fast_gdb::unified`、共享 `fast_gdb_runtime` 和
+`gdal_FastFileGDB` 的可运行实现，不改变 `fast_gdb::linear`、
+`fast_gdb::hybrid`、`fast_gdb::adaptive` 的合同。完整本地门禁与真实 AWS
+验收尚未完成。
 
 ## 理由
 
@@ -41,7 +43,7 @@ fast-gdb 当前依赖本地 FileGDB 目录、mmap/pread、文件句柄、索引�
 
 ## 兼容入口
 
-为已有 GDAL/OGR 程序保留一个可选 `FastFileGDB` 只读驱动。它使用独立驱动名称，
+为已有 GDAL/OGR 程序提供可选 `FastFileGDB` 只读驱动。它使用独立驱动名称，
 不覆盖或替换官方 `OpenFileGDB`。驱动适配器只负责拥有型 GDAL Feature/Geometry 转换，
 不把 OGR 对象或 GDAL 生命周期反向引入 fast-gdb 核心。
 
@@ -61,13 +63,16 @@ fast-gdb 当前依赖本地 FileGDB 目录、mmap/pread、文件句柄、索引�
 - 不恢复 `fast_gdb::writer`；
 - 不因 S3 路由设计而宣称 MinIO、OSS、COS 或任意兼容服务已支持。
 
-## 验收要求
-
-实现前不得将本 ADR 的 Proposed 状态写成产品支持。实现后至少需要：
+## 当前验收状态
 
 - 本地 `Auto` 路由和 fast backend 报告；
-- S3/`/vsis3/` 的 GDAL 路由 characterization 和真实环境证据；
+- S3/`/vsis3/` 路由单元测试已完成；真实 AWS characterization 待补；
 - `FastOnly/GdalOnly` 负向路由；
-- 字段、NULL、FID、时间、Binary、WKB 和错误 parity；
-- source change、fallback、ReaderExpired、SourceBusy 和 GDAL 写后重开测试；
-- GDAL OFF 下 `linear` 安装 consumer 继续通过。
+- 字段、NULL、FID、时间、Binary 和 WKB 的基础映射；
+- fallback 和 SourceBusy 基础测试；
+- GDAL ON/OFF 安装 consumer。
+
+本地 facade、Group、Schema freeze、FastOnly extension、白名单 fallback、
+共享 coordinator、插件显式注册、update 拒绝、build ID 和安装 consumer 已进入
+v0.2.0 实现。完整 parity、Group/plugin、故障、sanitizer、平台和 GDAL 版本矩阵仍是
+未闭环门禁；S3 在真实环境证据完成前不得升级为 Supported。

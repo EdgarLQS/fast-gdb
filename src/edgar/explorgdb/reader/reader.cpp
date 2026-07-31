@@ -180,6 +180,18 @@ LayerMetadataSnapshot Layer::metadata_snapshot() const {
     return read_metadata().snapshot;
 }
 
+bool Layer::read_raw_by_fid(uint32_t fid,
+                            FeatureRecord& record,
+                            std::vector<uint8_t>& raw_record) {
+    raw_record.clear();
+    if (!source_is_current() || engine_ == nullptr ||
+        engine_->table() == nullptr) {
+        return false;
+    }
+    if (!engine_->read_by_fid(fid, record)) return false;
+    return engine_->table()->read_raw_record_by_fid(fid, raw_record);
+}
+
 QueryResult Layer::query(const QueryRequest& request) {
     if (!source_is_current()) {
         QueryResult result;

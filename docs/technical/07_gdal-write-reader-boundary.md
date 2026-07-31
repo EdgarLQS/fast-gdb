@@ -14,23 +14,23 @@ Edit phase
 
 两个阶段之间必须有完整关闭边界。
 
-## 1.1 Proposed：统一访问入口与对象存储路由
+## 1.1 统一访问入口与对象存储路由
 
-未来的统一只读入口将把路径分类和能力路由放在 Reader 外部 seam：
+v0.2.0 的统一只读入口把路径分类和能力路由放在 Reader 外部 seam：
 
 ```text
-fast_gdb::Dataset::open(uri, Auto)
+fast_gdb::unified::Dataset::open(uri, Auto)
   ├─ 本地 .gdb → fast-gdb Reader
   ├─ s3://... / /vsis3/... → GDAL OpenFileGDB read-only
   └─ fast-gdb 不支持的只读能力 → fresh GDAL read-only
 ```
 
-这不是当前实现，也不改变本节的本地读写生命周期合同。S3 不进入 fast-gdb 的 mmap、
+该实现不改变本节的本地读写生命周期合同。S3 不进入 fast-gdb 的 mmap、
 pread、文件句柄或本地索引缓存路径；远程读取依赖部署的 GDAL VSI、认证、目录枚举和
 真实对象布局验证。统一入口必须在 Cursor 输出前确定后端，不能在已经发布部分结果
 后中途切换。
 
-未来的 `FastOnly` 和 `GdalOnly` 模式分别禁止 fallback 或禁止创建 fast-gdb Reader。
+`FastOnly` 和 `GdalOnly` 模式分别禁止 fallback 或禁止创建 fast-gdb Reader。
 统一接口只返回拥有型 Feature/Geometry，不向调用方暴露旧 Reader 的 mmap、`FieldRef`
 或 GDAL 借用指针。详细设计见 [ADR-009](../adr/ADR-009-unified-filegdb-routing.md)。
 

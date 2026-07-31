@@ -14,7 +14,8 @@
 | `gdb_tutorial_test_runner` | Full Reader, query, index and direct-GDAL parity suite |
 | `fast_gdb_gdal_read_write_boundary_test_runner` | GDAL edit / fast-gdb Reader lifecycle boundary |
 | `fast_gdb_adaptive_reader_test_runner` | Adaptive coordinator, independent Reader concurrency and GDAL matrix |
-| Planned unified routing tests | `Dataset/Layer/Cursor` facade, Auto/FastOnly/GdalOnly, GDAL Adapter and S3 characterization |
+| `fast_gdb_unified_test_runner` | Dataset/Group/Layer/Cursor、路由、扩展、共享 coordinator |
+| `fast_gdb_driver_test_runner` | FastFileGDB 注册、读取、只读负向合同 |
 
 ## GDAL boundary tests
 
@@ -115,15 +116,15 @@ as `SKIPPED` when the selected OpenFileGDB driver does not implement that edit.
 
 - `linear`;
 - `hybrid`;
-- `adaptive`.
+- `adaptive`;
+- `unified`.
 
 There is no Writer consumer mode or `usegdal` consumer mode. `adaptive` is an
 optional GDAL/threaded package variant; the `linear` consumer is separately
 verified with GDAL disabled.
 
-The unified routing entry is Proposed only. It must not be counted as a current
-release gate until the facade, GDAL Adapter, `FastFileGDB` compatibility entry,
-and real `/vsis3/` characterization are implemented and validated.
+统一 facade 和 `FastFileGDB` 是 v0.2.0 本地 release gate。真实 `/vsis3/`
+characterization 尚未执行，因此 S3 仍是 Experimental / Unverified。
 
 ## Reference-only `usegdal`
 

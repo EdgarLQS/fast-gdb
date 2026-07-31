@@ -1,6 +1,7 @@
-#include <reader.h>
-
 #include <type_traits>
+
+#ifndef FAST_GDB_CONSUMER_UNIFIED
+#include <reader.h>
 
 static_assert(!std::is_copy_constructible<explorgdb::Reader>::value,
               "installed Reader must be move-only");
@@ -9,8 +10,23 @@ static_assert(!std::is_copy_constructible<explorgdb::Layer>::value,
 constexpr auto kReadMetadata = &explorgdb::Layer::read_metadata;
 static_assert(kReadMetadata != nullptr,
               "installed Layer must expose structured metadata reads");
+#endif
 
-#ifdef FAST_GDB_CONSUMER_HYBRID
+#ifdef FAST_GDB_CONSUMER_UNIFIED
+#include <unified.h>
+
+static_assert(!std::is_copy_constructible<
+                  fast_gdb::unified::FeatureCursor>::value,
+              "installed unified cursor must be move-only");
+
+int main() {
+    fast_gdb::unified::OpenOptions options;
+    fast_gdb::unified::ReadAllOptions limits;
+    return options.backend == fast_gdb::unified::BackendPreference::Auto &&
+                   limits.max_features == 1'000'000
+        ? 0 : 1;
+}
+#elif defined(FAST_GDB_CONSUMER_HYBRID)
 #include <hybrid_geometry_reader.h>
 
 int main() {

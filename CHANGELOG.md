@@ -2,7 +2,7 @@
 
 All notable changes to fast-gdb are documented in this file.
 
-## Unreleased
+## [0.2.0] - 2026-07-31
 
 ### Changed
 
@@ -18,6 +18,20 @@ All notable changes to fast-gdb are documented in this file.
 - Coordinated `writer_active/generation` detection is the accepted deterministic contract. Uncoordinated external Writer detection is explicitly best-effort and cannot guarantee discovery of every Writer lifecycle.
 
 ### Added
+
+- `fast_gdb::unified` source-neutral C++17 facade with owned
+  `Dataset/Group/Layer/Feature/FeatureCursor` values.
+- `Auto`, `FastOnly` and `GdalOnly` backend selection for local FileGDB and
+  `s3://`/`/vsis3/` source classification.
+- Shared `fast_gdb_runtime` dynamic library for routing, OpenFileGDB access and
+  the process-wide Reader/Writer coordinator.
+- Read-only `gdal_FastFileGDB` plugin with explicit registration, runtime build
+  ID validation and update-open rejection.
+- Frozen schemas, field Unset/Null/Value states, positive signed 64-bit FIDs,
+  complete Feature Dataset groups, bounded `read_all()`, query reports and
+  FastOnly native record extensions.
+- Installed `fast_gdb::unified` package-consumer mode and GDAL-versioned plugin
+  directory.
 
 - Focused real OpenFileGDB boundary target: `fast_gdb_gdal_read_write_boundary_test_runner`.
 - A release-gate test proving that a fully closed Reader followed by GDAL edit and complete Reader reopen observes new data.
@@ -47,6 +61,9 @@ All notable changes to fast-gdb are documented in this file.
 - Characterization observations are diagnostic only and never constitute a concurrent read/write support statement.
 - Reference-only `usegdal` code is intentionally not claimed as build-validated or production-ready.
 - ADR-008 is Accepted for the optional Adaptive target. Its local runtime, coordination tests, GDAL write/reopen matrix and install consumer are implemented; cross-platform, sanitizer, multi-GDAL and performance evidence remain separate gates. ADR-007 remains the external-edit contract for uncoordinated Writer workflows.
+- ADR-009 is Accepted for the local facade and plugin. S3 routing remains
+  Experimental / Unverified until real AWS fixtures, failure injection and
+  performance characterization pass.
 
 ## [0.1.0] - 2026-07-13
 

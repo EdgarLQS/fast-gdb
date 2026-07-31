@@ -81,6 +81,8 @@ public:
      * read_feature_by_fid()。
      */
     bool read_record_by_fid(uint32_t fid, FeatureRecord& record);
+    bool read_raw_record_by_fid(uint32_t fid,
+                                std::vector<uint8_t>& raw_record);
 
     /**
      * 一次定位并返回完整普通字段与独立 GeometryValue。

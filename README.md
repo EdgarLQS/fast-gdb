@@ -2,7 +2,7 @@
 
 fast-gdb 是面向 ESRI FileGDB 的 C++17 读取、查询和几何解析库。项目正式定位为 **Reader only**：不提供 FileGDB 创建、追加、更新、删除、Schema 编辑、事务或发布 API；所有 FileGDB 编辑统一交给 GDAL/OpenFileGDB。
 
-当前正式版本：**v0.1.0**。
+当前开发版本：**v0.2.0**。
 
 ## 产品形态
 
@@ -103,24 +103,46 @@ GDAL/OpenFileGDB 独占修改目标 .gdb
 上述“关闭 Reader → GDAL 写 → 重开 Reader”仍是唯一正式正确性合同；Adaptive 只覆盖显式同进程协调和
 本地验证过的 fresh fallback。
 
-## 统一访问与 GDAL/S3 路由（Proposed）
+## 统一访问与 GDAL/S3 路由
 
-当前仓库尚未实现统一入口、S3 读取或 `FastFileGDB` GDAL 驱动。已冻结的后续设计是：
+v0.2.0 新增安装目标 `fast_gdb::unified` 和共享动态库
+`fast_gdb_runtime`：
 
 ```text
-fast_gdb::Dataset::open(uri, Auto)
+fast_gdb::unified::Dataset::open(uri, Auto)
     ├─ 本地 .gdb → fast-gdb
     ├─ s3://... / /vsis3/... → GDAL OpenFileGDB
     └─ fast-gdb 不支持的只读能力 → GDAL OpenFileGDB
 ```
 
-调用方未来只依赖统一的 `Dataset / Layer / Feature / Cursor`，并通过 backend report
+调用方可以只依赖统一的 `Dataset / Layer / Feature / Cursor`，并通过 backend report
 查看实际后端和 fallback 原因。`FastOnly` 不得静默使用 GDAL，`GdalOnly` 不得创建
-fast-gdb Reader。S3、MinIO、OSS、COS 和其它对象存储不因该设计自动获得支持，必须按
-部署的 GDAL VSI、认证、目录枚举和真实数据环境逐项验收。
+fast-gdb Reader。
 
-已有 GDAL/OGR 程序未来可通过独立名称的 `FastFileGDB` 只读驱动使用 fast-gdb；该驱动
+```cpp
+#include <unified.h>
+
+using namespace fast_gdb::unified;
+
+auto dataset = Dataset::open("/data/city.gdb");
+if (!dataset) {
+    // dataset.error().code / message
+    return;
+}
+auto layer = dataset.value().open_layer("roads");
+auto cursor = layer.value().open_cursor();
+while (auto next = cursor.value().next()) {
+    if (!next.value()) break;  // EOF
+    const Feature& feature = *next.value();
+}
+```
+
+已有 GDAL/OGR 程序可通过独立名称的 `FastFileGDB` 只读驱动使用 fast-gdb；该驱动
 不替换官方 `OpenFileGDB`，也不提供 Writer、事务或完整 GDAL ABI。
+
+`s3://` 和 `/vsis3/` 已实现到官方 OpenFileGDB 的路由，但尚未完成真实 AWS
+凭据、目录枚举、Range Read、断网和性能验收，因此状态是
+**Experimental / Unverified**。MinIO、OSS、COS 和其它兼容服务不继承该状态。
 
 详见：
 

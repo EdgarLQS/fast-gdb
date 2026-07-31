@@ -1,6 +1,6 @@
 # fast-gdb 统一访问与 GDAL/S3 路由计划
 
-**状态**：Proposed / design-only
+**状态**：Local implementation in progress / release gates pending
 
 **修订**：2026-07-31 二轮架构、接口、故障、安全、构建与发布自检版
 
@@ -9,8 +9,9 @@
 **范围**：统一只读访问入口、FileGDB 后端路由、完整 Group 模型、
 `FastFileGDB` GDAL/OGR 兼容入口和对象存储边界。
 
-本文只记录已冻结的设计和实施顺序，不表示当前代码已经提供统一入口、S3 读取、
-共享 runtime 或 `FastFileGDB` 驱动。
+本文同时记录冻结设计和 v0.2.0 实施状态。统一入口、共享 runtime、本地
+fast/GDAL 路由和 `FastFileGDB` 驱动已有可运行实现；完整 Schema parity、GDAL
+Group/plugin 合同、版本/平台矩阵、故障注入和真实 AWS characterization 尚未完成。
 
 ## 1. 最终设计结论
 
@@ -530,14 +531,14 @@ ConsistencyReport
 
 ## 13. 实施顺序
 
-### 阶段 0：文档决策同步
+### 阶段 0：文档决策同步（完成）
 
 - 用本文同步 ADR-009；
 - 同步 README、规划索引、教程、技术边界、测试矩阵、构建矩阵和测试索引；
-- 保持全部状态为 Proposed/未实现；
-- 不把设计写成当前产品支持。
+- 本地实现状态同步为 v0.2.0；
+- S3 保持 Experimental / Unverified。
 
-### 阶段 1：统一类型与 fast Adapter
+### 阶段 1：统一类型与 fast Adapter（基础实现完成，完整验收待补）
 
 - 实现 Result/Error/report；
 - 实现 OGR-compatible Feature；
@@ -546,7 +547,7 @@ ConsistencyReport
 - 实现 fast Adapter、Schema 冻结和 FastLayerExtensions；
 - 在 GDAL OFF 下完成安装 consumer。
 
-### 阶段 2：共享 runtime 与 GDAL Adapter
+### 阶段 2：共享 runtime 与 GDAL Adapter（基础实现完成，故障矩阵待补）
 
 - 新增动态 `fast_gdb_runtime`；
 - 迁移 coordinator/runtime state；
@@ -555,7 +556,7 @@ ConsistencyReport
 - 实现 Router/fallback 白名单；
 - 实现 Cursor/read_all 双模式和资源门禁。
 
-### 阶段 3：FastFileGDB plugin
+### 阶段 3：FastFileGDB plugin（基础实现完成，完整 GDAL 合同待补）
 
 - 实现 GDAL Dataset/Group/Layer wrapper；
 - 实现显式 driver 注册和 metadata；
@@ -563,7 +564,7 @@ ConsistencyReport
 - 验证无递归、无重复 coordinator、无写入口；
 - 完成 runtime/plugin packaging。
 
-### 阶段 4：S3 characterization
+### 阶段 4：S3 characterization（待真实 AWS 环境）
 
 - 路由替身测试；
 - public/no-sign AWS fixture；
@@ -573,13 +574,17 @@ ConsistencyReport
 - 性能、请求量和字节量；
 - 缺少环境时标记 `SKIPPED`，不升级产品状态。
 
-### 阶段 5：发布收口
+### 阶段 5：发布收口（进行中）
 
 - 完成平台/GDAL 版本矩阵；
 - 完成 package consumer；
 - 完成 ASan/UBSan/TSan；
 - 更新支持矩阵；
 - 生成 v0.2.0 release notes 和 rollback 指南。
+
+当前本地证据：macOS/AppleClang、GDAL 3.13 的全量普通测试和安装 consumer 已通过；
+其它平台、GDAL 3.9–3.12、TSan、真实 AWS、build-ID 负向装载、完整 Group/plugin、
+默认值/domain parity 和资源故障注入仍为 `SKIPPED` 或待实现，不能视为发布门禁通过。
 
 ## 14. 测试与验收门禁
 

@@ -15,6 +15,63 @@ bool is_zero_padding(const uint8_t* cursor, const uint8_t* end) {
 
 } // namespace
 
+bool GdbTableParser::read_raw_record_by_fid(
+        uint32_t fid, std::vector<uint8_t>& raw_record) {
+    raw_record.clear();
+    if (fd_ < 0 && file_data_.empty() && !open()) return false;
+    if (fid >= feature_offsets_.size()) return false;
+    const uint64_t offset = feature_offsets_[fid];
+    if (offset == 0) return false;
+
+    uint32_t blob_len = 0;
+    const uint8_t* source = nullptr;
+    if (mapped_data_ != nullptr) {
+        if (offset > file_size_ ||
+            file_size_ - static_cast<size_t>(offset) < sizeof(blob_len)) {
+            return false;
+        }
+        std::memcpy(&blob_len, mapped_data_ + offset, sizeof(blob_len));
+        if (blob_len > file_size_ -
+                           static_cast<size_t>(offset + sizeof(blob_len))) {
+            return false;
+        }
+        source = mapped_data_ + offset + sizeof(blob_len);
+    } else if (fd_ >= 0) {
+        if (!read_at(offset, &blob_len, sizeof(blob_len)) ||
+            blob_len > file_size_ -
+                           static_cast<size_t>(offset + sizeof(blob_len))) {
+            return false;
+        }
+        try {
+            raw_record.resize(blob_len);
+        } catch (...) {
+            return false;
+        }
+        return blob_len == 0 ||
+               read_at(offset + sizeof(blob_len),
+                       raw_record.data(), blob_len);
+    } else {
+        if (offset > file_data_.size() ||
+            file_data_.size() - static_cast<size_t>(offset) <
+                sizeof(blob_len)) {
+            return false;
+        }
+        std::memcpy(&blob_len, file_data_.data() + offset, sizeof(blob_len));
+        if (blob_len > file_data_.size() -
+                           static_cast<size_t>(offset + sizeof(blob_len))) {
+            return false;
+        }
+        source = file_data_.data() + offset + sizeof(blob_len);
+    }
+    try {
+        raw_record.assign(source, source + blob_len);
+    } catch (...) {
+        raw_record.clear();
+        return false;
+    }
+    return true;
+}
+
 bool GdbTableParser::peek_geometry_blob(uint32_t fid,
                                         const uint8_t*& blob_data,
                                         size_t& blob_size) {

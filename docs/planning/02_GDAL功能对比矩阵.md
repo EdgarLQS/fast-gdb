@@ -4,8 +4,8 @@
 
 fast-gdb 负责本地 FileGDB 高性能读取；GDAL/OpenFileGDB 负责 FileGDB 编辑，并作为正确性对照和可选读取 fallback。
 
-未来 Proposed 的统一入口将把本地路径、S3 路径和能力缺口路由到合适后端；这不表示当前
-已经提供统一 SDK 或 S3 支持。
+v0.2.0 的统一入口把本地路径、S3 路径和已知能力缺口路由到合适后端。统一 SDK 和
+本地插件已实现；S3 尚未取得真实环境支持证据。
 
 ADR-008 已实现一个 Reader-only Adaptive 编排层：观察 Writer 活动和 generation，校验数据源变化，并在写入结束且数据源稳定后使用 fresh GDAL 只读连接恢复。跨平台、压力、性能、多 GDAL 版本和安装包证据仍待补齐。
 
@@ -32,11 +32,11 @@ ADR-008 已实现一个 Reader-only Adaptive 编排层：观察 Writer 活动和
 | REPACK | 否 | 是 | 交给 GDAL；写后重开 |
 | 事务 | 否 | 模拟/驱动能力 | 不进入 fast-gdb 产品 |
 | 在线版本发布 | 否 | 否 | 业务层能力 |
-| 统一 `Dataset/Layer/Feature/Cursor` 入口 | Proposed | GDAL/fast-gdb Adapter | 统一调用模型，不冻结内部解析器 |
-| 本地 `.gdb` 自动后端选择 | Proposed | 原生读取 | `Auto` 默认优先 fast-gdb |
+| 统一 `Dataset/Group/Layer/Feature/Cursor` 入口 | 已实现 | GDAL/fast-gdb Adapter | 拥有型模型和冻结 Schema |
+| 本地 `.gdb` 自动后端选择 | 已实现 | 原生读取 | `Auto` 默认优先 fast-gdb |
 | `s3://` / `/vsis3/` 读取 | 否 | 依赖 GDAL VSI/OpenFileGDB | 需凭据、目录枚举和真实数据验收 |
-| `FastFileGDB` GDAL/OGR 兼容入口 | Proposed、只读 | OpenFileGDB 原生驱动 | 独立驱动名，不替换官方驱动 |
-| fast-gdb 查询计划和索引诊断 | Proposed | GDAL 常规诊断 | 通过独立扩展报告暴露 |
+| `FastFileGDB` GDAL/OGR 兼容入口 | 已实现、只读 | OpenFileGDB 原生驱动 | 独立驱动名，不替换官方驱动 |
+| fast-gdb 查询计划和原始记录诊断 | 已实现 | GDAL 常规诊断 | `explain` 与 FastOnly extension |
 
 ## 当前读写阶段规则
 
@@ -85,10 +85,10 @@ writer_active=false 且源稳定
 - 不复用曲线回退中的 thread-local Dataset；
 - 无协调模式必须标记 best-effort。
 
-## 统一访问路由（Proposed）
+## 统一访问路由（已实现；S3 未验收）
 
 ```text
-fast_gdb::Dataset::open(uri, Auto)
+fast_gdb::unified::Dataset::open(uri, Auto)
   ├─ 本地 .gdb → fast-gdb
   ├─ s3://... / /vsis3/... → GDAL OpenFileGDB
   └─ fast-gdb 不支持的只读能力 → fresh GDAL OpenFileGDB

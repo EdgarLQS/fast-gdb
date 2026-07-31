@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(fast_gdb VERSION 0.1.0 LANGUAGES CXX)
+project(fast_gdb VERSION 0.2.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -16,6 +16,10 @@ option(FAST_GDB_BUILD_FULL_TESTS
        "Build the complete FileGDB Reader test suite" ON)
 option(FAST_GDB_BUILD_ADAPTIVE_READER
        "Build the coordinated Adaptive Reader" OFF)
+option(FAST_GDB_BUILD_UNIFIED
+       "Build the source-neutral unified Reader facade" ON)
+option(FAST_GDB_BUILD_GDAL_DRIVER
+       "Build the read-only FastFileGDB GDAL plugin" ${FAST_GDB_WITH_GDAL})
 
 set(FAST_GDB_CURVE_BACKEND "BUILTIN" CACHE STRING
     "Default curve backend: REJECT, BUILTIN, or GDAL")
@@ -49,6 +53,14 @@ endif()
 if(FAST_GDB_BUILD_ADAPTIVE_READER AND NOT FAST_GDB_WITH_GDAL)
     message(FATAL_ERROR
         "FAST_GDB_BUILD_ADAPTIVE_READER=ON requires FAST_GDB_WITH_GDAL=ON")
+endif()
+if(FAST_GDB_BUILD_GDAL_DRIVER AND NOT FAST_GDB_WITH_GDAL)
+    message(FATAL_ERROR
+        "FAST_GDB_BUILD_GDAL_DRIVER=ON requires FAST_GDB_WITH_GDAL=ON")
+endif()
+if(FAST_GDB_BUILD_GDAL_DRIVER AND NOT FAST_GDB_BUILD_UNIFIED)
+    message(FATAL_ERROR
+        "FAST_GDB_BUILD_GDAL_DRIVER=ON requires FAST_GDB_BUILD_UNIFIED=ON")
 endif()
 
 if(ENABLE_COVERAGE)
@@ -109,6 +121,40 @@ if(FAST_GDB_WITH_GDAL)
     endif()
 endif()
 
+set(_fast_gdb_default_build_id
+    "${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}-${CMAKE_CXX_COMPILER_ID}-${CMAKE_CXX_COMPILER_VERSION}")
+if(FAST_GDB_WITH_GDAL)
+    string(APPEND _fast_gdb_default_build_id "-gdal-${GDAL_VERSION}")
+endif()
+set(FAST_GDB_BUILD_ID "${_fast_gdb_default_build_id}" CACHE STRING
+    "Runtime/plugin compatibility build identifier")
+unset(_fast_gdb_default_build_id)
+
+# ===== Optional read-only GDAL plugin =====
+if(FAST_GDB_BUILD_GDAL_DRIVER)
+    add_library(gdal_FastFileGDB MODULE
+        src/edgar/explorgdb/gdal_driver/fastfilegdb_driver.cpp)
+    target_include_directories(gdal_FastFileGDB PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/unified)
+    target_link_libraries(gdal_FastFileGDB PRIVATE
+        fast_gdb_runtime ${FAST_GDB_GDAL_TARGET})
+    target_compile_features(gdal_FastFileGDB PRIVATE cxx_std_17)
+    target_compile_definitions(gdal_FastFileGDB PRIVATE
+        FAST_GDB_RUNTIME_VERSION="${PROJECT_VERSION}"
+        FAST_GDB_PLUGIN_BUILD_ID="${FAST_GDB_BUILD_ID}")
+    set_target_properties(gdal_FastFileGDB PROPERTIES
+        PREFIX ""
+        OUTPUT_NAME "gdal_FastFileGDB")
+    if(APPLE)
+        set_target_properties(gdal_FastFileGDB PROPERTIES
+            INSTALL_RPATH "@loader_path/../..")
+    elseif(UNIX)
+        set_target_properties(gdal_FastFileGDB PROPERTIES
+            INSTALL_RPATH "$ORIGIN/../..")
+    endif()
+    fast_gdb_enable_warnings(gdal_FastFileGDB)
+endif()
+
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 # ===== Portable geometry core =====
@@ -157,6 +203,35 @@ fast_gdb_enable_warnings(explorgdb_reader_lib)
 add_library(fast_gdb_linear INTERFACE)
 target_link_libraries(fast_gdb_linear INTERFACE explorgdb_reader_lib)
 
+# ===== Source-neutral unified Reader runtime =====
+if(FAST_GDB_BUILD_UNIFIED)
+    find_package(Threads REQUIRED)
+    add_library(fast_gdb_runtime SHARED
+        src/edgar/explorgdb/adaptive/adaptive_coordination.cpp
+        src/edgar/explorgdb/unified/routing.cpp
+        src/edgar/explorgdb/unified/unified.cpp)
+    target_include_directories(fast_gdb_runtime PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/unified)
+    target_include_directories(fast_gdb_runtime PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/adaptive)
+    target_link_libraries(fast_gdb_runtime PRIVATE explorgdb_reader_lib)
+    target_link_libraries(fast_gdb_runtime PRIVATE Threads::Threads)
+    target_compile_features(fast_gdb_runtime PUBLIC cxx_std_17)
+    target_compile_definitions(fast_gdb_runtime PRIVATE
+        FAST_GDB_RUNTIME_BUILD=1
+        FAST_GDB_BUILD_ID="${FAST_GDB_BUILD_ID}")
+    if(FAST_GDB_WITH_GDAL)
+        target_compile_definitions(fast_gdb_runtime PUBLIC
+            FAST_GDB_UNIFIED_WITH_GDAL=1)
+        target_link_libraries(fast_gdb_runtime PRIVATE
+            ${FAST_GDB_GDAL_TARGET})
+    endif()
+    fast_gdb_enable_warnings(fast_gdb_runtime)
+
+    add_library(fast_gdb_unified INTERFACE)
+    target_link_libraries(fast_gdb_unified INTERFACE fast_gdb_runtime)
+endif()
+
 # ===== Optional GDAL-backed Reader fallback =====
 if(FAST_GDB_WITH_GDAL)
     add_library(fast_gdb_curve_gdal STATIC
@@ -177,17 +252,24 @@ endif()
 # ===== Optional coordinated Adaptive Reader =====
 if(FAST_GDB_BUILD_ADAPTIVE_READER)
     find_package(Threads REQUIRED)
-    add_library(fast_gdb_adaptive STATIC
+    set(FAST_GDB_ADAPTIVE_SOURCES
         src/edgar/explorgdb/adaptive/adaptive_backends.cpp
-        src/edgar/explorgdb/adaptive/adaptive_coordination.cpp
         src/edgar/explorgdb/adaptive/adaptive_fast_backend.cpp
         src/edgar/explorgdb/adaptive/adaptive_gdal_backend.cpp
         src/edgar/explorgdb/adaptive/adaptive_session.cpp)
+    if(NOT FAST_GDB_BUILD_UNIFIED)
+        list(APPEND FAST_GDB_ADAPTIVE_SOURCES
+            src/edgar/explorgdb/adaptive/adaptive_coordination.cpp)
+    endif()
+    add_library(fast_gdb_adaptive STATIC ${FAST_GDB_ADAPTIVE_SOURCES})
     target_include_directories(fast_gdb_adaptive PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/adaptive
         ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader)
     target_link_libraries(fast_gdb_adaptive PUBLIC
         explorgdb_reader_lib ${FAST_GDB_GDAL_TARGET} Threads::Threads)
+    if(FAST_GDB_BUILD_UNIFIED)
+        target_link_libraries(fast_gdb_adaptive PUBLIC fast_gdb_runtime)
+    endif()
     target_compile_features(fast_gdb_adaptive PUBLIC cxx_std_17)
     fast_gdb_enable_warnings(fast_gdb_adaptive)
 endif()
@@ -212,6 +294,47 @@ if(BUILD_TESTING)
         FetchContent_MakeAvailable(googletest)
     endif()
     include(GoogleTest)
+
+    if(FAST_GDB_BUILD_UNIFIED)
+        add_executable(fast_gdb_unified_test_runner
+            tests/test_runner.cpp
+            tests/edgar/explorgdb/unified/test_routing.cpp
+            tests/edgar/explorgdb/unified/test_unified_fast.cpp)
+        target_include_directories(fast_gdb_unified_test_runner PRIVATE
+            tests
+            tests/edgar/explorgdb
+            src/edgar/explorgdb/adaptive
+            src/edgar/explorgdb/common
+            src/edgar/explorgdb/reader
+            src/edgar/explorgdb/unified)
+        target_compile_definitions(fast_gdb_unified_test_runner PRIVATE
+            FAST_GDB_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+        target_link_libraries(fast_gdb_unified_test_runner PRIVATE
+            GTest::gtest fast_gdb_runtime)
+        fast_gdb_enable_warnings(fast_gdb_unified_test_runner)
+        gtest_discover_tests(fast_gdb_unified_test_runner
+                             TEST_PREFIX "unified.")
+    endif()
+
+    if(FAST_GDB_BUILD_GDAL_DRIVER)
+        add_executable(fast_gdb_driver_test_runner
+            tests/test_runner.cpp
+            tests/edgar/explorgdb/gdal_driver/test_fastfilegdb_driver.cpp
+            src/edgar/explorgdb/gdal_driver/fastfilegdb_driver.cpp)
+        target_include_directories(fast_gdb_driver_test_runner PRIVATE
+            tests
+            tests/edgar/explorgdb
+            src/edgar/explorgdb/unified)
+        target_compile_definitions(fast_gdb_driver_test_runner PRIVATE
+            FAST_GDB_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+            FAST_GDB_RUNTIME_VERSION="${PROJECT_VERSION}"
+            FAST_GDB_PLUGIN_BUILD_ID="${FAST_GDB_BUILD_ID}")
+        target_link_libraries(fast_gdb_driver_test_runner PRIVATE
+            GTest::gtest fast_gdb_runtime ${FAST_GDB_GDAL_TARGET})
+        fast_gdb_enable_warnings(fast_gdb_driver_test_runner)
+        gtest_discover_tests(fast_gdb_driver_test_runner
+                             TEST_PREFIX "fastfilegdb.")
+    endif()
 
     set(GEOMETRY_TEST_SOURCES
         tests/test_runner.cpp
@@ -394,6 +517,9 @@ message(STATUS "Curve backend: ${FAST_GDB_CURVE_BACKEND}")
 message(STATUS "Geometry output: ${FAST_GDB_GEOMETRY_OUTPUT}")
 message(STATUS "GDAL components: ${FAST_GDB_WITH_GDAL}")
 message(STATUS "Pure C++ product: fast_gdb_linear")
+if(FAST_GDB_BUILD_UNIFIED)
+    message(STATUS "Unified product: fast_gdb_unified")
+endif()
 if(FAST_GDB_WITH_GDAL)
     message(STATUS "Hybrid product: fast_gdb_hybrid")
 endif()

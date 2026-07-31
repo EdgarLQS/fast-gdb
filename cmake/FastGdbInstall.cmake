@@ -55,6 +55,31 @@ set(FAST_GDB_INSTALL_TARGETS
     explorgdb_reader_lib
     fast_gdb_linear)
 
+if(TARGET fast_gdb_runtime)
+    set_target_properties(fast_gdb_runtime PROPERTIES
+        EXPORT_NAME runtime
+        VERSION ${PROJECT_VERSION}
+        SOVERSION ${PROJECT_VERSION_MAJOR}
+        INTERFACE_INCLUDE_DIRECTORIES
+            "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/unified>;$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/unified>")
+    set_target_properties(fast_gdb_unified PROPERTIES EXPORT_NAME unified)
+    list(APPEND FAST_GDB_INSTALL_TARGETS
+         fast_gdb_runtime fast_gdb_unified)
+endif()
+
+if(TARGET gdal_FastFileGDB)
+    string(REGEX MATCH "^[0-9]+\\.[0-9]+" FAST_GDB_GDAL_ABI
+           "${GDAL_VERSION}")
+    if(NOT FAST_GDB_GDAL_ABI)
+        set(FAST_GDB_GDAL_ABI "unknown")
+    endif()
+    install(TARGETS gdal_FastFileGDB
+        LIBRARY DESTINATION
+            ${CMAKE_INSTALL_LIBDIR}/gdalplugins/${FAST_GDB_GDAL_ABI}
+        RUNTIME DESTINATION
+            ${CMAKE_INSTALL_LIBDIR}/gdalplugins/${FAST_GDB_GDAL_ABI})
+endif()
+
 if(FAST_GDB_WITH_GDAL)
     set_target_properties(fast_gdb_curve_gdal PROPERTIES
         EXPORT_NAME curve_gdal
@@ -70,6 +95,12 @@ if(TARGET fast_gdb_adaptive)
         INTERFACE_INCLUDE_DIRECTORIES
             "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/adaptive>;$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader>;$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/adaptive>;$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/reader>")
     list(APPEND FAST_GDB_INSTALL_TARGETS fast_gdb_adaptive)
+endif()
+
+if(TARGET fast_gdb_runtime)
+    install(DIRECTORY src/edgar/explorgdb/unified/
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/unified
+        FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp")
 endif()
 
 install(TARGETS ${FAST_GDB_INSTALL_TARGETS}
@@ -123,7 +154,7 @@ install(FILES
 install(FILES README.md CHANGELOG.md
     DESTINATION ${CMAKE_INSTALL_DATADIR}/fast_gdb)
 install(FILES
-    docs/releases/v0.1.0.md
+    docs/releases/v0.2.0.md
     DESTINATION ${CMAKE_INSTALL_DATADIR}/fast_gdb
     RENAME release-notes.md)
 
