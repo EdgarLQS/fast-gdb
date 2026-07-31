@@ -104,7 +104,8 @@ checksum 明确覆盖 FID、普通字段、Binary 和 ISO WKB，不再比较 rec
 - record-only 与 one-pass 的普通字段、Binary、字段数量和顺序一致；
 - 两条路径的 Geometry 槽均为空字符串；
 - GeometryValue WKB、类型和状态一致；
-- NULL Geometry 由 `GeometryStatus::Empty` 表达，空占位不参与状态判断；
+- NULL Geometry 由 `GeometryStatus::Null` 表达，Empty 仅表示存在但为空的几何；
+  record 中的空占位不参与状态判断；
 - Cursor 指标仅包含 row lookup、字段物化、几何解码和 WKB 序列化。
 
 ### 4.3 安装面

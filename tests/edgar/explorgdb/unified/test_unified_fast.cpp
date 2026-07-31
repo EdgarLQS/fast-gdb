@@ -122,6 +122,51 @@ TEST(UnifiedFastFacadeTest, CancellationBeforeFirstPublicationIsAtomic) {
     EXPECT_EQ(first.error().code, ErrorCode::Cancelled);
 }
 
+TEST(UnifiedFastFacadeTest, RejectsInvalidQueryBeforeBackendSelection) {
+    auto dataset = Dataset::open(fixture_path());
+    ASSERT_TRUE(dataset);
+    auto names = dataset.value().layer_names();
+    ASSERT_TRUE(names);
+    auto layer = dataset.value().open_layer(names.value().front());
+    ASSERT_TRUE(layer);
+
+    Query query;
+    query.attribute_filter.assign(64U * 1024U + 1U, 'x');
+    auto cursor = layer.value().open_cursor(query);
+    EXPECT_FALSE(cursor);
+    EXPECT_EQ(cursor.error().code, ErrorCode::InvalidRequest);
+
+#if defined(FAST_GDB_UNIFIED_WITH_GDAL)
+    OpenOptions options;
+    options.backend = BackendPreference::GdalOnly;
+    auto gdal_dataset = Dataset::open(fixture_path(), options);
+    ASSERT_TRUE(gdal_dataset);
+    auto gdal_layer = gdal_dataset.value().open_layer(names.value().front());
+    ASSERT_TRUE(gdal_layer);
+    Query invalid_projection;
+    invalid_projection.projected_fields = {"missing_field"};
+    auto gdal_cursor = gdal_layer.value().open_cursor(invalid_projection);
+    EXPECT_FALSE(gdal_cursor);
+    EXPECT_EQ(gdal_cursor.error().code, ErrorCode::InvalidRequest);
+#endif
+}
+
+TEST(UnifiedFastFacadeTest, BoundsFidAscendingCandidateMemory) {
+    auto dataset = Dataset::open(fixture_path());
+    ASSERT_TRUE(dataset);
+    auto names = dataset.value().layer_names();
+    ASSERT_TRUE(names);
+    auto layer = dataset.value().open_layer(names.value().front());
+    ASSERT_TRUE(layer);
+
+    Query query;
+    query.order = ResultOrder::FidAscending;
+    query.max_ordered_fid_bytes = sizeof(Fid);
+    auto cursor = layer.value().open_cursor(query);
+    EXPECT_FALSE(cursor);
+    EXPECT_EQ(cursor.error().code, ErrorCode::ResultLimitExceeded);
+}
+
 TEST(UnifiedFastFacadeTest, ExposesFeatureDatasetGroups) {
     const auto source = explorgdb_test_paths::test_data_path(
         "test_data/gdb/acceptance_metadata.gdb").string();
@@ -136,7 +181,7 @@ TEST(UnifiedFastFacadeTest, ExposesFeatureDatasetGroups) {
         [](const GroupInfo& group) { return group.name == "TransportFD"; });
     ASSERT_NE(transport, groups.value().end());
 
-    auto opened = root.value().open_group("TransportFD");
+    auto opened = root.value().open_group("transportfd");
     ASSERT_TRUE(opened) << opened.error().message;
     auto layers = opened.value().layers();
     ASSERT_TRUE(layers);
@@ -145,8 +190,11 @@ TEST(UnifiedFastFacadeTest, ExposesFeatureDatasetGroups) {
         [](const LayerInfo& layer) { return layer.name == "roads"; }),
         layers.value().end());
 
-    auto roads = dataset.value().open_layer_by_path("/TransportFD/roads");
+    auto roads = dataset.value().open_layer_by_path("/transportfd/ROADS");
     ASSERT_TRUE(roads) << roads.error().message;
+
+    auto named = dataset.value().open_layer("ALL_FIELD_TYPES");
+    ASSERT_TRUE(named) << named.error().message;
 }
 
 TEST(UnifiedFastFacadeTest, NativeExtensionsAreFastOnlyAndBounded) {
@@ -200,6 +248,8 @@ TEST(UnifiedFastFacadeTest, SharesCoordinatorAndFailsClosedDuringWriter) {
     ASSERT_TRUE(names);
     auto layer = dataset.value().open_layer(names.value().front());
     ASSERT_TRUE(layer);
+    auto extensions = layer.value().fast_extensions();
+    ASSERT_TRUE(extensions);
 
     explorgdb::InProcessGdbCoordinator coordinator;
     auto update = coordinator.prepare_external_update(
@@ -211,6 +261,9 @@ TEST(UnifiedFastFacadeTest, SharesCoordinatorAndFailsClosedDuringWriter) {
     auto cursor = layer.value().open_cursor();
     EXPECT_FALSE(cursor);
     EXPECT_EQ(cursor.error().code, ErrorCode::SourceBusy);
+    auto native = extensions.value().read_native_by_fid(1);
+    EXPECT_FALSE(native);
+    EXPECT_EQ(native.error().code, ErrorCode::SourceBusy);
     EXPECT_EQ(update.token.notify_update_closed(true),
               explorgdb::CoordinationStatus::Ok);
 }
@@ -237,6 +290,8 @@ TEST(UnifiedGdalFacadeTest, ExplicitConcurrentPolicyUsesUnverifiedGdal) {
     ASSERT_TRUE(cursor) << cursor.error().message;
     EXPECT_EQ(cursor.value().backend_report().selected,
               Backend::GdalOpenFileGDB);
+    EXPECT_EQ(cursor.value().consistency_report().consistency,
+              Consistency::UnverifiedConcurrentRead);
     EXPECT_EQ(update.token.notify_update_closed(true),
               explorgdb::CoordinationStatus::Ok);
 }
@@ -258,6 +313,49 @@ TEST(UnifiedGdalFacadeTest, AutoFallsBackForWhitelistedQueryGap) {
               Backend::GdalOpenFileGDB);
     EXPECT_EQ(cursor.backend_report().fallback_reason,
               FailureKind::UnsupportedQuery);
+
+    auto roads = dataset.value().open_layer_by_path("/TransportFD/roads");
+    ASSERT_TRUE(roads) << roads.error().message;
+    OpenOptions gdal_options;
+    gdal_options.backend = BackendPreference::GdalOnly;
+    auto gdal_dataset = Dataset::open(source, gdal_options);
+    ASSERT_TRUE(gdal_dataset);
+    auto gdal_roads =
+        gdal_dataset.value().open_layer_by_path("/TransportFD/roads");
+    ASSERT_TRUE(gdal_roads);
+    ASSERT_EQ(roads.value().schema().fields.size(),
+              gdal_roads.value().schema().fields.size());
+    EXPECT_EQ(roads.value().schema().geometry_field,
+              gdal_roads.value().schema().geometry_field);
+    EXPECT_EQ(roads.value().schema().geometry_type,
+              gdal_roads.value().schema().geometry_type);
+    for (std::size_t i = 0; i < roads.value().schema().fields.size(); ++i) {
+        const auto& fast_field = roads.value().schema().fields[i];
+        const auto& gdal_field = gdal_roads.value().schema().fields[i];
+        EXPECT_EQ(fast_field.name, gdal_field.name) << i;
+        EXPECT_EQ(fast_field.alias, gdal_field.alias) << i;
+        EXPECT_EQ(fast_field.type, gdal_field.type) << i;
+        EXPECT_EQ(fast_field.nullable, gdal_field.nullable) << i;
+        EXPECT_EQ(fast_field.default_value, gdal_field.default_value) << i;
+        EXPECT_EQ(fast_field.domain_name, gdal_field.domain_name) << i;
+    }
+    Query geometry_query;
+    geometry_query.attribute_filter = "status LIKE '%'";
+    auto geometry_cursor = roads.value().open_cursor(geometry_query);
+    ASSERT_TRUE(geometry_cursor) << geometry_cursor.error().message;
+    EXPECT_EQ(geometry_cursor.value().backend_report().selected,
+              Backend::GdalOpenFileGDB);
+
+    auto parcels = dataset.value().open_layer_by_path("/AdminFD/parcels");
+    ASSERT_TRUE(parcels);
+    const auto area = std::find_if(
+        parcels.value().schema().fields.begin(),
+        parcels.value().schema().fields.end(),
+        [](const FieldDefinition& field) {
+            return field.name == "Shape_Area";
+        });
+    ASSERT_NE(area, parcels.value().schema().fields.end());
+    EXPECT_EQ(area->default_value, "FILEGEODATABASE_SHAPE_AREA");
 }
 
 TEST(UnifiedGdalFacadeTest, GdalOnlyUsesOfficialOpenFileGdb) {
@@ -283,6 +381,18 @@ TEST(UnifiedGdalFacadeTest, GdalOnlyUsesOfficialOpenFileGdb) {
     EXPECT_EQ(batch.value().backend_report.selected,
               Backend::GdalOpenFileGDB);
     EXPECT_FALSE(layer.value().fast_extensions());
+
+    options.include_system_tables = true;
+    const auto metadata_source = explorgdb_test_paths::test_data_path(
+        "test_data/gdb/acceptance_metadata.gdb").string();
+    auto system_dataset = Dataset::open(metadata_source, options);
+    ASSERT_TRUE(system_dataset);
+    auto system_names = system_dataset.value().layer_names();
+    ASSERT_TRUE(system_names);
+    EXPECT_NE(std::find(system_names.value().begin(),
+                        system_names.value().end(),
+                        "GDB_SystemCatalog"),
+              system_names.value().end());
 }
 
 TEST(UnifiedGdalFacadeTest, GdalDeadlineFailsBeforeCursorPublication) {
@@ -300,6 +410,24 @@ TEST(UnifiedGdalFacadeTest, GdalDeadlineFailsBeforeCursorPublication) {
     auto cursor = layer.value().open_cursor(query);
     EXPECT_FALSE(cursor);
     EXPECT_EQ(cursor.error().code, ErrorCode::DeadlineExceeded);
+}
+
+TEST(UnifiedGdalFacadeTest, BoundsFidAscendingCandidateMemory) {
+    OpenOptions options;
+    options.backend = BackendPreference::GdalOnly;
+    auto dataset = Dataset::open(fixture_path(), options);
+    ASSERT_TRUE(dataset);
+    auto names = dataset.value().layer_names();
+    ASSERT_TRUE(names);
+    auto layer = dataset.value().open_layer(names.value().front());
+    ASSERT_TRUE(layer);
+
+    Query query;
+    query.order = ResultOrder::FidAscending;
+    query.max_ordered_fid_bytes = sizeof(Fid);
+    auto cursor = layer.value().open_cursor(query);
+    EXPECT_FALSE(cursor);
+    EXPECT_EQ(cursor.error().code, ErrorCode::ResultLimitExceeded);
 }
 
 TEST(UnifiedGdalFacadeTest, FastAndGdalSchemasExposeParityInputs) {

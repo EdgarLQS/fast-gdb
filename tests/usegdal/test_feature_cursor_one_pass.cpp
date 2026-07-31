@@ -186,7 +186,7 @@ TEST_F(FeatureCursorOnePassTest,
 }
 
 TEST_F(FeatureCursorOnePassTest,
-       NullGeometryUsesEmptyStatusNotRecordSlot) {
+       NullGeometryUsesNullStatusNotRecordSlot) {
     const std::string path = create_fixture();
     ASSERT_FALSE(path.empty());
 
@@ -212,7 +212,7 @@ TEST_F(FeatureCursorOnePassTest,
     EXPECT_EQ(record.fid, 2U);
     EXPECT_EQ(record.field_values.size(), table.fields().size());
     expect_empty_geometry_slot(record, geometry_index);
-    EXPECT_EQ(geometry.status, GeometryStatus::Empty);
+    EXPECT_EQ(geometry.status, GeometryStatus::Null);
     EXPECT_TRUE(geometry.wkb.empty());
     EXPECT_FALSE(geometry.to_wkt().has_value());
     EXPECT_EQ(geometry.diagnostic, "geometry is null");

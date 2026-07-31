@@ -16,7 +16,7 @@ using namespace explorgdb;
 class FeatureCursorEmptyGeometryTest : public GdbTutorialFixture {};
 
 TEST_F(FeatureCursorEmptyGeometryTest,
-       NullGeometryIsReturnedAsAnEmptyFeature) {
+       NullGeometryPreservesNullState) {
     const std::string path =
         spatial_where_test_utils::fixture_path(
             "fast_gdb_feature_cursor_empty_geometry").string();
@@ -51,7 +51,7 @@ TEST_F(FeatureCursorEmptyGeometryTest,
     QueryFeature output;
     ASSERT_TRUE(cursor.next(output)) << cursor.error();
     EXPECT_EQ(output.fid, 0U);
-    EXPECT_EQ(output.geometry.status, GeometryStatus::Empty);
+    EXPECT_EQ(output.geometry.status, GeometryStatus::Null);
     EXPECT_TRUE(output.geometry.wkb.empty());
     EXPECT_FALSE(cursor.next(output));
     EXPECT_TRUE(cursor.done());

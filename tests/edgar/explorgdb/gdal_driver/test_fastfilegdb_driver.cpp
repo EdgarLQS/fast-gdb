@@ -80,6 +80,23 @@ TEST(FastFileGdbDriverTest, ExposesFeatureDatasetGroupHierarchy) {
               layer_names.end());
     OGRLayer* roads = transport->OpenVectorLayer("roads");
     ASSERT_NE(roads, nullptr);
+    EXPECT_STREQ(roads->GetMetadataItem("FAST_GDB_BACKEND"), "fast-gdb");
+    const auto status_index =
+        roads->GetLayerDefn()->GetFieldIndex("status");
+    ASSERT_GE(status_index, 0);
+    EXPECT_EQ(
+        roads->GetLayerDefn()->GetFieldDefn(status_index)->GetDomainName(),
+        "road_status_domain");
+    std::unique_ptr<OGRFeature> null_geometry(roads->GetFeature(4));
+    ASSERT_NE(null_geometry, nullptr) << CPLGetLastErrorMsg();
+    EXPECT_EQ(null_geometry->GetGeometryRef(), nullptr);
+    ASSERT_EQ(roads->SetAttributeFilter("status LIKE '%'"), OGRERR_NONE);
+    std::unique_ptr<OGRFeature> fallback(roads->GetNextFeature());
+    ASSERT_NE(fallback, nullptr) << CPLGetLastErrorMsg();
+    EXPECT_STREQ(roads->GetMetadataItem("FAST_GDB_BACKEND"),
+                 "OpenFileGDB");
+    EXPECT_STREQ(roads->GetMetadataItem("FAST_GDB_ROUTE_REASON"),
+                 "fallback");
     dataset.reset();
     EXPECT_STREQ(roads->GetName(), "roads");
 }

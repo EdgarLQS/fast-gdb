@@ -12,7 +12,9 @@
 #include "windows_sliding_map.h"
 #endif
 
+#include <cstddef>
 #include <functional>
+#include <limits>
 #include <shared_mutex>
 #include <string>
 #include <vector>
@@ -82,7 +84,10 @@ public:
      */
     bool read_record_by_fid(uint32_t fid, FeatureRecord& record);
     bool read_raw_record_by_fid(uint32_t fid,
-                                std::vector<uint8_t>& raw_record);
+                                std::vector<uint8_t>& raw_record,
+                                std::size_t max_bytes =
+                                    std::numeric_limits<std::size_t>::max(),
+                                bool* limit_exceeded = nullptr);
 
     /**
      * 一次定位并返回完整普通字段与独立 GeometryValue。

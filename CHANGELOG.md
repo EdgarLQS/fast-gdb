@@ -8,7 +8,9 @@ All notable changes to fast-gdb are documented in this file.
 
 - fast-gdb is now explicitly a **Reader-only** FileGDB product.
 - FileGDB creation and editing are delegated to GDAL/OpenFileGDB or ArcGIS.
-- The installed package exports only Reader products: `fast_gdb::linear`, optional `fast_gdb::hybrid`, and optional `fast_gdb::adaptive`.
+- The installed package exports only Reader products: `fast_gdb::linear`,
+  optional `fast_gdb::hybrid`, optional `fast_gdb::adaptive`, and optional
+  `fast_gdb::unified`.
 - The supported edit workflow is now: close all fast-gdb Reader objects, edit exclusively with GDAL, close all GDAL objects, then construct a fresh Reader.
 - Reader objects, mmap regions, table parsers, catalogs, query engines, cursors, FID mappings and index caches must not survive an external GDAL edit.
 - Same-directory GDAL update plus fast-gdb reading is explicitly classified as unsupported and may expose old, new, mixed or error states.
@@ -32,6 +34,25 @@ All notable changes to fast-gdb are documented in this file.
   FastOnly native record extensions.
 - Installed `fast_gdb::unified` package-consumer mode and GDAL-versioned plugin
   directory.
+
+### Fixed
+
+- Unified query validation now rejects invalid filters, projections and
+  envelopes before backend selection.
+- `FidAscending` and native raw reads enforce allocation budgets before
+  materialization.
+- Feature Dataset paths use exact GDAL Group traversal; unique layer/group
+  lookup is ASCII case-insensitive.
+- Fast/GDAL schema parity now includes aliases, defaults, generated
+  Shape_Area/Shape_Length fields and normalized ISO Z/M geometry types.
+- GDAL-only opens honor `include_system_tables`, and FastFileGDB Layer metadata
+  follows the actual backend and route after query fallback.
+- NULL and Empty geometry states remain distinct through Reader, facade and
+  `FastFileGDB`; plugin schemas preserve field domain names.
+- Runtime DLL public classes are exported on Windows, and release packages
+  build every installed target before installation.
+- Release publishing now waits for Linux GDAL 3.9–3.13 plus macOS/Windows
+  unified matrices, including installed-plugin auto-load verification.
 
 - Focused real OpenFileGDB boundary target: `fast_gdb_gdal_read_write_boundary_test_runner`.
 - A release-gate test proving that a fully closed Reader followed by GDAL edit and complete Reader reopen observes new data.
@@ -64,6 +85,9 @@ All notable changes to fast-gdb are documented in this file.
 - ADR-009 is Accepted for the local facade and plugin. S3 routing remains
   Experimental / Unverified until real AWS fixtures, failure injection and
   performance characterization pass.
+- Current local evidence: GDAL 3.13 has 461 PASS, 21 SKIPPED and 0 FAIL;
+  GDAL OFF has 120 PASS; GDAL 3.9.3, ASan/UBSan and TSan focused gates each
+  have 31 PASS plus one real-AWS SKIPPED; all three package consumers pass.
 
 ## [0.1.0] - 2026-07-13
 

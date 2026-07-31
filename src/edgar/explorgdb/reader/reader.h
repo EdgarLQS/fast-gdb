@@ -84,9 +84,14 @@ public:
     QueryResult query(const QueryRequest& request);
     FeatureCursor open_cursor(const QueryRequest& request);
     bool read_by_fid(uint32_t fid, FeatureRecord& record);
+    std::size_t active_feature_count() const noexcept;
     bool read_raw_by_fid(uint32_t fid,
                          FeatureRecord& record,
                          std::vector<uint8_t>& raw_record);
+    bool read_raw_by_fid(uint32_t fid,
+                         std::vector<uint8_t>& raw_record,
+                         std::size_t max_bytes,
+                         bool* limit_exceeded = nullptr);
     bool source_is_current() const noexcept;
     const MetadataReader& metadata() const noexcept { return metadata_; }
 

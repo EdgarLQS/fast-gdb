@@ -1,6 +1,6 @@
 # ADR-009：统一 FileGDB 访问与 GDAL/S3 路由
 
-**状态**：Accepted（本地实现进行中；发布门禁待闭环；S3 Experimental / Unverified）
+**状态**：Accepted（本地发布门禁已通过；外部矩阵待闭环；S3 Experimental / Unverified）
 
 **日期**：2026-07-31
 
@@ -28,8 +28,8 @@ fast_gdb::Dataset / Layer / Feature / Cursor
 
 该决策已有 `fast_gdb::unified`、共享 `fast_gdb_runtime` 和
 `gdal_FastFileGDB` 的可运行实现，不改变 `fast_gdb::linear`、
-`fast_gdb::hybrid`、`fast_gdb::adaptive` 的合同。完整本地门禁与真实 AWS
-验收尚未完成。
+`fast_gdb::hybrid`、`fast_gdb::adaptive` 的合同。本地发布门禁已完成，远端
+Linux/Windows/GDAL 3.10–3.12 和真实 AWS 验收尚未完成。
 
 ## 理由
 
@@ -55,6 +55,8 @@ fast-gdb 当前依赖本地 FileGDB 目录、mmap/pread、文件句柄、索引�
 - Writer 仍由 GDAL/OpenFileGDB 负责；
 - 本地 GDB 写入前关闭全部 Reader，写后 `GDALClose()` 并完整重开；
 - S3 写入、远程事务、对象锁和版本发布不属于本 ADR。
+- S3 默认 consistency 为 `RemoteUnverified`；只有调用方显式选择
+  `ImmutablePrefixRequired` 才报告 `ImmutablePrefixAssumed`。
 
 ## 非目标
 
@@ -73,6 +75,6 @@ fast-gdb 当前依赖本地 FileGDB 目录、mmap/pread、文件句柄、索引�
 - GDAL ON/OFF 安装 consumer。
 
 本地 facade、Group、Schema freeze、FastOnly extension、白名单 fallback、
-共享 coordinator、插件显式注册、update 拒绝、build ID 和安装 consumer 已进入
-v0.2.0 实现。完整 parity、Group/plugin、故障、sanitizer、平台和 GDAL 版本矩阵仍是
-未闭环门禁；S3 在真实环境证据完成前不得升级为 Supported。
+共享 coordinator、插件显式注册、update 拒绝、build ID、parity、资源门禁、
+sanitizer 和三种安装 consumer 已通过。Linux/Windows、GDAL 3.10–3.12 与真实 AWS
+仍是未闭环外部门禁；S3 在真实环境证据完成前不得升级为 Supported。

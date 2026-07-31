@@ -233,7 +233,7 @@ bool GdbTableParser::read_feature_by_fid_wkb_internal(
             output_geometry.status = GeometryStatus::UnsupportedType;
             output_geometry.diagnostic = "table has no geometry field";
         } else {
-            output_geometry.status = GeometryStatus::Empty;
+            output_geometry.status = GeometryStatus::Null;
             output_geometry.diagnostic = "geometry is null";
         }
         record = std::move(output_record);
@@ -413,7 +413,7 @@ bool GdbTableParser::read_feature_by_fid_wkb_internal(
     }
     if (!best_geometry.present) return false;
     if (best_geometry.is_null) {
-        output_geometry.status = GeometryStatus::Empty;
+        output_geometry.status = GeometryStatus::Null;
         output_geometry.diagnostic = "geometry is null";
         record = std::move(best_record);
         geometry = std::move(output_geometry);

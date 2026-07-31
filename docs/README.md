@@ -16,8 +16,8 @@ fast-gdb 当前产品定位为 **FileGDB Reader only**。项目不提供受支�
 | [ADR-008：Adaptive Reader 写入检测与 fresh GDAL 回退](adr/ADR-008-adaptive-reader-write-detection-gdal-fallback.md) | Accepted：可选同进程协调、写期间 fail closed、源稳定后 fresh GDAL 只读恢复 |
 | [Adaptive Reader 实施计划](planning/22_AdaptiveReader写入检测与GDAL回退计划.md) | 文件快照、协调探针、Reader 失效、fresh GDAL、测试和平台验收阶段 |
 | [GDAL/Reader 边界架构说明](technical/07_gdal-write-reader-boundary.md) | 生命周期、缓存失效、并发可见性和 Adaptive 计划架构 |
-| [统一访问与 GDAL/S3 路由计划](planning/24_fast-gdb统一访问与GDAL_S3路由计划.md) | Local implementation in progress / release gates pending |
-| [ADR-009：统一 FileGDB 访问与 GDAL/S3 路由](adr/ADR-009-unified-filegdb-routing.md) | Accepted：统一只读访问 seam；本地发布门禁待闭环；S3 仍 Experimental / Unverified |
+| [统一访问与 GDAL/S3 路由计划](planning/24_fast-gdb统一访问与GDAL_S3路由计划.md) | Local release gates passed / external gates pending |
+| [ADR-009：统一 FileGDB 访问与 GDAL/S3 路由](adr/ADR-009-unified-filegdb-routing.md) | Accepted：本地发布门禁已通过；外部矩阵待闭环；S3 仍 Experimental / Unverified |
 | [`usegdal` 参考层说明](../src/edgar/usegdal/README.md) | 非产品 GDAL/OGR RAII、查询、事务和批量写入参考代码的边界 |
 | [Writer 历史归档](archive/writer/README.md) | 已废弃 Writer ADR、规划、评审和证据；仅用于历史追溯 |
 

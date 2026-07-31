@@ -1,4 +1,5 @@
 #include "routing.h"
+#include "unified.h"
 
 #include <gtest/gtest.h>
 
@@ -35,6 +36,11 @@ TEST(UnifiedSourceTest, RejectsUnsupportedVsiAndCredentialUris) {
               ErrorCode::InvalidUri);
     EXPECT_EQ(parse_source("s3://bad..bucket/data.gdb", source).code,
               ErrorCode::InvalidUri);
+}
+
+TEST(UnifiedSourceTest, RemoteConsistencyDefaultsToUnverified) {
+    EXPECT_EQ(OpenOptions{}.remote_source,
+              RemoteSourcePolicy::AllowMutableUnverified);
 }
 
 TEST(UnifiedRouteTest, AutoUsesFastForLocalSource) {

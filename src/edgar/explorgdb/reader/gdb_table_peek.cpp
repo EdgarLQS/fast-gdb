@@ -16,8 +16,10 @@ bool is_zero_padding(const uint8_t* cursor, const uint8_t* end) {
 } // namespace
 
 bool GdbTableParser::read_raw_record_by_fid(
-        uint32_t fid, std::vector<uint8_t>& raw_record) {
+        uint32_t fid, std::vector<uint8_t>& raw_record,
+        std::size_t max_bytes, bool* limit_exceeded) {
     raw_record.clear();
+    if (limit_exceeded != nullptr) *limit_exceeded = false;
     if (fd_ < 0 && file_data_.empty() && !open()) return false;
     if (fid >= feature_offsets_.size()) return false;
     const uint64_t offset = feature_offsets_[fid];
@@ -62,6 +64,10 @@ bool GdbTableParser::read_raw_record_by_fid(
             return false;
         }
         source = file_data_.data() + offset + sizeof(blob_len);
+    }
+    if (blob_len > max_bytes) {
+        if (limit_exceeded != nullptr) *limit_exceeded = true;
+        return false;
     }
     try {
         raw_record.assign(source, source + blob_len);

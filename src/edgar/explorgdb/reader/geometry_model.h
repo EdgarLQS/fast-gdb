@@ -36,6 +36,7 @@ enum class GeometryBackend : uint8_t {
 enum class GeometryStatus : uint8_t {
     Valid = 0,
     Empty,
+    Null,
     InvalidEncoding,
     UnsupportedType,
     UnsupportedCurve,
@@ -206,7 +207,8 @@ struct GeometryModel {
 
     bool valid() const {
         return status == GeometryStatus::Valid ||
-               status == GeometryStatus::Empty;
+               status == GeometryStatus::Empty ||
+               status == GeometryStatus::Null;
     }
 };
 
@@ -232,7 +234,8 @@ struct GeometryValue {
 
     bool valid() const {
         return status == GeometryStatus::Valid ||
-               status == GeometryStatus::Empty;
+               status == GeometryStatus::Empty ||
+               status == GeometryStatus::Null;
     }
 
     /**

@@ -192,6 +192,25 @@ bool Layer::read_raw_by_fid(uint32_t fid,
     return engine_->table()->read_raw_record_by_fid(fid, raw_record);
 }
 
+bool Layer::read_raw_by_fid(uint32_t fid,
+                            std::vector<uint8_t>& raw_record,
+                            std::size_t max_bytes,
+                            bool* limit_exceeded) {
+    raw_record.clear();
+    if (limit_exceeded != nullptr) *limit_exceeded = false;
+    if (!source_is_current() || engine_ == nullptr ||
+        engine_->table() == nullptr) {
+        return false;
+    }
+    return engine_->table()->read_raw_record_by_fid(
+        fid, raw_record, max_bytes, limit_exceeded);
+}
+
+std::size_t Layer::active_feature_count() const noexcept {
+    return engine_ != nullptr && engine_->table() != nullptr
+        ? engine_->table()->active_feature_count() : 0;
+}
+
 QueryResult Layer::query(const QueryRequest& request) {
     if (!source_is_current()) {
         QueryResult result;

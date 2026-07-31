@@ -37,11 +37,13 @@ enum class SourceKind {
 enum class ErrorCode {
     Ok,
     InvalidUri,
+    InvalidRequest,
     BackendUnavailable,
     UnsupportedSource,
     Unsupported,
     SourceNotFound,
     LayerNotFound,
+    FeatureNotFound,
     AmbiguousLayer,
     SchemaMismatch,
     SourceBusy,

@@ -6,7 +6,7 @@
 |---|---|---|
 | [ADR-007：Reader-only 与 GDAL 编辑边界](ADR-007-reader-only-gdal-edit-boundary.md) | Accepted | fast-gdb 只提供 Reader；FileGDB 编辑交给 GDAL/OpenFileGDB；同目录并发读写不支持 |
 | [ADR-008：Adaptive Reader 写入检测与 fresh GDAL 回退](ADR-008-adaptive-reader-write-detection-gdal-fallback.md) | Accepted | 可选同进程协调；通过协调状态或 best-effort 文件快照发现源变化；写期间返回 Busy；稳定后使用全新 GDAL 只读连接恢复 |
-| [ADR-009：统一 FileGDB 访问与 GDAL/S3 路由](ADR-009-unified-filegdb-routing.md) | Accepted | 本地实现与门禁收口中；跨平台/多 GDAL CI 和真实 S3 证据待完成 |
+| [ADR-009：统一 FileGDB 访问与 GDAL/S3 路由](ADR-009-unified-filegdb-routing.md) | Accepted | 本地发布门禁已通过；跨平台/多 GDAL CI 和真实 S3 证据待完成 |
 
 ADR-001～ADR-005 和旧版 ADR-007 对应的自研 Writer、字段级 Append/Update/Delete、事务、恢复和版本发布方案已被 ADR-007 取代；历史材料保留在 [Writer 历史归档](../archive/writer/README.md)，不属于当前决策集。
 

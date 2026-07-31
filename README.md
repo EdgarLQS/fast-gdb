@@ -126,15 +126,30 @@ using namespace fast_gdb::unified;
 
 auto dataset = Dataset::open("/data/city.gdb");
 if (!dataset) {
-    // dataset.error().code / message
-    return;
+    std::cerr << dataset.error().message << '\n';
+    return 1;
 }
 auto layer = dataset.value().open_layer("roads");
-auto cursor = layer.value().open_cursor();
-while (auto next = cursor.value().next()) {
+if (!layer) {
+    std::cerr << layer.error().message << '\n';
+    return 1;
+}
+auto opened = layer.value().open_cursor();
+if (!opened) {
+    std::cerr << opened.error().message << '\n';
+    return 1;
+}
+auto cursor = std::move(opened).value();
+while (true) {
+    auto next = cursor.next();
+    if (!next) {
+        std::cerr << next.error().message << '\n';
+        return 1;
+    }
     if (!next.value()) break;  // EOF
     const Feature& feature = *next.value();
 }
+return 0;
 ```
 
 已有 GDAL/OGR 程序可通过独立名称的 `FastFileGDB` 只读驱动使用 fast-gdb；该驱动
@@ -142,7 +157,9 @@ while (auto next = cursor.value().next()) {
 
 `s3://` 和 `/vsis3/` 已实现到官方 OpenFileGDB 的路由，但尚未完成真实 AWS
 凭据、目录枚举、Range Read、断网和性能验收，因此状态是
-**Experimental / Unverified**。MinIO、OSS、COS 和其它兼容服务不继承该状态。
+**Experimental / Unverified**。默认策略为 `AllowMutableUnverified`；只有调用方
+明确选择 `ImmutablePrefixRequired` 时，报告才会标记为
+`ImmutablePrefixAssumed`。MinIO、OSS、COS 和其它兼容服务不继承该状态。
 
 详见：
 

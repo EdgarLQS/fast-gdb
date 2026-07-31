@@ -148,7 +148,7 @@ struct OpenOptions {
     ConcurrentReadPolicy concurrent_read =
         ConcurrentReadPolicy::SourceBusy;
     RemoteSourcePolicy remote_source =
-        RemoteSourcePolicy::ImmutablePrefixRequired;
+        RemoteSourcePolicy::AllowMutableUnverified;
     bool include_system_tables = false;
 };
 
@@ -186,6 +186,7 @@ struct Query {
     std::uint64_t offset = 0;
     std::uint64_t limit = 0;
     ResultOrder order = ResultOrder::Native;
+    std::uint64_t max_ordered_fid_bytes = 64ULL * 1024 * 1024;
     std::function<bool()> cancel_requested;
     std::optional<std::chrono::steady_clock::time_point> deadline;
 };
@@ -205,6 +206,7 @@ struct ReadBatch {
 
 struct NativeReadLimits {
     std::uint64_t max_raw_bytes = 64ULL * 1024 * 1024;
+    std::uint64_t max_materialized_bytes = 64ULL * 1024 * 1024;
 };
 
 struct NativeFieldDescriptor {
@@ -239,7 +241,7 @@ struct GroupState;
 struct CursorState;
 }
 
-class FeatureCursor {
+class FAST_GDB_RUNTIME_API FeatureCursor {
 public:
     FeatureCursor();
     FeatureCursor(FeatureCursor&&) noexcept;
@@ -250,6 +252,7 @@ public:
 
     Result<std::optional<Feature>> next();
     const BackendReport& backend_report() const noexcept;
+    const ConsistencyReport& consistency_report() const noexcept;
     const QueryReport& query_report() const noexcept;
     void close() noexcept;
 
@@ -262,7 +265,7 @@ private:
     friend class Layer;
 };
 
-class FastLayerExtensions {
+class FAST_GDB_RUNTIME_API FastLayerExtensions {
 public:
     Result<FastNativeFeature> read_native_by_fid(
         Fid fid, NativeReadLimits limits = {}) const;
@@ -273,7 +276,7 @@ private:
     friend class Layer;
 };
 
-class Layer {
+class FAST_GDB_RUNTIME_API Layer {
 public:
     Layer() = default;
 
@@ -295,7 +298,7 @@ private:
     friend class Group;
 };
 
-class Group {
+class FAST_GDB_RUNTIME_API Group {
 public:
     Result<std::vector<GroupInfo>> groups() const;
     Result<std::vector<LayerInfo>> layers() const;
@@ -307,7 +310,7 @@ private:
     friend class Dataset;
 };
 
-class Dataset {
+class FAST_GDB_RUNTIME_API Dataset {
 public:
     static Result<Dataset> open(std::string uri,
                                 OpenOptions options = {});

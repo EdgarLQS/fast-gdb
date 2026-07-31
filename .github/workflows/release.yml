@@ -53,6 +53,77 @@ jobs:
           ctest --test-dir build-verify --output-on-failure
           -R '^(geometry|hybrid|unified|fastfilegdb|fastfilegdb-mismatch)\.'
 
+  unified-matrix:
+    name: release-unified-${{ matrix.os }}-gdal-${{ matrix.gdal }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            gdal: "3.9"
+          - os: ubuntu-latest
+            gdal: "3.10"
+          - os: ubuntu-latest
+            gdal: "3.11"
+          - os: ubuntu-latest
+            gdal: "3.12"
+          - os: ubuntu-latest
+            gdal: "3.13"
+          - os: macos-latest
+            gdal: "3.13"
+          - os: windows-latest
+            gdal: "3.13"
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-update-conda: true
+          activate-environment: fast-gdb-release
+          channels: conda-forge
+          channel-priority: strict
+          python-version: "3.12"
+      - name: Install GDAL and build tools
+        run: conda install -y "gdal=${{ matrix.gdal }}.*" cmake ninja
+      - name: Configure
+        run: >-
+          cmake -S . -B build-unified -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_PREFIX_PATH="$CONDA_PREFIX"
+          -DFAST_GDB_WITH_GDAL=ON
+          -DFAST_GDB_BUILD_UNIFIED=ON
+          -DFAST_GDB_BUILD_GDAL_DRIVER=ON
+          -DFAST_GDB_BUILD_ADAPTIVE_READER=OFF
+          -DFAST_GDB_BUILD_FULL_TESTS=OFF
+          -DFAST_GDB_BUILD_TOOLS=OFF
+          -DBUILD_TESTING=ON
+      - name: Build and test
+        run: |
+          cmake --build build-unified --parallel
+          ctest --test-dir build-unified --output-on-failure \
+            -R '^(unified|fastfilegdb|fastfilegdb-mismatch)\.'
+      - name: Install and consume unified package
+        run: |
+          cmake --install build-unified --prefix "$PWD/install-unified"
+          plugin=$(find "$PWD/install-unified" -type f \
+            \( -name 'gdal_FastFileGDB.so' \
+            -o -name 'gdal_FastFileGDB.dll' \
+            -o -name 'gdal_FastFileGDB.dylib' \) -print -quit)
+          test -n "$plugin"
+          GDAL_DRIVER_PATH="$(dirname "$plugin")" \
+            ogrinfo --formats | grep -q FastFileGDB
+          cmake -S tests/package_consumer -B build-consumer -G Ninja \
+            -DCMAKE_PREFIX_PATH="$PWD/install-unified;$CONDA_PREFIX" \
+            -DFAST_GDB_CONSUMER_TARGET=unified
+          cmake --build build-consumer --parallel
+          if [[ "${RUNNER_OS}" == "Windows" ]]; then
+            export PATH="$PWD/install-unified/bin:$PATH"
+          fi
+          ctest --test-dir build-consumer --output-on-failure
+
   package:
     name: package-${{ matrix.asset }}
     needs: verify
@@ -63,39 +134,52 @@ jobs:
           - os: ubuntu-latest
             asset: linux-x64-linear
             with_gdal: OFF
+            build_unified: OFF
+            build_driver: OFF
             variant: linear
             generator: TGZ
-            build_target: explorgdb_reader_lib
           - os: ubuntu-latest
             asset: linux-x64-hybrid
             with_gdal: ON
+            build_unified: OFF
+            build_driver: OFF
             variant: hybrid
             generator: TGZ
-            build_target: fast_gdb_curve_gdal
           - os: ubuntu-latest
             asset: linux-x64-unified
             with_gdal: ON
+            build_unified: ON
+            build_driver: ON
             variant: unified
             generator: TGZ
-            build_target: gdal_FastFileGDB
           - os: windows-latest
             asset: windows-x64-linear
             with_gdal: OFF
+            build_unified: OFF
+            build_driver: OFF
             variant: linear
             generator: ZIP
-            build_target: explorgdb_reader_lib
+          - os: windows-latest
+            asset: windows-x64-unified
+            with_gdal: ON
+            build_unified: ON
+            build_driver: ON
+            variant: unified
+            generator: ZIP
           - os: macos-latest
             asset: macos-linear
             with_gdal: OFF
+            build_unified: OFF
+            build_driver: OFF
             variant: linear
             generator: TGZ
-            build_target: explorgdb_reader_lib
           - os: macos-latest
             asset: macos-unified
             with_gdal: ON
+            build_unified: ON
+            build_driver: ON
             variant: unified
             generator: TGZ
-            build_target: gdal_FastFileGDB
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -115,12 +199,26 @@ jobs:
           if [[ '${{ matrix.with_gdal }}' == 'ON' ]]; then
             brew install gdal
           fi
+      - uses: conda-incubator/setup-miniconda@v3
+        if: runner.os == 'Windows' && matrix.with_gdal == 'ON'
+        with:
+          auto-update-conda: true
+          activate-environment: fast-gdb-package
+          channels: conda-forge
+          channel-priority: strict
+          python-version: "3.12"
+      - name: Install Windows GDAL
+        if: runner.os == 'Windows' && matrix.with_gdal == 'ON'
+        shell: bash -el {0}
+        run: conda install -y "gdal=3.13.*"
       - name: Configure POSIX
         if: runner.os != 'Windows'
         run: >-
           cmake -S . -B build-package -G Ninja
           -DCMAKE_BUILD_TYPE=Release
           -DFAST_GDB_WITH_GDAL=${{ matrix.with_gdal }}
+          -DFAST_GDB_BUILD_UNIFIED=${{ matrix.build_unified }}
+          -DFAST_GDB_BUILD_GDAL_DRIVER=${{ matrix.build_driver }}
           -DFAST_GDB_CURVE_BACKEND=BUILTIN
           -DFAST_GDB_GEOMETRY_OUTPUT=STANDARD_WKB
           -DFAST_GDB_BUILD_TOOLS=OFF
@@ -133,6 +231,9 @@ jobs:
         run: >-
           cmake -S . -B build-package -A x64
           -DFAST_GDB_WITH_GDAL=${{ matrix.with_gdal }}
+          -DFAST_GDB_BUILD_UNIFIED=${{ matrix.build_unified }}
+          -DFAST_GDB_BUILD_GDAL_DRIVER=${{ matrix.build_driver }}
+          -DCMAKE_PREFIX_PATH="$env:CONDA_PREFIX"
           -DFAST_GDB_CURVE_BACKEND=BUILTIN
           -DFAST_GDB_GEOMETRY_OUTPUT=STANDARD_WKB
           -DFAST_GDB_BUILD_TOOLS=OFF
@@ -140,7 +241,7 @@ jobs:
           -DFAST_GDB_PACKAGE_VARIANT=${{ matrix.variant }}
           -DBUILD_TESTING=OFF
       - name: Build package targets
-        run: cmake --build build-package --target ${{ matrix.build_target }} --config Release --parallel
+        run: cmake --build build-package --config Release --parallel
       - name: Install and consume package (POSIX)
         if: runner.os != 'Windows'
         shell: bash
@@ -162,6 +263,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cmake --build build-consumer --config Release --parallel
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $runtimePaths = "$env:GITHUB_WORKSPACE/install-package/bin"
+          if ($env:CONDA_PREFIX) {
+            $runtimePaths += ";$env:CONDA_PREFIX;$env:CONDA_PREFIX\Library\bin"
+          }
+          $env:PATH = "$runtimePaths;$env:PATH"
           & .\build-consumer\Release\fast_gdb_package_consumer.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Package
@@ -190,6 +296,7 @@ jobs:
     name: publish-v0.2.0
     needs:
       - verify
+      - unified-matrix
       - package
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest

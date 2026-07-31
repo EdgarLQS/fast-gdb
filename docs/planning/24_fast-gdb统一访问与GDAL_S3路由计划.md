@@ -1,6 +1,6 @@
 # fast-gdb 统一访问与 GDAL/S3 路由计划
 
-**状态**：Local implementation in progress / release gates pending
+**状态**：Local release gates passed / external gates pending
 
 **修订**：2026-07-31 二轮架构、接口、故障、安全、构建与发布自检版
 
@@ -93,6 +93,7 @@ FAST_GDB_BUILD_GDAL_DRIVER=<FAST_GDB_WITH_GDAL>
 
 ```cpp
 namespace fast_gdb {
+namespace unified {
 
 using Fid = std::int64_t;
 
@@ -112,7 +113,7 @@ struct OpenOptions {
     ConcurrentReadPolicy concurrent_read =
         ConcurrentReadPolicy::SourceBusy;
     RemoteSourcePolicy remote_source =
-        RemoteSourcePolicy::ImmutablePrefixRequired;
+        RemoteSourcePolicy::AllowMutableUnverified;
     bool include_system_tables = false;
 };
 
@@ -123,17 +124,19 @@ struct Query {
     std::uint64_t offset = 0;
     std::uint64_t limit = 0;
     ResultOrder order = ResultOrder::Native;
-    CancellationToken cancellation;
-    std::optional<Deadline> deadline;
+    std::uint64_t max_ordered_fid_bytes = 64ULL * 1024 * 1024;
+    std::function<bool()> cancel_requested;
+    std::optional<std::chrono::steady_clock::time_point> deadline;
 };
 
 struct ReadAllOptions {
     std::uint64_t max_features = 1'000'000;
-    std::uint64_t max_materialized_bytes = 512_MiB;
-    std::uint64_t max_feature_bytes = 64_MiB;
+    std::uint64_t max_materialized_bytes = 512ULL * 1024 * 1024;
+    std::uint64_t max_feature_bytes = 64ULL * 1024 * 1024;
     bool unlimited = false;
 };
 
+}  // namespace unified
 }  // namespace fast_gdb
 ```
 
@@ -164,7 +167,7 @@ public:
 
 class Layer {
 public:
-    Result<FeatureRead> read_by_fid(Fid fid) const;
+    Result<Feature> read_by_fid(Fid fid) const;
     Result<ReadBatch> read_all(
         const Query& query = {},
         ReadAllOptions options = {}) const;
@@ -178,8 +181,9 @@ public:
 class FeatureCursor {
 public:
     Result<std::optional<Feature>> next();
-    BackendReport backend_report() const;
-    QueryReport query_report() const;
+    const BackendReport& backend_report() const noexcept;
+    const ConsistencyReport& consistency_report() const noexcept;
+    const QueryReport& query_report() const noexcept;
     void close() noexcept;
 };
 ```
@@ -538,7 +542,7 @@ ConsistencyReport
 - 本地实现状态同步为 v0.2.0；
 - S3 保持 Experimental / Unverified。
 
-### 阶段 1：统一类型与 fast Adapter（基础实现完成，完整验收待补）
+### 阶段 1：统一类型与 fast Adapter（本地实现和门禁完成）
 
 - 实现 Result/Error/report；
 - 实现 OGR-compatible Feature；
@@ -547,7 +551,7 @@ ConsistencyReport
 - 实现 fast Adapter、Schema 冻结和 FastLayerExtensions；
 - 在 GDAL OFF 下完成安装 consumer。
 
-### 阶段 2：共享 runtime 与 GDAL Adapter（基础实现完成，故障矩阵待补）
+### 阶段 2：共享 runtime 与 GDAL Adapter（本地实现和故障门禁完成）
 
 - 新增动态 `fast_gdb_runtime`；
 - 迁移 coordinator/runtime state；
@@ -556,7 +560,7 @@ ConsistencyReport
 - 实现 Router/fallback 白名单；
 - 实现 Cursor/read_all 双模式和资源门禁。
 
-### 阶段 3：FastFileGDB plugin（基础实现完成，完整 GDAL 合同待补）
+### 阶段 3：FastFileGDB plugin（本地合同门禁完成，外部矩阵待补）
 
 - 实现 GDAL Dataset/Group/Layer wrapper；
 - 实现显式 driver 注册和 metadata；
@@ -574,7 +578,7 @@ ConsistencyReport
 - 性能、请求量和字节量；
 - 缺少环境时标记 `SKIPPED`，不升级产品状态。
 
-### 阶段 5：发布收口（进行中）
+### 阶段 5：发布收口（本地完成，外部门禁待运行）
 
 - 完成平台/GDAL 版本矩阵；
 - 完成 package consumer；
@@ -582,12 +586,13 @@ ConsistencyReport
 - 更新支持矩阵；
 - 生成 v0.2.0 release notes 和 rollback 指南。
 
-当前本地证据：macOS/AppleClang、GDAL 3.13 的 478 项全量普通测试、GDAL 3.9.3
-的 28 项统一入口定向测试、GDAL OFF 的 117 项测试、安装
-consumer、ASan/UBSan、TSan、build-ID 负向装载、fast/GDAL Group、default/domain
-parity 输入和插件 filter/reset 合同已通过。GDAL 3.10–3.12、Linux/Windows 和真实 AWS
-已有可执行 CI/手动工作流，但尚无本分支远端运行结果；远程 403/404/timeout/disconnect
-与性能证据仍待补，不能视为发布门禁通过。
+当前本地证据：macOS/AppleClang、GDAL 3.13 全量 CTest 为
+`461 PASS + 21 SKIPPED + 0 FAIL`；GDAL 3.9.3、ASan/UBSan、TSan 的统一入口与插件
+定向测试均为 `31 PASS + 1 个真实 AWS SKIPPED + 0 FAIL`；GDAL OFF 为
+`120 PASS + 0 SKIPPED + 0 FAIL`；linear/hybrid/unified 三种安装 consumer 均通过。
+`482` 是发现数，不能写成 PASS 数。GDAL 3.10–3.12、Linux/Windows 和真实 AWS
+已有可执行 CI/手动工作流，但尚无本分支远端运行结果；远程
+403/404/timeout/disconnect 与性能证据仍待补，不能视为发布门禁通过。
 
 ## 14. 测试与验收门禁
 
@@ -666,7 +671,7 @@ parity 输入和插件 filter/reset 合同已通过。GDAL 3.10–3.12、Linux/W
 - 若真实 AWS S3 未验收，v0.2.0 仍可发布本地能力；
 - 此时 S3 在接口、CapabilityReport 和文档中保持 `Experimental/Unverified`；
 - 真实 AWS 验收通过后，用补丁版本单独升级 S3 支持状态；
-- ADR-009 在实现与本地门禁完成后可改为 Accepted；
+- ADR-009 的架构决策已经 Accepted；发布状态仍独立取决于本节门禁证据；
 - 产品矩阵仍单独记录 S3 的 Experimental/Supported 状态；
 - 回滚无需数据迁移：禁用 plugin 或使用 `GdalOnly`；
 - 现有 linear/hybrid/adaptive 用户不受影响。

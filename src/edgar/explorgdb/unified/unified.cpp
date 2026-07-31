@@ -6,10 +6,14 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstring>
+#include <iomanip>
 #include <limits>
 #include <mutex>
+#include <optional>
 #include <set>
+#include <sstream>
 #include <unordered_map>
 #include <utility>
 
@@ -59,6 +63,7 @@ struct CursorState {
     explorgdb::FeatureCursor cursor;
     std::shared_ptr<LayerState> layer_state;
     BackendReport report;
+    ConsistencyReport consistency;
     QueryReport query_report;
     std::optional<Feature> prefetched;
     bool closed = false;
@@ -88,6 +93,51 @@ Error make_error(ErrorCode code, std::string message) {
     return {code, std::move(message)};
 }
 
+Result<explorgdb::FastReaderLease> acquire_fast_reader_lease(
+        const std::string& source) {
+    explorgdb::InProcessGdbCoordinator coordinator;
+    auto lease = coordinator.try_acquire_fast_reader(source);
+    if (!lease.valid()) {
+        return make_error(ErrorCode::SourceBusy,
+                          "coordinated Writer is pending or active");
+    }
+    return std::move(lease);
+}
+
+Error validate_public_query(const Query& query,
+                            const LayerSchema& schema) {
+    if (query.attribute_filter.size() > 64U * 1024U) {
+        return make_error(ErrorCode::InvalidRequest,
+                          "attribute filter exceeds 64 KiB");
+    }
+    for (const auto& name : query.projected_fields) {
+        const auto found = std::find_if(
+            schema.fields.begin(), schema.fields.end(),
+            [&name](const FieldDefinition& field) {
+                return field.name == name;
+            });
+        if (found == schema.fields.end()) {
+            return make_error(ErrorCode::InvalidRequest,
+                              "projected field does not exist: " + name);
+        }
+    }
+    if (query.spatial_filter) {
+        const auto& box = *query.spatial_filter;
+        if (!std::isfinite(box.xmin) || !std::isfinite(box.ymin) ||
+            !std::isfinite(box.xmax) || !std::isfinite(box.ymax) ||
+            box.xmin > box.xmax || box.ymin > box.ymax) {
+            return make_error(ErrorCode::InvalidRequest,
+                              "spatial filter envelope is invalid");
+        }
+    }
+    if (query.order == ResultOrder::FidAscending &&
+        query.max_ordered_fid_bytes < sizeof(Fid)) {
+        return make_error(ErrorCode::ResultLimitExceeded,
+                          "ordered FID budget cannot hold one FID");
+    }
+    return {};
+}
+
 bool is_system_layer(std::string_view name) {
     return name.size() >= 4 &&
            (name[0] == 'G' || name[0] == 'g') &&
@@ -112,6 +162,36 @@ std::string parent_path(std::string_view path) {
 std::string path_name(std::string_view path) {
     const auto separator = path.find_last_of('/');
     return std::string(path.substr(separator + 1));
+}
+
+bool ascii_equal(std::string_view lhs, std::string_view rhs) {
+    return lhs.size() == rhs.size() &&
+           std::equal(lhs.begin(), lhs.end(), rhs.begin(),
+                      [](unsigned char left, unsigned char right) {
+                          return std::tolower(left) == std::tolower(right);
+                      });
+}
+
+bool valid_canonical_path(std::string_view path) {
+    if (path.empty() || path.front() != '/' ||
+        path.find('\0') != std::string_view::npos ||
+        path.find('\\') != std::string_view::npos ||
+        path.find("//") != std::string_view::npos) {
+        return false;
+    }
+    std::size_t offset = 1;
+    while (offset <= path.size()) {
+        const auto next = path.find('/', offset);
+        const auto segment = path.substr(
+            offset, next == std::string_view::npos
+                        ? path.size() - offset : next - offset);
+        if (segment.empty() || segment == "." || segment == "..") {
+            return false;
+        }
+        if (next == std::string_view::npos) break;
+        offset = next + 1;
+    }
+    return true;
 }
 
 void index_group_layer(detail::DatasetState& state,
@@ -221,6 +301,195 @@ FieldType public_field_type(explorgdb::FieldType type) {
     }
 }
 
+std::string trim_xml_text(std::string value) {
+    const auto begin = value.find_first_not_of(" \t\r\n");
+    if (begin == std::string::npos) return {};
+    const auto end = value.find_last_not_of(" \t\r\n");
+    return value.substr(begin, end - begin + 1);
+}
+
+std::optional<std::string> xml_tag_text(
+        std::string_view xml, std::string_view tag) {
+    const std::string prefix = "<" + std::string(tag);
+    std::size_t offset = 0;
+    while ((offset = xml.find(prefix, offset)) != std::string_view::npos) {
+        const auto boundary = offset + prefix.size();
+        if (boundary < xml.size() &&
+            xml[boundary] != '>' &&
+            !std::isspace(static_cast<unsigned char>(xml[boundary]))) {
+            offset = boundary;
+            continue;
+        }
+        const auto value_begin = xml.find('>', boundary);
+        if (value_begin == std::string_view::npos) return std::nullopt;
+        const std::string close = "</" + std::string(tag) + ">";
+        const auto value_end = xml.find(close, value_begin + 1);
+        if (value_end == std::string_view::npos) return std::nullopt;
+        return trim_xml_text(std::string(
+            xml.substr(value_begin + 1, value_end - value_begin - 1)));
+    }
+    return std::nullopt;
+}
+
+std::vector<std::string_view> xml_blocks(
+        std::string_view xml, std::string_view tag) {
+    std::vector<std::string_view> blocks;
+    const std::string prefix = "<" + std::string(tag);
+    const std::string close = "</" + std::string(tag) + ">";
+    std::size_t offset = 0;
+    while ((offset = xml.find(prefix, offset)) != std::string_view::npos) {
+        const auto boundary = offset + prefix.size();
+        if (boundary < xml.size() &&
+            xml[boundary] != '>' &&
+            !std::isspace(static_cast<unsigned char>(xml[boundary]))) {
+            offset = boundary;
+            continue;
+        }
+        const auto end = xml.find(close, boundary);
+        if (end == std::string_view::npos) break;
+        const auto length = end + close.size() - offset;
+        blocks.push_back(xml.substr(offset, length));
+        offset += length;
+    }
+    return blocks;
+}
+
+struct LayerDefinitionDefaults {
+    std::vector<std::pair<std::string, std::string>> field_defaults;
+    std::string area_field;
+    std::string length_field;
+    std::optional<std::uint32_t> geometry_type;
+};
+
+LayerDefinitionDefaults parse_layer_definition_defaults(
+        const std::optional<explorgdb::LayerMetadata>& metadata) {
+    LayerDefinitionDefaults result;
+    if (!metadata) return result;
+    const auto& xml = metadata->definition;
+    result.area_field = xml_tag_text(xml, "AreaFieldName").value_or("");
+    result.length_field = xml_tag_text(xml, "LengthFieldName").value_or("");
+    const auto shape_type = xml_tag_text(xml, "ShapeType");
+    std::uint32_t base_type = 0;
+    if (shape_type) {
+        if (ascii_equal(*shape_type, "esriGeometryPoint")) base_type = 1;
+        if (ascii_equal(*shape_type, "esriGeometryMultipoint")) base_type = 4;
+        if (ascii_equal(*shape_type, "esriGeometryPolyline")) base_type = 5;
+        if (ascii_equal(*shape_type, "esriGeometryPolygon")) base_type = 6;
+    }
+    if (base_type != 0) {
+        const bool has_z =
+            ascii_equal(xml_tag_text(xml, "HasZ").value_or("false"), "true");
+        const bool has_m =
+            ascii_equal(xml_tag_text(xml, "HasM").value_or("false"), "true");
+        result.geometry_type =
+            base_type + (has_z && has_m
+                ? 3000U : (has_z ? 1000U : (has_m ? 2000U : 0U)));
+    }
+    for (const auto block : xml_blocks(xml, "GPFieldInfoEx")) {
+        const auto name = xml_tag_text(block, "Name");
+        auto value = xml_tag_text(block, "DefaultValueNumeric");
+        if (!value) value = xml_tag_text(block, "DefaultValue");
+        if (!value) value = xml_tag_text(block, "DefaultValueInteger");
+        if (name && value) {
+            result.field_defaults.emplace_back(*name, *value);
+        }
+    }
+    return result;
+}
+
+std::optional<std::string> numeric_xml_default(
+        const LayerDefinitionDefaults& defaults,
+        std::string_view field_name) {
+    const auto found = std::find_if(
+        defaults.field_defaults.begin(), defaults.field_defaults.end(),
+        [field_name](const auto& value) {
+            return ascii_equal(value.first, field_name);
+        });
+    if (found == defaults.field_defaults.end()) return std::nullopt;
+    return found->second;
+}
+
+std::string quote_sql_string(
+        const std::vector<std::uint8_t>& bytes) {
+    std::string result("'");
+    result.reserve(bytes.size() + 2);
+    for (const auto byte : bytes) {
+        const char value = static_cast<char>(byte);
+        result.push_back(value);
+        if (value == '\'') result.push_back('\'');
+    }
+    result.push_back('\'');
+    return result;
+}
+
+template <typename T>
+std::optional<T> read_little_endian_scalar(
+        const std::vector<std::uint8_t>& bytes) {
+    if (bytes.size() < sizeof(T)) return std::nullopt;
+    std::uint64_t bits = 0;
+    for (std::size_t i = 0; i < sizeof(T); ++i) {
+        bits |= static_cast<std::uint64_t>(bytes[i]) << (i * 8U);
+    }
+    T value{};
+    std::memcpy(&value, &bits, sizeof(T));
+    return value;
+}
+
+std::optional<std::string> date_default(
+        const explorgdb::FieldDescriptor& descriptor) {
+    const auto value =
+        read_little_endian_scalar<double>(descriptor.default_value_raw);
+    if (!value) return std::nullopt;
+    std::string text;
+    if (descriptor.type == explorgdb::FieldType::Date) {
+        text = explorgdb::ole_date_only(*value);
+    } else if (descriptor.type == explorgdb::FieldType::Time) {
+        text = explorgdb::ole_time_only(*value);
+    } else {
+        text = explorgdb::ole_datetime(*value);
+    }
+    std::replace(text.begin(), text.end(), '-', '/');
+    if (descriptor.type == explorgdb::FieldType::DateTimeWithOffset) {
+        const auto offset = descriptor.default_value_raw.size() >= 10
+            ? static_cast<std::int16_t>(
+                  descriptor.default_value_raw[8] |
+                  (descriptor.default_value_raw[9] << 8U))
+            : 0;
+        std::ostringstream zone;
+        zone << ".000" << (offset >= 0 ? '+' : '-')
+             << std::setfill('0') << std::setw(2)
+             << std::abs(offset) / 60 << ':'
+             << std::setw(2) << std::abs(offset) % 60;
+        text += zone.str();
+    }
+    return "'" + text + "'";
+}
+
+std::optional<std::string> public_default_value(
+        const explorgdb::FieldDescriptor& descriptor,
+        const LayerDefinitionDefaults& defaults) {
+    if (ascii_equal(descriptor.name, defaults.area_field) &&
+        public_field_type(descriptor.type) == FieldType::Real) {
+        return "FILEGEODATABASE_SHAPE_AREA";
+    }
+    if (ascii_equal(descriptor.name, defaults.length_field) &&
+        public_field_type(descriptor.type) == FieldType::Real) {
+        return "FILEGEODATABASE_SHAPE_LENGTH";
+    }
+    if (descriptor.default_value_raw.empty()) return std::nullopt;
+    if (descriptor.type == explorgdb::FieldType::String ||
+        descriptor.type == explorgdb::FieldType::XML) {
+        return quote_sql_string(descriptor.default_value_raw);
+    }
+    if (descriptor.type == explorgdb::FieldType::DateTime ||
+        descriptor.type == explorgdb::FieldType::Date ||
+        descriptor.type == explorgdb::FieldType::Time ||
+        descriptor.type == explorgdb::FieldType::DateTimeWithOffset) {
+        return date_default(descriptor);
+    }
+    return numeric_xml_default(defaults, descriptor.name);
+}
+
 Result<LayerSchema> freeze_schema(
         explorgdb::Layer& layer,
         std::vector<std::size_t>& indices) {
@@ -228,11 +497,13 @@ Result<LayerSchema> freeze_schema(
     schema.name = layer.name();
     const auto metadata = layer.read_metadata();
     if (!metadata.ok()) return reader_error(metadata.error);
+    const auto defaults =
+        parse_layer_definition_defaults(metadata.snapshot.layer);
     const auto& descriptors = layer.fields();
     for (std::size_t i = 0; i < descriptors.size(); ++i) {
         const auto& descriptor = descriptors[i];
         if (descriptor.type == explorgdb::FieldType::Geometry) {
-            schema.geometry_field = i;
+            schema.geometry_field = 0;
             schema.srs_wkt = descriptor.wkt;
             continue;
         }
@@ -245,10 +516,7 @@ Result<LayerSchema> freeze_schema(
         field.alias = descriptor.alias;
         field.type = public_field_type(descriptor.type);
         field.nullable = (descriptor.flag & 0x01U) != 0;
-        if ((descriptor.flag & 0x04U) != 0 &&
-            !descriptor.default_value.empty()) {
-            field.default_value = descriptor.default_value;
-        }
+        field.default_value = public_default_value(descriptor, defaults);
         const auto binding = std::find_if(
             metadata.snapshot.field_domains.begin(),
             metadata.snapshot.field_domains.end(),
@@ -261,7 +529,9 @@ Result<LayerSchema> freeze_schema(
         indices.push_back(i);
         schema.fields.push_back(std::move(field));
     }
-    if (schema.geometry_field) {
+    if (schema.geometry_field && defaults.geometry_type) {
+        schema.geometry_type = *defaults.geometry_type;
+    } else if (schema.geometry_field) {
         explorgdb::QueryRequest request;
         request.kind = explorgdb::QueryKind::SequentialScan;
         request.limit = 1;
@@ -326,7 +596,9 @@ Geometry map_geometry(const explorgdb::GeometryValue& source) {
     geometry.has_z = source.has_z;
     geometry.has_m = source.has_m;
     geometry.wkb = source.wkb;
-    if (source.status == explorgdb::GeometryStatus::Empty) {
+    if (source.status == explorgdb::GeometryStatus::Null) {
+        geometry.state = GeometryState::Null;
+    } else if (source.status == explorgdb::GeometryStatus::Empty) {
         geometry.state = GeometryState::Empty;
     } else if (source.status == explorgdb::GeometryStatus::Valid) {
         geometry.state = source.wkb.empty()
@@ -355,10 +627,6 @@ Feature map_feature(const explorgdb::QueryFeature& source,
 
 Error validate_query(const Query& query, const detail::LayerState& state,
                      explorgdb::QueryRequest& request) {
-    if (query.attribute_filter.size() > 64U * 1024U) {
-        return make_error(ErrorCode::Unsupported,
-                          "attribute filter exceeds 64 KiB");
-    }
     if (query.offset > std::numeric_limits<std::size_t>::max() ||
         query.limit > std::numeric_limits<std::size_t>::max()) {
         return make_error(ErrorCode::ResultLimitExceeded,
@@ -367,6 +635,12 @@ Error validate_query(const Query& query, const detail::LayerState& state,
     request.offset = static_cast<std::size_t>(query.offset);
     request.limit = static_cast<std::size_t>(query.limit);
     request.sort_fids = query.order == ResultOrder::FidAscending;
+    if (request.sort_fids) {
+        const auto max_fids = query.max_ordered_fid_bytes / sizeof(Fid);
+        request.max_result_features = static_cast<std::size_t>(
+            std::min<std::uint64_t>(
+                max_fids, std::numeric_limits<std::size_t>::max()));
+    }
     request.cancel_requested = query.cancel_requested;
     if (query.deadline) {
         const auto deadline = *query.deadline;
@@ -477,19 +751,23 @@ ErrorCode query_error_code(
 Result<FeatureCursor> open_fast_cursor(
         const std::shared_ptr<detail::LayerState>& state,
         const Query& query) {
-    explorgdb::InProcessGdbCoordinator coordinator;
-    auto lease = coordinator.try_acquire_fast_reader(
+    auto lease_result = acquire_fast_reader_lease(
         state->dataset->source.normalized_uri);
-    if (!lease.valid()) {
-        return make_error(ErrorCode::SourceBusy,
-                          "coordinated Writer is pending or active");
-    }
+    if (!lease_result) return lease_result.error();
+    auto lease = std::move(lease_result).value();
     explorgdb::ReaderError reader_status;
     auto reader = explorgdb::Reader::open(
         state->dataset->source.normalized_uri, {}, &reader_status);
     if (!reader) return reader_error(reader_status);
     auto layer = reader->open_layer(state->name, &reader_status);
     if (!layer) return reader_error(reader_status);
+    if (query.order == ResultOrder::FidAscending &&
+        layer->active_feature_count() >
+            query.max_ordered_fid_bytes / sizeof(Fid)) {
+        return make_error(
+            ErrorCode::ResultLimitExceeded,
+            "ordered FID candidate set exceeds byte budget");
+    }
 
     explorgdb::QueryRequest request;
     if (const auto error = validate_query(query, *state, request)) {
@@ -507,6 +785,7 @@ Result<FeatureCursor> open_fast_cursor(
     cursor_state->cursor = std::move(cursor);
     cursor_state->layer_state = state;
     cursor_state->report = state->report;
+    cursor_state->consistency = state->dataset->consistency;
     cursor_state->fast_lease.emplace(std::move(lease));
     cursor_state->cancel_requested = query.cancel_requested;
     cursor_state->deadline = query.deadline;
@@ -535,13 +814,41 @@ void ensure_gdal_initialized() {
     std::call_once(initialized, [] { GDALAllRegister(); });
 }
 
-GDALDataset* open_openfilegdb(const std::string& uri) {
+GDALDataset* open_openfilegdb(
+        const std::string& uri, bool include_system_tables = false) {
     ensure_gdal_initialized();
     CPLErrorReset();
     const char* allowed[] = {"OpenFileGDB", nullptr};
+    const char* list_all_tables[] = {"LIST_ALL_TABLES=YES", nullptr};
     return static_cast<GDALDataset*>(GDALOpenEx(
         uri.c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY,
-        allowed, nullptr, nullptr));
+        allowed, include_system_tables ? list_all_tables : nullptr, nullptr));
+}
+
+OGRLayer* open_gdal_layer_by_path(GDALDataset& dataset,
+                                  std::string_view path,
+                                  std::string_view fallback_name) {
+    if (path.empty() || path.front() != '/') return nullptr;
+    auto group = dataset.GetRootGroup();
+    if (!group) {
+        return path.find('/', 1) == std::string_view::npos
+            ? dataset.GetLayerByName(std::string(fallback_name).c_str())
+            : nullptr;
+    }
+    std::size_t offset = 1;
+    while (offset < path.size()) {
+        const auto next = path.find('/', offset);
+        const auto segment = std::string(path.substr(
+            offset, next == std::string_view::npos
+                        ? path.size() - offset : next - offset));
+        if (next == std::string_view::npos) {
+            return group->OpenVectorLayer(segment);
+        }
+        group = group->OpenGroup(segment);
+        if (!group) return nullptr;
+        offset = next + 1;
+    }
+    return nullptr;
 }
 
 Error gdal_error(ErrorCode code, std::string prefix) {
@@ -640,8 +947,14 @@ LayerSchema freeze_gdal_schema(OGRLayer& layer) {
     if (definition->GetGeomFieldCount() > 0) {
         const OGRGeomFieldDefn* geometry = definition->GetGeomFieldDefn(0);
         schema.geometry_field = 0;
+        const auto geometry_type = geometry->GetType();
         schema.geometry_type =
-            static_cast<std::uint32_t>(geometry->GetType());
+            static_cast<std::uint32_t>(wkbFlatten(geometry_type)) +
+            (OGR_GT_HasZ(geometry_type) && OGR_GT_HasM(geometry_type)
+                ? 3000U
+                : (OGR_GT_HasZ(geometry_type)
+                    ? 1000U
+                    : (OGR_GT_HasM(geometry_type) ? 2000U : 0U)));
         if (geometry->GetSpatialRef() != nullptr) {
             char* wkt = nullptr;
             if (geometry->GetSpatialRef()->exportToWkt(&wkt) == OGRERR_NONE &&
@@ -654,13 +967,42 @@ LayerSchema freeze_gdal_schema(OGRLayer& layer) {
     return schema;
 }
 
+Error load_gdal_layer_schema(
+        const std::shared_ptr<detail::LayerState>& state,
+        FailureKind reason) {
+    std::unique_ptr<GDALDataset, decltype(&GDALClose)> dataset(
+        open_openfilegdb(
+            state->dataset->source.normalized_uri,
+            state->dataset->options.include_system_tables),
+        GDALClose);
+    if (!dataset) {
+        return gdal_error(ErrorCode::OpenFailed,
+                          "OpenFileGDB schema open failed");
+    }
+    CPLErrorReset();
+    OGRLayer* layer = open_gdal_layer_by_path(
+        *dataset, state->path, state->name);
+    if (!layer) {
+        return gdal_error(ErrorCode::LayerNotFound,
+                          "OpenFileGDB schema Layer open failed");
+    }
+    state->schema = freeze_gdal_schema(*layer);
+    state->report.selected = Backend::GdalOpenFileGDB;
+    if (reason != FailureKind::None) {
+        state->report.reason = RouteReason::FastCapabilityGap;
+        state->report.fallback_reason = reason;
+    }
+    return {};
+}
+
 bool schemas_compatible(const LayerSchema& frozen,
                         const LayerSchema& candidate) {
     if (frozen.fields.size() != candidate.fields.size()) return false;
     for (std::size_t i = 0; i < frozen.fields.size(); ++i) {
         const auto& lhs = frozen.fields[i];
         const auto& rhs = candidate.fields[i];
-        if (lhs.name != rhs.name || lhs.type != rhs.type ||
+        if (lhs.name != rhs.name || lhs.alias != rhs.alias ||
+            lhs.type != rhs.type ||
             lhs.nullable != rhs.nullable ||
             lhs.default_value != rhs.default_value ||
             lhs.domain_name != rhs.domain_name) {
@@ -671,8 +1013,7 @@ bool schemas_compatible(const LayerSchema& frozen,
         candidate.geometry_field.has_value()) {
         return false;
     }
-    if (frozen.geometry_type != 0 && candidate.geometry_type != 0 &&
-        frozen.geometry_type != candidate.geometry_type) {
+    if (frozen.geometry_type != candidate.geometry_type) {
         return false;
     }
     if (frozen.srs_wkt == candidate.srs_wkt) return true;
@@ -687,28 +1028,36 @@ bool schemas_compatible(const LayerSchema& frozen,
     return frozen_srs.IsSame(&candidate_srs);
 }
 
-Feature map_gdal_feature(const OGRFeature& source,
-                         const detail::LayerState& state);
+Result<Feature> map_gdal_feature(const OGRFeature& source,
+                                 const detail::LayerState& state);
 
 Result<std::shared_ptr<detail::LayerState>> make_gdal_fallback_state(
         const std::shared_ptr<detail::LayerState>& state,
         FailureKind reason) {
     std::unique_ptr<GDALDataset, decltype(&GDALClose)> dataset(
-        open_openfilegdb(state->dataset->source.normalized_uri), GDALClose);
+        open_openfilegdb(
+            state->dataset->source.normalized_uri,
+            state->dataset->options.include_system_tables),
+        GDALClose);
     if (!dataset) {
         return gdal_error(ErrorCode::OpenFailed,
                           "OpenFileGDB fallback open failed");
     }
     CPLErrorReset();
-    OGRLayer* layer = dataset->GetLayerByName(state->name.c_str());
+    OGRLayer* layer = open_gdal_layer_by_path(
+        *dataset, state->path, state->name);
     if (!layer) {
         return gdal_error(ErrorCode::LayerNotFound,
                           "OpenFileGDB fallback Layer open failed");
     }
     const auto candidate = freeze_gdal_schema(*layer);
     if (!schemas_compatible(state->schema, candidate)) {
-        return make_error(ErrorCode::SchemaMismatch,
-                          "OpenFileGDB fallback schema differs from frozen schema");
+        return make_error(
+            ErrorCode::SchemaMismatch,
+            "OpenFileGDB fallback schema differs from frozen schema "
+            "(geometry types " +
+                std::to_string(state->schema.geometry_type) + " vs " +
+                std::to_string(candidate.geometry_type) + ")");
     }
     auto fallback = std::make_shared<detail::LayerState>(*state);
     fallback->dataset =
@@ -722,13 +1071,17 @@ Result<std::shared_ptr<detail::LayerState>> make_gdal_fallback_state(
 Result<Feature> read_gdal_feature_by_fid(
         const std::shared_ptr<detail::LayerState>& state, Fid fid) {
     std::unique_ptr<GDALDataset, decltype(&GDALClose)> dataset(
-        open_openfilegdb(state->dataset->source.normalized_uri), GDALClose);
+        open_openfilegdb(
+            state->dataset->source.normalized_uri,
+            state->dataset->options.include_system_tables),
+        GDALClose);
     if (!dataset) {
         return gdal_error(ErrorCode::OpenFailed,
                           "OpenFileGDB Dataset open failed");
     }
     CPLErrorReset();
-    OGRLayer* layer = dataset->GetLayerByName(state->name.c_str());
+    OGRLayer* layer = open_gdal_layer_by_path(
+        *dataset, state->path, state->name);
     if (!layer) {
         return gdal_error(ErrorCode::LayerNotFound,
                           "OpenFileGDB Layer open failed");
@@ -740,7 +1093,7 @@ Result<Feature> read_gdal_feature_by_fid(
             return gdal_error(ErrorCode::ReadFailed,
                               "OpenFileGDB feature read failed");
         }
-        return make_error(ErrorCode::ReadFailed, "FID does not exist");
+        return make_error(ErrorCode::FeatureNotFound, "FID does not exist");
     }
     return map_gdal_feature(*feature, *state);
 }
@@ -816,8 +1169,8 @@ Field map_gdal_field(const OGRFeature& source, int index) {
     return field;
 }
 
-Geometry map_gdal_geometry(const OGRFeature& source,
-                           const LayerSchema& schema) {
+Result<Geometry> map_gdal_geometry(const OGRFeature& source,
+                                   const LayerSchema& schema) {
     Geometry result;
     result.srs_wkt = schema.srs_wkt;
     const OGRGeometry* geometry = source.GetGeometryRef();
@@ -836,23 +1189,24 @@ Geometry map_gdal_geometry(const OGRFeature& source,
     result.wkb.resize(size);
     if (geometry->exportToWkb(wkbNDR, result.wkb.data(),
                               wkbVariantIso) != OGRERR_NONE) {
-        result.wkb.clear();
-        result.state = GeometryState::Unset;
-        return result;
+        return make_error(ErrorCode::ReadFailed,
+                          "OpenFileGDB geometry WKB export failed");
     }
     result.state = GeometryState::Value;
     return result;
 }
 
-Feature map_gdal_feature(const OGRFeature& source,
-                         const detail::LayerState& state) {
+Result<Feature> map_gdal_feature(const OGRFeature& source,
+                                 const detail::LayerState& state) {
     Feature feature;
     feature.fid = static_cast<Fid>(source.GetFID());
     feature.fields.reserve(state.schema.fields.size());
     for (int i = 0; i < source.GetFieldCount(); ++i) {
         feature.fields.push_back(map_gdal_field(source, i));
     }
-    feature.geometry = map_gdal_geometry(source, state.schema);
+    auto geometry = map_gdal_geometry(source, state.schema);
+    if (!geometry) return geometry.error();
+    feature.geometry = std::move(geometry).value();
     return feature;
 }
 
@@ -907,23 +1261,28 @@ Result<std::optional<Feature>> next_gdal(detail::CursorState& state) {
     }
     if (auto error = stop_error()) return *error;
     if (state.limit_enabled) --state.remaining_limit;
-    return std::optional<Feature>{
-        map_gdal_feature(*source, *state.layer_state)};
+    auto feature = map_gdal_feature(*source, *state.layer_state);
+    if (!feature) return feature.error();
+    return std::optional<Feature>{std::move(feature).value()};
 }
 
 Result<FeatureCursor> open_gdal_cursor(
         const std::shared_ptr<detail::LayerState>& state,
         const Query& query) {
     auto cursor_state = std::make_unique<detail::CursorState>();
+    cursor_state->cancel_requested = query.cancel_requested;
+    cursor_state->deadline = query.deadline;
     cursor_state->gdal_dataset =
-        open_openfilegdb(state->dataset->source.normalized_uri);
+        open_openfilegdb(
+            state->dataset->source.normalized_uri,
+            state->dataset->options.include_system_tables);
     if (!cursor_state->gdal_dataset) {
         return gdal_error(ErrorCode::OpenFailed,
                           "OpenFileGDB Dataset open failed");
     }
     CPLErrorReset();
-    cursor_state->gdal_layer =
-        cursor_state->gdal_dataset->GetLayerByName(state->name.c_str());
+    cursor_state->gdal_layer = open_gdal_layer_by_path(
+        *cursor_state->gdal_dataset, state->path, state->name);
     if (!cursor_state->gdal_layer) {
         return gdal_error(ErrorCode::LayerNotFound,
                           "OpenFileGDB Layer open failed");
@@ -974,8 +1333,27 @@ Result<FeatureCursor> open_gdal_cursor(
     }
     if (query.order == ResultOrder::FidAscending) {
         CPLErrorReset();
-        while (auto feature = std::unique_ptr<OGRFeature>(
-                   cursor_state->gdal_layer->GetNextFeature())) {
+        while (true) {
+            if (cursor_state->deadline &&
+                std::chrono::steady_clock::now() >=
+                    *cursor_state->deadline) {
+                return make_error(ErrorCode::DeadlineExceeded,
+                                  "OpenFileGDB read deadline exceeded");
+            }
+            if (cursor_state->cancel_requested &&
+                cursor_state->cancel_requested()) {
+                return make_error(ErrorCode::Cancelled,
+                                  "OpenFileGDB read cancelled");
+            }
+            auto feature = std::unique_ptr<OGRFeature>(
+                cursor_state->gdal_layer->GetNextFeature());
+            if (!feature) break;
+            if (cursor_state->ordered_fids.size() >=
+                query.max_ordered_fid_bytes / sizeof(Fid)) {
+                return make_error(
+                    ErrorCode::ResultLimitExceeded,
+                    "ordered FID materialization exceeds byte budget");
+            }
             cursor_state->ordered_fids.push_back(feature->GetFID());
         }
         if (CPLGetLastErrorType() >= CE_Failure) {
@@ -988,10 +1366,9 @@ Result<FeatureCursor> open_gdal_cursor(
     cursor_state->remaining_skip = query.offset;
     cursor_state->remaining_limit = query.limit;
     cursor_state->limit_enabled = query.limit != 0;
-    cursor_state->cancel_requested = query.cancel_requested;
-    cursor_state->deadline = query.deadline;
     cursor_state->layer_state = state;
     cursor_state->report = state->report;
+    cursor_state->consistency = state->dataset->consistency;
     cursor_state->query_report.execution_path =
         query.order == ResultOrder::FidAscending
             ? "gdal/openfilegdb/fid_ascending"
@@ -1069,6 +1446,11 @@ const BackendReport& FeatureCursor::backend_report() const noexcept {
     return state_ ? state_->report : kEmptyBackendReport;
 }
 
+const ConsistencyReport& FeatureCursor::consistency_report() const noexcept {
+    static const ConsistencyReport empty;
+    return state_ ? state_->consistency : empty;
+}
+
 const QueryReport& FeatureCursor::query_report() const noexcept {
     static const QueryReport empty;
     return state_ ? state_->query_report : empty;
@@ -1087,6 +1469,9 @@ const LayerSchema& Layer::schema() const noexcept {
 
 Result<FeatureCursor> Layer::open_cursor(const Query& query) const {
     if (!state_) return make_error(ErrorCode::OpenFailed, "Layer is closed");
+    if (const auto error = validate_public_query(query, state_->schema)) {
+        return error;
+    }
     if (state_->report.selected == Backend::FastGdb) {
 #if defined(FAST_GDB_UNIFIED_WITH_GDAL)
         if (fast_query_has_known_capability_gap(query)) {
@@ -1176,11 +1561,13 @@ Result<Feature> Layer::read_by_fid(Fid fid) const {
         auto next = cursor.next();
         if (!next) return next.error();
         if (!next.value()) {
-            return make_error(ErrorCode::ReadFailed, "FID does not exist");
+            return make_error(ErrorCode::FeatureNotFound,
+                              "FID does not exist");
         }
         if (next.value()->fid == fid) return std::move(*next.value());
         if (next.value()->fid > fid) {
-            return make_error(ErrorCode::ReadFailed, "FID does not exist");
+            return make_error(ErrorCode::FeatureNotFound,
+                              "FID does not exist");
         }
     }
 }
@@ -1260,9 +1647,8 @@ Result<CapabilityReport> Layer::capabilities() const {
 
 Result<QueryPlan> Layer::explain(const Query& query) const {
     if (!state_) return make_error(ErrorCode::OpenFailed, "Layer is closed");
-    if (query.attribute_filter.size() > 64U * 1024U) {
-        return make_error(ErrorCode::Unsupported,
-                          "attribute filter exceeds 64 KiB");
+    if (const auto error = validate_public_query(query, state_->schema)) {
+        return error;
     }
     QueryPlan plan;
     plan.backend = state_->report.selected;
@@ -1309,24 +1695,54 @@ Result<FastNativeFeature> FastLayerExtensions::read_native_by_fid(
         return make_error(ErrorCode::Unsupported,
                           "FID cannot be mapped to a fast row slot");
     }
+    auto lease_result = acquire_fast_reader_lease(
+        state_->dataset->source.normalized_uri);
+    if (!lease_result) return lease_result.error();
+    auto lease = std::move(lease_result).value();
     explorgdb::ReaderError status;
     auto reader = explorgdb::Reader::open(
         state_->dataset->source.normalized_uri, {}, &status);
     if (!reader) return reader_error(status);
     auto layer = reader->open_layer(state_->name, &status);
     if (!layer) return reader_error(status);
-    explorgdb::FeatureRecord record;
+    std::uint64_t descriptor_bytes = sizeof(FastNativeFeature);
+    for (const auto& source : layer->fields()) {
+        const auto physical_type = explorgdb::field_type_name(source.type);
+        const auto payload = static_cast<std::uint64_t>(source.name.size()) +
+                             std::strlen(physical_type) +
+                             source.default_value_raw.size();
+        const auto fixed = sizeof(NativeFieldDescriptor);
+        const auto maximum = std::numeric_limits<std::uint64_t>::max();
+        if (fixed > maximum - descriptor_bytes ||
+            payload > maximum - descriptor_bytes - fixed) {
+            return make_error(ErrorCode::ResultLimitExceeded,
+                              "native descriptor size overflow");
+        }
+        descriptor_bytes += fixed + payload;
+    }
+    if (descriptor_bytes > limits.max_materialized_bytes) {
+        return make_error(ErrorCode::ResultLimitExceeded,
+                          "native descriptors exceed byte limit");
+    }
+    const auto raw_budget = std::min(
+        limits.max_raw_bytes,
+        limits.max_materialized_bytes - descriptor_bytes);
+    const auto bounded_raw_budget = static_cast<std::size_t>(
+        std::min<std::uint64_t>(
+            raw_budget, std::numeric_limits<std::size_t>::max()));
     FastNativeFeature feature;
     feature.fid = fid;
     feature.row_slot = static_cast<std::uint32_t>(fid - 1);
+    bool limit_exceeded = false;
     if (!layer->read_raw_by_fid(
-            feature.row_slot, record, feature.raw_record)) {
+            feature.row_slot, feature.raw_record, bounded_raw_budget,
+            &limit_exceeded)) {
+        if (limit_exceeded) {
+            return make_error(ErrorCode::ResultLimitExceeded,
+                              "native raw record exceeds byte limit");
+        }
         return make_error(ErrorCode::ReadFailed,
                           "native FileGDB record read failed");
-    }
-    if (feature.raw_record.size() > limits.max_raw_bytes) {
-        return make_error(ErrorCode::ResultLimitExceeded,
-                          "native raw record exceeds byte limit");
     }
     feature.descriptors.reserve(layer->fields().size());
     for (const auto& source : layer->fields()) {
@@ -1355,10 +1771,19 @@ Result<Dataset> Dataset::open(std::string uri, OpenOptions options) {
     const auto routed = route(
         {source, options.backend, true, FailureKind::None, gdal_available});
     if (!routed) return routed.error;
+    std::optional<explorgdb::FastReaderLease> metadata_lease;
+    if (routed.report.selected == Backend::FastGdb) {
+        auto lease = acquire_fast_reader_lease(source.normalized_uri);
+        if (!lease) return lease.error();
+        metadata_lease.emplace(std::move(lease).value());
+    }
     auto state = std::make_shared<detail::DatasetState>();
     state->source = std::move(source);
     state->options = options;
     state->report = routed.report;
+    if (metadata_lease) {
+        state->consistency.generation = metadata_lease->generation();
+    }
     state->consistency.consistency =
         state->source.kind == SourceKind::LocalFileGdb
             ? Consistency::LocalSnapshot
@@ -1375,7 +1800,10 @@ Result<Dataset> Dataset::open(std::string uri, OpenOptions options) {
     } else {
 #if defined(FAST_GDB_UNIFIED_WITH_GDAL)
         std::unique_ptr<GDALDataset, decltype(&GDALClose)> dataset(
-            open_openfilegdb(state->source.normalized_uri), GDALClose);
+            open_openfilegdb(
+                state->source.normalized_uri,
+                options.include_system_tables),
+            GDALClose);
         if (!dataset) {
             return gdal_error(ErrorCode::OpenFailed,
                               "OpenFileGDB Dataset open failed");
@@ -1421,49 +1849,39 @@ Result<std::vector<std::string>> Dataset::layer_names() const {
 
 Result<Layer> Dataset::open_layer(std::string_view name) const {
     if (!state_) return make_error(ErrorCode::OpenFailed, "Dataset is closed");
-    const auto paths = state_->paths_by_name.find(std::string(name));
-    if (paths == state_->paths_by_name.end()) {
+    std::optional<explorgdb::FastReaderLease> metadata_lease;
+    if (state_->report.selected == Backend::FastGdb) {
+        auto lease =
+            acquire_fast_reader_lease(state_->source.normalized_uri);
+        if (!lease) return lease.error();
+        metadata_lease.emplace(std::move(lease).value());
+    }
+    std::vector<std::pair<std::string, const std::vector<std::string>*>>
+        matches;
+    const auto exact = state_->paths_by_name.find(std::string(name));
+    if (exact != state_->paths_by_name.end()) {
+        matches.push_back({exact->first, &exact->second});
+    } else {
+        for (const auto& candidate : state_->paths_by_name) {
+            if (ascii_equal(candidate.first, name)) {
+                matches.push_back({candidate.first, &candidate.second});
+            }
+        }
+    }
+    if (matches.empty()) {
         return make_error(ErrorCode::LayerNotFound, "Layer does not exist");
     }
-    if (paths->second.size() > 1) {
+    std::size_t path_count = 0;
+    for (const auto& match : matches) path_count += match.second->size();
+    if (path_count > 1) {
         return make_error(ErrorCode::AmbiguousLayer, "Layer name is ambiguous");
     }
-    const std::string selected_name(name);
+    const std::string selected_name = matches.front().first;
     auto layer_state = std::make_shared<detail::LayerState>();
     layer_state->dataset = state_;
     layer_state->name = selected_name;
-    layer_state->path = paths->second.front();
+    layer_state->path = matches.front().second->front();
     layer_state->report = state_->report;
-#if defined(FAST_GDB_UNIFIED_WITH_GDAL)
-    const auto use_gdal_schema =
-        [&](FailureKind reason) -> Error {
-            std::unique_ptr<GDALDataset, decltype(&GDALClose)> dataset(
-                open_openfilegdb(state_->source.normalized_uri),
-                GDALClose);
-            if (!dataset) {
-                return gdal_error(
-                    ErrorCode::OpenFailed,
-                    "OpenFileGDB schema open failed");
-            }
-            CPLErrorReset();
-            OGRLayer* layer =
-                dataset->GetLayerByName(selected_name.c_str());
-            if (!layer) {
-                return gdal_error(
-                    ErrorCode::LayerNotFound,
-                    "OpenFileGDB schema Layer open failed");
-            }
-            layer_state->schema = freeze_gdal_schema(*layer);
-            layer_state->report.selected =
-                Backend::GdalOpenFileGDB;
-            if (reason != FailureKind::None) {
-                layer_state->report.reason =
-                    RouteReason::FastCapabilityGap;
-                layer_state->report.fallback_reason = reason;
-            }
-            return {};
-        };
-#endif
     if (state_->report.selected == Backend::FastGdb) {
         explorgdb::ReaderError status;
         auto reader = explorgdb::Reader::open(
@@ -1475,7 +1893,8 @@ Result<Layer> Dataset::open_layer(std::string_view name) const {
             if (status.status ==
                     explorgdb::ReaderStatus::FidRangeUnsupported &&
                 state_->options.backend == BackendPreference::Auto) {
-                if (auto error = use_gdal_schema(
+                if (auto error = load_gdal_layer_schema(
+                        layer_state,
                         FailureKind::UnsupportedFid)) {
                     return error;
                 }
@@ -1494,7 +1913,8 @@ Result<Layer> Dataset::open_layer(std::string_view name) const {
             } else if (state_->options.backend ==
                        BackendPreference::Auto) {
                 layer_state->source_field_indices.clear();
-                if (auto error = use_gdal_schema(
+                if (auto error = load_gdal_layer_schema(
+                        layer_state,
                         FailureKind::CapabilityGap)) {
                     return error;
                 }
@@ -1505,7 +1925,8 @@ Result<Layer> Dataset::open_layer(std::string_view name) const {
         }
     } else {
 #if defined(FAST_GDB_UNIFIED_WITH_GDAL)
-        if (auto error = use_gdal_schema(FailureKind::None)) {
+        if (auto error = load_gdal_layer_schema(
+                layer_state, FailureKind::None)) {
             return error;
         }
 #else
@@ -1518,22 +1939,58 @@ Result<Layer> Dataset::open_layer(std::string_view name) const {
 
 Result<Layer> Dataset::open_layer_by_path(std::string_view path) const {
     if (!state_) return make_error(ErrorCode::OpenFailed, "Dataset is closed");
-    if (path.empty() || path.front() != '/' ||
-        path.find('\0') != std::string_view::npos ||
-        path.find("..") != std::string_view::npos) {
+    if (!valid_canonical_path(path)) {
         return make_error(ErrorCode::InvalidUri, "invalid canonical layer path");
     }
-    const auto canonical = canonical_path(std::string(path));
-    const auto name = path_name(canonical);
-    const auto paths = state_->paths_by_name.find(name);
-    if (paths == state_->paths_by_name.end() ||
-        std::find(paths->second.begin(), paths->second.end(), canonical) ==
-            paths->second.end()) {
+    const std::string canonical(path);
+    std::vector<std::pair<std::string, std::string>> matches;
+    for (const auto& named_paths : state_->paths_by_name) {
+        for (const auto& candidate : named_paths.second) {
+            if (candidate == canonical) {
+                matches.push_back({named_paths.first, candidate});
+            }
+        }
+    }
+    if (matches.empty()) {
+        for (const auto& named_paths : state_->paths_by_name) {
+            for (const auto& candidate : named_paths.second) {
+                if (ascii_equal(candidate, canonical)) {
+                    matches.push_back({named_paths.first, candidate});
+                }
+            }
+        }
+    }
+    if (matches.empty()) {
         return make_error(ErrorCode::LayerNotFound,
                           "Layer path does not exist");
     }
+    if (matches.size() > 1) {
+        return make_error(ErrorCode::AmbiguousLayer,
+                          "Layer path is ambiguous");
+    }
+    const auto& name = matches.front().first;
+    const auto& selected_path = matches.front().second;
     auto selected = std::make_shared<detail::DatasetState>(*state_);
-    selected->paths_by_name[name] = {canonical};
+    selected->paths_by_name[name] = {selected_path};
+    const auto original = state_->paths_by_name.find(name);
+    if (state_->report.selected == Backend::FastGdb &&
+        original != state_->paths_by_name.end() &&
+        original->second.size() > 1) {
+        if (state_->options.backend == BackendPreference::FastOnly) {
+            return make_error(
+                ErrorCode::Unsupported,
+                "duplicate layer names require OpenFileGDB path resolution");
+        }
+#if defined(FAST_GDB_UNIFIED_WITH_GDAL)
+        selected->report.selected = Backend::GdalOpenFileGDB;
+        selected->report.reason = RouteReason::FastCapabilityGap;
+        selected->report.fallback_reason = FailureKind::CapabilityGap;
+#else
+        return make_error(
+            ErrorCode::BackendUnavailable,
+            "duplicate layer names require OpenFileGDB path resolution");
+#endif
+    }
     return Dataset(std::move(selected)).open_layer(name);
 }
 
@@ -1575,10 +2032,26 @@ Result<std::vector<LayerInfo>> Group::layers() const {
 
 Result<Group> Group::open_group(std::string_view name) const {
     if (!state_) return make_error(ErrorCode::OpenFailed, "Group is closed");
-    const auto found = std::find_if(
+    const GroupInfo* found = nullptr;
+    const auto exact = std::find_if(
         state_->groups.begin(), state_->groups.end(),
-        [name](const GroupInfo& group) { return group.name == name; });
-    if (found == state_->groups.end()) {
+        [name](const GroupInfo& group) {
+            return group.name == name;
+        });
+    if (exact != state_->groups.end()) {
+        found = &*exact;
+    } else {
+        for (const auto& group : state_->groups) {
+            if (!ascii_equal(group.name, name)) continue;
+            if (found != nullptr) {
+                return make_error(
+                    ErrorCode::AmbiguousLayer,
+                    "Group name is ambiguous under ASCII case folding");
+            }
+            found = &group;
+        }
+    }
+    if (found == nullptr) {
         return make_error(ErrorCode::LayerNotFound, "Group does not exist");
     }
     auto child = std::make_shared<detail::GroupState>();

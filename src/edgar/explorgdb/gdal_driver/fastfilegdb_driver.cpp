@@ -17,6 +17,11 @@ namespace {
 
 namespace unified = fast_gdb::unified;
 
+const char* backend(unified::Backend value) {
+    return value == unified::Backend::FastGdb
+        ? "fast-gdb" : "OpenFileGDB";
+}
+
 const char* route_reason(unified::RouteReason reason) {
     switch (reason) {
         case unified::RouteReason::ExplicitFast: return "explicit-fast";
@@ -109,6 +114,9 @@ public:
             if (field.default_value) {
                 target.SetDefault(field.default_value->c_str());
             }
+            if (field.domain_name) {
+                target.SetDomainName(field.domain_name->c_str());
+            }
             definition_->AddFieldDefn(&target);
         }
         if (layer_.schema().geometry_field) {
@@ -127,6 +135,8 @@ public:
             definition_->AddGeomFieldDefn(&geometry);
         }
         SetDescription(definition_->GetName());
+        SetMetadataItem("FAST_GDB_BACKEND",
+                        backend(layer_.backend_report().selected));
         SetMetadataItem("FAST_GDB_ROUTE_REASON",
                         route_reason(layer_.backend_report().reason));
         SetMetadataItem("FAST_GDB_CONSISTENCY",
@@ -162,8 +172,11 @@ public:
             }
             if (!next.value()) return nullptr;
             auto feature = to_ogr(*next.value());
-            if (feature != nullptr &&
-                (m_poFilterGeom == nullptr ||
+            if (!feature) {
+                cursor_error_ = "feature materialization failed";
+                return nullptr;
+            }
+            if ((m_poFilterGeom == nullptr ||
                  FilterGeometry(feature->GetGeometryRef())) &&
                 (m_poAttrQuery == nullptr ||
                  m_poAttrQuery->Evaluate(feature.get()))) {
@@ -174,7 +187,13 @@ public:
 
     OGRFeature* GetFeature(GIntBig fid) override {
         auto result = layer_.read_by_fid(static_cast<unified::Fid>(fid));
-        if (!result) return nullptr;
+        if (!result) {
+            if (result.error().code != unified::ErrorCode::FeatureNotFound) {
+                CPLError(CE_Failure, CPLE_AppDefined, "%s",
+                         result.error().message.c_str());
+            }
+            return nullptr;
+        }
         return to_ogr(result.value()).release();
     }
 
@@ -236,6 +255,10 @@ public:
                    std::unique_ptr<OGRFeature>(GetNextFeature())) {
             ++count;
         }
+        if (!cursor_error_.empty()) {
+            ResetReading();
+            return -1;
+        }
         ResetReading();
         return count;
     }
@@ -272,6 +295,15 @@ private:
             return false;
         }
         cursor_.emplace(std::move(result).value());
+        SetMetadataItem(
+            "FAST_GDB_BACKEND",
+            backend(cursor_->backend_report().selected));
+        SetMetadataItem(
+            "FAST_GDB_ROUTE_REASON",
+            route_reason(cursor_->backend_report().reason));
+        SetMetadataItem(
+            "FAST_GDB_CONSISTENCY",
+            consistency(cursor_->consistency_report().consistency));
         return true;
     }
 
@@ -288,13 +320,33 @@ private:
         if (source.geometry.state == unified::GeometryState::Value ||
             source.geometry.state == unified::GeometryState::Empty) {
             OGRGeometry* geometry = nullptr;
-            if (!source.geometry.wkb.empty() &&
-                OGRGeometryFactory::createFromWkb(
+            if (!source.geometry.wkb.empty()) {
+                if (OGRGeometryFactory::createFromWkb(
                     source.geometry.wkb.data(), spatial_reference_.get(),
                     &geometry, source.geometry.wkb.size(),
-                    wkbVariantIso) == OGRERR_NONE) {
-                target->SetGeometryDirectly(geometry);
+                    wkbVariantIso) != OGRERR_NONE) {
+                    CPLError(CE_Failure, CPLE_AppDefined,
+                             "FastFileGDB geometry WKB is invalid");
+                    return nullptr;
+                }
+            } else if (source.geometry.state ==
+                       unified::GeometryState::Empty) {
+                geometry = OGRGeometryFactory::createGeometry(
+                    static_cast<OGRwkbGeometryType>(
+                        source.geometry.type != 0
+                            ? source.geometry.type
+                            : layer_.schema().geometry_type));
+                if (geometry != nullptr && spatial_reference_) {
+                    geometry->assignSpatialReference(
+                        spatial_reference_.get());
+                }
             }
+            if (geometry == nullptr) {
+                CPLError(CE_Failure, CPLE_AppDefined,
+                         "FastFileGDB geometry materialization failed");
+                return nullptr;
+            }
+            target->SetGeometryDirectly(geometry);
         }
         return target;
     }
@@ -421,9 +473,7 @@ public:
             });
         SetDescription("FastFileGDB");
         SetMetadataItem("FAST_GDB_BACKEND",
-            dataset_.backend_report().selected ==
-                    unified::Backend::FastGdb
-                ? "fast-gdb" : "OpenFileGDB");
+                        backend(dataset_.backend_report().selected));
         SetMetadataItem("FAST_GDB_RUNTIME_VERSION",
                         FAST_GDB_RUNTIME_VERSION);
         SetMetadataItem("FAST_GDB_ROUTE_REASON",
