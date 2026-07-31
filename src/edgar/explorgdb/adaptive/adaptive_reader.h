@@ -16,9 +16,9 @@
 // 当 unified runtime 启用时，协调类由 fast_gdb_runtime.dll 导出；
 // 静态库模式（FAST_GDB_BUILD_UNIFIED=OFF）则不需要 DLL 修饰。
 // 此宏确保两种模式下均正确链接。
-#ifdef FAST_GDB_RUNTIME_BUILD
+#if defined(_WIN32) && defined(FAST_GDB_RUNTIME_BUILD)
 #  define EXPLORGDB_ADAPTIVE_API __declspec(dllexport)
-#elif defined(FAST_GDB_RUNTIME_API)
+#elif defined(_WIN32) && defined(FAST_GDB_RUNTIME_API)
 #  define EXPLORGDB_ADAPTIVE_API FAST_GDB_RUNTIME_API
 #else
 #  define EXPLORGDB_ADAPTIVE_API
@@ -92,10 +92,25 @@ public:
     FastReaderLease& operator=(const FastReaderLease&) = delete;
     ~FastReaderLease();
 
+    /** 判断租约是否仍计入活动 Reader。
+     * @return 租约有效时返回 true。
+     */
     bool valid() const noexcept { return counted_; }
+    /** 获取租约创建时的源代次。
+     * @return generation 快照值。
+     */
     uint64_t generation() const noexcept { return generation_; }
+    /** 判断租约在安全检查点是否已过期。
+     * @return 源代次变化或租约失效时返回 true。
+     */
     bool expired_at_safe_point() const;
+    /** 判断租约期间是否观察到 WriterPending。
+     * @return 观察到待写状态时返回 true。
+     */
     bool writer_pending_observed() const;
+    /** 释放活动 Reader 计数。
+     * @return 无返回值；重复调用安全。
+     */
     void release();
 
 private:
@@ -143,13 +158,35 @@ public:
     ExternalUpdateToken& operator=(const ExternalUpdateToken&) = delete;
     ~ExternalUpdateToken();
 
+    /** 判断令牌是否仍绑定到有效协调状态。
+     * @return 令牌有效时返回 true。
+     */
     bool valid() const noexcept;
+    /** 判断外部更新是否处于 Pending 阶段。
+     * @return 处于 Pending 时返回 true。
+     */
     bool pending() const noexcept;
+    /** 判断外部更新是否处于 Active 阶段。
+     * @return 处于 Active 时返回 true。
+     */
     bool active() const noexcept;
+    /** 获取协调令牌 ID。
+     * @return 可用于恢复关闭报告的令牌 ID。
+     */
     uint64_t coordination_id() const noexcept { return token_id_; }
 
+    /** 通知协调器外部 update Dataset 已打开。
+     * @return 状态转换结果。
+     */
     CoordinationStatus notify_update_opened();
+    /** 在真正打开 Dataset 前取消 Pending 更新。
+     * @return 状态转换结果。
+     */
     CoordinationStatus cancel_before_update();
+    /** 通知协调器外部 update Dataset 已关闭。
+     * @param close_succeeded 是否已确认 Dataset 成功关闭。
+     * @return 状态转换结果。
+     */
     CoordinationStatus notify_update_closed(bool close_succeeded);
 
 private:
@@ -195,8 +232,17 @@ class EXPLORGDB_ADAPTIVE_API InProcessGdbCoordinator {
 public:
     InProcessGdbCoordinator();
 
+    /** 尝试为本地 fast Reader 获取活动租约。
+     * @param gdb_path 待读取的 GDB 路径。
+     * @return 成功时返回有效租约；Writer 活动或路径无效时返回无效租约。
+     */
     FastReaderLease try_acquire_fast_reader(const std::string& gdb_path) const;
 
+    /** 为外部 GDAL update 准备协调令牌并等待 Reader 排空。
+     * @param gdb_path 待更新的 GDB 路径。
+     * @param drain_timeout 等待活动 Reader 退出的最长时间。
+     * @return 包含状态、令牌、活动 Reader 数和等待耗时的结果。
+     */
     PrepareExternalUpdateResult prepare_external_update(
         const std::string& gdb_path,
         std::chrono::milliseconds drain_timeout) const;
@@ -208,13 +254,27 @@ public:
      * generation 失效一次，但保持 WriterActive 并阻断 fast Reader 与新 Writer；
      * 只有同一 id 后续报告 true 才会清除 Active 并恢复 Verified fast 读取。
      */
+    /** 报告丢失令牌的外部更新已关闭。
+     * @param gdb_path 外部更新对应的 GDB 路径。
+     * @param coordination_id 打开更新前保存的协调 ID。
+     * @param close_succeeded 是否已确认数据集关闭。
+     * @return 状态转换结果。
+     */
     CoordinationStatus notify_external_update_closed(
         const std::string& gdb_path,
         uint64_t coordination_id,
         bool close_succeeded) const;
 
+    /** 获取指定路径的协调状态快照。
+     * @param gdb_path 要检查的 GDB 路径。
+     * @return 当前状态、代次和活动 Reader 数。
+     */
     CoordinatedSourceState state(const std::string& gdb_path) const;
 
+    /** 规范化 GDB 路径以统一协调键。
+     * @param gdb_path 原始路径。
+     * @return 规范化后的绝对路径文本。
+     */
     static std::string normalize_path(const std::string& gdb_path);
 
 private:
@@ -234,8 +294,20 @@ struct BackendReadResult {
     BackendFailureKind failure = BackendFailureKind::Read;
     std::string error;
 
+    /** 构造成功的后端读取结果。
+     * @param result 已物化的查询结果。
+     * @return 标记为成功的结果对象。
+     */
     static BackendReadResult success(QueryResult result);
+    /** 构造后端打开失败结果。
+     * @param error 打开失败信息。
+     * @return 标记为 Open 失败的结果对象。
+     */
     static BackendReadResult open_failure(std::string error);
+    /** 构造后端读取失败结果。
+     * @param error 读取失败信息。
+     * @return 标记为 Read 失败的结果对象。
+     */
     static BackendReadResult read_failure(std::string error);
 };
 
@@ -271,13 +343,29 @@ public:
     AdaptiveFeatureCursor& operator=(const AdaptiveFeatureCursor&) = delete;
     ~AdaptiveFeatureCursor();
 
+    /** 读取下一条后端结果。
+     * @param feature 接收查询要素的输出对象。
+     * @return 成功读取时返回 true，正常结束或失败时返回 false。
+     */
     bool next(QueryFeature& feature);
+    /** 判断游标是否已经结束。
+     * @return 已结束时返回 true。
+     */
     bool done() const noexcept { return done_; }
+    /** 获取自适应读取状态。
+     * @return 当前读取状态。
+     */
     AdaptiveReadStatus status() const noexcept { return status_; }
+    /** 获取实际使用的后端。
+     * @return fast、GDAL 或无后端标识。
+     */
     AdaptiveReadBackend backend() const noexcept { return backend_; }
     AdaptiveReadConsistency consistency() const noexcept {
         return consistency_;
     }
+    /** 获取游标错误信息。
+     * @return 错误文本的只读引用；正常结束时为空。
+     */
     const std::string& error() const noexcept { return error_; }
 
 private:
@@ -315,6 +403,14 @@ public:
     using CursorFactory =
         std::function<BackendCursor(const QueryRequest& request)>;
 
+    /** 创建自适应读取会话。
+     * @param coordinator 负责路径状态和 Reader 租约的协调器。
+     * @param gdb_path GDB 数据源路径。
+     * @param fast_executor fast Reader 查询执行器。
+     * @param gdal_executor 官方 GDAL 查询执行器。
+     * @param fast_cursor_factory 可选 fast 游标工厂。
+     * @param gdal_cursor_factory 可选 GDAL 游标工厂。
+     */
     AdaptiveReadSession(InProcessGdbCoordinator coordinator,
                         std::string gdb_path,
                         ReadExecutor fast_executor,
@@ -322,10 +418,20 @@ public:
                         CursorFactory fast_cursor_factory = {},
                         CursorFactory gdal_cursor_factory = {});
 
+    /** 按并发策略路由并执行一次查询。
+     * @param request 查询请求。
+     * @param policy 源忙时的路由策略。
+     * @return 后端、状态、一致性和查询结果。
+     */
     AdaptiveReadResult read(
         const QueryRequest& request,
         ConcurrentReadPolicy policy = ConcurrentReadPolicy::SourceBusy) const;
 
+    /** 按并发策略创建自适应流式游标。
+     * @param request 查询请求。
+     * @param policy 源忙时的路由策略。
+     * @return 自适应游标；无法打开时返回失败游标。
+     */
     AdaptiveFeatureCursor open_cursor(
         const QueryRequest& request,
         ConcurrentReadPolicy policy = ConcurrentReadPolicy::SourceBusy) const;

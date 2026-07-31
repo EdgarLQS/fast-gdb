@@ -51,6 +51,10 @@ enum class FieldType : uint8_t {
 };
 
 // 获取字段类型的人类可读名称（用于 CLI 输出和日志）
+/** 获取字段类型的稳定文本名称。
+ * @param t 字段类型枚举值。
+ * @return 指向静态文本的指针，未知类型返回占位名称。
+ */
 const char* field_type_name(FieldType t);
 
 // ────────────────────────────────────────────────

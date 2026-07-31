@@ -18,6 +18,10 @@ namespace explorgdb {
  * @param ole_date OLE DATE double 值。
  * @return 对应的 UTC system_clock 时间点。
  */
+/** 将 OLE Automation 日期转换为系统时间点。
+ * @param ole_date OLE 日期数值，整数部分表示天数，小数部分表示当天时间。
+ * @return 对应的系统时间点。
+ */
 std::chrono::system_clock::time_point ole_to_timepoint(double ole_date);
 
 /**
@@ -36,12 +40,24 @@ std::string ole_to_string(double ole_date,
                           bool time_only);
 
 /** 格式化完整日期时间。 */
+/** 将 OLE 日期格式化为日期时间字符串。
+ * @param ole_date OLE 日期数值。
+ * @return 本地化日期时间文本。
+ */
 std::string ole_datetime(double ole_date);
 
 /** 仅格式化日期部分。 */
+/** 将 OLE 日期格式化为仅包含日期的字符串。
+ * @param ole_date OLE 日期数值。
+ * @return 日期文本。
+ */
 std::string ole_date_only(double ole_date);
 
 /** 仅格式化时间部分。 */
+/** 将 OLE 日期格式化为仅包含时间的字符串。
+ * @param ole_date OLE 日期数值。
+ * @return 时间文本。
+ */
 std::string ole_time_only(double ole_date);
 
 } // namespace explorgdb

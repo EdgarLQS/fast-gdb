@@ -1,3 +1,6 @@
+// 文件说明：fast-gdb 源码实现。
+// 实现职责：承载对应模块的内部逻辑，具体接口和边界以头文件及项目文档为准。
+
 #ifndef EXPLORGDB_ADAPTIVE_BACKEND_INTERNAL_INC
 #define EXPLORGDB_ADAPTIVE_BACKEND_INTERNAL_INC
 

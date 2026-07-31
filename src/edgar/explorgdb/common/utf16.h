@@ -20,6 +20,11 @@ namespace explorgdb {
  * @param char_count 可读取的 16-bit 代码单元数量。
  * @return UTF-8 字符串。
  */
+/** 将 UTF-16LE 字节序列转换为 UTF-8 字符串。
+ * @param data UTF-16LE 数据首地址。
+ * @param char_count UTF-16 代码单元数量。
+ * @return 转换后的 UTF-8 字符串；非法序列按实现策略替换或截断。
+ */
 std::string utf16le_to_utf8(const uint8_t* data, int char_count);
 
 /**
@@ -30,6 +35,10 @@ std::string utf16le_to_utf8(const uint8_t* data, int char_count);
  *
  * @param str UTF-8 输入。
  * @return UTF-16 代码单元序列。
+ */
+/** 将 UTF-8 字符串转换为 UTF-16 字符串。
+ * @param str 待转换的 UTF-8 字符串。
+ * @return 转换后的 UTF-16 字符串。
  */
 std::u16string utf8_to_utf16(const std::string& str);
 

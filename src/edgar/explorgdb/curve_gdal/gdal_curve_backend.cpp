@@ -278,6 +278,7 @@ GdalSpatialResult GdalCurveBackendBridge::intersects_bbox(
     return result;
 }
 
+// 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 void GdalCurveBackendBridge::clear_thread_cache() {
     g_cache.clear();
 }

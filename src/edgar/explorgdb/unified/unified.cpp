@@ -1,3 +1,6 @@
+// 文件说明：fast-gdb 源码实现。
+// 实现职责：承载对应模块的内部逻辑，具体接口和边界以头文件及项目文档为准。
+
 #include "unified.h"
 
 #include "ole_date.h"
@@ -1396,6 +1399,8 @@ FeatureCursor::FeatureCursor(FeatureCursor&&) noexcept = default;
 FeatureCursor& FeatureCursor::operator=(FeatureCursor&&) noexcept = default;
 FeatureCursor::~FeatureCursor() = default;
 
+// 方法实现：具体用途、参数和返回值契约见对应头文件或本文件声明。
+// 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 Result<std::optional<Feature>> FeatureCursor::next() {
     if (!state_ || state_->closed) return std::optional<Feature>{};
     if (state_->deadline &&
@@ -1764,6 +1769,8 @@ Result<FastNativeFeature> FastLayerExtensions::read_native_by_fid(
 Dataset::Dataset(std::shared_ptr<detail::DatasetState> state)
     : state_(std::move(state)) {}
 
+// 方法实现：具体用途、参数和返回值契约见对应头文件或本文件声明。
+// 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 Result<Dataset> Dataset::open(std::string uri, OpenOptions options) {
     Source source;
     if (auto error = parse_source(uri, source)) return error;

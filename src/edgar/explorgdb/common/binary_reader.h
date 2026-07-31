@@ -39,61 +39,134 @@ struct uint48_t { uint64_t value; };  // 6 字节无符号，小端读取
 class BinaryReader {
 public:
     // 从 vector 构造（常用方式，文件数据加载到 vector 后传入）
+    /** 创建不拥有底层 vector 的二进制读取视图。
+     * @param data 待读取的字节数组；其生命周期必须覆盖读取器。
+     */
     explicit BinaryReader(const std::vector<uint8_t>& data)
         : data_(data.data()), size_(data.size()), pos_(0) {}
 
     // 从原始指针构造（用于切片视图，如解析记录时从中间偏移开始）
+    /** 创建不拥有原始缓冲区的二进制读取视图。
+     * @param data 缓冲区首地址。
+     * @param size 缓冲区长度，单位为字节。
+     */
     explicit BinaryReader(const uint8_t* data, size_t size)
         : data_(data), size_(size), pos_(0) {}
 
     // ── 基本类型读取（小端有序） ──
 
-    uint8_t  read_u8();   // 读取 1 字节无符号
-    uint16_t read_u16();  // 读取 2 字节无符号，LE：byte0 | (byte1 << 8)
-    uint32_t read_u32();  // 读取 4 字节无符号，LE
-    uint64_t read_u64();  // 读取 8 字节无符号，LE
-    uint40_t read_u40();  // 读取 5 字节无符号，用于 .gdbtablx 5 字节偏移
-    uint48_t read_u48();  // 读取 6 字节无符号，用于 .gdbtablx 6 字节偏移
-    int16_t  read_i16();  // 读取 2 字节有符号（位模式相同，reinterpret）
-    int32_t  read_i32();  // 读取 4 字节有符号
-    int64_t  read_i64();  // 读取 8 字节有符号
-    float    read_f32();  // 读取 IEEE 754 单精度浮点
-    double   read_f64();  // 读取 IEEE 754 双精度浮点
+    /** 读取一个无符号字节。
+     * @return 当前字节并前进 1 字节。
+     */
+    uint8_t  read_u8();
+    /** 读取小端序 16 位无符号整数。
+     * @return 解码后的整数。
+     */
+    uint16_t read_u16();
+    /** 读取小端序 32 位无符号整数。
+     * @return 解码后的整数。
+     */
+    uint32_t read_u32();
+    /** 读取小端序 64 位无符号整数。
+     * @return 解码后的整数。
+     */
+    uint64_t read_u64();
+    /** 读取 5 字节小端无符号整数。
+     * @return 包含 40 位值的结果。
+     */
+    uint40_t read_u40();
+    /** 读取 6 字节小端无符号整数。
+     * @return 包含 48 位值的结果。
+     */
+    uint48_t read_u48();
+    /** 读取小端序 16 位有符号整数。
+     * @return 解码后的整数。
+     */
+    int16_t  read_i16();
+    /** 读取小端序 32 位有符号整数。
+     * @return 解码后的整数。
+     */
+    int32_t  read_i32();
+    /** 读取小端序 64 位有符号整数。
+     * @return 解码后的整数。
+     */
+    int64_t  read_i64();
+    /** 读取 IEEE 754 单精度浮点数。
+     * @return 解码后的浮点值。
+     */
+    float    read_f32();
+    /** 读取 IEEE 754 双精度浮点数。
+     * @return 解码后的浮点值。
+     */
+    double   read_f64();
 
     // ── 字符串和变长编码读取 ──
 
     // 读取 UTF-16LE 编码的字符串并转为 UTF-8
     // char_count 是字符个数，不是字节数（每字符 2 字节）
+    /** 读取 UTF-16LE 文本并转换为 UTF-8。
+     * @param char_count UTF-16 字符数量，不是字节数。
+     * @return UTF-8 字符串。
+     */
     std::string read_utf16(int char_count);
 
     // 读取无符号 VarInt（7-bit 数据/字节，bit 7 = 延续标志）
     // 编码示例：0 → [0x00], 127 → [0x7F], 128 → [0x80, 0x01]
+    /** 读取无符号 Varuint。
+     * @return 解码后的无符号整数。
+     */
     uint64_t    read_varuint();
 
     // 读取有符号 VarInt（bit 6 = 符号位，首字节 6-bit 数据）
     // 编码示例：0 → [0x00], +1 → [0x02], -1 → [0x03]
+    /** 读取有符号 Varint。
+     * @return 解码后的有符号整数。
+     */
     int64_t     read_varint();
 
     // 读取 n 个原始字节（用于位图、flags 等不需要类型解释的数据）
+    /** 读取指定数量的原始字节。
+     * @param n 要读取的字节数。
+     * @return 复制出的字节数组。
+     */
     std::vector<uint8_t> read_bytes(size_t n);
 
     // ── 光标控制 ──
 
-    size_t tell() const { return pos_; }  // 当前读取位置
+    /** 获取当前读取偏移。
+     * @return 当前相对缓冲区起点的字节偏移。
+     */
+    size_t tell() const { return pos_; }
 
     // 将光标移动到绝对偏移（超过文件大小时抛异常）
+    /** 移动到绝对读取偏移。
+     * @param offset 目标字节偏移；超过缓冲区时抛出异常。
+     */
     void   seek(size_t offset) { if (offset > size_) throw std::out_of_range("seek past end"); pos_ = offset; }
 
     // 跳过 n 字节（数据不足时抛异常）
+    /** 跳过指定数量的字节。
+     * @param bytes 要跳过的字节数；不足时抛出异常。
+     */
     void   skip(size_t bytes) { ensure(bytes); pos_ += bytes; }
 
     // 检查是否还能读取 n 字节
+    /** 判断当前位置是否还有足够字节可读。
+     * @param bytes 需要读取的字节数。
+     * @return 足够时返回 true。
+     */
     bool   can_read(size_t bytes) const { return pos_ + bytes <= size_; }
 
     // 缓冲区总大小
+    /** 获取缓冲区总长度。
+     * @return 缓冲区长度，单位为字节。
+     */
     size_t size() const { return size_; }
 
     // 返回原始指针（用于零拷贝切片或外部 C API 交互）
+    /** 获取底层缓冲区首地址。
+     * @return 非拥有的只读指针。
+     */
     const uint8_t* data() const { return data_; }
 
 private:

@@ -327,5 +327,5 @@ jobs:
           git push origin "$RELEASE_TAG"
           gh release create "$RELEASE_TAG" release-assets/* \
             --title "fast-gdb $RELEASE_TAG" \
-            --notes-file docs/releases/v0.2.0.md \
+            --notes-file docs/governance/releases/v0.2.0.md \
             --verify-tag

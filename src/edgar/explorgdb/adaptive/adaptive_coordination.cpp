@@ -1,3 +1,6 @@
+// 文件说明：fast-gdb 源码实现。
+// 实现职责：承载对应模块的内部逻辑，具体接口和边界以头文件及项目文档为准。
+
 // src/edgar/explorgdb/adaptive/adaptive_coordination.cpp
 
 #include "adaptive_reader.h"
@@ -134,6 +137,8 @@ FastReaderLease& FastReaderLease::operator=(FastReaderLease&& other) noexcept {
     return *this;
 }
 
+// 方法实现：具体用途、参数和返回值契约见对应头文件或本文件声明。
+// 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 FastReaderLease::~FastReaderLease() {
     release();
 }
@@ -158,6 +163,8 @@ bool FastReaderLease::writer_pending_observed() const {
     return found->second.pending_events != pending_events_;
 }
 
+// 方法实现：具体用途、参数和返回值契约见对应头文件或本文件声明。
+// 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 void FastReaderLease::release() {
     if (!counted_ || !registry_) return;
 
@@ -205,6 +212,8 @@ ExternalUpdateToken& ExternalUpdateToken::operator=(
     return *this;
 }
 
+// 方法实现：具体用途、参数和返回值契约见对应头文件或本文件声明。
+// 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 ExternalUpdateToken::~ExternalUpdateToken() {
     abandon_current_state();
 }
@@ -221,6 +230,8 @@ bool ExternalUpdateToken::active() const noexcept {
     return phase_ == Phase::Active;
 }
 
+// 方法实现：具体用途、参数和返回值契约见对应头文件或本文件声明。
+// 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 CoordinationStatus ExternalUpdateToken::notify_update_opened() {
     if (phase_ != Phase::Pending || !registry_) {
         return CoordinationStatus::InvalidCoordinationToken;
@@ -246,6 +257,8 @@ CoordinationStatus ExternalUpdateToken::notify_update_opened() {
     return CoordinationStatus::Ok;
 }
 
+// 方法实现：具体用途、参数和返回值契约见对应头文件或本文件声明。
+// 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 CoordinationStatus ExternalUpdateToken::cancel_before_update() {
     if (phase_ != Phase::Pending || !registry_) {
         return CoordinationStatus::InvalidCoordinationToken;

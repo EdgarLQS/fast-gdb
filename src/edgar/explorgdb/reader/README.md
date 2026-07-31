@@ -119,7 +119,7 @@ The implemented Adaptive behavior is fail-closed rather than concurrent-read sup
 
 ## Build boundary
 
-Current Reader targets are `fast_gdb::linear`, optional `fast_gdb::hybrid`, and optional `fast_gdb::adaptive`. Adaptive is disabled by default, requires GDAL, must not link `src/edgar/usegdal`, and is currently verified only for its same-process coordination, Busy, expiry and fresh-fallback contracts.
+Current Reader targets are `fast_gdb::linear`, optional `fast_gdb::hybrid`, and optional `fast_gdb::adaptive`. Adaptive is disabled by default, requires GDAL, must not link `src/reference/usegdal`, and is currently verified only for its same-process coordination, Busy, expiry and fresh-fallback contracts.
 
 ## Related documents
 

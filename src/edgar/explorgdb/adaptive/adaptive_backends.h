@@ -46,9 +46,21 @@ AdaptiveLayerBindingResult load_adaptive_layer_binding(
 /** 每次 query/cursor 独立打开 fast-gdb Reader 对象图。 */
 class FastGdbReadBackend {
 public:
+    /** 创建本地 fast Reader 后端。
+     * @param gdb_path GDB 数据源路径。
+     * @param layer_name 要读取的图层名称。
+     */
     FastGdbReadBackend(std::string gdb_path, std::string layer_name);
 
+    /** 使用 fast Reader 执行一次查询。
+     * @param request 查询请求。
+     * @return 后端读取结果。
+     */
     BackendReadResult read(const QueryRequest& request) const;
+    /** 使用 fast Reader 创建流式游标。
+     * @param request 查询请求。
+     * @return 后端游标适配器。
+     */
     BackendCursor open_cursor(const QueryRequest& request) const;
 
 private:
@@ -64,10 +76,22 @@ private:
  */
 class GdalOpenFileGdbReadBackend {
 public:
+    /** 创建官方 GDAL 只读后端。
+     * @param gdb_path GDB 数据源路径。
+     * @param binding 已在稳定状态加载的图层绑定。
+     */
     GdalOpenFileGdbReadBackend(std::string gdb_path,
                                AdaptiveLayerBinding binding);
 
+    /** 使用 fresh GDAL Dataset 执行一次查询。
+     * @param request 查询请求。
+     * @return 后端读取结果。
+     */
     BackendReadResult read(const QueryRequest& request) const;
+    /** 打开一个拥有独立 GDAL Dataset 的游标。
+     * @param request 查询请求。
+     * @return 后端游标适配器；关闭时释放 Dataset。
+     */
     BackendCursor open_cursor(const QueryRequest& request) const;
 
 private:

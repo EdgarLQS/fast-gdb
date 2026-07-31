@@ -52,7 +52,7 @@ FileGDB 创建和修改由调用方直接使用 GDAL/OpenFileGDB 或 ArcGIS 完�
 
 ## `usegdal` 参考代码
 
-`src/edgar/usegdal` 保留为 **reference only** 的历史探索代码，其中包括 datasource、dataset、recordset、field、feature、query、connection pool、transaction 和 batch-write 包装示例。
+`src/reference/usegdal` 保留为 **reference only** 的历史探索代码，其中包括 datasource、dataset、recordset、field、feature、query、connection pool、transaction 和 batch-write 包装示例。
 
 该目录：
 
@@ -151,7 +151,7 @@ Reader 保持打开时 GDAL 修改同一目录，记录：
 
 测试不对其中任何类别建立断言，只验证完整关闭和重开后可读取新数据。
 
-正式门禁直接调用官方 GDAL API，不依赖 `src/edgar/usegdal` 参考包装层。
+正式门禁直接调用官方 GDAL API，不依赖 `src/reference/usegdal` 参考包装层。
 
 ## 后果
 
@@ -177,7 +177,7 @@ Reader 保持打开时 GDAL 修改同一目录，记录：
 - 安装导出中不存在 Writer target；
 - `include/fast_gdb/writer` 和 `src/edgar/explorgdb/writer` 不存在；
 - Writer 专项工作流和正式产品文档删除；
-- `src/edgar/usegdal` 明确标记 reference only，且不进入根构建、安装或导出；
+- `src/reference/usegdal` 明确标记 reference only，且不进入根构建、安装或导出；
 - package consumer 验证 linear、hybrid 和可选 adaptive；linear 必须在无 GDAL 构建中通过；
 - GDAL 写后 Reader 重开测试进入 CI；
 /

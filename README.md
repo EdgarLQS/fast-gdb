@@ -12,7 +12,7 @@ fast-gdb 是面向 ESRI FileGDB 的 C++17 读取、查询和几何解析库。�
 | `fast_gdb::hybrid` | fast-gdb 主路径 + GDAL 复杂几何回退 | 有 |
 | `fast_gdb::adaptive` | 同进程协调、Reader 失效和 fresh GDAL 只读回退 | 有 |
 
-安装包不导出 `fast_gdb::writer`。仓库不维护受支持的 FileGDB Writer 产品；`src/edgar/usegdal` 仅作为历史 GDAL/OGR 包装探索代码保留，不构建、不安装、不导出，也不提供兼容性承诺。
+安装包不导出 `fast_gdb::writer`。仓库不维护受支持的 FileGDB Writer 产品；`src/reference/usegdal` 仅作为历史 GDAL/OGR 包装探索代码保留，不构建、不安装、不导出，也不提供兼容性承诺。
 
 ## Reader 能力
 
@@ -168,7 +168,7 @@ return 0;
 
 ## `usegdal` 参考目录
 
-`src/edgar/usegdal` 保留了早期围绕 GDAL/OGR 的 RAII 和包装设计，包括 datasource、dataset、recordset、field、feature、query、connection pool、transaction 和 batch-write 示例。
+`src/reference/usegdal` 保留了早期围绕 GDAL/OGR 的 RAII 和包装设计，包括 datasource、dataset、recordset、field、feature、query、connection pool、transaction 和 batch-write 示例。
 
 该目录的定位是：
 
@@ -179,7 +179,7 @@ return 0;
 - 不提供 ABI、事务、并发、性能或正确性保证；
 - 生产 FileGDB 编辑应直接调用官方 GDAL/OpenFileGDB API。
 
-详见 [`src/edgar/usegdal/README.md`](src/edgar/usegdal/README.md)。
+详见 [`src/reference/usegdal/README.md`](src/reference/usegdal/README.md)。
 
 ## GDAL 写入 / fast-gdb 读取边界测试
 
@@ -280,14 +280,14 @@ if (table.read_geometry_value(fid, geometry) && geometry.valid()) {
 | `src/edgar/explorgdb/common` | 二进制和共享基础设施 |
 | `src/edgar/explorgdb/reader` | FileGDB Reader、索引、几何和查询 |
 | `src/edgar/explorgdb/curve_gdal` | 可选 GDAL Hybrid Bridge |
-| `src/edgar/usegdal` | 非产品、非构建的 GDAL/OGR 包装参考代码 |
-| `tests/usegdal/test_*.cpp` | 直接调用 GDAL 的 fixture、parity 和边界测试 |
+| `src/reference/usegdal` | 非产品、非构建的 GDAL/OGR 包装参考代码 |
+| `tests/edgar/explorgdb/integration/gdal_parity/**/*.cpp` | 直接调用 GDAL 的 fixture、parity 和边界测试 |
 
 ## 产品边界
 
 - fast-gdb 是 Reader，不是 FileGDB 编辑器；
 - 不提供 Writer API、Writer target、Writer 头文件、受支持的 Writer 包装库或 ABI；
-- `src/edgar/usegdal` 的存在不构成产品支持声明；
+- `src/reference/usegdal` 的存在不构成产品支持声明；
 - 当前 GDAL 编辑目标 GDB 时，所有 fast-gdb Reader 必须停止并释放；
 - `GDALClose()` 后必须完整重开 fast-gdb Reader；
 - 当前同一 `.gdb` 的 GDAL 写入与 fast-gdb 并发读取明确不支持；

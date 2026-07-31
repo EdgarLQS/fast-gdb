@@ -5,7 +5,7 @@ on:
   pull_request:
     paths:
       - 'src/edgar/explorgdb/reader/**'
-      - 'tests/edgar/explorgdb/reader/test_spatial_benchmark.cpp'
+      - 'tests/edgar/explorgdb/integration/gdal_parity/benchmark/test_spatial_benchmark.cpp'
       - 'tests/createdata/cpp/generate_large_gdb.cpp'
       - 'tools/ci/run_spatial_regression.py'
       - '.github/workflows/posix-spatial-regression.yml'
@@ -56,7 +56,7 @@ jobs:
 
       - name: Install identical benchmark harness in baseline
         shell: bash
-        run: cp tests/edgar/explorgdb/reader/test_spatial_benchmark.cpp baseline/tests/edgar/explorgdb/reader/test_spatial_benchmark.cpp
+        run: cp tests/edgar/explorgdb/integration/gdal_parity/benchmark/test_spatial_benchmark.cpp baseline/tests/edgar/explorgdb/integration/gdal_parity/benchmark/test_spatial_benchmark.cpp
 
       - name: Configure current Release build
         shell: bash

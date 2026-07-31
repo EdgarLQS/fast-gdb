@@ -5,7 +5,8 @@ on:
     paths:
       - 'src/edgar/explorgdb/reader/**'
       - 'src/edgar/explorgdb/curve_gdal/**'
-      - 'tests/usegdal/test_*.cpp'
+      - 'tests/edgar/explorgdb/integration/gdal_parity/**'
+      - 'tests/edgar/explorgdb/boundary/gdal_reader_lifecycle/**'
       - 'tests/package_consumer/**'
       - 'cmake/**'
       - 'CMakeLists.txt'
@@ -15,7 +16,8 @@ on:
     paths:
       - 'src/edgar/explorgdb/reader/**'
       - 'src/edgar/explorgdb/curve_gdal/**'
-      - 'tests/usegdal/test_*.cpp'
+      - 'tests/edgar/explorgdb/integration/gdal_parity/**'
+      - 'tests/edgar/explorgdb/boundary/gdal_reader_lifecycle/**'
       - 'tests/package_consumer/**'
       - 'cmake/**'
       - 'CMakeLists.txt'

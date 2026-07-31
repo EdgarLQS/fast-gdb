@@ -1,3 +1,6 @@
+// 文件说明：explorgdb 测试代码。
+// 测试职责：验证对应模块的行为、边界条件或兼容性约束。
+
 #include <gtest/gtest.h>
 
 #include "adaptive_reader.h"
@@ -91,6 +94,11 @@ std::array<QueryKind, 7> all_query_kinds() {
 
 }  // namespace
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(AdaptiveReaderTest, StableSourceUsesFastVerified) {
     InProcessGdbCoordinator coordinator;
     std::atomic<int> fast_calls{0};
@@ -120,6 +128,11 @@ TEST(AdaptiveReaderTest, StableSourceUsesFastVerified) {
     EXPECT_EQ(gdal_calls.load(), 0);
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(AdaptiveReaderTest, WriterPendingStopsNewFastReads) {
     InProcessGdbCoordinator coordinator;
     const std::string path = "pending-blocks.gdb";
@@ -145,6 +158,11 @@ TEST(AdaptiveReaderTest, WriterPendingStopsNewFastReads) {
     EXPECT_FALSE(coordinator.state(path).writer_pending);
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(AdaptiveReaderTest, DeterministicPendingDrainKeepsLeaseUntilMaterialized) {
     InProcessGdbCoordinator coordinator;
     const std::string path = "deterministic-drain.gdb";
@@ -193,6 +211,11 @@ TEST(AdaptiveReaderTest, DeterministicPendingDrainKeepsLeaseUntilMaterialized) {
     EXPECT_EQ(coordinator.state(path).generation, 1U);
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(AdaptiveReaderTest, PendingCancellationIsRecordedByFastRead) {
     InProcessGdbCoordinator coordinator;
     const std::string path = "pending-cancel-observed.gdb";
@@ -236,6 +259,11 @@ TEST(AdaptiveReaderTest, PendingCancellationIsRecordedByFastRead) {
     EXPECT_EQ(result.consistency, AdaptiveReadConsistency::Verified);
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(AdaptiveReaderTest, FastCursorExpiresAtNextSafePoint) {
     InProcessGdbCoordinator coordinator;
     const std::string path = "cursor-safe-point.gdb";
@@ -311,6 +339,11 @@ TEST(AdaptiveReaderTest, FastCursorExpiresAtNextSafePoint) {
     EXPECT_EQ(prepared.token.notify_update_closed(true), CoordinationStatus::Ok);
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(AdaptiveReaderTest, PendingTimeoutClearsPendingAndRecovers) {
     InProcessGdbCoordinator coordinator;
     const std::string path = "pending-timeout.gdb";
@@ -333,6 +366,11 @@ TEST(AdaptiveReaderTest, PendingTimeoutClearsPendingAndRecovers) {
               CoordinationStatus::Ok);
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(AdaptiveReaderTest, UpdatePermitRequiresFastReadersDrained) {
     InProcessGdbCoordinator coordinator;
     const std::string path = "drain-required.gdb";
@@ -354,6 +392,11 @@ TEST(AdaptiveReaderTest, UpdatePermitRequiresFastReadersDrained) {
     EXPECT_EQ(prepared.token.cancel_before_update(), CoordinationStatus::Ok);
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(AdaptiveReaderTest, UpdateOpenFailureCancelsPending) {
     InProcessGdbCoordinator coordinator;
     const std::string path = "open-failure.gdb";
@@ -370,6 +413,11 @@ TEST(AdaptiveReaderTest, UpdateOpenFailureCancelsPending) {
     EXPECT_TRUE(coordinator.try_acquire_fast_reader(path).valid());
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(AdaptiveReaderTest, AbandonedActiveTokenRemainsFailClosed) {
     InProcessGdbCoordinator coordinator;
     const std::string path = "abandoned-active.gdb";
@@ -388,6 +436,11 @@ TEST(AdaptiveReaderTest, AbandonedActiveTokenRemainsFailClosed) {
     EXPECT_EQ(second.status, CoordinationStatus::WriterAlreadyActive);
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(AdaptiveReaderTest, DefaultPolicyReturnsBusyWithoutCallingBackends) {
     InProcessGdbCoordinator coordinator;
     const std::string path = "default-busy.gdb";
@@ -419,6 +472,11 @@ TEST(AdaptiveReaderTest, DefaultPolicyReturnsBusyWithoutCallingBackends) {
     EXPECT_EQ(prepared.token.notify_update_closed(true), CoordinationStatus::Ok);
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(AdaptiveReaderTest, ExplicitPolicyUsesFreshGdalUnverified) {
     InProcessGdbCoordinator coordinator;
     const std::string path = "explicit-gdal.gdb";
@@ -452,6 +510,11 @@ TEST(AdaptiveReaderTest, ExplicitPolicyUsesFreshGdalUnverified) {
     EXPECT_EQ(prepared.token.notify_update_closed(true), CoordinationStatus::Ok);
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(AdaptiveReaderTest, UnverifiedResultIsNeverReportedVerified) {
     InProcessGdbCoordinator coordinator;
     const std::string path = "never-upgrade.gdb";
@@ -509,6 +572,11 @@ TEST(AdaptiveReaderTest, UnverifiedResultIsNeverReportedVerified) {
     EXPECT_EQ(result.generation_after, 1U);
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(AdaptiveReaderTest, GdalFailureKeepsDiagnosticAndConsistency) {
     InProcessGdbCoordinator coordinator;
     const std::string path = "gdal-failure.gdb";
@@ -536,6 +604,11 @@ TEST(AdaptiveReaderTest, GdalFailureKeepsDiagnosticAndConsistency) {
     EXPECT_EQ(prepared.token.notify_update_closed(true), CoordinationStatus::Ok);
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(AdaptiveReaderTest, ClosedUpdateNotificationIncrementsGeneration) {
     InProcessGdbCoordinator coordinator;
     const std::string path = "generation.gdb";
@@ -553,6 +626,11 @@ TEST(AdaptiveReaderTest, ClosedUpdateNotificationIncrementsGeneration) {
     EXPECT_EQ(state.generation, 1U);
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(AdaptiveReaderTest, OldReaderExpiresAfterClosedUpdateNotification) {
     InProcessGdbCoordinator coordinator;
     const std::string path = "old-reader.gdb";
@@ -570,6 +648,11 @@ TEST(AdaptiveReaderTest, OldReaderExpiresAfterClosedUpdateNotification) {
     EXPECT_TRUE(old_reader.expired_at_safe_point());
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(AdaptiveReaderTest, PostWriteRebuildReturnsFastVerified) {
     InProcessGdbCoordinator coordinator;
     const std::string path = "post-write-rebuild.gdb";
@@ -603,6 +686,11 @@ TEST(AdaptiveReaderTest, PostWriteRebuildReturnsFastVerified) {
     EXPECT_EQ(after.result.matched_fids.back(), 1U);
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(AdaptiveReaderTest, AllQueryKindsMatchOnStableSource) {
     InProcessGdbCoordinator coordinator;
     const std::string path = "stable-parity.gdb";
@@ -628,6 +716,11 @@ TEST(AdaptiveReaderTest, AllQueryKindsMatchOnStableSource) {
     }
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(AdaptiveReaderTest, RepackNeverOverlapsFastMmap) {
     InProcessGdbCoordinator coordinator;
     const std::string path = "repack.gdb";
@@ -657,6 +750,11 @@ TEST(AdaptiveReaderTest, RepackNeverOverlapsFastMmap) {
     EXPECT_EQ(prepared.token.notify_update_closed(true), CoordinationStatus::Ok);
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(AdaptiveReaderTest, MultipleReadersSingleWriterStress) {
     InProcessGdbCoordinator coordinator;
     const std::string path = "reader-writer-stress.gdb";

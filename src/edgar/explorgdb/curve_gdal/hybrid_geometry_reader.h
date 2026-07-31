@@ -39,20 +39,41 @@ struct HybridGeometryOptions {
  */
 class HybridGeometryReader {
 public:
+    /** 创建单要素混合几何读取器。
+     * @param parser fast-gdb 表解析器，生命周期必须覆盖读取器。
+     * @param gdb_path GDAL 回退使用的 GDB 路径。
+     * @param layer_name GDAL 回退使用的图层名称。
+     * @param options 混合读取策略和 FID 映射选项。
+     */
     HybridGeometryReader(GdbTableParser& parser,
                          std::string gdb_path,
                          std::string layer_name,
                          HybridGeometryOptions options = {});
 
-    /** 读取指定要素的几何，优先 fast-gdb，必要时回退 GDAL。 */
+    /** 读取指定要素的几何，优先 fast-gdb，必要时回退 GDAL。
+     * @param fast_fid fast-gdb 零基 FID。
+     * @return 几何值和后端状态。
+     */
     GeometryValue read_geometry(uint32_t fast_fid) const;
 
-    /** 包围盒判断，返回 GDAL 级别的空间谓词结果。 */
+    /** 执行指定要素的包围盒相交判断。
+     * @param fast_fid fast-gdb 零基 FID。
+     * @param xmin 查询框最小 X。
+     * @param ymin 查询框最小 Y。
+     * @param xmax 查询框最大 X。
+     * @param ymax 查询框最大 Y。
+     * @return 空间判断结果。
+     */
     GdalSpatialResult intersects_bbox(uint32_t fast_fid,
                                       double xmin, double ymin,
                                       double xmax, double ymax) const;
 
-    /** 零基 fast_fid 到 GDAL 1-based FID 的映射辅助。 */
+    /** 将 fast-gdb 零基 FID 映射为 GDAL FID。
+     * @param fast_fid fast-gdb 零基 FID。
+     * @param offset FID 偏移量。
+     * @param gdal_fid 输出 GDAL FID。
+     * @return 映射未溢出且有效时返回 true。
+     */
     static bool map_gdal_fid(uint32_t fast_fid, int64_t offset,
                              int64_t& gdal_fid);
 
@@ -93,11 +114,26 @@ struct HybridQueryResult {
  */
 class HybridQueryEngine {
 public:
+    /** 创建混合空间查询引擎。
+     * @param catalog 已扫描的 GDB catalog。
+     * @param table 目标表解析结果。
+     * @param options 混合几何读取选项。
+     */
     HybridQueryEngine(const GdbCatalog& catalog,
                       ResolvedTable table,
                       HybridGeometryOptions options = {});
 
+    /** 打开目标表和空间索引。
+     * @return 打开成功时返回 true。
+     */
     bool open();
+    /** 执行混合包围盒查询。
+     * @param xmin 查询框最小 X。
+     * @param ymin 查询框最小 Y。
+     * @param xmax 查询框最大 X。
+     * @param ymax 查询框最大 Y。
+     * @return 候选、精确过滤和 GDAL 回退后的结果。
+     */
     HybridQueryResult query_bbox(double xmin, double ymin,
                                  double xmax, double ymax);
 

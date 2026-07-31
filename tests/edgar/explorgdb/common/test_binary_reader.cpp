@@ -11,6 +11,11 @@ using namespace explorgdb;
 // ── 基础读取测试 ──
 
 // 测试 u8/u16/u32/u64 小端读取
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(BinaryReaderTest, BasicIntegerReads) {
     // 构造小端数据：0x01, 0x0201, 0x04030201, 0x0807060504030201
     std::vector<uint8_t> data = {
@@ -29,6 +34,11 @@ TEST(BinaryReaderTest, BasicIntegerReads) {
 }
 
 // 测试有符号整数读取
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(BinaryReaderTest, SignedIntegerReads) {
     std::vector<uint8_t> data = {
         0xFF, 0xFF,   // i16 LE = -1
@@ -44,6 +54,11 @@ TEST(BinaryReaderTest, SignedIntegerReads) {
 }
 
 // 测试 i64 正值
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(BinaryReaderTest, ReadI64Positive) {
     std::vector<uint8_t> data(8, 0);
     int64_t val = 0x0102030405060708LL;
@@ -54,6 +69,11 @@ TEST(BinaryReaderTest, ReadI64Positive) {
 }
 
 // 测试浮点数读取
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(BinaryReaderTest, FloatReads) {
     std::vector<uint8_t> data(12, 0);
 
@@ -74,6 +94,11 @@ TEST(BinaryReaderTest, FloatReads) {
 // ── 非标准宽度整数读取 ──
 
 // 测试 uint40 (5 字节) 读取
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(BinaryReaderTest, UInt40Read) {
     // 值 = 0x0102030405, 小端: 05 04 03 02 01
     std::vector<uint8_t> data = {0x05, 0x04, 0x03, 0x02, 0x01};
@@ -84,6 +109,11 @@ TEST(BinaryReaderTest, UInt40Read) {
 }
 
 // 测试 uint48 (6 字节) 读取
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(BinaryReaderTest, UInt48Read) {
     // 值 = 0x010203040506, 小端: 06 05 04 03 02 01
     std::vector<uint8_t> data = {0x06, 0x05, 0x04, 0x03, 0x02, 0x01};
@@ -96,6 +126,11 @@ TEST(BinaryReaderTest, UInt48Read) {
 // ── 边界检查测试 ──
 
 // 测试越界读取抛出异常
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(BinaryReaderTest, OutOfRangeThrows) {
     std::vector<uint8_t> data = {0x01};
     BinaryReader br(data);
@@ -109,6 +144,11 @@ TEST(BinaryReaderTest, OutOfRangeThrows) {
 }
 
 // 测试 can_read 正确判断可读性
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(BinaryReaderTest, CanReadCheck) {
     std::vector<uint8_t> data = {0x01, 0x02, 0x03};
     BinaryReader br(data);
@@ -125,6 +165,11 @@ TEST(BinaryReaderTest, CanReadCheck) {
 // ── Seek/Tell 测试 ──
 
 // 测试 seek 和 tell 的光标移动
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(BinaryReaderTest, SeekAndTell) {
     std::vector<uint8_t> data = {0x01, 0x02, 0x03, 0x04, 0x05};
     BinaryReader br(data);
@@ -143,6 +188,11 @@ TEST(BinaryReaderTest, SeekAndTell) {
 }
 
 // 测试 skip 跳过指定字节
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(BinaryReaderTest, SkipBytes) {
     std::vector<uint8_t> data = {0x01, 0x02, 0x03, 0x04, 0x05};
     BinaryReader br(data);
@@ -158,6 +208,11 @@ TEST(BinaryReaderTest, SkipBytes) {
 // ── 零拷贝切片测试 ──
 
 // 测试 data() 返回原始指针用于切片
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(BinaryReaderTest, DataPointer) {
     std::vector<uint8_t> data = {0xAA, 0xBB, 0xCC};
     BinaryReader br(data);
@@ -169,6 +224,11 @@ TEST(BinaryReaderTest, DataPointer) {
 // ── read_bytes 测试 ──
 
 // 测试读取原始字节序列
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(BinaryReaderTest, ReadBytes) {
     std::vector<uint8_t> data = {0xDE, 0xAD, 0xBE, 0xEF};
     BinaryReader br(data);

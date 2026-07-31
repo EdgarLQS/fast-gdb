@@ -7,14 +7,14 @@ on:
       - 'CMakeLists.txt'
       - 'cmake/**'
       - 'src/edgar/explorgdb/reader/**'
-      - 'tests/usegdal/test_feature_cursor_benchmark.cpp'
-      - 'tests/usegdal/test_spatial_where_*.cpp'
-      - 'tests/edgar/explorgdb/reader/test_gdb_attribute_index_safety.cpp'
-      - 'tests/edgar/explorgdb/reader/test_catalog_index_metadata_cache.cpp'
-      - 'tests/edgar/explorgdb/reader/test_gdb_spatial_index_merge.cpp'
-      - 'tests/edgar/explorgdb/reader/test_catalog_resolver.cpp'
-      - 'tests/edgar/explorgdb/reader/test_geometry_contracts.cpp'
-      - 'tests/edgar/explorgdb/reader/test_geometry_writer_exact.cpp'
+      - 'tests/edgar/explorgdb/integration/gdal_parity/benchmark/test_feature_cursor_benchmark.cpp'
+      - 'tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_*.cpp'
+      - 'tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp'
+      - 'tests/edgar/explorgdb/reader/format/test_catalog_index_metadata_cache.cpp'
+      - 'tests/edgar/explorgdb/reader/index/test_gdb_spatial_index_merge.cpp'
+      - 'tests/edgar/explorgdb/reader/format/test_catalog_resolver.cpp'
+      - 'tests/edgar/explorgdb/reader/geometry/test_geometry_contracts.cpp'
+      - 'tests/edgar/explorgdb/reader/geometry/test_geometry_writer_exact.cpp'
   workflow_dispatch:
 
 concurrency:

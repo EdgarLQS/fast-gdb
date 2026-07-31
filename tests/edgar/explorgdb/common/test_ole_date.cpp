@@ -15,6 +15,11 @@ static const std::tm* safe_gmtime(const std::time_t* t) {
 
 // OLE DATE 基准: 0.0 = 1899-12-30 00:00:00
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(OleDateTest, Zero) {
     // 0.0 → 1899-12-30
     auto tp = ole_to_timepoint(0.0);
@@ -29,6 +34,11 @@ TEST(OleDateTest, Zero) {
     EXPECT_EQ(tm->tm_sec, 0);
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(OleDateTest, OneDay) {
     // 1.0 = 1899-12-31
     auto tp = ole_to_timepoint(1.0);
@@ -39,6 +49,11 @@ TEST(OleDateTest, OneDay) {
     EXPECT_EQ(tm->tm_mday, 31);
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(OleDateTest, Noon) {
     // 0.5 = 1899-12-30 12:00:00
     auto tp = ole_to_timepoint(0.5);
@@ -49,6 +64,11 @@ TEST(OleDateTest, Noon) {
     EXPECT_EQ(tm->tm_min, 0);
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(OleDateTest, UnixEpoch) {
     // 1970-01-01 = 25569.0
     auto tp = ole_to_timepoint(25569.0);
@@ -60,6 +80,11 @@ TEST(OleDateTest, UnixEpoch) {
     EXPECT_EQ(tm->tm_mday, 1);
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(OleDateTest, KnownDate) {
     // 2024-01-15 ≈ 45306.0
     auto tp = ole_to_timepoint(45306.0);
@@ -71,23 +96,43 @@ TEST(OleDateTest, KnownDate) {
     EXPECT_EQ(tm->tm_mday, 15);
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(OleDateTest, TimeOnly) {
     // 0.25 = 06:00:00
     std::string s = ole_time_only(0.25);
     EXPECT_EQ(s, "06:00:00");
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(OleDateTest, DateTimeString) {
     // 45306.5 = 2024-01-15 12:00:00
     std::string s = ole_datetime(45306.5);
     EXPECT_EQ(s, "2024-01-15 12:00:00");
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(OleDateTest, DateOnlyString) {
     std::string s = ole_date_only(45306.5);
     EXPECT_EQ(s, "2024-01-15");
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(OleDateTest, NegativeDate) {
     // -1.0 = 1899-12-29
     auto tp = ole_to_timepoint(-1.0);
@@ -99,6 +144,11 @@ TEST(OleDateTest, NegativeDate) {
     EXPECT_EQ(tm->tm_mday, 29);
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(OleDateTest, NegativeDateWithFraction) {
     // -0.5 = 1899-12-29 12:00:00 (负数带小数部分，走特殊处理路径)
     auto tp = ole_to_timepoint(-0.5);
@@ -112,6 +162,11 @@ TEST(OleDateTest, NegativeDateWithFraction) {
     EXPECT_EQ(tm->tm_min, 0);
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(OleDateTest, NegativeDateTime) {
     // -1.25 = 1899-12-28 18:00:00 (1.25 days before 1899-12-30)
     std::string s = ole_datetime(-1.25);

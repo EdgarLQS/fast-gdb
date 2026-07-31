@@ -13,6 +13,7 @@
 namespace explorgdb {
 
 // ── 单字节读取 ──
+// 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 uint8_t BinaryReader::read_u8() {
     ensure(1);
     return data_[pos_++];
@@ -20,6 +21,7 @@ uint8_t BinaryReader::read_u8() {
 
 // ── 双字节无符号（小端） ──
 // 例如：[0x01, 0x02] → 0x0201
+// 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 uint16_t BinaryReader::read_u16() {
     ensure(2);
     uint16_t v = static_cast<uint16_t>(data_[pos_]) |
@@ -30,6 +32,7 @@ uint16_t BinaryReader::read_u16() {
 
 // ── 四字节无符号（小端） ──
 // 例如：[0x01, 0x02, 0x03, 0x04] → 0x04030201
+// 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 uint32_t BinaryReader::read_u32() {
     ensure(4);
     uint32_t v = static_cast<uint32_t>(data_[pos_]) |
@@ -42,6 +45,7 @@ uint32_t BinaryReader::read_u32() {
 
 // ── 八字节无符号（小端） ──
 // 例如：[0x01, ..., 0x08] → 0x0807060504030201
+// 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 uint64_t BinaryReader::read_u64() {
     ensure(8);
     uint64_t v = 0;
@@ -54,6 +58,7 @@ uint64_t BinaryReader::read_u64() {
 // ── 五字节无符号（小端） ──
 // 用于 .gdbtablx 中等大小表的偏移条目
 // byte[0] = 最低 8 位, bytes[1:5] = 高 32 位
+// 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 uint40_t BinaryReader::read_u40() {
     ensure(5);
     uint64_t v = 0;
@@ -65,6 +70,7 @@ uint40_t BinaryReader::read_u40() {
 
 // ── 六字节无符号（小端） ──
 // 用于 .gdbtablx 超大表的偏移条目
+// 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 uint48_t BinaryReader::read_u48() {
     ensure(6);
     uint64_t v = 0;
@@ -75,22 +81,26 @@ uint48_t BinaryReader::read_u48() {
 }
 
 // ── 有符号整数（位模式复用无符号读取结果） ──
+// 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 int16_t BinaryReader::read_i16() {
     uint16_t u = read_u16();
     return static_cast<int16_t>(u);
 }
 
+// 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 int32_t BinaryReader::read_i32() {
     uint32_t u = read_u32();
     return static_cast<int32_t>(u);
 }
 
+// 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 int64_t BinaryReader::read_i64() {
     uint64_t u = read_u64();
     return static_cast<int64_t>(u);
 }
 
 // ── 浮点数（memcpy 避免 strict aliasing） ──
+// 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 float BinaryReader::read_f32() {
     ensure(4);
     float v;
@@ -99,6 +109,7 @@ float BinaryReader::read_f32() {
     return v;
 }
 
+// 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 double BinaryReader::read_f64() {
     ensure(8);
     double v;
@@ -108,6 +119,7 @@ double BinaryReader::read_f64() {
 }
 
 // ── UTF-16LE 字符串 ──
+// 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 std::string BinaryReader::read_utf16(int char_count) {
     ensure(char_count * 2);
     std::string result = utf16le_to_utf8(data_ + pos_, char_count);
@@ -118,6 +130,7 @@ std::string BinaryReader::read_utf16(int char_count) {
 // ── 无符号 VarInt 解码 ──
 // 每字节提供 7 bit 数据，bit 7 = 1 表示还有后续字节
 // 最多可编码 10 字节（64-bit 值需要 10 个 7-bit 组）
+// 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 uint64_t BinaryReader::read_varuint() {
     uint64_t ret = 0;
     int shift = 0;
@@ -134,6 +147,7 @@ uint64_t BinaryReader::read_varuint() {
 // ── 有符号 VarInt 解码 ──
 // 首字节：bit 6 = 符号（0=正, 1=负），bit 7 = 延续标志，低 6 bit = 数据
 // 后续字节：与无符号 VarInt 相同（7-bit 数据，bit 7 = 延续）
+// 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 int64_t BinaryReader::read_varint() {
     ensure(1);
     uint8_t b = data_[pos_++];
@@ -150,6 +164,7 @@ int64_t BinaryReader::read_varint() {
 }
 
 // ── 原始字节块读取 ──
+// 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 std::vector<uint8_t> BinaryReader::read_bytes(size_t n) {
     ensure(n);
     std::vector<uint8_t> result(data_ + pos_, data_ + pos_ + n);

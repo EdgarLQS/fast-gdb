@@ -53,7 +53,7 @@
 - 保留现有 `metadata_snapshot()`、`RelationshipSummary` 和 `MetadataReader` 兼容入口。
 - `read_metadata()` 不再丢失完整关系定义；系统表审计区分缺失、空表和不可读，避免误报为空结果。
 
-当前公开快照的字段范围见 `src/edgar/explorgdb/reader/reader.h`；当前 `read_metadata()` 的组装逻辑见 `src/edgar/explorgdb/reader/reader.cpp`。
+当前公开快照的字段范围见 `src/edgar/explorgdb/reader/api/reader.h`；当前 `read_metadata()` 的组装逻辑见 `src/edgar/explorgdb/reader/api/reader.cpp`。
 
 ### P0：无损字段和系统表读取
 

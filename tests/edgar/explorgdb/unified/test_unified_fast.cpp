@@ -1,3 +1,6 @@
+// 文件说明：explorgdb 测试代码。
+// 测试职责：验证对应模块的行为、边界条件或兼容性约束。
+
 #include "unified.h"
 
 #include "adaptive_reader.h"
@@ -17,6 +20,11 @@ std::string fixture_path() {
         "test_data/benchmark/wide_50_gdal.gdb").string();
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(UnifiedFastFacadeTest, OpensDatasetFromGdalStylePath) {
     auto dataset = Dataset::open(fixture_path());
     ASSERT_TRUE(dataset) << dataset.error().message;
@@ -27,6 +35,11 @@ TEST(UnifiedFastFacadeTest, OpensDatasetFromGdalStylePath) {
     EXPECT_EQ(dataset.value().backend_report().selected, Backend::FastGdb);
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(UnifiedFastFacadeTest, FreezesSchemaAndStreamsOwnedFeatures) {
     auto dataset = Dataset::open(fixture_path());
     ASSERT_TRUE(dataset) << dataset.error().message;
@@ -53,6 +66,11 @@ TEST(UnifiedFastFacadeTest, FreezesSchemaAndStreamsOwnedFeatures) {
     }
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(UnifiedFastFacadeTest, ReadAllPublishesWithinLimits) {
     auto dataset = Dataset::open(fixture_path());
     ASSERT_TRUE(dataset);
@@ -75,6 +93,11 @@ TEST(UnifiedFastFacadeTest, ReadAllPublishesWithinLimits) {
     EXPECT_EQ(limited.error().code, ErrorCode::ResultLimitExceeded);
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(UnifiedFastFacadeTest, RejectsInvalidPublicFid) {
     auto dataset = Dataset::open(fixture_path());
     ASSERT_TRUE(dataset);
@@ -88,6 +111,11 @@ TEST(UnifiedFastFacadeTest, RejectsInvalidPublicFid) {
     EXPECT_EQ(feature.error().code, ErrorCode::Unsupported);
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(UnifiedFastFacadeTest, DeadlineFailsBeforeCursorPublication) {
     auto dataset = Dataset::open(fixture_path());
     ASSERT_TRUE(dataset);
@@ -103,6 +131,11 @@ TEST(UnifiedFastFacadeTest, DeadlineFailsBeforeCursorPublication) {
     EXPECT_EQ(cursor.error().code, ErrorCode::DeadlineExceeded);
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(UnifiedFastFacadeTest, CancellationBeforeFirstPublicationIsAtomic) {
     auto dataset = Dataset::open(fixture_path());
     ASSERT_TRUE(dataset);
@@ -122,6 +155,11 @@ TEST(UnifiedFastFacadeTest, CancellationBeforeFirstPublicationIsAtomic) {
     EXPECT_EQ(first.error().code, ErrorCode::Cancelled);
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(UnifiedFastFacadeTest, RejectsInvalidQueryBeforeBackendSelection) {
     auto dataset = Dataset::open(fixture_path());
     ASSERT_TRUE(dataset);
@@ -151,6 +189,11 @@ TEST(UnifiedFastFacadeTest, RejectsInvalidQueryBeforeBackendSelection) {
 #endif
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(UnifiedFastFacadeTest, BoundsFidAscendingCandidateMemory) {
     auto dataset = Dataset::open(fixture_path());
     ASSERT_TRUE(dataset);
@@ -167,6 +210,11 @@ TEST(UnifiedFastFacadeTest, BoundsFidAscendingCandidateMemory) {
     EXPECT_EQ(cursor.error().code, ErrorCode::ResultLimitExceeded);
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(UnifiedFastFacadeTest, ExposesFeatureDatasetGroups) {
     const auto source = explorgdb_test_paths::test_data_path(
         "test_data/gdb/acceptance_metadata.gdb").string();
@@ -197,6 +245,11 @@ TEST(UnifiedFastFacadeTest, ExposesFeatureDatasetGroups) {
     ASSERT_TRUE(named) << named.error().message;
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(UnifiedFastFacadeTest, NativeExtensionsAreFastOnlyAndBounded) {
     auto dataset = Dataset::open(fixture_path());
     ASSERT_TRUE(dataset);
@@ -220,6 +273,11 @@ TEST(UnifiedFastFacadeTest, NativeExtensionsAreFastOnlyAndBounded) {
     EXPECT_FALSE(native.value().descriptors.empty());
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(UnifiedFastFacadeTest, ReportsCapabilitiesAndQueryPlan) {
     auto dataset = Dataset::open(fixture_path());
     ASSERT_TRUE(dataset);
@@ -241,6 +299,11 @@ TEST(UnifiedFastFacadeTest, ReportsCapabilitiesAndQueryPlan) {
     EXPECT_TRUE(plan.value().materializes_fids);
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(UnifiedFastFacadeTest, SharesCoordinatorAndFailsClosedDuringWriter) {
     auto dataset = Dataset::open(fixture_path());
     ASSERT_TRUE(dataset);
@@ -269,6 +332,11 @@ TEST(UnifiedFastFacadeTest, SharesCoordinatorAndFailsClosedDuringWriter) {
 }
 
 #if defined(FAST_GDB_UNIFIED_WITH_GDAL)
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(UnifiedGdalFacadeTest, ExplicitConcurrentPolicyUsesUnverifiedGdal) {
     OpenOptions options;
     options.concurrent_read = ConcurrentReadPolicy::GdalUnverified;
@@ -296,6 +364,11 @@ TEST(UnifiedGdalFacadeTest, ExplicitConcurrentPolicyUsesUnverifiedGdal) {
               explorgdb::CoordinationStatus::Ok);
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(UnifiedGdalFacadeTest, AutoFallsBackForWhitelistedQueryGap) {
     const auto source = explorgdb_test_paths::test_data_path(
         "test_data/gdb/acceptance_metadata.gdb").string();
@@ -358,6 +431,11 @@ TEST(UnifiedGdalFacadeTest, AutoFallsBackForWhitelistedQueryGap) {
     EXPECT_EQ(area->default_value, "FILEGEODATABASE_SHAPE_AREA");
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(UnifiedGdalFacadeTest, GdalOnlyUsesOfficialOpenFileGdb) {
     OpenOptions options;
     options.backend = BackendPreference::GdalOnly;
@@ -395,6 +473,11 @@ TEST(UnifiedGdalFacadeTest, GdalOnlyUsesOfficialOpenFileGdb) {
               system_names.value().end());
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(UnifiedGdalFacadeTest, GdalDeadlineFailsBeforeCursorPublication) {
     OpenOptions options;
     options.backend = BackendPreference::GdalOnly;
@@ -412,6 +495,11 @@ TEST(UnifiedGdalFacadeTest, GdalDeadlineFailsBeforeCursorPublication) {
     EXPECT_EQ(cursor.error().code, ErrorCode::DeadlineExceeded);
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(UnifiedGdalFacadeTest, BoundsFidAscendingCandidateMemory) {
     OpenOptions options;
     options.backend = BackendPreference::GdalOnly;
@@ -430,6 +518,11 @@ TEST(UnifiedGdalFacadeTest, BoundsFidAscendingCandidateMemory) {
     EXPECT_EQ(cursor.error().code, ErrorCode::ResultLimitExceeded);
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(UnifiedGdalFacadeTest, FastAndGdalSchemasExposeParityInputs) {
     const auto source = explorgdb_test_paths::test_data_path(
         "test_data/gdb/acceptance_metadata.gdb").string();
@@ -453,6 +546,11 @@ TEST(UnifiedGdalFacadeTest, FastAndGdalSchemasExposeParityInputs) {
     }
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(UnifiedGdalFacadeTest, GdalOnlyPreservesFeatureDatasetGroups) {
     const auto source = explorgdb_test_paths::test_data_path(
         "test_data/gdb/acceptance_metadata.gdb").string();
@@ -473,6 +571,11 @@ TEST(UnifiedGdalFacadeTest, GdalOnlyPreservesFeatureDatasetGroups) {
     ASSERT_TRUE(roads) << roads.error().message;
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(UnifiedGdalFacadeTest, RealAwsImmutablePrefixReadsWhenConfigured) {
     const char* fixture = std::getenv("FAST_GDB_AWS_S3_FIXTURE");
     if (fixture == nullptr || *fixture == '\0') {

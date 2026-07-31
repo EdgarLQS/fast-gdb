@@ -1,3 +1,6 @@
+// 文件说明：explorgdb 测试代码。
+// 测试职责：验证对应模块的行为、边界条件或兼容性约束。
+
 #include <gtest/gtest.h>
 
 #include "adaptive_reader.h"
@@ -517,6 +520,11 @@ protected:
     fs::path gdb_path_;
 };
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST_F(AdaptiveReaderGdalIntegrationTest,
        OfficialGdalUpdateWaitsForDrainAndFreshFastReaderSeesNewValue) {
     InProcessGdbCoordinator coordinator;
@@ -577,6 +585,11 @@ TEST_F(AdaptiveReaderGdalIntegrationTest,
     EXPECT_EQ(coordinator.state(path).generation, 1U);
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST_F(AdaptiveReaderGdalIntegrationTest,
        OfficialCreateFeatureIsVisibleOnlyAfterCompleteReopen) {
     const std::string path = gdb_path_.string();
@@ -626,6 +639,11 @@ TEST_F(AdaptiveReaderGdalIntegrationTest,
               result.matched_fids.end());
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST_F(AdaptiveReaderGdalIntegrationTest,
        OfficialDeleteFeatureIsVisibleOnlyAfterCompleteReopen) {
     const std::string path = gdb_path_.string();
@@ -659,6 +677,11 @@ TEST_F(AdaptiveReaderGdalIntegrationTest,
               result.matched_fids.end());
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST_F(AdaptiveReaderGdalIntegrationTest,
        OfficialSchemaChangeIsVisibleOnlyAfterCompleteReopen) {
     const std::string path = gdb_path_.string();
@@ -688,6 +711,11 @@ TEST_F(AdaptiveReaderGdalIntegrationTest,
     EXPECT_TRUE(reopened.has_field("post_schema"));
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST_F(AdaptiveReaderGdalIntegrationTest,
        OfficialDeleteFieldIsVisibleOnlyAfterCompleteReopen) {
     const std::string path = gdb_path_.string();
@@ -717,6 +745,11 @@ TEST_F(AdaptiveReaderGdalIntegrationTest,
     EXPECT_FALSE(reopened.has_field(kCategoryField));
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST_F(AdaptiveReaderGdalIntegrationTest,
        OfficialDeleteAttributeIndexRequiresFreshReader) {
     const std::string path = gdb_path_.string();
@@ -750,6 +783,11 @@ TEST_F(AdaptiveReaderGdalIntegrationTest,
     EXPECT_EQ(result.fallback_reason, "attribute index missing");
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST_F(AdaptiveReaderGdalIntegrationTest,
        OfficialIndexAndExtentChangesRequireFreshReader) {
     const std::string path = gdb_path_.string();
@@ -783,6 +821,11 @@ TEST_F(AdaptiveReaderGdalIntegrationTest,
     ASSERT_EQ(spatial_result.matched_fids.size(), 1U);
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST_F(AdaptiveReaderGdalIntegrationTest,
        OfficialGdalRepackRunsOnlyAfterFastMmapDrain) {
     InProcessGdbCoordinator coordinator;
@@ -829,6 +872,11 @@ TEST_F(AdaptiveReaderGdalIntegrationTest,
     EXPECT_EQ(reopened.query(scan).matched_fids.size(), 5U);
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST_F(AdaptiveReaderGdalIntegrationTest,
        OfficialGdalParityCoversEveryQueryKindOnStableSource) {
     const std::string path = gdb_path_.string();
@@ -908,6 +956,11 @@ TEST_F(AdaptiveReaderGdalIntegrationTest,
     }
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST_F(AdaptiveReaderGdalIntegrationTest,
        ConcurrentOfficialGdalReadIsNeverPromotedToVerified) {
     const std::string path = gdb_path_.string();

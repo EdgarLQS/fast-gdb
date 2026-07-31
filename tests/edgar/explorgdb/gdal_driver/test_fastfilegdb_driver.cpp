@@ -1,3 +1,6 @@
+// 文件说明：explorgdb 测试代码。
+// 测试职责：验证对应模块的行为、边界条件或兼容性约束。
+
 #include "test_paths.h"
 
 #include <gdal_priv.h>
@@ -18,6 +21,11 @@ std::string fixture_path() {
         "test_data/benchmark/wide_50_gdal.gdb").string();
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(FastFileGdbDriverTest, RegistersAndReadsThroughUnifiedRuntime) {
     GDALAllRegister();
     GDALRegister_FastFileGDB();
@@ -46,6 +54,11 @@ TEST(FastFileGdbDriverTest, RegistersAndReadsThroughUnifiedRuntime) {
     EXPECT_GT(feature->GetFID(), 0);
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(FastFileGdbDriverTest, RejectsUpdateOpen) {
     GDALAllRegister();
     GDALRegister_FastFileGDB();
@@ -56,6 +69,11 @@ TEST(FastFileGdbDriverTest, RejectsUpdateOpen) {
     EXPECT_EQ(dataset, nullptr);
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(FastFileGdbDriverTest, ExposesFeatureDatasetGroupHierarchy) {
     GDALAllRegister();
     GDALRegister_FastFileGDB();
@@ -101,6 +119,11 @@ TEST(FastFileGdbDriverTest, ExposesFeatureDatasetGroupHierarchy) {
     EXPECT_STREQ(roads->GetName(), "roads");
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(FastFileGdbDriverTest, ImplementsReadFilterAndResetContract) {
     GDALAllRegister();
     GDALRegister_FastFileGDB();

@@ -4,6 +4,6 @@
 # translation unit rather than leaking an `open` macro through public headers.
 if(WIN32 AND MINGW)
     set_source_files_properties(
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader/gdb_table.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader/format/gdb_table.cpp"
         PROPERTIES COMPILE_DEFINITIONS FAST_GDB_REDIRECT_POSIX_OPEN=1)
 endif()

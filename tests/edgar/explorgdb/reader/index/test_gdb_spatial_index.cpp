@@ -1,0 +1,238 @@
+// tests/edgar/explorgdb/test_gdb_spatial_index.cpp
+// GdbSpatialIndexParser 正确性单元测试
+// 验证 parse() 和 query_bbox() 的基本行为
+
+#include <gtest/gtest.h>
+#include "gdb_spatial_index.h"
+#include "test_paths.h"
+#include <cmath>
+#include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <limits>
+#include <vector>
+
+namespace fs = std::filesystem;
+using namespace explorgdb;
+
+// ── 测试数据路径 ──
+
+static const std::string kSmallSpx =
+    explorgdb_test_paths::test_data_path(
+        "test_data/gdb/test_spatial_gdb.gdb/test_spatial_gdb.gdb/a0000000c.spx").string();
+
+static const std::string kLargeSpx =
+    explorgdb_test_paths::test_data_path(
+        "test_data/large/large_test.gdb/a00000009.spx").string();
+
+// ── parse() 测试 ──
+
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
+TEST(SpatialIndexTest, ParseValidSmall) {
+    GdbSpatialIndexParser parser(kSmallSpx);
+    ASSERT_TRUE(parser.parse());
+    EXPECT_EQ(parser.trailer().value_size, 8);
+    EXPECT_EQ(parser.trailer().magic1, 1u);
+    EXPECT_GE(parser.trailer().tree_depth, 1u);
+    EXPECT_LE(parser.trailer().tree_depth, 4u);
+    EXPECT_GT(parser.trailer().total_value_count, 0u);
+}
+
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
+TEST(SpatialIndexTest, ParseValidLarge) {
+    GdbSpatialIndexParser parser(kLargeSpx);
+    ASSERT_TRUE(parser.parse());
+    EXPECT_EQ(parser.trailer().value_size, 8);
+    EXPECT_EQ(parser.trailer().magic1, 1u);
+    EXPECT_EQ(parser.trailer().tree_depth, 3u);
+    EXPECT_GT(parser.trailer().total_value_count, 1000000u);
+}
+
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
+TEST(SpatialIndexTest, ParseNonexistent) {
+    GdbSpatialIndexParser parser("/nonexistent/path/fake.spx");
+    EXPECT_FALSE(parser.parse());
+}
+
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
+TEST(SpatialIndexTest, ParseTruncated) {
+    // 创建一个 < 22 字节的临时文件
+    std::string tmp_path = "/tmp/test_truncated.spx";
+    {
+        std::ofstream ofs(tmp_path, std::ios::binary);
+        ofs.write("short", 5);
+    }
+    GdbSpatialIndexParser parser(tmp_path);
+    EXPECT_FALSE(parser.parse());
+    fs::remove(tmp_path);
+}
+
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
+TEST(SpatialIndexTest, RejectsPageWithTooManyEntries) {
+    const std::string path = "/tmp/test_invalid_entry_count.spx";
+    std::vector<uint8_t> data(
+        GdbSpatialIndexParser::kPageSize +
+        GdbSpatialIndexParser::kTrailerSize, 0);
+    const uint32_t invalid_count = 341;
+    std::memcpy(data.data() + 4, &invalid_count,
+                sizeof(invalid_count));
+
+    const size_t trailer = GdbSpatialIndexParser::kPageSize;
+    data[trailer] = 8;
+    const uint32_t magic = 1;
+    const uint32_t depth = 1;
+    std::memcpy(data.data() + trailer + 2, &magic, sizeof(magic));
+    std::memcpy(data.data() + trailer + 6, &depth, sizeof(depth));
+    std::ofstream(path, std::ios::binary).write(
+        reinterpret_cast<const char*>(data.data()), data.size());
+
+    GdbSpatialIndexParser parser(path);
+    ASSERT_TRUE(parser.parse());
+    EXPECT_TRUE(parser.query_bbox(
+        0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, {1.0}).empty());
+    fs::remove(path);
+}
+
+// ── query_bbox() 测试 ──
+
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
+TEST(SpatialIndexTest, QuerySmallBbox) {
+    // 使用大数据集（1M），参数确定有效
+    GdbSpatialIndexParser parser(kLargeSpx);
+    ASSERT_TRUE(parser.parse());
+
+    // 1M 数据集参数：xorig=-400, yorig=-400, xyscale=1e9, grid=[400.0]
+    double xorig = -400.0, yorig = -400.0, xyscale = 1e9;
+    std::vector<double> grid_resolutions = {400.0};
+
+    // 查询一个中等范围 bbox（数据范围 [0,100000]）
+    auto fids = parser.query_bbox(
+        50000, 50000, 50100, 50100,
+        xorig, yorig, xyscale, grid_resolutions);
+
+    // 应该返回一些结果
+    EXPECT_GT(fids.size(), 0u);
+}
+
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
+TEST(SpatialIndexTest, QueryEmptyBbox) {
+    // 查询数据范围外的 bbox → 应返回空
+    GdbSpatialIndexParser parser(kSmallSpx);
+    ASSERT_TRUE(parser.parse());
+
+    double xorig = -400.0, yorig = -400.0, xyscale = 1e9;
+    std::vector<double> grid_resolutions = {400.0};
+
+    // 数据范围大约 [0, 100000]，查询完全在范围外
+    auto fids = parser.query_bbox(
+        -1000000, -1000000, -999000, -999000,
+        xorig, yorig, xyscale, grid_resolutions);
+
+    EXPECT_EQ(fids.size(), 0u);
+}
+
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
+TEST(SpatialIndexTest, QueryLargeBbox) {
+    // 查询覆盖全部数据范围 → 应返回最多结果
+    GdbSpatialIndexParser parser(kSmallSpx);
+    ASSERT_TRUE(parser.parse());
+
+    double xorig = -400.0, yorig = -400.0, xyscale = 1e9;
+    std::vector<double> grid_resolutions = {400.0};
+
+    auto fids = parser.query_bbox(
+        -1000, -1000, 200000, 200000,
+        xorig, yorig, xyscale, grid_resolutions);
+
+    // 应该返回大量结果
+    EXPECT_GT(fids.size(), 100u);
+}
+
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
+TEST(SpatialIndexTest, QueryEmptyGridResolutions) {
+    // grid_resolutions 为空 → 应返回空
+    GdbSpatialIndexParser parser(kSmallSpx);
+    ASSERT_TRUE(parser.parse());
+
+    auto fids = parser.query_bbox(
+        50000, 50000, 50100, 50100,
+        0, 0, 1e9, std::vector<double>{});
+
+    EXPECT_EQ(fids.size(), 0u);
+}
+
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
+TEST(SpatialIndexTest, RejectsInvalidQueryInputs) {
+    GdbSpatialIndexParser parser(kSmallSpx);
+    ASSERT_TRUE(parser.parse());
+
+    EXPECT_TRUE(parser.query_bbox(
+        std::numeric_limits<double>::quiet_NaN(), 0.0, 1.0, 1.0,
+        0.0, 0.0, 1.0, {1.0}).empty());
+    EXPECT_TRUE(parser.query_bbox(
+        0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, {0.0}).empty());
+}
+
+// ── 结果排序验证 ──
+
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
+TEST(SpatialIndexTest, ResultsAreSorted) {
+    GdbSpatialIndexParser parser(kSmallSpx);
+    ASSERT_TRUE(parser.parse());
+
+    double xorig = -400.0, yorig = -400.0, xyscale = 1e9;
+    std::vector<double> grid_resolutions = {400.0};
+
+    auto fids = parser.query_bbox(
+        0, 0, 100000, 100000,
+        xorig, yorig, xyscale, grid_resolutions);
+
+    // 验证 FID 列表已排序（query_bbox 内部做了 sort + unique）
+    for (size_t i = 1; i < fids.size(); ++i) {
+        EXPECT_GT(fids[i], fids[i - 1]) << "FIDs should be strictly ascending at index " << i;
+    }
+}

@@ -228,6 +228,7 @@ HybridQueryEngine::HybridQueryEngine(
     : catalog_(catalog), resolved_(std::move(table)),
       options_(options) {}
 
+// 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 bool HybridQueryEngine::open() {
     if (resolved_.table_path.empty() || resolved_.tablx_path.empty())
         return false;

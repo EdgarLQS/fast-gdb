@@ -2,27 +2,6 @@ include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 include(${CMAKE_CURRENT_LIST_DIR}/FastGdbPlatform.cmake)
 
-# GeometryValue::to_wkt() belongs to the portable geometry API. Reader sources
-# are collected with GLOB, so move this translation unit to geometry_core and
-# avoid duplicate definitions.
-set(_fast_gdb_wkb_reader_source
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader/wkb_reader.cpp")
-get_target_property(_fast_gdb_reader_sources explorgdb_reader_lib SOURCES)
-list(REMOVE_ITEM _fast_gdb_reader_sources
-    "${_fast_gdb_wkb_reader_source}"
-    "src/edgar/explorgdb/reader/wkb_reader.cpp")
-set_property(TARGET explorgdb_reader_lib PROPERTY SOURCES
-    "${_fast_gdb_reader_sources}")
-target_sources(fast_gdb_geometry_core PRIVATE
-    "${_fast_gdb_wkb_reader_source}")
-
-if(TARGET fast_gdb_geometry_test_runner)
-    target_sources(fast_gdb_geometry_test_runner PRIVATE
-        tests/edgar/explorgdb/reader/test_wkb_to_wkt.cpp)
-endif()
-unset(_fast_gdb_reader_sources)
-unset(_fast_gdb_wkb_reader_source)
-
 set(FAST_GDB_PACKAGE_VARIANT "" CACHE STRING
     "Release package variant name; defaults to linear, hybrid, or adaptive")
 if(NOT FAST_GDB_PACKAGE_VARIANT)
@@ -38,7 +17,7 @@ endif()
 set_target_properties(fast_gdb_geometry_core PROPERTIES
     EXPORT_NAME geometry_core
     INTERFACE_INCLUDE_DIRECTORIES
-        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader>;$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/reader>")
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader/geometry>;$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/reader>")
 set_target_properties(explorgdb_common_lib PROPERTIES
     EXPORT_NAME common
     INTERFACE_INCLUDE_DIRECTORIES
@@ -46,7 +25,7 @@ set_target_properties(explorgdb_common_lib PROPERTIES
 set_target_properties(explorgdb_reader_lib PROPERTIES
     EXPORT_NAME reader
     INTERFACE_INCLUDE_DIRECTORIES
-        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader>;$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/reader>")
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader/api>;$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader/format>;$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader/geometry>;$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader/index>;$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader/query>;$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader/io>;$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/reader>")
 set_target_properties(fast_gdb_linear PROPERTIES EXPORT_NAME linear)
 
 set(FAST_GDB_INSTALL_TARGETS
@@ -84,7 +63,7 @@ if(FAST_GDB_WITH_GDAL)
     set_target_properties(fast_gdb_curve_gdal PROPERTIES
         EXPORT_NAME curve_gdal
         INTERFACE_INCLUDE_DIRECTORIES
-            "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/curve_gdal>;$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader>;$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/curve_gdal>;$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/reader>")
+            "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/curve_gdal>;$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader/api>;$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader/format>;$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader/geometry>;$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader/index>;$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader/query>;$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader/io>;$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/curve_gdal>;$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/reader>")
     set_target_properties(fast_gdb_hybrid PROPERTIES EXPORT_NAME hybrid)
     list(APPEND FAST_GDB_INSTALL_TARGETS fast_gdb_curve_gdal fast_gdb_hybrid)
 endif()
@@ -93,7 +72,7 @@ if(TARGET fast_gdb_adaptive)
     set_target_properties(fast_gdb_adaptive PROPERTIES
         EXPORT_NAME adaptive
         INTERFACE_INCLUDE_DIRECTORIES
-            "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/adaptive>;$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader>;$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/adaptive>;$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/reader>")
+            "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/adaptive>;$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader/api>;$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader/format>;$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader/geometry>;$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader/index>;$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader/query>;$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader/io>;$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/adaptive>;$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/reader>")
     list(APPEND FAST_GDB_INSTALL_TARGETS fast_gdb_adaptive)
 endif()
 
@@ -114,10 +93,34 @@ install(DIRECTORY src/edgar/explorgdb/common/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/common
     FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp"
     PATTERN "explorgdb_constants.h" EXCLUDE)
-install(DIRECTORY src/edgar/explorgdb/reader/
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/reader
-    FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp"
-    PATTERN "query_where_internal.h" EXCLUDE)
+install(FILES
+    src/edgar/explorgdb/reader/api/capability_report.h
+    src/edgar/explorgdb/reader/api/reader.h
+    src/edgar/explorgdb/reader/format/catalog_resolver.h
+    src/edgar/explorgdb/reader/format/field_layout.h
+    src/edgar/explorgdb/reader/format/gdb_catalog.h
+    src/edgar/explorgdb/reader/format/gdb_table.h
+    src/edgar/explorgdb/reader/format/gdb_tablx.h
+    src/edgar/explorgdb/reader/format/gdb_tablx_cache.h
+    src/edgar/explorgdb/reader/format/metadata_reader.h
+    src/edgar/explorgdb/reader/geometry/curve_geometry.h
+    src/edgar/explorgdb/reader/geometry/gdb_geometry.h
+    src/edgar/explorgdb/reader/geometry/geometry_model.h
+    src/edgar/explorgdb/reader/geometry/polygon_topology.h
+    src/edgar/explorgdb/reader/geometry/spatial_predicate.h
+    src/edgar/explorgdb/reader/geometry/wkb_writer.h
+    src/edgar/explorgdb/reader/geometry/wkt_writer.h
+    src/edgar/explorgdb/reader/index/gdb_attribute_index.h
+    src/edgar/explorgdb/reader/index/gdb_indexes.h
+    src/edgar/explorgdb/reader/index/gdb_spatial_index.h
+    src/edgar/explorgdb/reader/io/unistd.h
+    src/edgar/explorgdb/reader/io/windows_posix_compat.h
+    src/edgar/explorgdb/reader/io/windows_sliding_map.h
+    src/edgar/explorgdb/reader/query/query_engine.h
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/reader)
+install(FILES
+    src/edgar/explorgdb/reader/io/sys/mman.h
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/reader/sys)
 
 if(FAST_GDB_WITH_GDAL)
     install(DIRECTORY src/edgar/explorgdb/curve_gdal/
@@ -154,7 +157,7 @@ install(FILES
 install(FILES README.md CHANGELOG.md
     DESTINATION ${CMAKE_INSTALL_DATADIR}/fast_gdb)
 install(FILES
-    docs/releases/v0.2.0.md
+    docs/governance/releases/v0.2.0.md
     DESTINATION ${CMAKE_INSTALL_DATADIR}/fast_gdb
     RENAME release-notes.md)
 

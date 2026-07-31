@@ -12,8 +12,8 @@
 //
 // 默认测试数据集：test_data/large/large_test.gdb
 
-#include "explorgdb/reader/gdb_spatial_index.h"
-#include "explorgdb/reader/gdb_attribute_index.h"
+#include "explorgdb/reader/index/gdb_spatial_index.h"
+#include "explorgdb/reader/index/gdb_attribute_index.h"
 #include <iostream>
 #include <string>
 #include <vector>

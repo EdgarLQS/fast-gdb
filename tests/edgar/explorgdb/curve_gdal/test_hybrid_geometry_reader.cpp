@@ -1,3 +1,6 @@
+// 文件说明：explorgdb 测试代码。
+// 测试职责：验证对应模块的行为、边界条件或兼容性约束。
+
 #include "gdal_curve_backend.h"
 #include "hybrid_geometry_reader.h"
 
@@ -9,6 +12,11 @@
 
 using namespace explorgdb;
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(HybridGeometryContract, MapsFastFidWithExplicitOffset) {
     int64_t mapped = -1;
     EXPECT_TRUE(HybridGeometryReader::map_gdal_fid(0, 1, mapped));
@@ -18,6 +26,11 @@ TEST(HybridGeometryContract, MapsFastFidWithExplicitOffset) {
     EXPECT_FALSE(HybridGeometryReader::map_gdal_fid(0, -1, mapped));
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(HybridGeometryContract, RejectsInvalidDatasetWithoutGuessing) {
     GdalCurveRequest request;
     request.gdb_path = "/path/that/does/not/exist.gdb";
@@ -38,6 +51,11 @@ TEST(HybridGeometryContract, RejectsInvalidDatasetWithoutGuessing) {
     EXPECT_EQ(spatial.status, GeometryStatus::InvalidEncoding);
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(HybridGeometryContract, RejectsNegativeGdalFid) {
     GdalCurveRequest request;
     request.gdb_path = "/path/that/does/not/exist.gdb";
@@ -51,6 +69,11 @@ TEST(HybridGeometryContract, RejectsNegativeGdalFid) {
     EXPECT_FALSE(result.valid());
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(HybridGeometryContract, ThreadCacheCanBeClearedRepeatedly) {
     EXPECT_NO_THROW(GdalCurveBackendBridge::clear_thread_cache());
     EXPECT_NO_THROW(GdalCurveBackendBridge::clear_thread_cache());

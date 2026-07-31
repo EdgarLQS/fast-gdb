@@ -12,7 +12,7 @@
 |------|------|
 | 工具 | ArcGIS Pro 3.0+ (arcpy) |
 | 本机路径 | `D:\software\arcgis\install\arcpro352\bin\Python\envs\arcgispro-py3\python.exe` |
-| 生成脚本 | `tests/createdata/generate_acceptance_metadata.py` |
+| 生成脚本 | `tests/createdata/python/generate_acceptance_metadata.py` |
 | 输出 GDB | `test_data/gdb/acceptance_metadata.gdb` |
 | 交付目录 | `test_data/gdb/acceptance_metadata/` |
 
@@ -112,7 +112,7 @@ Get-ItemProperty "HKLM:\SOFTWARE\ESRI\ArcGISPro" | Select-Object PythonCondaRoot
 
 ```powershell
 & "D:\software\arcgis\install\arcpro352\bin\Python\envs\arcgispro-py3\python.exe" -X utf8 `
-    E:\gitdesktop\fast-gdb\tests\createdata\generate_acceptance_metadata.py
+    E:\gitdesktop\fast-gdb\tests\createdata\python\generate_acceptance_metadata.py
 ```
 
 > 脚本会自动删除旧 GDB 并重建，每次运行结果一致。

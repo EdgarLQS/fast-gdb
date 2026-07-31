@@ -11,6 +11,11 @@ using namespace explorgdb;
 // ── 无符号 Varuint 测试 ──
 
 // 测试 0 的编码和解码
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(VaruintTest, Zero) {
     auto encoded = encode_varuint(0);
     ASSERT_EQ(encoded.size(), 1u);
@@ -22,6 +27,11 @@ TEST(VaruintTest, Zero) {
 }
 
 // 测试小值 (单字节) 编码解码
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(VaruintTest, SingleByte) {
     for (uint64_t v = 1; v <= 127; ++v) {
         auto encoded = encode_varuint(v);
@@ -34,6 +44,11 @@ TEST(VaruintTest, SingleByte) {
 }
 
 // 测试 127 (最大单字节值)
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(VaruintTest, MaxSingleByte) {
     auto encoded = encode_varuint(127);
     ASSERT_EQ(encoded.size(), 1u);
@@ -44,6 +59,11 @@ TEST(VaruintTest, MaxSingleByte) {
 }
 
 // 测试 128 (最小双字节值)
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(VaruintTest, MinTwoByte) {
     auto encoded = encode_varuint(128);
     ASSERT_EQ(encoded.size(), 2u);
@@ -57,6 +77,11 @@ TEST(VaruintTest, MinTwoByte) {
 }
 
 // 测试多字节值
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(VaruintTest, MultiByte) {
     uint64_t values[] = {255, 256, 16383, 16384, 0xFFFFFFFF, 0xFFFFFFFFFFFFFFFF};
 
@@ -70,6 +95,11 @@ TEST(VaruintTest, MultiByte) {
 // ── 有符号 Varint 测试 ──
 
 // 测试 0 的编码解码
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(VarintTest, Zero) {
     auto encoded = encode_varint(0);
     BinaryReader br(encoded);
@@ -77,6 +107,11 @@ TEST(VarintTest, Zero) {
 }
 
 // 测试正数
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(VarintTest, Positive) {
     int64_t values[] = {1, 63, 64, 127, 128, 16383, 0x7FFFFFFF};
 
@@ -88,6 +123,11 @@ TEST(VarintTest, Positive) {
 }
 
 // 测试负数
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(VarintTest, Negative) {
     int64_t values[] = {-1, -63, -64, -127, -128, -16383, -0x7FFFFFFF};
 
@@ -99,6 +139,11 @@ TEST(VarintTest, Negative) {
 }
 
 // 测试边界值
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(VarintTest, EdgeValues) {
     // 最大正数 (6-bit first byte: 63)
     {

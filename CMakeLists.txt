@@ -159,16 +159,17 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 # ===== Portable geometry core =====
 set(FAST_GDB_GEOMETRY_SOURCES
-    src/edgar/explorgdb/reader/curve_geometry.cpp
-    src/edgar/explorgdb/reader/gdb_geometry.cpp
-    src/edgar/explorgdb/reader/gdb_geometry_model.cpp
-    src/edgar/explorgdb/reader/polygon_topology.cpp
-    src/edgar/explorgdb/reader/spatial_predicate.cpp
-    src/edgar/explorgdb/reader/wkb_writer.cpp
-    src/edgar/explorgdb/reader/wkt_writer.cpp)
+    src/edgar/explorgdb/reader/geometry/curve_geometry.cpp
+    src/edgar/explorgdb/reader/geometry/gdb_geometry.cpp
+    src/edgar/explorgdb/reader/geometry/gdb_geometry_model.cpp
+    src/edgar/explorgdb/reader/geometry/polygon_topology.cpp
+    src/edgar/explorgdb/reader/geometry/spatial_predicate.cpp
+    src/edgar/explorgdb/reader/geometry/wkb_reader.cpp
+    src/edgar/explorgdb/reader/geometry/wkb_writer.cpp
+    src/edgar/explorgdb/reader/geometry/wkt_writer.cpp)
 add_library(fast_gdb_geometry_core STATIC ${FAST_GDB_GEOMETRY_SOURCES})
 target_include_directories(fast_gdb_geometry_core PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader)
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader/geometry)
 target_include_directories(fast_gdb_geometry_core PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/common)
 target_compile_features(fast_gdb_geometry_core PUBLIC cxx_std_17)
@@ -176,25 +177,65 @@ fast_gdb_apply_geometry_configuration(fast_gdb_geometry_core)
 fast_gdb_enable_warnings(fast_gdb_geometry_core)
 
 # ===== Shared FileGDB Reader infrastructure =====
-file(GLOB COMMON_SOURCES CONFIGURE_DEPENDS
-     src/edgar/explorgdb/common/*.cpp)
-add_library(explorgdb_common_lib STATIC ${COMMON_SOURCES})
+set(FAST_GDB_COMMON_SOURCES
+    src/edgar/explorgdb/common/binary_reader.cpp
+    src/edgar/explorgdb/common/explorgdb_types.cpp
+    src/edgar/explorgdb/common/ole_date.cpp
+    src/edgar/explorgdb/common/utf16.cpp
+    src/edgar/explorgdb/common/varint.cpp)
+set(FAST_GDB_READER_API_SOURCES
+    src/edgar/explorgdb/reader/api/capability_report.cpp
+    src/edgar/explorgdb/reader/api/feature_cursor.cpp
+    src/edgar/explorgdb/reader/api/reader.cpp)
+set(FAST_GDB_READER_FORMAT_SOURCES
+    src/edgar/explorgdb/reader/format/catalog_resolver.cpp
+    src/edgar/explorgdb/reader/format/gdb_catalog.cpp
+    src/edgar/explorgdb/reader/format/gdb_table.cpp
+    src/edgar/explorgdb/reader/format/gdb_table_feature.cpp
+    src/edgar/explorgdb/reader/format/gdb_table_feature_contract.cpp
+    src/edgar/explorgdb/reader/format/gdb_table_field_scan.cpp
+    src/edgar/explorgdb/reader/format/gdb_table_geometry.cpp
+    src/edgar/explorgdb/reader/format/gdb_table_geometry_scan.cpp
+    src/edgar/explorgdb/reader/format/gdb_table_peek.cpp
+    src/edgar/explorgdb/reader/format/gdb_table_record.cpp
+    src/edgar/explorgdb/reader/format/gdb_table_records.cpp
+    src/edgar/explorgdb/reader/format/gdb_tablx.cpp
+    src/edgar/explorgdb/reader/format/gdb_tablx_cache.cpp
+    src/edgar/explorgdb/reader/format/metadata_reader.cpp)
+set(FAST_GDB_READER_INDEX_SOURCES
+    src/edgar/explorgdb/reader/index/gdb_attribute_index.cpp
+    src/edgar/explorgdb/reader/index/gdb_attribute_index_query.cpp
+    src/edgar/explorgdb/reader/index/gdb_indexes.cpp
+    src/edgar/explorgdb/reader/index/gdb_spatial_index.cpp)
+set(FAST_GDB_READER_QUERY_SOURCES
+    src/edgar/explorgdb/reader/query/query_engine.cpp
+    src/edgar/explorgdb/reader/query/query_engine_combined.cpp
+    src/edgar/explorgdb/reader/query/query_engine_geometry.cpp
+    src/edgar/explorgdb/reader/query/query_where_internal.cpp)
+set(FAST_GDB_READER_IO_SOURCES
+    src/edgar/explorgdb/reader/io/windows_posix_compat.cpp)
+set(FAST_GDB_READER_SOURCES
+    ${FAST_GDB_READER_API_SOURCES}
+    ${FAST_GDB_READER_FORMAT_SOURCES}
+    ${FAST_GDB_READER_INDEX_SOURCES}
+    ${FAST_GDB_READER_QUERY_SOURCES}
+    ${FAST_GDB_READER_IO_SOURCES})
+set(FAST_GDB_READER_INCLUDE_DIRS
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader/api
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader/format
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader/geometry
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader/index
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader/query
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader/io)
+add_library(explorgdb_common_lib STATIC ${FAST_GDB_COMMON_SOURCES})
 target_include_directories(explorgdb_common_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/common)
 target_compile_features(explorgdb_common_lib PUBLIC cxx_std_17)
 fast_gdb_enable_warnings(explorgdb_common_lib)
 
-file(GLOB READER_SOURCES CONFIGURE_DEPENDS
-     src/edgar/explorgdb/reader/*.cpp)
-list(FILTER READER_SOURCES EXCLUDE REGEX ".*explorgdb_cli\\.cpp$")
-foreach(geometry_source IN LISTS FAST_GDB_GEOMETRY_SOURCES)
-    get_filename_component(geometry_source_abs "${geometry_source}" ABSOLUTE
-                           BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
-    list(REMOVE_ITEM READER_SOURCES "${geometry_source_abs}")
-endforeach()
-add_library(explorgdb_reader_lib STATIC ${READER_SOURCES})
+add_library(explorgdb_reader_lib STATIC ${FAST_GDB_READER_SOURCES})
 target_include_directories(explorgdb_reader_lib PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader)
+    ${FAST_GDB_READER_INCLUDE_DIRS})
 target_link_libraries(explorgdb_reader_lib PUBLIC
     explorgdb_common_lib fast_gdb_geometry_core)
 target_compile_features(explorgdb_reader_lib PUBLIC cxx_std_17)
@@ -239,7 +280,7 @@ if(FAST_GDB_WITH_GDAL)
         src/edgar/explorgdb/curve_gdal/hybrid_geometry_reader.cpp)
     target_include_directories(fast_gdb_curve_gdal PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/curve_gdal
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader)
+        ${FAST_GDB_READER_INCLUDE_DIRS})
     target_link_libraries(fast_gdb_curve_gdal PUBLIC
         explorgdb_reader_lib ${FAST_GDB_GDAL_TARGET})
     target_compile_features(fast_gdb_curve_gdal PUBLIC cxx_std_17)
@@ -264,7 +305,7 @@ if(FAST_GDB_BUILD_ADAPTIVE_READER)
     add_library(fast_gdb_adaptive STATIC ${FAST_GDB_ADAPTIVE_SOURCES})
     target_include_directories(fast_gdb_adaptive PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/adaptive
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/edgar/explorgdb/reader)
+        ${FAST_GDB_READER_INCLUDE_DIRS})
     target_link_libraries(fast_gdb_adaptive PUBLIC
         explorgdb_reader_lib ${FAST_GDB_GDAL_TARGET} Threads::Threads)
     if(FAST_GDB_BUILD_UNIFIED)
@@ -276,13 +317,101 @@ endif()
 
 if(FAST_GDB_BUILD_TOOLS)
     add_executable(explorgdb_cli
-        src/edgar/explorgdb/reader/explorgdb_cli.cpp)
+        src/edgar/explorgdb/reader/cli/explorgdb_cli.cpp)
     target_link_libraries(explorgdb_cli PRIVATE explorgdb_reader_lib)
     fast_gdb_enable_warnings(explorgdb_cli)
 endif()
 
 # ===== Tests =====
 if(BUILD_TESTING)
+    set(FAST_GDB_TEST_INCLUDE_DIRS
+        tests
+        tests/edgar/explorgdb
+        tests/edgar/explorgdb/fixtures
+        tests/edgar/explorgdb/integration/gdal_parity/support)
+    set(FAST_GDB_COMMON_TEST_SOURCES
+        tests/edgar/explorgdb/common/test_binary_reader.cpp
+        tests/edgar/explorgdb/common/test_ole_date.cpp
+        tests/edgar/explorgdb/common/test_utf16.cpp
+        tests/edgar/explorgdb/common/test_varint.cpp)
+    set(FAST_GDB_READER_API_TEST_SOURCES
+        tests/edgar/explorgdb/reader/api/test_capability_report.cpp
+        tests/edgar/explorgdb/reader/api/test_feature_cursor.cpp
+        tests/edgar/explorgdb/reader/api/test_reader.cpp)
+    set(FAST_GDB_READER_FORMAT_TEST_SOURCES
+        tests/edgar/explorgdb/reader/format/test_catalog.cpp
+        tests/edgar/explorgdb/reader/format/test_catalog_index_metadata_cache.cpp
+        tests/edgar/explorgdb/reader/format/test_catalog_resolver.cpp
+        tests/edgar/explorgdb/reader/format/test_corrupt_input_conformance.cpp
+        tests/edgar/explorgdb/reader/format/test_datetime_offset_before_geometry.cpp
+        tests/edgar/explorgdb/reader/format/test_field_layout.cpp
+        tests/edgar/explorgdb/reader/format/test_full_audit.cpp
+        tests/edgar/explorgdb/reader/format/test_gdb_tablx_cache.cpp
+        tests/edgar/explorgdb/reader/format/test_gdbtable.cpp
+        tests/edgar/explorgdb/reader/format/test_gdbtablx.cpp
+        tests/edgar/explorgdb/reader/format/test_metadata_reader.cpp
+        tests/edgar/explorgdb/reader/format/test_nullable_bitmap_compat.cpp
+        tests/edgar/explorgdb/reader/format/test_synthetic.cpp)
+    set(FAST_GDB_READER_GEOMETRY_TEST_SOURCES
+        tests/edgar/explorgdb/reader/geometry/test_curve_geometry.cpp
+        tests/edgar/explorgdb/reader/geometry/test_geometry.cpp
+        tests/edgar/explorgdb/reader/geometry/test_geometry_contracts.cpp
+        tests/edgar/explorgdb/reader/geometry/test_geometry_model.cpp
+        tests/edgar/explorgdb/reader/geometry/test_geometry_writer_exact.cpp
+        tests/edgar/explorgdb/reader/geometry/test_wkb_to_wkt.cpp)
+    set(FAST_GDB_READER_INDEX_TEST_SOURCES
+        tests/edgar/explorgdb/reader/index/test_gdb_attribute_index.cpp
+        tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp
+        tests/edgar/explorgdb/reader/index/test_gdb_spatial_index.cpp
+        tests/edgar/explorgdb/reader/index/test_gdb_spatial_index_merge.cpp
+        tests/edgar/explorgdb/reader/index/test_gdbindexes.cpp
+        tests/edgar/explorgdb/reader/index/test_gdbindexes_expression.cpp)
+    set(FAST_GDB_READER_QUERY_TEST_SOURCES
+        tests/edgar/explorgdb/reader/query/test_query_engine.cpp
+        tests/edgar/explorgdb/reader/query/test_query_engine_integration.cpp
+        tests/edgar/explorgdb/reader/query/test_query_where_internal.cpp)
+    set(FAST_GDB_READER_IO_TEST_SOURCES
+        tests/edgar/explorgdb/reader/io/test_windows_mmap_io.cpp)
+    set(FAST_GDB_FULL_READER_TEST_SOURCES
+        ${FAST_GDB_READER_API_TEST_SOURCES}
+        ${FAST_GDB_READER_FORMAT_TEST_SOURCES}
+        ${FAST_GDB_READER_INDEX_TEST_SOURCES}
+        ${FAST_GDB_READER_QUERY_TEST_SOURCES}
+        ${FAST_GDB_READER_IO_TEST_SOURCES})
+    if(NOT FAST_GDB_WITH_GDAL)
+        list(REMOVE_ITEM FAST_GDB_FULL_READER_TEST_SOURCES
+            tests/edgar/explorgdb/reader/format/test_metadata_reader.cpp
+            tests/edgar/explorgdb/reader/query/test_query_engine_integration.cpp)
+    endif()
+    set(FAST_GDB_GDAL_PARITY_TEST_SOURCES
+        tests/edgar/explorgdb/integration/gdal_parity/benchmark/test_feature_cursor_benchmark.cpp
+        tests/edgar/explorgdb/integration/gdal_parity/benchmark/test_spatial_benchmark.cpp
+        tests/edgar/explorgdb/integration/gdal_parity/benchmark/test_spatial_where_benchmark.cpp
+        tests/edgar/explorgdb/integration/gdal_parity/feature_cursor/test_feature_cursor_empty_geometry.cpp
+        tests/edgar/explorgdb/integration/gdal_parity/feature_cursor/test_feature_cursor_gdal.cpp
+        tests/edgar/explorgdb/integration/gdal_parity/feature_cursor/test_feature_cursor_one_pass.cpp
+        tests/edgar/explorgdb/integration/gdal_parity/feature_cursor/test_feature_cursor_one_pass_geometry.cpp
+        tests/edgar/explorgdb/integration/gdal_parity/feature_cursor/test_feature_cursor_reopen.cpp
+        tests/edgar/explorgdb/integration/gdal_parity/feature_cursor/test_feature_cursor_zero_length.cpp
+        tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_adaptive.cpp
+        tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_dimensions.cpp
+        tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_functional_index.cpp
+        tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_fused_geometry.cpp
+        tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_geometry.cpp
+        tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_index_fallback.cpp
+        tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_integration.cpp
+        tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_null.cpp
+        tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_unicode.cpp)
+    set(FAST_GDB_ADAPTIVE_READER_TEST_SOURCES
+        tests/edgar/explorgdb/adaptive/test_adaptive_gdal_open_failure.cpp
+        tests/edgar/explorgdb/adaptive/test_adaptive_official_backends.cpp
+        tests/edgar/explorgdb/adaptive/test_adaptive_reader.cpp
+        tests/edgar/explorgdb/adaptive/test_adaptive_reader_gdal_integration.cpp
+        tests/edgar/explorgdb/adaptive/test_adaptive_reader_recovery.cpp
+        tests/edgar/explorgdb/adaptive/test_adaptive_review_regressions.cpp)
+    set(FAST_GDB_REAL_DATA_TEST_SOURCES
+        tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp)
+
     find_package(GTest CONFIG QUIET)
     if(NOT TARGET GTest::gtest)
         include(FetchContent)
@@ -301,11 +430,11 @@ if(BUILD_TESTING)
             tests/edgar/explorgdb/unified/test_routing.cpp
             tests/edgar/explorgdb/unified/test_unified_fast.cpp)
         target_include_directories(fast_gdb_unified_test_runner PRIVATE
-            tests
+            ${FAST_GDB_TEST_INCLUDE_DIRS}
             tests/edgar/explorgdb
             src/edgar/explorgdb/adaptive
             src/edgar/explorgdb/common
-            src/edgar/explorgdb/reader
+            ${FAST_GDB_READER_INCLUDE_DIRS}
             src/edgar/explorgdb/unified)
         target_compile_definitions(fast_gdb_unified_test_runner PRIVATE
             FAST_GDB_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
@@ -322,7 +451,7 @@ if(BUILD_TESTING)
             tests/edgar/explorgdb/gdal_driver/test_fastfilegdb_driver.cpp
             src/edgar/explorgdb/gdal_driver/fastfilegdb_driver.cpp)
         target_include_directories(fast_gdb_driver_test_runner PRIVATE
-            tests
+            ${FAST_GDB_TEST_INCLUDE_DIRS}
             tests/edgar/explorgdb
             src/edgar/explorgdb/unified)
         target_compile_definitions(fast_gdb_driver_test_runner PRIVATE
@@ -341,7 +470,7 @@ if(BUILD_TESTING)
             src/edgar/explorgdb/gdal_driver/fastfilegdb_driver.cpp)
         target_include_directories(
             fast_gdb_driver_mismatch_test_runner PRIVATE
-            tests
+            ${FAST_GDB_TEST_INCLUDE_DIRS}
             tests/edgar/explorgdb
             src/edgar/explorgdb/unified)
         target_compile_definitions(
@@ -360,13 +489,10 @@ if(BUILD_TESTING)
 
     set(GEOMETRY_TEST_SOURCES
         tests/test_runner.cpp
-        tests/edgar/explorgdb/reader/test_geometry.cpp
-        tests/edgar/explorgdb/reader/test_geometry_model.cpp
-        tests/edgar/explorgdb/reader/test_curve_geometry.cpp
-        tests/edgar/explorgdb/reader/test_geometry_contracts.cpp)
+        ${FAST_GDB_READER_GEOMETRY_TEST_SOURCES})
     add_executable(fast_gdb_geometry_test_runner ${GEOMETRY_TEST_SOURCES})
     target_include_directories(fast_gdb_geometry_test_runner PRIVATE
-        tests
+        ${FAST_GDB_TEST_INCLUDE_DIRS}
         tests/edgar/explorgdb
         tests/edgar/explorgdb/common
         tests/edgar/explorgdb/reader)
@@ -380,12 +506,12 @@ if(BUILD_TESTING)
         add_executable(fast_gdb_hybrid_test_runner
             tests/test_runner.cpp
             tests/edgar/explorgdb/curve_gdal/test_hybrid_geometry_reader.cpp
-            tests/edgar/explorgdb/reader/test_real_data_release_contract.cpp)
+            ${FAST_GDB_REAL_DATA_TEST_SOURCES})
         target_include_directories(fast_gdb_hybrid_test_runner PRIVATE
-            tests
+            ${FAST_GDB_TEST_INCLUDE_DIRS}
             tests/edgar/explorgdb
             tests/edgar/explorgdb/common
-            tests/edgar/explorgdb/reader
+            ${FAST_GDB_READER_INCLUDE_DIRS}
             tests/edgar/explorgdb/curve_gdal
             src/edgar/explorgdb/curve_gdal)
         target_compile_definitions(fast_gdb_hybrid_test_runner PRIVATE
@@ -399,11 +525,11 @@ if(BUILD_TESTING)
         find_package(Threads REQUIRED)
         add_executable(fast_gdb_gdal_read_write_boundary_test_runner
             tests/test_runner.cpp
-            tests/usegdal/test_gdal_write_fast_reader_visibility.cpp)
+            tests/edgar/explorgdb/boundary/gdal_reader_lifecycle/test_gdal_write_fast_reader_visibility.cpp)
         target_include_directories(
             fast_gdb_gdal_read_write_boundary_test_runner PRIVATE
-            tests
-            tests/usegdal
+            ${FAST_GDB_TEST_INCLUDE_DIRS}
+            tests/edgar/explorgdb/boundary/gdal_reader_lifecycle
             tests/edgar/explorgdb
             tests/edgar/explorgdb/common
             tests/edgar/explorgdb/reader)
@@ -420,17 +546,15 @@ if(BUILD_TESTING)
     endif()
 
     if(FAST_GDB_BUILD_ADAPTIVE_READER)
-        file(GLOB ADAPTIVE_READER_TEST_SOURCES CONFIGURE_DEPENDS
-             tests/edgar/explorgdb/adaptive/*.cpp)
         add_executable(fast_gdb_adaptive_reader_test_runner
             tests/test_runner.cpp
-            ${ADAPTIVE_READER_TEST_SOURCES})
+            ${FAST_GDB_ADAPTIVE_READER_TEST_SOURCES})
         target_include_directories(fast_gdb_adaptive_reader_test_runner PRIVATE
-            tests
+            ${FAST_GDB_TEST_INCLUDE_DIRS}
             tests/edgar/explorgdb
             tests/edgar/explorgdb/adaptive
             tests/edgar/explorgdb/common
-            tests/edgar/explorgdb/reader
+            ${FAST_GDB_READER_INCLUDE_DIRS}
             src/edgar/explorgdb/adaptive)
         target_link_libraries(fast_gdb_adaptive_reader_test_runner PRIVATE
             GTest::gtest fast_gdb_adaptive Threads::Threads)
@@ -440,48 +564,21 @@ if(BUILD_TESTING)
     endif()
 
     if(FAST_GDB_BUILD_FULL_TESTS)
-        file(GLOB EXPLORGDB_COMMON_TEST_SOURCES CONFIGURE_DEPENDS
-             tests/edgar/explorgdb/common/*.cpp)
-        file(GLOB EXPLORGDB_READER_TEST_SOURCES CONFIGURE_DEPENDS
-             tests/edgar/explorgdb/reader/*.cpp)
-        foreach(geometry_test IN LISTS GEOMETRY_TEST_SOURCES)
-            get_filename_component(geometry_test_abs "${geometry_test}" ABSOLUTE
-                                   BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
-            list(REMOVE_ITEM EXPLORGDB_READER_TEST_SOURCES
-                             "${geometry_test_abs}")
-        endforeach()
-
-        if(NOT FAST_GDB_WITH_GDAL)
-            list(FILTER EXPLORGDB_READER_TEST_SOURCES EXCLUDE REGEX
-                 ".*test_metadata_reader\\.cpp$")
-            list(FILTER EXPLORGDB_READER_TEST_SOURCES EXCLUDE REGEX
-                 ".*test_query_engine_integration\\.cpp$")
-            list(FILTER EXPLORGDB_READER_TEST_SOURCES EXCLUDE REGEX
-                 ".*test_real_data_release_contract\\.cpp$")
-            list(FILTER EXPLORGDB_READER_TEST_SOURCES EXCLUDE REGEX
-                 ".*test_spatial_benchmark\\.cpp$")
-            list(FILTER EXPLORGDB_READER_TEST_SOURCES EXCLUDE REGEX
-                 ".*test_spatial_query_adaptive\\.cpp$")
-        endif()
-
         set(FULL_TEST_SOURCES
             tests/test_runner.cpp
-            ${EXPLORGDB_COMMON_TEST_SOURCES}
-            ${EXPLORGDB_READER_TEST_SOURCES})
+            ${FAST_GDB_COMMON_TEST_SOURCES}
+            ${FAST_GDB_FULL_READER_TEST_SOURCES})
         if(FAST_GDB_WITH_GDAL)
-            file(GLOB USEGDAL_READER_TEST_SOURCES CONFIGURE_DEPENDS
-                 tests/usegdal/test_*.cpp)
-            list(REMOVE_ITEM USEGDAL_READER_TEST_SOURCES
-                "${CMAKE_CURRENT_SOURCE_DIR}/tests/usegdal/test_gdal_write_fast_reader_visibility.cpp")
             list(APPEND FULL_TEST_SOURCES
-                 ${USEGDAL_READER_TEST_SOURCES}
-                 tests/edgar/explorgdb/curve_gdal/test_hybrid_geometry_reader.cpp)
+                 ${FAST_GDB_GDAL_PARITY_TEST_SOURCES}
+                 tests/edgar/explorgdb/curve_gdal/test_hybrid_geometry_reader.cpp
+                 ${FAST_GDB_REAL_DATA_TEST_SOURCES})
         endif()
 
         add_executable(gdb_tutorial_test_runner ${FULL_TEST_SOURCES})
         target_include_directories(gdb_tutorial_test_runner PRIVATE
-            tests
-            tests/usegdal
+            ${FAST_GDB_TEST_INCLUDE_DIRS}
+            tests/edgar/explorgdb/integration/gdal_parity
             tests/edgar/explorgdb
             tests/edgar/explorgdb/common
             tests/edgar/explorgdb/reader)

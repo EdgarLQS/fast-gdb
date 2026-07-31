@@ -70,7 +70,7 @@ Tests:
 File:
 
 ```text
-tests/usegdal/test_gdal_write_fast_reader_visibility.cpp
+tests/edgar/explorgdb/boundary/gdal_reader_lifecycle/test_gdal_write_fast_reader_visibility.cpp
 ```
 
 Tests:
@@ -176,7 +176,7 @@ characterization 尚未执行，因此 S3 仍是 Experimental / Unverified。
 
 ## Reference-only `usegdal`
 
-`src/edgar/usegdal` is retained as historical GDAL/OGR wrapper source. It is not linked into any release-gate target. Its old wrapper-specific tests are not part of the active test suite.
+`src/reference/usegdal` is retained as historical GDAL/OGR wrapper source. It is not linked into any release-gate target. Its old wrapper-specific tests are not part of the active test suite.
 
 Formal Reader parity and lifecycle tests call the official GDAL API directly so the supported boundary is not coupled to reference wrappers.
 

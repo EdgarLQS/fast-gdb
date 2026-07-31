@@ -1,3 +1,6 @@
+// 文件说明：explorgdb 测试代码。
+// 测试职责：验证对应模块的行为、边界条件或兼容性约束。
+
 #include <gtest/gtest.h>
 
 #include "adaptive_reader.h"
@@ -9,6 +12,11 @@
 using namespace explorgdb;
 using namespace std::chrono_literals;
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(AdaptiveReaderRecoveryTest,
      AbandonedActiveTokenRecoversOnlyWithSavedCoordinationId) {
     InProcessGdbCoordinator coordinator;
@@ -45,6 +53,11 @@ TEST(AdaptiveReaderRecoveryTest,
     EXPECT_TRUE(coordinator.try_acquire_fast_reader(path).valid());
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(AdaptiveReaderRecoveryTest,
      ReportedCloseFailureKeepsWriterActiveUntilConfirmedClosed) {
     InProcessGdbCoordinator coordinator;
@@ -92,6 +105,11 @@ TEST(AdaptiveReaderRecoveryTest,
     EXPECT_TRUE(coordinator.try_acquire_fast_reader(path).valid());
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(AdaptiveReaderRecoveryTest,
      IndependentCoordinatorObjectsShareTheProcessRegistry) {
     InProcessGdbCoordinator reader_coordinator;

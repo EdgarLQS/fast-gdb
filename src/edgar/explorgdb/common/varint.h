@@ -29,14 +29,16 @@
 
 namespace explorgdb {
 
-// 无符号 Varuint 编码
-// 输入: value — 要编码的无符号 64 位整数
-// 返回: 编码后的字节序列（1~10 字节）
+/** 编码无符号 Varuint。
+ * @param value 要编码的无符号 64 位整数。
+ * @return 编码后的字节序列，长度为 1~10 字节。
+ */
 std::vector<uint8_t> encode_varuint(uint64_t value);
 
-// 有符号 Varint 编码
-// 输入: value — 要编码的有符号 64 位整数
-// 返回: 编码后的字节序列（1~10 字节）
+/** 编码有符号 Varint。
+ * @param value 要编码的有符号 64 位整数。
+ * @return 编码后的字节序列，长度为 1~10 字节。
+ */
 std::vector<uint8_t> encode_varint(int64_t value);
 
 // ── 零分配编码函数（直接写入 uint8_t* 缓冲区）──
@@ -45,7 +47,11 @@ std::vector<uint8_t> encode_varint(int64_t value);
 
 static constexpr size_t kMaxVarintLen = 10;
 
-// 将无符号整数编码写入 dst，返回写入字节数
+/** 将无符号整数编码写入目标缓冲区。
+ * @param dst 接收编码结果的缓冲区，至少需要 10 字节。
+ * @param value 要编码的无符号整数。
+ * @return 实际写入的字节数。
+ */
 inline size_t encode_varuint_to(uint8_t* dst, uint64_t value) {
     size_t n = 0;
     do {
@@ -57,12 +63,20 @@ inline size_t encode_varuint_to(uint8_t* dst, uint64_t value) {
     return n;
 }
 
-// 将无符号整数编码写入 dst+offset，返回写入字节数
+/** 将无符号整数编码写入目标缓冲区的指定偏移处。
+ * @param dst 接收编码结果的缓冲区，至少需要 10 字节加偏移空间。
+ * @param offset 写入起始偏移量。
+ * @param value 要编码的无符号整数。
+ * @return 实际写入的字节数。
+ */
 inline size_t encode_varuint_at(uint8_t* dst, size_t offset, uint64_t value) {
     return encode_varuint_to(dst + offset, value);
 }
 
-// 计算 varuint 编码后的字节长度（不实际编码）
+/** 计算 Varuint 编码长度但不执行编码。
+ * @param value 待计算的无符号整数。
+ * @return 编码所需的字节数。
+ */
 inline size_t varuint_encoded_len(uint64_t value) {
     size_t n = 1;
     while (value >= 0x80) {
@@ -72,8 +86,11 @@ inline size_t varuint_encoded_len(uint64_t value) {
     return n;
 }
 
-// 将有符号整数编码写入 dst，返回写入字节数
-// 编码规则：首字节 bit6=符号，bit7=延续，低6bit=数据
+/** 将有符号整数编码写入目标缓冲区。
+ * @param dst 接收编码结果的缓冲区，至少需要 10 字节。
+ * @param value 要编码的有符号整数。
+ * @return 实际写入的字节数。
+ */
 inline size_t encode_varint_to(uint8_t* dst, int64_t value) {
     uint64_t sign_bit = 0;
     uint64_t abs_val;
@@ -104,13 +121,19 @@ inline size_t encode_varint_to(uint8_t* dst, int64_t value) {
     return n;
 }
 
-// 将小端 16-bit 整数写入 dst
+/** 将 16 位整数按小端序写入缓冲区。
+ * @param dst 接收结果的缓冲区，至少需要 2 字节。
+ * @param value 待写入的整数。
+ */
 inline void write_u16_le(uint8_t* dst, uint16_t value) {
     dst[0] = static_cast<uint8_t>(value & 0xFF);
     dst[1] = static_cast<uint8_t>((value >> 8) & 0xFF);
 }
 
-// 将小端 32-bit 整数写入 dst
+/** 将 32 位整数按小端序写入缓冲区。
+ * @param dst 接收结果的缓冲区，至少需要 4 字节。
+ * @param value 待写入的整数。
+ */
 inline void write_u32_le(uint8_t* dst, uint32_t value) {
     dst[0] = static_cast<uint8_t>(value & 0xFF);
     dst[1] = static_cast<uint8_t>((value >> 8) & 0xFF);
@@ -118,7 +141,10 @@ inline void write_u32_le(uint8_t* dst, uint32_t value) {
     dst[3] = static_cast<uint8_t>((value >> 24) & 0xFF);
 }
 
-// 将小端 64-bit 浮点（double）写入 dst
+/** 将 double 按 IEEE 754 小端序写入缓冲区。
+ * @param dst 接收结果的缓冲区，至少需要 8 字节。
+ * @param value 待写入的浮点数。
+ */
 inline void write_f64_le(uint8_t* dst, double value) {
     uint64_t bits;
     static_assert(sizeof(double) == sizeof(uint64_t), "double must be 64 bits");

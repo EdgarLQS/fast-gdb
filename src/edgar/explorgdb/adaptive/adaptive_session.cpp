@@ -1,3 +1,6 @@
+// 文件说明：fast-gdb 源码实现。
+// 实现职责：承载对应模块的内部逻辑，具体接口和边界以头文件及项目文档为准。
+
 // src/edgar/explorgdb/adaptive/adaptive_session.cpp
 
 #include "adaptive_reader.h"
@@ -199,6 +202,8 @@ AdaptiveReadResult read_gdal_path(
 
 }  // namespace
 
+// 方法实现：具体用途、参数和返回值契约见对应头文件或本文件声明。
+// 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 BackendReadResult BackendReadResult::success(QueryResult result) {
     BackendReadResult output;
     output.ok = true;
@@ -207,6 +212,8 @@ BackendReadResult BackendReadResult::success(QueryResult result) {
     return output;
 }
 
+// 方法实现：具体用途、参数和返回值契约见对应头文件或本文件声明。
+// 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 BackendReadResult BackendReadResult::open_failure(std::string error) {
     BackendReadResult output;
     output.failure = BackendFailureKind::Open;
@@ -214,6 +221,8 @@ BackendReadResult BackendReadResult::open_failure(std::string error) {
     return output;
 }
 
+// 方法实现：具体用途、参数和返回值契约见对应头文件或本文件声明。
+// 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 BackendReadResult BackendReadResult::read_failure(std::string error) {
     BackendReadResult output;
     output.failure = BackendFailureKind::Read;
@@ -265,10 +274,14 @@ AdaptiveFeatureCursor& AdaptiveFeatureCursor::operator=(
     return *this;
 }
 
+// 方法实现：具体用途、参数和返回值契约见对应头文件或本文件声明。
+// 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 AdaptiveFeatureCursor::~AdaptiveFeatureCursor() {
     close();
 }
 
+// 方法实现：具体用途、参数和返回值契约见对应头文件或本文件声明。
+// 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 bool AdaptiveFeatureCursor::next(QueryFeature& feature) {
     if (done_ || status_ != AdaptiveReadStatus::Ok) return false;
 
@@ -308,6 +321,8 @@ bool AdaptiveFeatureCursor::next(QueryFeature& feature) {
     return false;
 }
 
+// 方法实现：具体用途、参数和返回值契约见对应头文件或本文件声明。
+// 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 void AdaptiveFeatureCursor::close() {
     bool cleanup_failed = false;
     std::string cleanup_error;

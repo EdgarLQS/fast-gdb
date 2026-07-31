@@ -1,3 +1,6 @@
+// 文件说明：explorgdb 测试代码。
+// 测试职责：验证对应模块的行为、边界条件或兼容性约束。
+
 #include "routing.h"
 #include "unified.h"
 
@@ -9,6 +12,11 @@ namespace {
 
 using namespace fast_gdb::unified;
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(UnifiedSourceTest, NormalizesS3ToVsiS3) {
     Source source;
     const auto error = parse_source("s3://bucket/releases/v1/data.gdb", source);
@@ -18,6 +26,11 @@ TEST(UnifiedSourceTest, NormalizesS3ToVsiS3) {
     EXPECT_EQ(source.normalized_uri, "/vsis3/bucket/releases/v1/data.gdb");
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(UnifiedSourceTest, RejectsUnsupportedVsiAndCredentialUris) {
     Source source;
     EXPECT_EQ(parse_source("/vsizip/data.gdb", source).code,
@@ -38,11 +51,21 @@ TEST(UnifiedSourceTest, RejectsUnsupportedVsiAndCredentialUris) {
               ErrorCode::InvalidUri);
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(UnifiedSourceTest, RemoteConsistencyDefaultsToUnverified) {
     EXPECT_EQ(OpenOptions{}.remote_source,
               RemoteSourcePolicy::AllowMutableUnverified);
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(UnifiedRouteTest, AutoUsesFastForLocalSource) {
     Source source;
     ASSERT_FALSE(parse_source("./fixtures/local.gdb", source));
@@ -55,6 +78,11 @@ TEST(UnifiedRouteTest, AutoUsesFastForLocalSource) {
     EXPECT_EQ(result.report.reason, RouteReason::LocalFastPreferred);
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(UnifiedRouteTest, S3AlwaysUsesGdalUnlessFastOnly) {
     Source source;
     ASSERT_FALSE(parse_source("s3://bucket/version/data.gdb", source));
@@ -70,6 +98,11 @@ TEST(UnifiedRouteTest, S3AlwaysUsesGdalUnlessFastOnly) {
     EXPECT_EQ(fast_only.error.code, ErrorCode::UnsupportedSource);
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(UnifiedRouteTest, OnlyWhitelistedCapabilityFailuresFallback) {
     Source source;
     ASSERT_FALSE(parse_source("local.gdb", source));
@@ -87,6 +120,11 @@ TEST(UnifiedRouteTest, OnlyWhitelistedCapabilityFailuresFallback) {
     EXPECT_EQ(corrupt.report.selected, Backend::None);
 }
 
+/**
+ * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
+ * 输入与前置条件：由测试体构造；无显式方法参数。
+ * 预期结果：断言全部通过；测试方法无返回值。
+ */
 TEST(UnifiedRouteTest, GdalOffReturnsBackendUnavailable) {
     Source source;
     ASSERT_FALSE(parse_source("s3://bucket/version/data.gdb", source));

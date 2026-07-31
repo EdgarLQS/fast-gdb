@@ -5,9 +5,9 @@ on:
   pull_request:
     paths:
       - 'src/edgar/explorgdb/reader/**'
-      - 'tests/edgar/explorgdb/reader/test_spatial_benchmark.cpp'
-      - 'tests/edgar/explorgdb/reader/test_windows_mmap_io.cpp'
-      - 'tests/edgar/explorgdb/reader/test_spatial_query_adaptive.cpp'
+      - 'tests/edgar/explorgdb/integration/gdal_parity/benchmark/test_spatial_benchmark.cpp'
+      - 'tests/edgar/explorgdb/reader/io/test_windows_mmap_io.cpp'
+      - 'tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_query_adaptive.cpp'
       - 'tests/createdata/cpp/generate_large_gdb.cpp'
       - 'tools/ci/windows/run_spatial_acceptance.ps1'
       - 'tools/ci/windows/run_spatial_main_ab.ps1'
@@ -50,8 +50,8 @@ jobs:
       - name: Install identical benchmark harness in baseline
         shell: msys2 {0}
         run: >-
-          cp tests/edgar/explorgdb/reader/test_spatial_benchmark.cpp
-          baseline/tests/edgar/explorgdb/reader/test_spatial_benchmark.cpp
+          cp tests/edgar/explorgdb/integration/gdal_parity/benchmark/test_spatial_benchmark.cpp
+          baseline/tests/edgar/explorgdb/integration/gdal_parity/benchmark/test_spatial_benchmark.cpp
 
       - name: Configure current Windows Release build
         shell: msys2 {0}
