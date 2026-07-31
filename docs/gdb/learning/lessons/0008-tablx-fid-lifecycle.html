@@ -1,0 +1,20 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>第 8 周：TABLX、FID 与生命周期</title><link rel="stylesheet" href="../assets/course.css"></head><body><main>
+<nav><a href="0007-record-encoding.html">← 第 7 周</a><a href="0009-spatial-reference.html">第 9 周 →</a></nav>
+<p class="kicker">Week 08 · Identity and location</p><h1>FID 说明“哪条”，TABLX 说明“在哪”</h1>
+<p class="lead">把 FID、slot、offset 和物理空间拆开，是理解删除、稀疏标识、碎片和重打包的关键。</p>
+<h2>四个不同概念</h2>
+<table><thead><tr><th>概念</th><th>职责</th></tr></thead><tbody>
+<tr><td>OID/FID</td><td>对外或逻辑记录标识</td></tr><tr><td>slot</td><td>TABLX 中的逻辑位置</td></tr>
+<tr><td>record offset</td><td>GDBTABLE 中记录的字节位置</td></tr><tr><td>free region</td><td>Writer 可复用但当前不属于有效记录的物理空间</td></tr>
+</tbody></table>
+<pre>FID / slot ─→ TABLX entry ─→ 0: deleted or absent
+                             └→ nonzero offset ─→ GDBTABLE record</pre>
+<p>TABLX 可能使用不同 offset 宽度。稀疏 FID 和 64 位 OID 不能由 32 位 API 静默截断。</p>
+<div class="exercise"><strong>生命周期推演</strong><ol><li>画出创建记录后的 TABLX 与数据区。</li><li>删除中间记录：将其 offset 标为无效，并把旧空间加入 freelist。</li><li>追加更大记录：解释为何可能复用或追加物理空间，但不会自动复用原 FID。</li><li>REPACK 后重画物理 offset，说明逻辑标识是否必须变化。</li></ol></div>
+<div class="evidence"><span class="tag">GdalConfirmed</span>GDAL 的更新、freelist 和 REPACK 行为可由源码/文档确认。<span class="tag">FastGdbConfirmed</span>当前 fast-gdb 对 FID 采用 zero-based uint32 合同，并拒绝超范围 slot domain。</div>
+<h2>AI 审核题</h2><blockquote>AI 为节省内存，只保留非零 offset 数组，并用数组下标作为 FID。</blockquote><p>审核要点：这会压缩稀疏 slot，破坏 FID 对应关系。</p>
+<h2>闭卷复述</h2>
+<details><summary>空间复用为什么不等于 FID 复用？</summary><p>freelist 管理物理字节区域；FID 分配管理逻辑标识，二者是不同层。</p></details>
+<h2>源码锚点</h2><ul><li><a href="../../../../src/edgar/explorgdb/reader/format/gdb_tablx.cpp">gdb_tablx.cpp</a></li><li><a href="../../../../tests/edgar/explorgdb/reader/format/test_gdbtablx.cpp">test_gdbtablx.cpp</a></li><li><a href="https://gdal.org/en/stable/drivers/vector/openfilegdb.html">GDAL REPACK and limitations</a></li></ul>
+<footer>能清楚区分四个概念后，才进入坐标和几何部分。有任何不清楚的地方，请继续向 AI 提问。</footer>
+</main></body></html>

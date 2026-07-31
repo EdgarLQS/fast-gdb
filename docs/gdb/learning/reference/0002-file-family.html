@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>FileGDB 文件家族速查</title><link rel="stylesheet" href="../assets/course.css"></head>
+<body><main>
+<nav><a href="0001-knowledge-map.html">← 知识地图</a><a href="0003-evidence-review.html">证据审核 →</a></nav>
+<p class="kicker">Reference 02</p><h1>FileGDB 文件家族速查</h1>
+<p class="lead">内部编号不是业务名称。通常需要先解析系统 Catalog，再把逻辑图层映射到同编号的文件家族。</p>
+<table><thead><tr><th>成员</th><th>职责</th><th>Reader 关注点</th></tr></thead><tbody>
+<tr><td><code>.gdbtable</code></td><td>Schema、记录和字段/几何 payload</td><td>边界检查、字段布局、记录解码</td></tr>
+<tr><td><code>.gdbtablx</code></td><td>逻辑 slot/FID 到记录 offset</td><td>宽度、空洞、截断、计数上限</td></tr>
+<tr><td><code>.spx</code></td><td>空间索引候选</td><td>页结构、BBox、排序、损坏回退</td></tr>
+<tr><td><code>.atx</code></td><td>属性索引候选</td><td>字段类型、key 排序、NULL、表达式适用性</td></tr>
+<tr><td><code>.freelist</code></td><td>Writer 可复用的物理空闲区域</td><td>解释碎片；不等于 FID 复用</td></tr>
+<tr><td><code>timestamps</code></td><td>目录级辅助状态</td><td>不能替代完整源快照校验</td></tr>
+<tr><td>锁文件</td><td>ArcGIS/GDAL 编辑协调的一部分</td><td>存在与否不构成 fast-gdb 并发读写保证</td></tr>
+</tbody></table>
+<h2>逻辑与物理</h2>
+<pre>Layer name ─┐
+Item UUID  ─┼─ system tables ─→ physical number a00000xxx
+Item type  ─┘                         │
+                                      ├─ .gdbtable
+                                      ├─ .gdbtablx
+                                      ├─ .spx
+                                      └─ *.atx</pre>
+<div class="evidence"><span class="tag">FastGdbConfirmed</span>本仓库的 <code>GdbCatalog</code> 扫描文件，<code>CatalogResolver</code> 负责逻辑到物理映射。文件后缀职责还应与 GDAL 源码和真实数据交叉验证。</div>
+<footer>速查表描述职责，不是完整二进制规范。未知辅助文件应先标记 Unknown。</footer>
+</main></body></html>

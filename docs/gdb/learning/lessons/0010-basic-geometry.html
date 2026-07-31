@@ -1,0 +1,25 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>第 10 周：基础几何编码</title><link rel="stylesheet" href="../assets/course.css"></head><body><main>
+<nav><a href="0009-spatial-reference.html">← 第 9 周</a><a href="0011-advanced-geometry.html">第 11 周 →</a></nav>
+<p class="kicker">Week 10 · Geometry</p><h1>先读形状，再读数量，最后重建坐标序列</h1>
+<p class="lead">Point 是特殊短路径；MultiPoint、Polyline 和 Polygon 则依靠计数、parts、BBox 与 delta 坐标共同重建。</p>
+<h2>结构对比</h2>
+<table><thead><tr><th>类型</th><th>关键结构</th></tr></thead><tbody>
+<tr><td>Null</td><td>没有几何，区别于空的具体几何类型</td></tr><tr><td>Point</td><td>类型标志 + 单个 XY，可能有 Z/M</td></tr>
+<tr><td>MultiPoint</td><td>点数 + BBox + 坐标序列</td></tr><tr><td>Polyline</td><td>part 数 + point 数 + BBox + part offsets + 坐标</td></tr>
+<tr><td>Polygon</td><td>物理结构类似 multipart line，但输出还需 ring 拓扑组织</td></tr></tbody></table>
+<pre>type flags
+  → counts
+  → bbox
+  → part boundaries
+  → delta-coded XY
+  → optional Z array
+  → optional M array</pre>
+<div class="exercise"><strong>两步解码</strong><ol><li>根据现有文档和测试，手工解释一个 Point 的类型、XY 和维度。</li><li>为一条含 2 parts、5 points 的 Polyline 画出 part offsets 与坐标数组，不必计算真实字节。</li></ol></div>
+<div class="evidence"><span class="tag">FastGdbConfirmed</span>当前测试覆盖 Point/MultiPoint/Polyline/Polygon 的 XY/Z/M/ZM 组合和空几何。<span class="tag">DataObserved</span>测试构造字节可作为小样本，但真实 ArcGIS 数据仍需对照。</div>
+<h2>AI 审核题</h2><blockquote>AI 将 Polygon 的每个 part 按读取顺序直接输出为独立 Polygon。</blockquote><p>审核要点：part 是 ring，不一定都是 exterior；必须根据拓扑组织 hole 和 MultiPolygon。</p>
+<h2>闭卷复述</h2>
+<details><summary>BBox 为什么常放在完整坐标前？</summary><p>可以先做快速范围判断，避免为明显不相交的几何解码全部坐标。</p></details>
+<details><summary>Delta 编码带来什么要求？</summary><p>当前坐标依赖前一个坐标，必须保持顺序和足够整数精度，截断会污染后续点。</p></details>
+<h2>源码与测试</h2><ul><li><a href="../../../../src/edgar/explorgdb/reader/geometry/gdb_geometry.cpp">gdb_geometry.cpp</a></li><li><a href="../../../../tests/edgar/explorgdb/reader/geometry/test_geometry.cpp">test_geometry.cpp</a></li><li><a href="../../07_几何WKB曲线支持与迁移.md">几何迁移指南</a></li></ul>
+<footer>本周先掌握几何容器结构；拓扑和曲线留到下一周。有任何不清楚的地方，请继续向 AI 提问。</footer>
+</main></body></html>

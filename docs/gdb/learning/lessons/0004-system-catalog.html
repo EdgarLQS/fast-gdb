@@ -1,0 +1,27 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>第 4 周：系统表与 Catalog</title><link rel="stylesheet" href="../assets/course.css"></head><body><main>
+<nav><a href="0003-file-family.html">← 第 3 周</a><a href="0005-gdbtable-layout.html">第 5 周 →</a></nav>
+<p class="kicker">Week 04 · Catalog</p><h1>系统表是 Geodatabase 的“自我描述”</h1>
+<p class="lead">业务记录告诉你“有哪些值”；系统表告诉你“这些对象是什么、彼此如何关联、应该表现成什么”。</p>
+<h2>四张核心表</h2>
+<table><thead><tr><th>系统表</th><th>职责</th></tr></thead><tbody>
+<tr><td>GDB_Items</td><td>列出对象，保存名称、类型、路径、Definition 和 Documentation</td></tr>
+<tr><td>GDB_ItemTypes</td><td>定义对象类型及类型层级</td></tr><tr><td>GDB_ItemRelationships</td><td>记录对象 UUID 之间的关系实例</td></tr>
+<tr><td>GDB_ItemRelationshipTypes</td><td>定义关系类型和方向语义</td></tr></tbody></table>
+<pre>item UUID ── type UUID ──→ item type
+    │
+    ├─ catalog path / physical name
+    ├─ XML Definition / Documentation
+    └─ relationship UUIDs ─→ other items</pre>
+<div class="exercise"><strong>真实数据对照</strong><pre>build/dev/bin/explorgdb_cli dump-records \
+  test_data/gdb/acceptance_metadata.gdb/a00000004.gdbtable
+build/dev/bin/explorgdb_cli dump-records \
+  test_data/gdb/acceptance_metadata.gdb/a00000005.gdbtable</pre><p>第一条命令观察 GDB_Items 的 Name、PhysicalName、Path 和 Type UUID；第二条命令从 GDB_ItemTypes 观察类型 UUID、名称和父类型。先完成 UUID 关系追踪，再由 CatalogResolver 连接业务表编号。</p></div>
+<div class="evidence"><span class="tag">EsriConfirmed</span>四张核心系统表的产品语义来自 Esri。<span class="tag">FastGdbConfirmed</span>本项目还审计 GDB_Datasets 等兼容表，并区分 missing、empty 与 unreadable。</div>
+<h2>AI 审核题</h2>
+<blockquote>AI 读取 GDB_Items 失败后返回空图层列表，并称数据库为空。</blockquote><p>审核要点：空、缺失、损坏和不可读必须使用不同诊断；否则会把错误伪装成有效结果。</p>
+<h2>闭卷复述</h2>
+<details><summary>UUID 在系统表中解决什么问题？</summary><p>稳定关联对象、类型和关系，不依赖显示名称或物理编号。</p></details>
+<details><summary>Definition XML 为什么既重要又危险？</summary><p>它承载丰富 Schema，但版本和对象类型不同，不能用脆弱的单一模板假设。</p></details>
+<h2>资料与源码</h2><ul><li><a href="https://pro.arcgis.com/en/pro-app/latest/help/data/geodatabases/overview/the-architecture-of-a-geodatabase.htm">Esri system tables</a></li><li><a href="../../../../src/edgar/explorgdb/reader/format/catalog_resolver.cpp">catalog_resolver.cpp</a></li><li><a href="../../../../src/edgar/explorgdb/reader/format/metadata_reader.cpp">metadata_reader.cpp</a></li></ul>
+<footer>本周结束时，应能从“名字”追踪到“UUID、类型、物理表和 XML 定义”。有任何不清楚的地方，请继续向 AI 提问。</footer>
+</main></body></html>

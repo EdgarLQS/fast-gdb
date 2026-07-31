@@ -1,0 +1,33 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>第 1 周：Geodatabase 基础模型</title><link rel="stylesheet" href="../assets/course.css"></head><body><main>
+<nav><a href="../README.md">← 课程入口</a><a href="0002-binary-foundations.html">第 2 周 →</a></nav>
+<p class="kicker">Week 01 · Logical model</p><h1>先分清“对象”与“文件”</h1>
+<p class="lead">本周唯一目标：看到 Feature Class 时，脑中同时出现“带几何字段的表”和“由系统元数据赋予行为的数据集”，而不是把它想成一个独立文件。</p>
+<h2>核心模型</h2>
+<pre>Geodatabase workspace
+├─ standalone table
+├─ standalone feature class
+├─ feature dataset
+│  ├─ feature class
+│  └─ topology / network / terrain ...
+└─ schema behaviors
+   ├─ domain / subtype
+   └─ relationship / attachment / rules</pre>
+<table><thead><tr><th>概念</th><th>最小定义</th><th>不要误解为</th></tr></thead><tbody>
+<tr><td>Table</td><td>按字段定义组织的行集合</td><td>一定包含空间数据</td></tr>
+<tr><td>Feature Class</td><td>具有 OID 和 Geometry 等语义的表</td><td>一个可独立解释的单文件</td></tr>
+<tr><td>Feature Dataset</td><td>共享空间参考的逻辑容器</td><td>磁盘中的普通子目录</td></tr>
+<tr><td>Schema behavior</td><td>系统元数据定义的约束和关联</td><td>业务记录本身</td></tr>
+</tbody></table>
+<div class="evidence"><span class="tag">EsriConfirmed</span>Esri 官方架构说明把 Feature Class 描述为带空间列的表，并说明系统表共同赋予 Geodatabase 行为。<span class="tag">FastGdbConfirmed</span>fast-gdb 通过 Catalog 和 MetadataReader 分别处理物理定位与结构化元数据。</div>
+<h2>练习：画两张图</h2>
+<div class="exercise"><ol><li>画逻辑图：Workspace → Dataset → Feature Class/Table。</li><li>画物理图：系统表 → 编号 → 文件家族。</li><li>用一句话解释为什么两张图不能合并成同一层。</li></ol></div>
+<h2>AI 审核题</h2>
+<blockquote>AI 说：“Feature Dataset 就是 `.gdb` 目录里的一个子文件夹，所以遍历目录即可得到层级。”</blockquote>
+<p>审核要点：这混淆了逻辑容器与物理目录；应从系统元数据中的路径、类型和关系还原层级。</p>
+<h2>闭卷复述</h2>
+<details><summary>Feature Class 为什么本质上是表？</summary><p>记录和字段按表存储；几何列、系统元数据、空间参考和规则让它表现为 Feature Class。</p></details>
+<details><summary>“记录可读”为什么不等于“Geodatabase 完整”？</summary><p>Domain、Subtype、Relationship、Topology 等行为来自系统元数据和派生结构。</p></details>
+<h2>一手资料与源码锚点</h2>
+<ul><li><a href="https://pro.arcgis.com/en/pro-app/latest/help/data/geodatabases/overview/the-architecture-of-a-geodatabase.htm">Esri：Geodatabase architecture</a></li><li><a href="../../../../src/edgar/explorgdb/reader/format/gdb_catalog.h">GdbCatalog</a>、<a href="../../../../src/edgar/explorgdb/reader/format/metadata_reader.h">MetadataReader</a></li></ul>
+<footer>如果“逻辑对象”和“物理文件”仍容易混淆，请先向 AI 追问并重画两张图，再进入第 2 周。有任何不清楚的地方，请继续向 AI 提问。</footer>
+</main></body></html>

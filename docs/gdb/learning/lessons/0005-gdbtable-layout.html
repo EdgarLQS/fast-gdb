@@ -1,0 +1,26 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>第 5 周：GDBTABLE 布局</title><link rel="stylesheet" href="../assets/course.css"></head><body><main>
+<nav><a href="0004-system-catalog.html">← 第 4 周</a><a href="0006-field-descriptors.html">第 6 周 →</a></nav>
+<p class="kicker">Week 05 · GDBTABLE</p><h1>同一个文件里，Schema 决定 Record 的读法</h1>
+<p class="lead">不要把 `.gdbtable` 当成“连续行”。它先提供解释记录所需的表头和字段描述，再存放可变长度记录。</p>
+<h2>布局心智图</h2>
+<pre>0 ─ File header
+    ├─ version / flags / counts
+    └─ field descriptor offset
+        ↓
+    Field descriptor section
+    ├─ table/geometry metadata
+    └─ ordered field descriptors
+        ↓
+    Record/data area
+    ├─ length + row payload
+    ├─ holes / reusable space
+    └─ later records</pre>
+<p>具体字节宽度必须按版本和源码证据确认。这个图表达关系，不替代格式表。4GB 以上表和不同 configuration keyword 可能触发宽度或存储分支，不能从小样本外推。</p>
+<div class="exercise"><strong>结构定位</strong><ol><li>阅读 <a href="../../08_GDB二进制格式图解教程.md">二进制格式图解第 3 节</a>。</li><li>用 <code>xxd</code> 观察 a00000001.gdbtable 的前 128 字节。</li><li>在纸上标出“已确认的字段”和“仅猜测的区域”，使用不同颜色。</li></ol></div>
+<div class="evidence"><span class="tag">GdalConfirmed</span>GDAL OpenFileGDB 源码提供可审计的表结构实现。<span class="tag">DataObserved</span>真实文件可确认值和偏移。<span class="tag">Inferred</span>只凭重复模式猜出的字段必须保留推断标签。</div>
+<h2>AI 审核题</h2><blockquote>AI 发现 Header 中的记录计数是 100，于是从 Header 后连续读取 100 条记录。</blockquote><p>审核要点：记录位置通常需 TABLX；数据区可能存在空洞、删除和可变长度记录。</p>
+<h2>闭卷复述</h2>
+<details><summary>为什么必须先读 Schema？</summary><p>记录本身不重复携带每个字段的类型、nullable 和几何精度等完整解释信息。</p></details>
+<h2>源码锚点</h2><ul><li><a href="../../../../src/edgar/explorgdb/reader/format/gdb_table.cpp">gdb_table.cpp</a></li><li><a href="../../../../src/edgar/explorgdb/reader/format/gdb_table.h">gdb_table.h</a></li><li><a href="../../../../tests/edgar/explorgdb/reader/format/test_gdbtable.cpp">test_gdbtable.cpp</a></li></ul>
+<footer>本周的输出是一张结构图，不是背诵一组 magic number。有任何不清楚的地方，请继续向 AI 提问。</footer>
+</main></body></html>

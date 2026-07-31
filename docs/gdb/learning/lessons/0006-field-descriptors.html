@@ -1,0 +1,19 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>第 6 周：字段描述符</title><link rel="stylesheet" href="../assets/course.css"></head><body><main>
+<nav><a href="0005-gdbtable-layout.html">← 第 5 周</a><a href="0007-record-encoding.html">第 7 周 →</a></nav>
+<p class="kicker">Week 06 · Schema</p><h1>字段类型只是描述符的一部分</h1>
+<p class="lead">正确读取字段需要同时理解名称、类型、宽度、nullable/required/editable 标志、默认值和类型专属 payload。Geometry descriptor 还携带空间参考与精度模型。</p>
+<h2>字段描述符问题清单</h2>
+<table><thead><tr><th>维度</th><th>问题</th></tr></thead><tbody>
+<tr><td>Identity</td><td>名称、别名、系统字段语义是什么？</td></tr><tr><td>Storage</td><td>固定宽度还是变长？长度前缀如何编码？</td></tr>
+<tr><td>Nullability</td><td>是否参与 NULL bitmap？缺失新增字段如何兼容？</td></tr><tr><td>Default</td><td>默认值是已解码标量还是原始版本相关字节？</td></tr>
+<tr><td>Special payload</td><td>Geometry/Raster descriptor 还有哪些额外结构？</td></tr><tr><td>Version</td><td>BigInteger、DateOnly、TimeOnly、TimestampOffset、64-bit OID 从何版本出现？</td></tr>
+</tbody></table>
+<div class="exercise"><strong>建立字段矩阵</strong><p>从 <code>tests/createdata/DATASET_GUIDE.md</code> 选择十种字段，记录：ArcGIS 类型、物理宽度/变长、NULL 语义、fast-gdb 类型、版本风险。未知项必须留空并标记 Unknown。</p></div>
+<div class="evidence"><span class="tag">EsriConfirmed</span>字段产品语义和兼容版本。<span class="tag">FastGdbConfirmed</span>当前 <code>FieldType</code>、descriptor 和 <code>default_value_raw</code> 合同。不要用 fast-gdb 枚举反推 Esri 的完整格式集合。</div>
+<h2>AI 审核题</h2><blockquote>AI 将 8 字节字段一律映射成 Int64。</blockquote><p>审核要点：宽度不能单独决定类型；Double、Date、BigInteger、64-bit OID 等都可能使用 8 字节但语义不同。</p>
+<h2>闭卷复述</h2>
+<details><summary>为什么保留 default_value_raw？</summary><p>默认值表示可能依赖字段类型和源版本；盲目猜测标量会丢失原始证据。</p></details>
+<details><summary>Unknown field type 应如何处理？</summary><p>明确诊断并 fail closed 或保留原始 payload，不能错位读取后续字段。</p></details>
+<h2>资料与源码</h2><ul><li><a href="https://pro.arcgis.com/en/pro-app/latest/help/data/geodatabases/overview/arcgis-field-data-types.htm">Esri field data types</a></li><li><a href="../../../../src/edgar/explorgdb/common/explorgdb_types.h">explorgdb_types.h</a></li><li><a href="../../../../src/edgar/explorgdb/reader/format/field_layout.h">field_layout.h</a></li></ul>
+<footer>进入第 7 周前，应能解释“Schema 决定记录游标怎样前进”。有任何不清楚的地方，请继续向 AI 提问。</footer>
+</main></body></html>

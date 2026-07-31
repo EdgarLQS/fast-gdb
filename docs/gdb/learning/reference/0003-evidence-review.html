@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>证据等级与 AI 审核清单</title><link rel="stylesheet" href="../assets/course.css"></head>
+<body><main>
+<nav><a href="0002-file-family.html">← 文件家族</a><a href="../README.md">课程入口 →</a></nav>
+<p class="kicker">Reference 03</p><h1>证据等级与 AI 审核清单</h1>
+<table><thead><tr><th>标签</th><th>可以证明</th><th>不能自动证明</th></tr></thead><tbody>
+<tr><td><span class="tag">EsriConfirmed</span></td><td>ArcGIS 产品语义、公开行为和兼容要求</td><td>未公开的磁盘字节布局</td></tr>
+<tr><td><span class="tag">GdalConfirmed</span></td><td>指定 GDAL 版本的实现和测试行为</td><td>Esri 官方规范或全部 ArcGIS 版本</td></tr>
+<tr><td><span class="tag">FastGdbConfirmed</span></td><td>当前分支实现、合同和测试</td><td>仓库尚未覆盖的数据变体</td></tr>
+<tr><td><span class="tag">DataObserved</span></td><td>指定样本中的实际字节或行为</td><td>所有版本和所有数据集</td></tr>
+<tr><td><span class="tag">Inferred</span></td><td>有证据支撑的工作假设</td><td>稳定格式规则</td></tr>
+<tr><td><span class="tag">Unknown</span></td><td>诚实标出证据缺口</td><td>任何实现承诺</td></tr>
+</tbody></table>
+<h2>审核 AI 方案的七问</h2>
+<ol>
+<li>它在讨论哪一层？是否把 API 现象误当成磁盘格式？</li>
+<li>每个关键结论的证据标签是什么？版本和样本范围是什么？</li>
+<li>是否混淆 FID、slot、record offset 和业务字段？</li>
+<li>是否把 SPX/ATX 候选当成最终结果？</li>
+<li>是否区分 Null、Empty、Unsupported、Degraded、Corrupt？</li>
+<li>是否保留损坏输入、未知类型和未来版本的 fail-closed 路径？</li>
+<li>测试是否有真实数据、合成边界、GDAL 对照和跳过项说明？</li>
+</ol>
+<div class="exercise"><strong>强制输出模板</strong><pre>结论：
+所属层：
+证据标签：
+版本/样本范围：
+反例或未知项：
+需要的验证：</pre></div>
+<footer>如果 AI 无法给出证据或反例，不要让它把结论升级为 Current 能力。</footer>
+</main></body></html>

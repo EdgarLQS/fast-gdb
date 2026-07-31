@@ -1,0 +1,27 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>第 2 周：二进制格式基础</title><link rel="stylesheet" href="../assets/course.css"></head><body><main>
+<nav><a href="0001-geodatabase-model.html">← 第 1 周</a><a href="0003-file-family.html">第 3 周 →</a></nav>
+<p class="kicker">Week 02 · Bytes</p><h1>字节不是知识点，是观察工具</h1>
+<p class="lead">不写解析器，只建立阅读二进制格式所需的最小语言：offset 告诉你去哪，length 告诉你读多少，encoding 告诉你怎样解释。</p>
+<h2>四个基本问题</h2>
+<table><thead><tr><th>问题</th><th>典型答案</th></tr></thead><tbody>
+<tr><td>从哪里读？</td><td>绝对或相对 offset</td></tr><tr><td>读多少？</td><td>固定宽度、length 前缀或结束条件</td></tr>
+<tr><td>怎样解释？</td><td>小端整数、IEEE 754、VarUInt、UTF-8、UTF-16</td></tr><tr><td>怎样判断缺失？</td><td>NULL bitmap、零 offset、标志位</td></tr>
+</tbody></table>
+<h2>最小编码模型</h2>
+<pre>fixed integer: 4 bytes, little-endian
+VarUInt:       7 data bits per byte + continuation bit
+ZigZag:        signed integer → small unsigned integer
+bitmap:        one bit answers one yes/no question
+OLE Date:      floating-point days from an epoch</pre>
+<div class="exercise"><strong>观察真实文件</strong><pre>xxd -g 1 -l 64 test_data/gdb/acceptance_metadata.gdb/a00000001.gdbtable
+xxd -g 4 -l 64 test_data/gdb/acceptance_metadata.gdb/a00000001.gdbtable</pre><p>分别按单字节和四字节分组观察。写下你认为稳定的模式，但先标记为 <span class="tag">DataObserved</span>，不要直接称为格式规范。</p></div>
+<h2>AI 审核题</h2>
+<blockquote>AI 看到字节 <code>81 01</code>，直接断言它是十进制 129。</blockquote>
+<p>审核要点：只有已知该位置采用 VarUInt 时结论才成立；同样字节作为小端 UInt16 是 385。上下文决定编码。</p>
+<h2>闭卷复述</h2>
+<details><summary>为什么 offset 与 FID 不是同一个概念？</summary><p>FID 是逻辑标识；offset 是文件位置。TABLX 才负责把逻辑 slot 映射到物理位置。</p></details>
+<details><summary>bitmap 的位数由什么决定？</summary><p>由参与位图的逻辑字段集合决定，而不是简单等于所有字段数量。</p></details>
+<h2>源码锚点</h2>
+<ul><li><a href="../../../../src/edgar/explorgdb/common/binary_reader.cpp">binary_reader.cpp</a></li><li><a href="../../../../src/edgar/explorgdb/common/varint.cpp">varint.cpp</a></li><li><a href="../../../../tests/edgar/explorgdb/common/test_varint.cpp">test_varint.cpp</a></li></ul>
+<footer>请向 AI 要求它同时给出“字节解释”和“为什么能确定这种解释”。有任何不清楚的地方，请继续向 AI 提问。</footer>
+</main></body></html>
