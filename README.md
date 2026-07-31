@@ -103,6 +103,30 @@ GDAL/OpenFileGDB 独占修改目标 .gdb
 上述“关闭 Reader → GDAL 写 → 重开 Reader”仍是唯一正式正确性合同；Adaptive 只覆盖显式同进程协调和
 本地验证过的 fresh fallback。
 
+## 统一访问与 GDAL/S3 路由（Proposed）
+
+当前仓库尚未实现统一入口、S3 读取或 `FastFileGDB` GDAL 驱动。已冻结的后续设计是：
+
+```text
+fast_gdb::Dataset::open(uri, Auto)
+    ├─ 本地 .gdb → fast-gdb
+    ├─ s3://... / /vsis3/... → GDAL OpenFileGDB
+    └─ fast-gdb 不支持的只读能力 → GDAL OpenFileGDB
+```
+
+调用方未来只依赖统一的 `Dataset / Layer / Feature / Cursor`，并通过 backend report
+查看实际后端和 fallback 原因。`FastOnly` 不得静默使用 GDAL，`GdalOnly` 不得创建
+fast-gdb Reader。S3、MinIO、OSS、COS 和其它对象存储不因该设计自动获得支持，必须按
+部署的 GDAL VSI、认证、目录枚举和真实数据环境逐项验收。
+
+已有 GDAL/OGR 程序未来可通过独立名称的 `FastFileGDB` 只读驱动使用 fast-gdb；该驱动
+不替换官方 `OpenFileGDB`，也不提供 Writer、事务或完整 GDAL ABI。
+
+详见：
+
+- [统一访问与 GDAL/S3 路由计划](docs/planning/24_fast-gdb统一访问与GDAL_S3路由计划.md)
+- [ADR-009：统一 FileGDB 访问与 GDAL/S3 路由](docs/adr/ADR-009-unified-filegdb-routing.md)
+
 ## `usegdal` 参考目录
 
 `src/edgar/usegdal` 保留了早期围绕 GDAL/OGR 的 RAII 和包装设计，包括 datasource、dataset、recordset、field、feature、query、connection pool、transaction 和 batch-write 示例。

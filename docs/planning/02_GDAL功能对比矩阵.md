@@ -2,7 +2,10 @@
 
 ## 定位
 
-fast-gdb 负责高性能读取；GDAL/OpenFileGDB 负责 FileGDB 编辑，并作为正确性对照和可选读取 fallback。
+fast-gdb 负责本地 FileGDB 高性能读取；GDAL/OpenFileGDB 负责 FileGDB 编辑，并作为正确性对照和可选读取 fallback。
+
+未来 Proposed 的统一入口将把本地路径、S3 路径和能力缺口路由到合适后端；这不表示当前
+已经提供统一 SDK 或 S3 支持。
 
 ADR-008 已实现一个 Reader-only Adaptive 编排层：观察 Writer 活动和 generation，校验数据源变化，并在写入结束且数据源稳定后使用 fresh GDAL 只读连接恢复。跨平台、压力、性能、多 GDAL 版本和安装包证据仍待补齐。
 
@@ -29,6 +32,11 @@ ADR-008 已实现一个 Reader-only Adaptive 编排层：观察 Writer 活动和
 | REPACK | 否 | 是 | 交给 GDAL；写后重开 |
 | 事务 | 否 | 模拟/驱动能力 | 不进入 fast-gdb 产品 |
 | 在线版本发布 | 否 | 否 | 业务层能力 |
+| 统一 `Dataset/Layer/Feature/Cursor` 入口 | Proposed | GDAL/fast-gdb Adapter | 统一调用模型，不冻结内部解析器 |
+| 本地 `.gdb` 自动后端选择 | Proposed | 原生读取 | `Auto` 默认优先 fast-gdb |
+| `s3://` / `/vsis3/` 读取 | 否 | 依赖 GDAL VSI/OpenFileGDB | 需凭据、目录枚举和真实数据验收 |
+| `FastFileGDB` GDAL/OGR 兼容入口 | Proposed、只读 | OpenFileGDB 原生驱动 | 独立驱动名，不替换官方驱动 |
+| fast-gdb 查询计划和索引诊断 | Proposed | GDAL 常规诊断 | 通过独立扩展报告暴露 |
 
 ## 当前读写阶段规则
 
@@ -77,6 +85,18 @@ writer_active=false 且源稳定
 - 不复用曲线回退中的 thread-local Dataset；
 - 无协调模式必须标记 best-effort。
 
+## 统一访问路由（Proposed）
+
+```text
+fast_gdb::Dataset::open(uri, Auto)
+  ├─ 本地 .gdb → fast-gdb
+  ├─ s3://... / /vsis3/... → GDAL OpenFileGDB
+  └─ fast-gdb 不支持的只读能力 → fresh GDAL OpenFileGDB
+```
+
+`FastOnly` 不得静默调用 GDAL；`GdalOnly` 不得创建 fast-gdb Reader。一次 Cursor 的后端
+必须在开始输出前确定，已发布部分结果后不得切换。
+
 ## GDAL 写后 Reader 兼容矩阵
 
 | GDAL 操作 | fast-gdb 重开后验证 | Adaptive 计划验证 |
@@ -106,3 +126,5 @@ writer_active=false 且源稳定
 - [ADR-007：Reader-only 与 GDAL 编辑边界](../adr/ADR-007-reader-only-gdal-edit-boundary.md)
 - [ADR-008：Adaptive Reader 写入检测与 fresh GDAL 只读回退](../adr/ADR-008-adaptive-reader-write-detection-gdal-fallback.md)
 - [Adaptive Reader 实施计划](22_AdaptiveReader写入检测与GDAL回退计划.md)
+- [统一访问与 GDAL/S3 路由计划](24_fast-gdb统一访问与GDAL_S3路由计划.md)
+- [ADR-009：统一 FileGDB 访问与 GDAL/S3 路由](../adr/ADR-009-unified-filegdb-routing.md)

@@ -16,6 +16,8 @@ fast-gdb 当前产品定位为 **FileGDB Reader only**。项目不提供受支�
 | [ADR-008：Adaptive Reader 写入检测与 fresh GDAL 回退](adr/ADR-008-adaptive-reader-write-detection-gdal-fallback.md) | Accepted：可选同进程协调、写期间 fail closed、源稳定后 fresh GDAL 只读恢复 |
 | [Adaptive Reader 实施计划](planning/22_AdaptiveReader写入检测与GDAL回退计划.md) | 文件快照、协调探针、Reader 失效、fresh GDAL、测试和平台验收阶段 |
 | [GDAL/Reader 边界架构说明](technical/07_gdal-write-reader-boundary.md) | 生命周期、缓存失效、并发可见性和 Adaptive 计划架构 |
+| [统一访问与 GDAL/S3 路由计划](planning/24_fast-gdb统一访问与GDAL_S3路由计划.md) | Proposed：统一 Dataset/Layer/Cursor、后端选择、S3 由 GDAL 处理和 FastFileGDB 兼容入口 |
+| [ADR-009：统一 FileGDB 访问与 GDAL/S3 路由](adr/ADR-009-unified-filegdb-routing.md) | Proposed：未来统一只读访问 seam 与对象存储非目标 |
 | [`usegdal` 参考层说明](../src/edgar/usegdal/README.md) | 非产品 GDAL/OGR RAII、查询、事务和批量写入参考代码的边界 |
 | [Writer 历史归档](archive/writer/README.md) | 已废弃 Writer ADR、规划、评审和证据；仅用于历史追溯 |
 
@@ -26,6 +28,11 @@ fast-gdb 当前产品定位为 **FileGDB Reader only**。项目不提供受支�
 | `fast_gdb::linear` | 无 GDAL 依赖的纯 C++ Reader |
 | `fast_gdb::hybrid` | fast-gdb Reader 主路径 + GDAL 复杂几何回退 |
 | `fast_gdb::adaptive` | 可选同进程协调、Reader 失效和 fresh GDAL 只读回退 |
+
+未来规划中的统一访问入口不是当前安装 target。它将以 `Auto/FastOnly/GdalOnly` 选择后端：
+本地 `.gdb` 默认使用 fast-gdb，`s3://`/`/vsis3/` 和 fast-gdb 不支持的只读能力使用
+GDAL/OpenFileGDB。该设计见 [统一访问与 GDAL/S3 路由计划](planning/24_fast-gdb统一访问与GDAL_S3路由计划.md)，
+当前不表示 S3、`FastFileGDB` 驱动或统一 SDK 已实现。
 
 Adaptive Reader 已作为可选安装 target 实现；默认不启用，未知外部 Writer、跨平台、压力、性能和多 GDAL 版本仍需独立验收。
 
@@ -128,3 +135,4 @@ ADR-008 已 Accepted 并实现为可选 Reader 编排层：
 - `.spx/.atx` 候选必须最终复核；
 - MultiPatch、关系、域、层级、栅格和稀疏 64-bit ObjectID 仍按专项 profile 验收；
 - 观测性测试结果不能被解释为并发读写支持声明。
+- 对象存储、统一访问路由和 `FastFileGDB` 驱动在 Proposed 设计完成实现和真实环境验收前，不属于当前产品支持范围。

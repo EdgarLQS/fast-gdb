@@ -271,4 +271,6 @@ Adaptive 当前进一步区分：
 - [Reader-only ADR](../adr/ADR-007-reader-only-gdal-edit-boundary.md)
 - [Adaptive Reader ADR](../adr/ADR-008-adaptive-reader-write-detection-gdal-fallback.md)
 - [Adaptive Reader 实施计划](../planning/22_AdaptiveReader写入检测与GDAL回退计划.md)
+- [统一访问与 GDAL/S3 路由计划](../planning/24_fast-gdb统一访问与GDAL_S3路由计划.md)
+- [ADR-009：统一 FileGDB 访问与 GDAL/S3 路由](../adr/ADR-009-unified-filegdb-routing.md)
 - 并发读写仅按 [`GDAL 边界测试`](../testing/03_GDAL边界与读写测试.md) 的当前合同处理。

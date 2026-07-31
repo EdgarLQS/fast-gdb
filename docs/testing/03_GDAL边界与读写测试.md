@@ -365,3 +365,12 @@ fast-gdb 不实现：
 - 写入活动期间通过 GDAL 强行返回结果；
 - 写后局部 refresh；
 - 无限等待或后台写入监控线程。
+
+## 11. Proposed 统一访问与对象存储路由
+
+后续统一入口将把稳定本地 `.gdb` 路由到 fast-gdb，把 `s3://`/`/vsis3/` 和 fast-gdb
+能力缺口路由到 GDAL OpenFileGDB。该路由不改变本测试定义的本地 Reader/GDAL 编辑
+生命周期，也不表示当前已经支持 S3。
+
+详细接口、阶段和验收见 [统一访问与 GDAL/S3 路由计划](../planning/24_fast-gdb统一访问与GDAL_S3路由计划.md)
+和 [ADR-009](../adr/ADR-009-unified-filegdb-routing.md)。

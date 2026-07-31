@@ -14,6 +14,7 @@
 | `gdb_tutorial_test_runner` | Full Reader, query, index and direct-GDAL parity suite |
 | `fast_gdb_gdal_read_write_boundary_test_runner` | GDAL edit / fast-gdb Reader lifecycle boundary |
 | `fast_gdb_adaptive_reader_test_runner` | Adaptive coordinator, independent Reader concurrency and GDAL matrix |
+| Planned unified routing tests | `Dataset/Layer/Cursor` facade, Auto/FastOnly/GdalOnly, GDAL Adapter and S3 characterization |
 
 ## GDAL boundary tests
 
@@ -120,6 +121,10 @@ There is no Writer consumer mode or `usegdal` consumer mode. `adaptive` is an
 optional GDAL/threaded package variant; the `linear` consumer is separately
 verified with GDAL disabled.
 
+The unified routing entry is Proposed only. It must not be counted as a current
+release gate until the facade, GDAL Adapter, `FastFileGDB` compatibility entry,
+and real `/vsis3/` characterization are implemented and validated.
+
 ## Reference-only `usegdal`
 
 `src/edgar/usegdal` is retained as historical GDAL/OGR wrapper source. It is not linked into any release-gate target. Its old wrapper-specific tests are not part of the active test suite.
@@ -160,8 +165,4 @@ Evidence archive: `release-evidence/2026-07-30-win-acceptance/`
 | `fast_gdb_hybrid_test_runner` | 11 | 4 | 7 | 0 | All overlap with tutorial runner |
 | `fast_gdb_adaptive_reader_test_runner` | 41 | 40 | 1 | 0 | 1 skip (OpenFileGDB no index delete) |
 | `fast_gdb_gdal_read_write_boundary_test_runner` | 2 | 2 | 0 | 0 |  |
-<<<<<<< HEAD
-| **Unique total** | **447** | **429** | **17** | **1** | **0 product code defects** |
-=======
 | **Unique total** | **447** | **433** | **12** | **1** | **0 product code defects** |
->>>>>>> 2fc99f8 (docs: Windows acceptance completed - 433/447 pass, 0 product defects)
