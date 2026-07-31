@@ -1,4 +1,4 @@
-> **历史归档**：本文记录已废弃的 Writer 方案或阶段性证据，不代表当前产品能力。fast-gdb 当前仅提供 Reader；现行边界见 [ADR-007](../../../adr/ADR-007-reader-only-gdal-edit-boundary.md)，归档说明见 [Writer 历史索引](../README.md)。
+> **历史归档**：本文记录已废弃的 Writer 方案或阶段性证据，不代表当前产品能力。fast-gdb 当前仅提供 Reader；现行边界见 [ADR-007](../../../governance/adr/ADR-007-reader-only-gdal-edit-boundary.md)，归档说明见 [Writer 历史索引](../README.md)。
 
 # Writer macOS 测试契约与 CI
 
@@ -12,7 +12,7 @@
 - 统一执行器：`scripts/run_test_contract.py`
 - GitHub Actions：`.github/workflows/writer-macos-contract.yml`
 - 自动证据目录：`writer-contract-results/`
-- 稳定 API ADR：`docs/adr/ADR-001-writer-session-api.md`
+- 稳定 API ADR：`docs/governance/adr/ADR-001-writer-session-api.md`
 
 CI 使用 Release、GDAL OpenFileGDB 和完整测试目标，构建一次后按 manifest 逐场景执行。小型必选场景默认连续执行 3 次；package consumer 和 1K 观察项各执行 1 次。
 

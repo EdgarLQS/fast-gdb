@@ -25,8 +25,8 @@ FileGDB editing in production code should call the official GDAL/OpenFileGDB API
 
 For the supported lifecycle contract, see:
 
-- `docs/adr/ADR-007-reader-only-gdal-edit-boundary.md`;
-- `docs/testing/03_GDAL边界与读写测试.md`;
+- `docs/governance/adr/ADR-007-reader-only-gdal-edit-boundary.md`;
+- `docs/quality/03_GDAL边界与读写测试.md`;
 - `tests/usegdal/test_gdal_write_fast_reader_visibility.cpp`.
 
 ## Maintenance rule

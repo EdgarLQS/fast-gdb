@@ -1,4 +1,4 @@
-> **历史归档**：本文记录已废弃的 Writer 方案或阶段性证据，不代表当前产品能力。fast-gdb 当前仅提供 Reader；现行边界见 [ADR-007](../../../../adr/ADR-007-reader-only-gdal-edit-boundary.md)，归档说明见 [Writer 历史索引](../../README.md)。
+> **历史归档**：本文记录已废弃的 Writer 方案或阶段性证据，不代表当前产品能力。fast-gdb 当前仅提供 Reader；现行边界见 [ADR-007](../../../../governance/adr/ADR-007-reader-only-gdal-edit-boundary.md)，归档说明见 [Writer 历史索引](../../README.md)。
 
 # 17 — fast-gdb Writer 生产化与读取后续计划
 
@@ -139,7 +139,7 @@ Reader 主链路保持稳定，不在 Writer 阶段同时进行大规模重构�
 5. DateTimeWithOffset 完整语义、MultiPatch、Raster、Annotation/Dimension 按产品需求单独立项。
 
 原 Phase H 的历史目标和门槛保存在
-[16_spatial-query-scale-optimization-plan.md](../../../../planning/archive/16_spatial-query-scale-optimization-plan.md)，不再作为当前执行入口。
+[16_spatial-query-scale-optimization-plan.md](../../../../archive/planning/16_spatial-query-scale-optimization-plan.md)，不再作为当前执行入口。
 
 ## 8. CI 与发布门禁
 

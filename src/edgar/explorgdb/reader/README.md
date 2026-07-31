@@ -123,8 +123,8 @@ Current Reader targets are `fast_gdb::linear`, optional `fast_gdb::hybrid`, and 
 
 ## Related documents
 
-- `docs/technical/06_Reader读取流程专题.md`
-- `docs/testing/03_GDAL边界与读写测试.md`
-- `docs/adr/ADR-007-reader-only-gdal-edit-boundary.md`
-- `docs/adr/ADR-008-adaptive-reader-write-detection-gdal-fallback.md`
-- `docs/planning/22_AdaptiveReader写入检测与GDAL回退计划.md`
+- `docs/gdb/06_Reader读取流程专题.md`
+- `docs/quality/03_GDAL边界与读写测试.md`
+- `docs/governance/adr/ADR-007-reader-only-gdal-edit-boundary.md`
+- `docs/governance/adr/ADR-008-adaptive-reader-write-detection-gdal-fallback.md`
+- `docs/gdal/02_AdaptiveReader写入检测与GDAL回退计划.md`

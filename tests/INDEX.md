@@ -1,9 +1,9 @@
 # Test Index
 
-文档说明与验收规则见 [`docs/testing/07_测试索引.md`](../docs/testing/07_测试索引.md)。
+文档说明与验收规则见 [`docs/quality/07_测试索引.md`](../docs/quality/07_测试索引.md)。
 
 元数据、Domain、Relationship Class 和 Feature Dataset 的真实数据生成要求见
-[`docs/testing/12_元数据完整解析验收数据清单.md`](../docs/testing/12_元数据完整解析验收数据清单.md)。
+[`docs/quality/12_元数据完整解析验收数据清单.md`](../docs/quality/12_元数据完整解析验收数据清单.md)。
 
 ## Reader release gates
 

@@ -1,10 +1,10 @@
-> **历史归档**：本文记录已废弃的 Writer 方案或阶段性证据，不代表当前产品能力。fast-gdb 当前仅提供 Reader；现行边界见 [ADR-007](../../../adr/ADR-007-reader-only-gdal-edit-boundary.md)，归档说明见 [Writer 历史索引](../README.md)。
+> **历史归档**：本文记录已废弃的 Writer 方案或阶段性证据，不代表当前产品能力。fast-gdb 当前仅提供 Reader；现行边界见 [ADR-007](../../../governance/adr/ADR-007-reader-only-gdal-edit-boundary.md)，归档说明见 [Writer 历史索引](../README.md)。
 
 # ADR-001 — WriterSession 稳定会话 API
 
 - **状态**：Accepted
 - **日期**：2026-07-16
-- **关联计划**：`docs/planning/18_writer跨平台测试统一与后续编辑计划.md` M18.2
+- **关联计划**：`docs/plan/18_writer跨平台测试统一与后续编辑计划.md` M18.2
 - **适用范围**：空 schema 顺序批量写入与新 GDB 无覆盖发布
 
 ## 1. 背景

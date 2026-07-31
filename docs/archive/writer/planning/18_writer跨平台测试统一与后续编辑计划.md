@@ -1,4 +1,4 @@
-> **历史归档**：本文记录已废弃的 Writer 方案或阶段性证据，不代表当前产品能力。fast-gdb 当前仅提供 Reader；现行边界见 [ADR-007](../../../adr/ADR-007-reader-only-gdal-edit-boundary.md)，归档说明见 [Writer 历史索引](../README.md)。
+> **历史归档**：本文记录已废弃的 Writer 方案或阶段性证据，不代表当前产品能力。fast-gdb 当前仅提供 Reader；现行边界见 [ADR-007](../../../governance/adr/ADR-007-reader-only-gdal-edit-boundary.md)，归档说明见 [Writer 历史索引](../README.md)。
 
 # 18 — Writer 跨平台测试统一与后续编辑计划
 
@@ -182,6 +182,6 @@ Issue #12 记录 GitHub Actions 在 checkout 前失败、没有 steps/logs 的�
 - [Writer 生命周期](../architecture/writer-lifecycle.md)
 - [Writer Design Principles](../architecture/writer-design-principles.md)
 - [Writer Known Limitations](../architecture/writer-known-limitations.md)
-- [当前 ADR 索引](../../../adr/README.md)
+- [当前 ADR 索引](../../../governance/adr/README.md)
 - [Writer Transaction Design](../design/writer-transaction.md)
 - [Writer Public API Freeze Review](../reviews/API_FREEZE_REVIEW.md)
