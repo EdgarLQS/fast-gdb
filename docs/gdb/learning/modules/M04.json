@@ -1,0 +1,53 @@
+{
+  "id": "M04",
+  "title": "系统表与 Catalog",
+  "delivery_state": "current",
+  "prerequisites": ["M03"],
+  "lesson": "lessons/0004-system-catalog.html",
+  "micro_units": [
+    {"id": "M04-U01", "title": "核心系统表的职责", "minutes": 12},
+    {"id": "M04-U02", "title": "UUID、类型与关系连接", "minutes": 15},
+    {"id": "M04-U03", "title": "逻辑名称到物理表", "minutes": 15}
+  ],
+  "diagnostic_questions": [
+    {"id": "M04-D01", "prompt": "GDB_Items 主要保存什么？", "options": [{"id": "A", "text": "对象定义和标识信息"}, {"id": "B", "text": "全部业务记录内容"}, {"id": "C", "text": "空间索引页面内容"}, {"id": "D", "text": "空闲记录空间列表"}]},
+    {"id": "M04-D02", "prompt": "ItemTypes 表主要解决什么问题？", "options": [{"id": "A", "text": "计算几何空间关系"}, {"id": "B", "text": "解释对象类型身份"}, {"id": "C", "text": "保存字段实际取值"}, {"id": "D", "text": "定位记录物理偏移"}]},
+    {"id": "M04-D03", "prompt": "系统表之间为什么使用 UUID？", "options": [{"id": "A", "text": "减少每个文件长度"}, {"id": "B", "text": "替代全部显示名称"}, {"id": "C", "text": "稳定连接对象关系"}, {"id": "D", "text": "直接计算空间候选"}]},
+    {"id": "M04-D04", "prompt": "图层显示名能否直接从文件编号得到？", "options": [{"id": "A", "text": "可以且永远一一对应"}, {"id": "B", "text": "可以只需读取扩展名"}, {"id": "C", "text": "可以只需统计文件数"}, {"id": "D", "text": "不能需解析系统元数据"}]},
+    {"id": "M04-D05", "prompt": "读取 Definition XML 能直接证明什么？", "options": [{"id": "A", "text": "原始定义内容可以取得"}, {"id": "B", "text": "所有行为已经完整执行"}, {"id": "C", "text": "所有私有字段已有规范"}, {"id": "D", "text": "所有版本已经完全兼容"}]}
+  ],
+  "quiz_questions": [
+    {"id": "M04-Q01", "critical": true, "prompt": "从逻辑图层到物理表的正确起点是什么？", "options": [{"id": "A", "text": "猜测内部文件编号"}, {"id": "B", "text": "解析 Catalog 元数据"}, {"id": "C", "text": "扫描空间索引页面"}, {"id": "D", "text": "统计目录文件数量"}]},
+    {"id": "M04-Q02", "critical": true, "prompt": "GDB_ItemRelationships 主要表达什么？", "options": [{"id": "A", "text": "对象之间的关系边"}, {"id": "B", "text": "记录字段的空值位"}, {"id": "C", "text": "几何坐标增量序列"}, {"id": "D", "text": "属性索引键值顺序"}]},
+    {"id": "M04-Q03", "critical": false, "prompt": "看到未知类型 UUID 时应怎样处理？", "options": [{"id": "A", "text": "按普通图层完整执行"}, {"id": "B", "text": "忽略对象继续报告"}, {"id": "C", "text": "推断成最接近类型"}, {"id": "D", "text": "保留标识并标记未知"}]},
+    {"id": "M04-Q04", "critical": false, "prompt": "Definition 与 Documentation 的关系是什么？", "options": [{"id": "A", "text": "两者都是记录偏移表"}, {"id": "B", "text": "两者都是空间索引页"}, {"id": "C", "text": "分别偏向结构和说明"}, {"id": "D", "text": "两者完全可以互换"}]},
+    {"id": "M04-Q05", "critical": false, "prompt": "系统表可读为何不等于行为完整？", "options": [{"id": "A", "text": "系统表只保存文件时间"}, {"id": "B", "text": "还需结构化关联和验证"}, {"id": "C", "text": "行为只存在空间索引"}, {"id": "D", "text": "行为完全不依赖元数据"}]},
+    {"id": "M04-Q06", "critical": false, "prompt": "CatalogResolver 最适合承担什么职责？", "options": [{"id": "A", "text": "连接逻辑对象与物理表"}, {"id": "B", "text": "执行精确空间相交"}, {"id": "C", "text": "重写全部业务记录"}, {"id": "D", "text": "线性化所有曲线几何"}]}
+  ],
+  "question_standard_views": {"M04-D01": "M04-S01", "M04-D02": "M04-S01", "M04-D03": "M04-S01", "M04-D04": "M04-S01", "M04-D05": "M04-S02", "M04-Q01": "M04-S01", "M04-Q02": "M04-S01", "M04-Q03": "M04-S02", "M04-Q04": "M04-S02", "M04-Q05": "M04-S02", "M04-Q06": "M04-S01"},
+  "standard_views": [
+    {
+      "id": "M04-S01", "knowledge_point_id": "M04-K01", "kind": "graph", "title": "Catalog UUID 关系标准图", "summary": "逻辑名称、对象类型、关系和物理表通过系统表中的稳定标识连接。",
+      "diagram": {"viewBox": "0 0 900 300", "nodes": [{"id": "items", "label": "GDB_Items\n名称 + UUID + Definition", "layer": "logic", "x": 30, "y": 100, "w": 190, "h": 80}, {"id": "types", "label": "GDB_ItemTypes\n类型 UUID", "layer": "behavior", "x": 260, "y": 20, "w": 180, "h": 75}, {"id": "rels", "label": "GDB_ItemRelationships\nOrigin / Destination", "layer": "behavior", "x": 260, "y": 195, "w": 210, "h": 75}, {"id": "resolver", "label": "CatalogResolver\n结构化关联", "layer": "logic", "x": 520, "y": 100, "w": 170, "h": 80}, {"id": "physical", "label": "aXXXXXXXX.gdbtable\n物理数据表", "layer": "physical", "x": 735, "y": 100, "w": 150, "h": 80}], "edges": [{"from": "items", "to": "types", "label": "类型标识"}, {"from": "items", "to": "rels", "label": "对象标识"}, {"from": "types", "to": "resolver", "label": "解释类型"}, {"from": "rels", "to": "resolver", "label": "恢复层级"}, {"from": "resolver", "to": "physical", "label": "映射"}]},
+      "standard_answer": "GDB_Items 保存对象标识、名称和定义；GDB_ItemTypes 解释类型身份；GDB_ItemRelationships 连接对象；CatalogResolver 将这些信息结构化后，才能把逻辑图层可靠映射到物理表。文件编号本身不是业务名称。",
+      "evidence": [{"level": "EsriConfirmed", "claim": "Esri 官方架构说明核心系统表的逻辑职责。"}, {"level": "FastGdbConfirmed", "claim": "fast-gdb CatalogResolver 和 MetadataReader 实现当前映射链路。"}],
+      "not_proven": ["系统表逻辑说明不是完整 FileGDB 二进制规范。", "发现对象 UUID 不证明对应高级行为已经实现。"],
+      "common_mistakes": ["直接把 aXXXXXXXX 当作图层名称。", "读取 XML 后立即宣称行为完整。"],
+      "sources": [{"label": "Esri：Geodatabase architecture", "href": "https://pro.arcgis.com/en/pro-app/latest/help/data/geodatabases/overview/the-architecture-of-a-geodatabase.htm"}, {"label": "M04 课件", "href": "lessons/0004-system-catalog.html#M04-U01"}]
+    },
+    {
+      "id": "M04-S02", "knowledge_point_id": "M04-K02", "kind": "table", "title": "Catalog 证据边界标准表", "summary": "把原始读取、结构化解释和行为支持分开。",
+      "diagram": {"columns": ["层级", "可以确认", "仍不能确认"], "rows": [["原始读取", "XML/Binary payload 可取得", "字段含义全部公开"], ["结构化 Catalog", "对象、类型、关系可关联", "ArcGIS 行为完整等价"], ["行为支持", "真实规则经过独立验证", "未测试版本自动兼容"], ["未知类型", "保留 UUID 和原始定义", "按相似名称推断完整语义"]]},
+      "standard_answer": "Catalog 审核必须区分 raw payload、structured schema 和 behavioral parity。未知 UUID 应保留原始证据并标记 Unknown，不能按名称或相邻类型猜测完整语义。",
+      "evidence": [{"level": "DataObserved", "claim": "核心 ArcGIS 样本提供系统表、层级和关系的可重复观察。"}],
+      "not_proven": ["单个 ArcGIS Pro 3.5 样本不能证明所有历史版本。"],
+      "common_mistakes": ["把 missing、empty、unreadable 合并为同一状态。"],
+      "sources": [{"label": "课程一手资料审计", "href": "research/primary-sources.md"}]
+    }
+  ],
+  "labs": [{"id": "M04-L01", "kind": "evidence-report", "title": "追踪真实 Catalog、层级和物理系统表", "inputs": [{"scope": "repo", "path": "test_data/gdb/acceptance_metadata/dataset-hierarchy.csv", "mode": "csv"}, {"scope": "repo", "path": "test_data/gdb/acceptance_metadata/relationship-expected.csv", "mode": "csv"}, {"scope": "fixture", "path": "a00000004.gdbtable", "mode": "binary", "prefix_bytes": 64}, {"scope": "repo", "path": "src/edgar/explorgdb/reader/format/catalog_resolver.cpp", "mode": "text"}]}],
+  "evidence_task": {"id": "M04-E01", "prompt": "分别说明系统表的 EsriConfirmed 职责、fast-gdb 当前 FastGdbConfirmed 映射，以及 Unknown 私有字段不能证明什么。", "required_levels": ["EsriConfirmed", "FastGdbConfirmed", "Unknown"]},
+  "oral_review": {"id": "M04-O01", "focus": ["系统表关系", "UUID 连接", "逻辑到物理映射", "证据边界"]},
+  "review_days": [2, 7, 21],
+  "review_tasks": [{"day": 2, "question_ids": ["M04-Q01", "M04-Q02", "M04-Q05"]}, {"day": 7, "question_ids": ["M04-Q03", "M04-Q04", "M04-Q06"]}, {"day": 21, "question_ids": ["M04-Q01", "M04-Q02", "M04-Q03", "M04-Q05"]}]
+}

@@ -1,6 +1,7 @@
 <!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>第 11 周：高级几何与拓扑</title><link rel="stylesheet" href="../assets/course.css"></head><body><main>
 <nav><a href="0010-basic-geometry.html">← 第 10 周</a><a href="0012-spatial-index.html">第 12 周 →</a></nav>
 <p class="kicker">Week 11 · Topology and curves</p><h1>字节解出来了，不代表几何语义已经正确</h1>
+<div class="unit-index"><span id="M11-U01">Polygon 拓扑</span><span id="M11-U02">曲线和 MultiPatch</span><span id="M11-U03">Valid、Degraded、Unsupported、Corrupt</span></div>
 <p class="lead">Polygon 需要组织 ring 层级；曲线需要保留源语义或明确线性化；MultiPatch 需要 part type 和表面拓扑。</p>
 <h2>四级结果合同</h2>
 <table><thead><tr><th>状态</th><th>含义</th></tr></thead><tbody>
@@ -11,7 +12,7 @@
 
 curve descriptors ─→ validate ─→ preserve or linearize
                                 └→ tolerance + source type + diagnostic</pre>
-<div class="exercise"><strong>拓扑判断</strong><p>画三个 ring：外环、洞、洞内岛。先只按方向分类，再按包含关系分类；比较两种方法在方向异常时的可靠性。</p><p>再选择 Circular Arc 或 Bezier，写出线性化必须保留的三项信息。</p></div>
+<div class="exercise"><strong>标准答案提示</strong><p>学习台中的 M11 标准答案直接展示 ring 包含关系、曲线线性化和 Valid/Degraded/Unsupported/Corrupt 的判断图；无需自行绘图。</p></div>
 <div class="evidence"><span class="tag">FastGdbConfirmed</span>本仓库覆盖极值方向判断、自相交/接触/重复 ring、曲线描述符和 Z/M 插值。<span class="tag">Unknown</span>未覆盖的未来曲线编码和完整 MultiPatch 表面不能由现有测试外推。</div>
 <h2>AI 审核题</h2><blockquote>AI 对未知 curve descriptor 忽略尾部字节并输出已读折线。</blockquote><p>审核要点：这会把未知语义伪装成 Valid；应 Unsupported/Corrupt 或保留 raw payload，并阻止错误空间过滤。</p>
 <h2>闭卷复述</h2>

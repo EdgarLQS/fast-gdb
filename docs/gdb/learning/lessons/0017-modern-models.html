@@ -1,6 +1,7 @@
 <!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>第 17 周：现代 Geodatabase 模型</title><link rel="stylesheet" href="../assets/course.css"></head><body><main>
 <nav><a href="0016-constrained-datasets.html">← 第 16 周</a><a href="0018-capstone-ai-review.html">第 18 周 →</a></nav>
 <p class="kicker">Week 17 · Modern models</p><h1>数据集名称不是能力声明</h1>
+<div class="unit-index"><span id="M17-U01">现代数据集分类</span><span id="M17-U02">发现、结构和行为能力矩阵</span><span id="M17-U03">版本与未知结构</span></div>
 <p class="lead">现代 Geodatabase 模型通常由大量基础类、系统元数据、规则、关联和派生状态构成。学习重点是建立分类法和证据边界。</p>
 <h2>分类地图</h2>
 <table><thead><tr><th>类别</th><th>代表对象</th><th>核心语义</th></tr></thead><tbody>
@@ -8,7 +9,7 @@
 <tr><td>土地记录</td><td>Parcel Fabric</td><td>地块、记录、拓扑和历史关系</td></tr><tr><td>制图表达</td><td>Annotation、Dimension</td><td>文本/尺寸表达、符号和 Feature 关联</td></tr>
 <tr><td>数据完整性</td><td>Attribute Rules、Contingent Values</td><td>计算、约束、验证和字段组合约束</td></tr>
 <tr><td>影像与时空目录</td><td>Catalog、Oriented Imagery、Trajectory</td><td>资源目录、姿态/轨迹和派生查看行为</td></tr></tbody></table>
-<div class="exercise"><strong>能力边界表</strong><p>为每类模型填写：能否发现对象、能否读基础表、能否读 Definition、能否结构化规则、能否执行行为、能否验证版本。fast-gdb/GDAL/ArcGIS 分三列，不允许用一个“支持”勾选代替。</p></div>
+<div class="exercise"><strong>标准答案提示</strong><p>学习台中的 M17 标准答案直接提供 Discovery、Physical Read、Structured Schema、Behavior、Version 五层能力矩阵和现代模型语义分类；无需自行填写。</p></div>
 <div class="evidence"><span class="tag">EsriConfirmed</span>官方文档用于确认对象和产品语义。<span class="tag">GdalConfirmed</span>GDAL 文档/源码用于确认驱动实际暴露的能力。<span class="tag">Unknown</span>未公开内部布局保持未知。</div>
 <h2>AI 审核题</h2><blockquote>AI 从 GDB_Items 中识别到 Utility Network 类型 UUID，于是说“Utility Network 已解析”。</blockquote><p>审核要点：这最多证明对象发现；网络 Schema、关联、连通、子网、追踪和版本都未被证明。</p>
 <h2>闭卷复述</h2><details><summary>如何避免布尔型“支持”误导？</summary><p>把支持拆成发现、物理读取、结构化元数据、行为执行和版本验证等层级。</p></details>

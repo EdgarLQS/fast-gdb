@@ -1,6 +1,7 @@
 <!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>第 12 周：SPX 空间索引</title><link rel="stylesheet" href="../assets/course.css"></head><body><main>
 <nav><a href="0011-advanced-geometry.html">← 第 11 周</a><a href="0013-query-cursor.html">第 13 周 →</a></nav>
 <p class="kicker">Week 12 · SPX</p><h1>空间索引负责缩小范围，不负责最终真相</h1>
+<div class="unit-index"><span id="M12-U01">SPX 页面和 B+ 树</span><span id="M12-U02">候选 FID</span><span id="M12-U03">精确过滤和回退</span></div>
 <p class="lead">SPX 的工作是快速产生可能相交的 FID。页面结构、网格编码和 BBox 都服务于候选过滤，精确谓词仍需真实几何。</p>
 <h2>B+ 树角色</h2>
 <pre>query bbox
@@ -12,12 +13,12 @@
 <table><thead><tr><th>情况</th><th>Reader 行为</th></tr></thead><tbody>
 <tr><td>SPX 有效</td><td>使用候选集，再做最终判断</td></tr><tr><td>SPX 缺失</td><td>回退到 BBox peek、内存索引或扫描</td></tr>
 <tr><td>SPX 损坏</td><td>明确诊断；只在合同允许时安全回退</td></tr><tr><td>候选为空</td><td>是有效结果，不等于索引失败</td></tr></tbody></table>
-<div class="exercise"><strong>查询路径图</strong><p>为“小 BBox、有 SPX”“大 BBox、无 SPX”“损坏 SPX”分别画流程。每条流程写明最终几何检查是否发生，以及错误/回退状态如何报告。</p></div>
+<div class="exercise"><strong>标准答案提示</strong><p>学习台中的 M12 标准答案直接展示“小 BBox、有 SPX”“大 BBox、无 SPX”“损坏 SPX”的候选、精确过滤和回退标准流程图；无需自行画流程。</p></div>
 <div class="evidence"><span class="tag">GdalConfirmed</span>GDAL 3.2+ 可使用原生 SPX，并能在特定情况下建立内存索引。<span class="tag">FastGdbConfirmed</span>当前实现对页计数、输入 BBox、排序和回退有测试。</div>
 <h2>AI 审核题</h2><blockquote>AI 为优化性能，在 SPX 命中后直接返回 Feature，不再读取几何。</blockquote><p>审核要点：索引常基于网格/BBox，存在假阳性；最终空间谓词不能省略。</p>
 <h2>闭卷复述</h2>
 <details><summary>为什么候选集允许假阳性？</summary><p>索引使用较粗的包围盒或网格表示以换取速度，候选只保证值得进一步检查。</p></details>
 <details><summary>损坏索引为何不能总是静默扫描？</summary><p>调用者可能需要区分性能回退与数据完整性问题；合同还可能要求 fail closed。</p></details>
 <h2>源码与测试</h2><ul><li><a href="../../../../src/edgar/explorgdb/reader/index/gdb_spatial_index.cpp">gdb_spatial_index.cpp</a></li><li><a href="../../../../tests/edgar/explorgdb/reader/index/test_gdb_spatial_index.cpp">test_gdb_spatial_index.cpp</a></li><li><a href="https://gdal.org/en/stable/drivers/vector/openfilegdb.html#spatial-filtering">GDAL spatial filtering</a></li></ul>
-<footer>把“候选”和“最终结果”画成两个方框，这条边界贯穿所有索引课程。有任何不清楚的地方，请继续向 AI 提问。</footer>
+<footer>学习台交付后直接展开标准图，重点复述“候选”和“最终结果”的边界。有任何不清楚的地方，请继续向 AI 提问。</footer>
 </main></body></html>

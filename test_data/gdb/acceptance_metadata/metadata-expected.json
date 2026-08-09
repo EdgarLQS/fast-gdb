@@ -1,0 +1,68 @@
+{
+  "Workspace": {
+    "name": "acceptance_metadata.gdb",
+    "title": "",
+    "summary": "",
+    "tags": ""
+  },
+  "TransportFD": {
+    "name": "TransportFD",
+    "title": "",
+    "summary": "",
+    "tags": ""
+  },
+  "AdminFD": {
+    "name": "AdminFD",
+    "title": "",
+    "summary": "",
+    "tags": ""
+  },
+  "roads": {
+    "name": "roads",
+    "title": "",
+    "summary": "",
+    "tags": ""
+  },
+  "road_inspections": {
+    "name": "road_inspections",
+    "title": "",
+    "summary": "",
+    "tags": ""
+  },
+  "road_assets": {
+    "name": "road_assets",
+    "title": "",
+    "summary": "",
+    "tags": ""
+  },
+  "parcels": {
+    "name": "parcels",
+    "title": "",
+    "summary": "",
+    "tags": ""
+  },
+  "parcel_parts": {
+    "name": "parcel_parts",
+    "title": "",
+    "summary": "",
+    "tags": ""
+  },
+  "root_points": {
+    "name": "root_points",
+    "title": "",
+    "summary": "",
+    "tags": ""
+  },
+  "root_table": {
+    "name": "root_table",
+    "title": "",
+    "summary": "",
+    "tags": ""
+  },
+  "all_field_types": {
+    "name": "all_field_types",
+    "title": "",
+    "summary": "",
+    "tags": ""
+  }
+}

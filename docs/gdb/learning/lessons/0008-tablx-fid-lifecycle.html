@@ -1,6 +1,7 @@
 <!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>第 8 周：TABLX、FID 与生命周期</title><link rel="stylesheet" href="../assets/course.css"></head><body><main>
 <nav><a href="0007-record-encoding.html">← 第 7 周</a><a href="0009-spatial-reference.html">第 9 周 →</a></nav>
 <p class="kicker">Week 08 · Identity and location</p><h1>FID 说明“哪条”，TABLX 说明“在哪”</h1>
+<div class="unit-index"><span id="M08-U01">FID 与 Slot</span><span id="M08-U02">TABLX Offset</span><span id="M08-U03">删除、复用与 REPACK</span></div>
 <p class="lead">把 FID、slot、offset 和物理空间拆开，是理解删除、稀疏标识、碎片和重打包的关键。</p>
 <h2>四个不同概念</h2>
 <table><thead><tr><th>概念</th><th>职责</th></tr></thead><tbody>
@@ -10,7 +11,7 @@
 <pre>FID / slot ─→ TABLX entry ─→ 0: deleted or absent
                              └→ nonzero offset ─→ GDBTABLE record</pre>
 <p>TABLX 可能使用不同 offset 宽度。稀疏 FID 和 64 位 OID 不能由 32 位 API 静默截断。</p>
-<div class="exercise"><strong>生命周期推演</strong><ol><li>画出创建记录后的 TABLX 与数据区。</li><li>删除中间记录：将其 offset 标为无效，并把旧空间加入 freelist。</li><li>追加更大记录：解释为何可能复用或追加物理空间，但不会自动复用原 FID。</li><li>REPACK 后重画物理 offset，说明逻辑标识是否必须变化。</li></ol></div>
+<div class="exercise"><strong>标准答案提示</strong><p>学习台中的 M08 标准答案直接展示 FID → TABLX → offset → GDBTABLE 的生命周期图，并给出删除、追加和 REPACK 的标准解释；无需自行绘图。</p></div>
 <div class="evidence"><span class="tag">GdalConfirmed</span>GDAL 的更新、freelist 和 REPACK 行为可由源码/文档确认。<span class="tag">FastGdbConfirmed</span>当前 fast-gdb 对 FID 采用 zero-based uint32 合同，并拒绝超范围 slot domain。</div>
 <h2>AI 审核题</h2><blockquote>AI 为节省内存，只保留非零 offset 数组，并用数组下标作为 FID。</blockquote><p>审核要点：这会压缩稀疏 slot，破坏 FID 对应关系。</p>
 <h2>闭卷复述</h2>

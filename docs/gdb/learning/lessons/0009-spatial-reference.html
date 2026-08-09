@@ -1,6 +1,7 @@
 <!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>第 9 周：空间参考与精度</title><link rel="stylesheet" href="../assets/course.css"></head><body><main>
 <nav><a href="0008-tablx-fid-lifecycle.html">← 第 8 周</a><a href="0010-basic-geometry.html">第 10 周 →</a></nav>
 <p class="kicker">Week 09 · Precision grid</p><h1>FileGDB 存的是网格整数，不只是浮点坐标</h1>
+<div class="unit-index"><span id="M09-U01">空间参考身份</span><span id="M09-U02">Origin、Scale 与坐标恢复</span><span id="M09-U03">Resolution、Tolerance 与 Domain</span></div>
 <p class="lead">坐标解码必须和空间参考 descriptor 一起理解：origin 决定起点，scale 决定网格密度，resolution 与 tolerance 决定精度和空间行为。</p>
 <h2>四个量</h2>
 <p>WKID、LatestWKID 和 WKT 用于识别坐标参考系；下面的精度网格参数决定该参考系中的坐标怎样量化和存储。</p>
@@ -10,7 +11,7 @@
 <tr><td>Domain</td><td>该精度网格能够安全覆盖的坐标范围</td></tr></tbody></table>
 <pre>stored integer ── decode formula + origin/scale ──→ coordinate
 XY / Z / M each has its own origin, scale and tolerance</pre>
-<div class="exercise"><strong>坐标推导</strong><p>从 Geometry descriptor 选一组 XY origin/scale，再选一个存储整数。先写公式和单位，再计算坐标。然后改变 scale，解释 resolution 和可覆盖 domain 如何变化。</p></div>
+<div class="exercise"><strong>标准答案提示</strong><p>学习台中的 M09 标准答案直接给出 stored integer、origin、scale 与真实坐标的关系，以及 resolution、tolerance、domain 的区别；无需手工计算。</p></div>
 <div class="evidence"><span class="tag">EsriConfirmed</span>空间参考、resolution、tolerance 和 domain 的产品含义。<span class="tag">GdalConfirmed</span>OpenFileGDB 文档公开 origin/scale/tolerance 选项及 domain 约束。具体几何编码公式仍需源码和数据交叉验证。</div>
 <h2>AI 审核题</h2><blockquote>AI 直接把 VarInt 解码结果转换成 double，未读取 geometry descriptor。</blockquote><p>审核要点：缺少 origin/scale 无法得到真实坐标；Point、BBox 和 delta 序列还可能有不同细节。</p>
 <h2>闭卷复述</h2>

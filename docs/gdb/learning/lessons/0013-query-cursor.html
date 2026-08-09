@@ -1,6 +1,7 @@
 <!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>第 13 周：ATX、查询与 Cursor</title><link rel="stylesheet" href="../assets/course.css"></head><body><main>
 <nav><a href="0012-spatial-index.html">← 第 12 周</a><a href="0014-schema-compatibility.html">第 14 周 →</a></nav>
 <p class="kicker">Week 13 · Query</p><h1>索引是计划的一部分，WHERE 才是语义</h1>
+<div class="unit-index"><span id="M13-U01">ATX 与 WHERE</span><span id="M13-U02">Query Planner</span><span id="M13-U03">Cursor 和生命周期</span></div>
 <p class="lead">ATX 可加速特定单字段比较，但 Query Planner 必须判断表达式是否兼容，并在物化记录后执行最终 WHERE、空间条件和结果窗口。</p>
 <h2>查询层次</h2>
 <pre>QueryRequest
@@ -14,7 +15,7 @@
 <table><thead><tr><th>对象</th><th>职责</th></tr></thead><tbody>
 <tr><td>ATX</td><td>按已知 key 编码和比较关系产生候选 FID</td></tr><tr><td>WHERE compiler</td><td>保存 NULL、字符串转义、逻辑组合和比较语义</td></tr>
 <tr><td>Planner</td><td>选择可证明正确的路径，而不是选择“看起来最快”的路径</td></tr><tr><td>Cursor</td><td>管理一次查询的迭代、移动、资源借用和状态</td></tr></tbody></table>
-<div class="exercise"><strong>四条计划</strong><p>分别为 <code>FID=7</code>、<code>status='OPEN'</code>、BBox、<code>status='OPEN' AND BBox</code> 画计划。为每条计划标出候选产生、物化、最终过滤和输出窗口。</p></div>
+<div class="exercise"><strong>标准答案提示</strong><p>学习台中的 M13 标准答案直接展示 FID、属性、空间和联合查询的 Query Planner 标准路径；无需自行画计划。</p></div>
 <div class="evidence"><span class="tag">GdalConfirmed</span>GDAL 文档说明 WHERE 可利用 ATX。<span class="tag">FastGdbConfirmed</span>本项目只把兼容的直接比较映射到索引，并保留最终评估。</div>
 <h2>AI 审核题</h2><blockquote>AI 看到 <code>LOWER(name)='road'</code> 中包含 name 字段，于是直接查 name 的 ATX。</blockquote><p>审核要点：函数表达式改变 key 语义；除非存在匹配的函数索引并被可靠识别，否则不能当作直接字段索引。</p>
 <h2>闭卷复述</h2>

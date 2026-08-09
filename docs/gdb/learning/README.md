@@ -1,57 +1,97 @@
-> 状态：Current
+> 状态：Current（M01–M18 已实现）
 > 适用版本：v0.2.0+
 > 维护入口：docs/gdb/learning/
 
-# FileGDB 数据结构学习课程
+# FileGDB 全面学习实验室
 
-这是一个 18 周、概念与 AI 审核导向的 FileGDB 课程。先阅读 [`MISSION.md`](MISSION.md)，再按顺序学习；不要把“读完页面”记录为掌握，只有完成复述或实操后才新增 `learning-records/`。
+本课程包含 18 个完整 FileGDB 知识模块，但不把“读完 18 篇页面”视为完成。所有模块都提供题目对应的可展开标准答案、只读证据实验、AI 口试和间隔复习，并按掌握状态解锁。
 
-## 使用方法
+## 快速开始
 
-每周建议分三次完成：
+从仓库根目录执行：
 
-1. 概念与结构图：约 2 小时；
-2. 真实数据、字节和源码锚点：约 2 小时；
-3. AI 审核、闭卷复述和间隔复习：约 1–3 小时。
+```bash
+python3 tools/learning/course.py doctor
+python3 tools/learning/course.py serve --port 8766
+```
 
-统一参考：
+启动后直接访问 `http://127.0.0.1:8766/`，无需令牌。学习台只监听 `127.0.0.1`，个人进度写入被 Git 忽略的 `build/learning/`。
 
+常用命令：
+
+```bash
+python3 tools/learning/course.py status
+python3 tools/learning/course.py lab M01-L01
+python3 tools/learning/course.py review-export M01
+python3 tools/learning/course.py review-import M01 build/learning/reviews/M01-result.json
+python3 tools/learning/course.py export-record M01
+```
+
+`export-record` 只有在模块达到 `Mastered` 后才生成候选记录，不会自动写入正式 `learning-records/`。
+
+## 学习闭环
+
+```text
+概念诊断 → 微型课程 → 标准答案浏览 → 真实实验 → 证据核查
+         → AI 口试 → D+2 / D+7 / D+21 → 长期掌握
+```
+
+模块状态：
+
+- `Locked`：先修模块尚未暂时掌握；
+- `NotStarted`：可以开始；
+- `Learning`：已有活动记录，但验收门禁未完成；
+- `Provisional`：测验、实验、证据和 AI 口试均通过，可以学习下一模块；标准答案查看不计入门禁；
+- `Mastered`：三次间隔复习均通过；
+- `Planned`：为未来扩展保留的状态；当前 18 个模块均已交付。
+
+## 当前课程模块
+
+| 阶段 | 模块 | 标准答案和实验重点 |
+|---|---|---|
+| 基础 | M01–M03 | 逻辑关系、字节解码、文件家族 |
+| 表与记录 | M04–M07 | Catalog、GDBTABLE、字段描述符、记录游标 |
+| 几何 | M08–M11 | FID/TABLX、精度网格、基础与高级几何 |
+| 索引查询 | M12–M13 | SPX 候选、ATX、Planner 与 Cursor |
+| 行为与高级模型 | M14–M17 | Schema 行为、Raster、约束型和现代数据集 |
+| 综合验收 | M18 | 八层知识图、问题定位和 AI 方案审核 |
+
+验收要求为测验至少 85%、关键题全部正确、实验完成、证据作品通过校验，以及 AI 口试至少 10/12 且每项不低于 2。标准答案默认收起，点击后显示结论、图表、证据、边界和常见误解；查看记录只用于学习轨迹，不替代验收。实验结果根据版本化答案清单独立校验，不把 `explorgdb_cli` 的自由文本当作稳定评分接口。
+
+证据说明必须包含该模块要求的证据等级和“不能证明什么”，并生成带 SHA-256 的 `build/learning/artifacts/<module>/` 作品。`review-export` 会创建待处理口试会话；`review-import` 只接受匹配会话、3–5 个问题、有效时间和完整四维评分的结果。课程工具防止通过正常接口跳过门禁，但本地学习者始终拥有文件系统权限，因此这些校验是学习完整性检查，不是防恶意篡改系统。
+
+诊断分数只给出“详细学习 / 重点学习 / 快速复述”的深度建议，不能免除任何门禁。课程不要求学习者自己画图、手工分类文件或手工填写字节解码；每个已交付知识点都必须提供可展开的标准答案。学习者仍需通过真实实验、证据说明和 AI 口试证明理解。
+
+M01–M03 直接维护在 `course.json`，M04–M18 分别维护在 [`modules/`](modules/) 中。新增知识点时，在对应模块增加唯一知识点、题目和 `standard_views`，再用 `question_standard_views` 把每道题映射到标准答案。现有 `graph`、`bytes`、`file-family`、`table` 四种展示类型可直接复用；详细规则见 [`modules/README.md`](modules/README.md)。
+
+## M04–M18 已交付内容
+
+[`lessons/`](lessons/) 提供概念课件，学习台同时提供对应题库、标准答案和验收闭环：
+
+- M04–M07：Catalog、GDBTABLE、字段和记录；
+- M08–M11：FID、空间参考和几何；
+- M12–M13：SPX、ATX、Query Planner 和 Cursor；
+- M14–M17：Schema 行为、Raster、约束型和现代数据集；
+- M18：完整知识图谱与 AI 审核。
+
+## 数据与证据
+
+- 核心数据：`test_data/gdb/acceptance_metadata.gdb`，由 ArcGIS Pro 3.5 arcpy 生成并随课程版本控制；来源和 SHA-256 见 [`fixtures/core-fixture.json`](fixtures/core-fixture.json)。实验使用 `build/learning/fixtures/` 中的副本。
+- 本机增强数据：其余被忽略的 `test_data/`，缺失时不影响 18 个核心模块。
+- Windows 选修：使用 [`../../../tests/createdata/DATASET_GUIDE.md`](../../../tests/createdata/DATASET_GUIDE.md) 重新生成并对照 ArcGIS 行为。
+- `explorgdb_cli` 当前可能显示 `Magic file ... UNEXPECTED`；这是已记录的诊断边界，不参与评分。
+
+CLI 的状态目录被限制在仓库 `build/learning/` 内。进度读改写在同一服务内串行执行，跨进程使用崩溃后自动释放的文件锁，并在原子替换前保存上一版备份。
+
+结论统一使用 `EsriConfirmed`、`GdalConfirmed`、`FastGdbConfirmed`、`DataObserved`、`Inferred` 和 `Unknown`。参考入口：
+
+- [`MISSION.md`](MISSION.md)：学习使命；
 - [`RESOURCES.md`](RESOURCES.md)：一手资料；
 - [`reference/0001-knowledge-map.html`](reference/0001-knowledge-map.html)：八层知识地图；
 - [`reference/0002-file-family.html`](reference/0002-file-family.html)：文件家族速查；
 - [`reference/0003-evidence-review.html`](reference/0003-evidence-review.html)：证据和 AI 审核清单；
-- [`../../plan/04_FileGDB数据结构完整学习路线.md`](../../plan/04_FileGDB数据结构完整学习路线.md)：总体计划。
-
-## 第一阶段：矢量 FileGDB
-
-| 周 | 课程 | 验收问题 |
-|---:|---|---|
-| 1 | [Geodatabase 基础模型](lessons/0001-geodatabase-model.html) | Feature Class 为什么本质上是带几何字段的表？ |
-| 2 | [二进制格式基础](lessons/0002-binary-foundations.html) | offset、Varint 和 bitmap 分别解决什么问题？ |
-| 3 | [目录与文件体系](lessons/0003-file-family.html) | 逻辑图层名为什么不能直接由文件名得到？ |
-| 4 | [系统表与 Catalog](lessons/0004-system-catalog.html) | UUID 如何连接系统表和业务表？ |
-| 5 | [GDBTABLE 布局](lessons/0005-gdbtable-layout.html) | Schema 与 Record 如何共存在一个表文件中？ |
-| 6 | [字段描述符](lessons/0006-field-descriptors.html) | 字段类型、标志和默认值为什么必须一起读？ |
-| 7 | [记录编码](lessons/0007-record-encoding.html) | NULL、空字符串和零长度 Binary 有何不同？ |
-| 8 | [TABLX、FID 与生命周期](lessons/0008-tablx-fid-lifecycle.html) | FID、slot、offset 和物理空间如何区分？ |
-| 9 | [空间参考与精度](lessons/0009-spatial-reference.html) | origin、scale、resolution 和 tolerance 如何关联？ |
-| 10 | [基础几何编码](lessons/0010-basic-geometry.html) | multipart 几何如何由 part 和 point 组成？ |
-| 11 | [高级几何与拓扑](lessons/0011-advanced-geometry.html) | Degraded 与 Unsupported 有何不同？ |
-| 12 | [SPX 空间索引](lessons/0012-spatial-index.html) | 为什么空间索引只产生候选？ |
-| 13 | [ATX、查询与 Cursor](lessons/0013-query-cursor.html) | 查询规划为什么必须保留最终过滤？ |
-| 14 | [Schema、兼容性与可靠性](lessons/0014-schema-compatibility.html) | “记录可读”为何不等于“行为完整”？ |
-
-## 第二阶段：高级数据集全景
-
-| 周 | 课程 | 验收问题 |
-|---:|---|---|
-| 15 | [Raster 与影像](lessons/0015-raster-imagery.html) | Raster 与普通 Feature Class 的存储职责有何不同？ |
-| 16 | [空间约束型数据集](lessons/0016-constrained-datasets.html) | 为什么基础要素可读不代表规则和派生结构可用？ |
-| 17 | [现代数据模型](lessons/0017-modern-models.html) | 如何给高级数据集划定证据边界？ |
-| 18 | [综合知识图与 AI 审核](lessons/0018-capstone-ai-review.html) | 如何证明 AI 的结论和修改是可信的？ |
+- [`../../plan/04_FileGDB数据结构完整学习路线.md`](../../plan/04_FileGDB数据结构完整学习路线.md)：总体计划和交付状态。
 
 ## 学习记录规则
 
-第一次真正证明掌握后再创建 `learning-records/0001-<主题>.md`，只写“掌握了什么、证据是什么、这会改变后续什么”，不写流水账。
-
-所有实验从仓库根目录执行，临时输出放入 `build/learning/`；课程本身不要求修改 Reader 代码。
+不要预先创建 `learning-records/`。只有学习者在口试、实验和间隔复习中真正证明掌握后，才把候选记录整理为 `0001-<topic>.md`。记录非显然结论及其对后续学习的影响，不写活动流水账。

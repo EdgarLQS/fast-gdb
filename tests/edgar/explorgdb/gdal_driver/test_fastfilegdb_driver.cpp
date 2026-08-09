@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <string>
 
 extern "C" void GDALRegister_FastFileGDB();
 
@@ -138,7 +139,18 @@ TEST(FastFileGdbDriverTest, ImplementsReadFilterAndResetContract) {
     EXPECT_EQ(layer->GetFeatureCount(FALSE), -1);
     OGREnvelope extent;
     EXPECT_EQ(layer->GetExtent(&extent, false), OGRERR_FAILURE);
-    EXPECT_EQ(layer->SetAttributeFilter("int_0 >= 0"), OGRERR_NONE);
+    const auto* definition = layer->GetLayerDefn();
+    ASSERT_NE(definition, nullptr);
+    const char* filter_field = nullptr;
+    if (definition->GetFieldIndex("int_0") >= 0) {
+        filter_field = "int_0";
+    } else if (definition->GetFieldIndex("value_000") >= 0) {
+        filter_field = "value_000";
+    }
+    ASSERT_NE(filter_field, nullptr)
+        << "fixture must expose int_0 or value_000 for filter coverage";
+    const std::string filter = std::string(filter_field) + " >= 0";
+    EXPECT_EQ(layer->SetAttributeFilter(filter.c_str()), OGRERR_NONE);
     layer->SetSpatialFilterRect(0, 0, 5, 5);
     std::unique_ptr<OGRFeature> first(layer->GetNextFeature());
     ASSERT_NE(first, nullptr) << CPLGetLastErrorMsg();

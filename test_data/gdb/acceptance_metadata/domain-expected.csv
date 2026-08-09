@@ -1,0 +1,5 @@
+DomainName,DomainType,FieldType,Description,CodedValues
+speed_range_domain,Range,Short,Speed limit range 0-120,"Min=0.0, Max=120.0"
+road_status_domain,CodedValue,Text,Road status codes,OPEN=Open; CLOSED=Closed; UNKNOWN=Unknown
+road_type_domain,CodedValue,Short,Road type codes,1=Highway; 2=Local Road; 3=Trail
+inspection_result_domain,CodedValue,Text,Inspection result codes,GOOD=Good; FAIR=Fair; POOR=Poor

@@ -5,6 +5,16 @@
 元数据、Domain、Relationship Class 和 Feature Dataset 的真实数据生成要求见
 [`docs/quality/12_元数据完整解析验收数据清单.md`](../docs/quality/12_元数据完整解析验收数据清单.md)。
 
+## Learning lab tests
+
+`tests/learning/` 使用 Python 标准库验证 18 个课程模块、标准答案视图和查看记录、掌握状态、间隔复习、实验/证据产物、口试会话、并发与崩溃锁、CLI、核心数据 SHA-256，以及本地服务的 Origin 和路径边界。
+
+```bash
+python3 -m unittest discover -s tests/learning -v
+```
+
+课程测试证明学习工具合同，不替代 Reader 产品测试和真实 ArcGIS/GDAL 验收。
+
 ## Reader release gates
 
 | Target | Scope |

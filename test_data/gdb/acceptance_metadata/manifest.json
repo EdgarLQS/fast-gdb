@@ -1,0 +1,33 @@
+{
+  "name": "acceptance_metadata.gdb",
+  "description": "FileGDB for metadata/domain/relationship/subtype/field type parsing verification",
+  "generated_by": "ArcGIS Pro arcpy",
+  "arcgis_version": "3.5.0.57366",
+  "python_version": "3.11",
+  "generated_at": "2026-07-29T17:12:22.528014",
+  "gdb_path": "E:/gitdesktop/fast-gdb/test_data/gdb/acceptance_metadata.gdb",
+  "feature_datasets": [
+    "TransportFD",
+    "AdminFD"
+  ],
+  "domains": [
+    "road_status_domain",
+    "speed_range_domain",
+    "road_type_domain",
+    "inspection_result_domain"
+  ],
+  "relationship_classes": [
+    "roads_inspections_rel",
+    "parcels_parts_rel",
+    "assets_guid_rel"
+  ],
+  "advanced_field_types": {
+    "bigint_fld": "BIGINTEGER",
+    "dateonly_fld": "DATEONLY",
+    "timeonly_fld": "TIMEONLY",
+    "timestampoffset_fld": "TIMESTAMPOFFSET"
+  },
+  "known_limitations": {
+    "attributed_relationship": "arcpy 3.5 does not support creating attributed relationship classes"
+  }
+}

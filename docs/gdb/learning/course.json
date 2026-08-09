@@ -1,0 +1,289 @@
+{
+  "schema_version": 1,
+  "title": "FileGDB 全面学习实验室",
+  "modules": [
+    {
+      "id": "M01",
+      "title": "Geodatabase 逻辑模型",
+      "delivery_state": "current",
+      "prerequisites": [],
+      "lesson": "lessons/0001-geodatabase-model.html",
+      "micro_units": [
+        {"id": "M01-U01", "title": "Workspace、Dataset 与 Table", "minutes": 12},
+        {"id": "M01-U02", "title": "Feature Class 与 Feature Dataset", "minutes": 12},
+        {"id": "M01-U03", "title": "Schema、数据、索引和行为", "minutes": 15}
+      ],
+      "diagnostic_questions": [
+        {"id": "M01-D01", "prompt": "Feature Class 最接近哪一种结构？", "options": [{"id": "A", "text": "带空间字段的数据表"}, {"id": "B", "text": "磁盘中的独立文件"}, {"id": "C", "text": "只含坐标的数据集"}, {"id": "D", "text": "普通目录的子目录"}]},
+        {"id": "M01-D02", "prompt": "Feature Dataset 主要表达什么？", "options": [{"id": "A", "text": "物理文件压缩方式"}, {"id": "B", "text": "逻辑分组共享参考"}, {"id": "C", "text": "单条记录存储区"}, {"id": "D", "text": "属性索引排序方式"}]},
+        {"id": "M01-D03", "prompt": "Domain 和 Subtype 主要属于哪一层？", "options": [{"id": "A", "text": "物理字节位置层次"}, {"id": "B", "text": "空间索引页面层次"}, {"id": "C", "text": "模式行为规则层次"}, {"id": "D", "text": "目录文件命名层次"}]},
+        {"id": "M01-D04", "prompt": "业务记录可读能够直接证明什么？", "options": [{"id": "A", "text": "完整行为已经恢复"}, {"id": "B", "text": "相关字节能够解释"}, {"id": "C", "text": "全部规则能够执行"}, {"id": "D", "text": "所有版本完全兼容"}]},
+        {"id": "M01-D05", "prompt": "逻辑图层名称通常从哪里还原？", "options": [{"id": "A", "text": "系统元数据和关系"}, {"id": "B", "text": "文件长度和时间戳"}, {"id": "C", "text": "扩展名和文件数量"}, {"id": "D", "text": "记录偏移和空闲区"}]}
+      ],
+      "quiz_questions": [
+        {"id": "M01-Q01", "critical": true, "prompt": "Feature Class 为什么仍然是一张表？", "options": [{"id": "A", "text": "行字段承载要素语义"}, {"id": "B", "text": "目录名称包含空间"}, {"id": "C", "text": "索引页面保存全部值"}, {"id": "D", "text": "锁文件声明几何类型"}]},
+        {"id": "M01-Q02", "critical": true, "prompt": "为什么不能把 Feature Dataset 当作子目录？", "options": [{"id": "A", "text": "逻辑层级来自元数据"}, {"id": "B", "text": "目录总是经过压缩"}, {"id": "C", "text": "文件系统没有目录"}, {"id": "D", "text": "所有图层共用记录"}]},
+        {"id": "M01-Q03", "critical": false, "prompt": "Relationship Class 的完整语义最可能依赖什么？", "options": [{"id": "A", "text": "单个业务字段宽度"}, {"id": "B", "text": "对象关系和行为元数据"}, {"id": "C", "text": "空间索引候选集合"}, {"id": "D", "text": "文件名称排列顺序"}]},
+        {"id": "M01-Q04", "critical": false, "prompt": "Physical read 与 Behavioral parity 的区别是什么？", "options": [{"id": "A", "text": "前者读数据后者还原行为"}, {"id": "B", "text": "前者写数据后者只读数据"}, {"id": "C", "text": "前者查索引后者查记录值"}, {"id": "D", "text": "前者看文件后者看目录名"}]},
+        {"id": "M01-Q05", "critical": false, "prompt": "发现未知高级数据集时应怎样描述？", "options": [{"id": "A", "text": "标成未知并保留证据"}, {"id": "B", "text": "推断完整行为已支持"}, {"id": "C", "text": "忽略相关系统元数据"}, {"id": "D", "text": "按普通表完全处理"}]},
+        {"id": "M01-Q06", "critical": false, "prompt": "Catalog 层的核心职责是什么？", "options": [{"id": "A", "text": "连接逻辑对象和物理表"}, {"id": "B", "text": "替代全部查询执行器"}, {"id": "C", "text": "计算几何精确相交"}, {"id": "D", "text": "复用删除记录空间"}]}
+      ],
+      "question_standard_views": {"M01-D01": "M01-S01", "M01-D02": "M01-S01", "M01-D03": "M01-S01", "M01-D04": "M01-S02", "M01-D05": "M01-S01", "M01-Q01": "M01-S01", "M01-Q02": "M01-S01", "M01-Q03": "M01-S01", "M01-Q04": "M01-S02", "M01-Q05": "M01-S02", "M01-Q06": "M01-S01"},
+      "standard_views": [
+        {
+          "id": "M01-S01",
+          "knowledge_point_id": "M01-K01",
+          "kind": "graph",
+          "title": "逻辑对象、行为和物理层标准图",
+          "summary": "先建立三层模型：逻辑对象表达业务，行为元数据表达约束，物理文件承载表、记录和索引。",
+          "diagram": {
+            "viewBox": "0 0 900 470",
+            "nodes": [
+              {"id": "workspace", "label": "Geodatabase\nWorkspace", "layer": "logic", "x": 35, "y": 185, "w": 150, "h": 70},
+              {"id": "dataset", "label": "Feature Dataset\n逻辑分组 + 共享空间参考", "layer": "logic", "x": 250, "y": 70, "w": 190, "h": 80},
+              {"id": "fc", "label": "Feature Class\n带 Geometry 字段的 Table", "layer": "logic", "x": 250, "y": 285, "w": 190, "h": 80},
+              {"id": "behavior", "label": "Domain / Subtype /\nRelationship / Rules", "layer": "behavior", "x": 505, "y": 70, "w": 190, "h": 80},
+              {"id": "table", "label": ".gdbtable\n字段 + 记录", "layer": "physical", "x": 505, "y": 285, "w": 170, "h": 80},
+              {"id": "index", "label": ".gdbtablx / .spx / .atx\n位置或候选索引", "layer": "physical", "x": 730, "y": 285, "w": 155, "h": 80}
+            ],
+            "edges": [
+              {"from": "workspace", "to": "dataset", "label": "包含"},
+              {"from": "workspace", "to": "fc", "label": "包含"},
+              {"from": "dataset", "to": "fc", "label": "组织"},
+              {"from": "fc", "to": "behavior", "label": "受规则描述"},
+              {"from": "fc", "to": "table", "label": "映射到"},
+              {"from": "table", "to": "index", "label": "配套"}
+            ]
+          },
+          "standard_answer": "Feature Class 本质上是带空间字段的 Table；Feature Dataset 是逻辑分组和共享空间参考容器，不是磁盘子目录。Domain、Subtype、Relationship 等属于行为元数据，.gdbtable 保存字段和记录，TABLX、SPX、ATX 提供位置或候选索引。",
+          "evidence": [
+            {"level": "EsriConfirmed", "claim": "Esri 将 Feature Class、Feature Dataset 和 Geodatabase 作为逻辑数据集概念描述。"},
+            {"level": "FastGdbConfirmed", "claim": "当前 fast-gdb Reader 以表、记录、几何和索引读取链路实现 Reader-only 能力。"}
+          ],
+          "not_proven": ["这张关系图不证明所有行为规则已经由 fast-gdb 执行。", "物理文件编号不能单独证明逻辑图层名称。"],
+          "common_mistakes": ["把 Feature Dataset 画成 .gdb 目录的直接子目录。", "把索引节点画成业务记录的唯一来源。"],
+          "sources": [{"label": "Esri：Geodatabase architecture", "href": "https://pro.arcgis.com/en/pro-app/3.3/help/data/geodatabases/overview/the-architecture-of-a-geodatabase.htm"}]
+        },
+        {
+          "id": "M01-S02",
+          "knowledge_point_id": "M01-K02",
+          "kind": "graph",
+          "title": "能力边界标准图",
+          "summary": "用三种能力层级检查 AI 或代码的结论强度。",
+          "diagram": {
+            "viewBox": "0 0 900 250",
+            "nodes": [
+              {"id": "physical", "label": "Physical Read\n能定位和读出字节", "layer": "physical", "x": 35, "y": 80, "w": 230, "h": 85},
+              {"id": "schema", "label": "Structured Schema\n能解释字段、对象和关系", "layer": "behavior", "x": 335, "y": 80, "w": 230, "h": 85},
+              {"id": "behavioral", "label": "Behavioral Parity\n能复现规则和行为", "layer": "logic", "x": 635, "y": 80, "w": 230, "h": 85}
+            ],
+            "edges": [{"from": "physical", "to": "schema", "label": "需要元数据证据"}, {"from": "schema", "to": "behavioral", "label": "需要行为验证"}]
+          },
+          "standard_answer": "读出记录或字段只能证明 Physical Read；能够关联 Catalog、Schema 和字段语义，才接近 Structured Schema；只有在真实行为、规则和兼容性上有独立证据，才可以讨论 Behavioral Parity。学习报告必须把三者分开。",
+          "evidence": [{"level": "Inferred", "claim": "能力层级是审核 fast-gdb、GDAL 与 ArcGIS 结论时使用的分析框架。"}],
+          "not_proven": ["一次样本读取不能证明跨版本兼容。", "GDAL 能打开一个图层不能证明完整 Geodatabase 行为等价。"],
+          "common_mistakes": ["把成功打开文件直接写成完整支持。", "把推断当成 EsriConfirmed。"],
+          "sources": [{"label": "课程证据等级约定", "href": "../README.md"}]
+        }
+      ],
+      "labs": [{"id": "M01-L01", "kind": "catalog-overview", "title": "从真实目录区分逻辑对象与物理文件"}],
+      "evidence_task": {
+        "id": "M01-E01",
+        "prompt": "分别给出一个 EsriConfirmed、FastGdbConfirmed 和 Unknown 结论，并说明不能证明什么。",
+        "required_levels": ["EsriConfirmed", "FastGdbConfirmed", "Unknown"]
+      },
+      "oral_review": {"id": "M01-O01", "focus": ["逻辑与物理分层", "行为元数据", "证据边界"]},
+      "review_days": [2, 7, 21],
+      "review_tasks": [
+        {"day": 2, "question_ids": ["M01-Q01", "M01-Q04", "M01-Q05"]},
+        {"day": 7, "question_ids": ["M01-Q02", "M01-Q03", "M01-Q06"]},
+        {"day": 21, "question_ids": ["M01-Q01", "M01-Q02", "M01-Q04", "M01-Q05"]}
+      ]
+    },
+    {
+      "id": "M02",
+      "title": "二进制观察基础",
+      "delivery_state": "current",
+      "prerequisites": ["M01"],
+      "lesson": "lessons/0002-binary-foundations.html",
+      "micro_units": [
+        {"id": "M02-U01", "title": "offset、length 与边界", "minutes": 10},
+        {"id": "M02-U02", "title": "小端整数、VarUInt 与 ZigZag", "minutes": 15},
+        {"id": "M02-U03", "title": "bitmap 与文本编码", "minutes": 12}
+      ],
+      "diagnostic_questions": [
+        {"id": "M02-D01", "prompt": "offset 通常回答哪个问题？", "options": [{"id": "A", "text": "从哪个位置开始读取"}, {"id": "B", "text": "使用哪种业务规则"}, {"id": "C", "text": "选择哪个空间参考"}, {"id": "D", "text": "采用哪种查询计划"}]},
+        {"id": "M02-D02", "prompt": "小端 UInt16 的低位字节放在哪里？", "options": [{"id": "A", "text": "较低文件地址位置"}, {"id": "B", "text": "较高文件地址位置"}, {"id": "C", "text": "索引文件末尾位置"}, {"id": "D", "text": "字段描述区域之外"}]},
+        {"id": "M02-D03", "prompt": "VarUInt 的 continuation bit 表示什么？", "options": [{"id": "A", "text": "后面仍然存在字节"}, {"id": "B", "text": "当前数值一定为空"}, {"id": "C", "text": "整个字段已经损坏"}, {"id": "D", "text": "当前字节采用大端"}]},
+        {"id": "M02-D04", "prompt": "bitmap 中的一位通常表达什么？", "options": [{"id": "A", "text": "一个真假状态判断"}, {"id": "B", "text": "一个完整整数数值"}, {"id": "C", "text": "一个文件路径名称"}, {"id": "D", "text": "一个浮点坐标数值"}]},
+        {"id": "M02-D05", "prompt": "相同字节为什么可能有不同数值？", "options": [{"id": "A", "text": "解释编码依赖上下文"}, {"id": "B", "text": "文件系统随机改写"}, {"id": "C", "text": "所有整数没有类型"}, {"id": "D", "text": "偏移始终等于长度"}]}
+      ],
+      "quiz_questions": [
+        {"id": "M02-Q01", "critical": true, "prompt": "字节 81 01 作为 VarUInt 的值是多少？", "options": [{"id": "A", "text": "一百二十九"}, {"id": "B", "text": "三百八十五"}, {"id": "C", "text": "二百五十七"}, {"id": "D", "text": "一百二十八"}]},
+        {"id": "M02-Q02", "critical": true, "prompt": "字节 81 01 作为小端 UInt16 的值是多少？", "options": [{"id": "A", "text": "一百二十九"}, {"id": "B", "text": "三百八十五"}, {"id": "C", "text": "二百五十七"}, {"id": "D", "text": "一百二十八"}]},
+        {"id": "M02-Q03", "critical": false, "prompt": "读取变长字段前最需要确认什么？", "options": [{"id": "A", "text": "长度与剩余边界"}, {"id": "B", "text": "图层显示颜色"}, {"id": "C", "text": "空间索引层级"}, {"id": "D", "text": "文件修改时间"}]},
+        {"id": "M02-Q04", "critical": false, "prompt": "ZigZag 解决的核心问题是什么？", "options": [{"id": "A", "text": "让小负数编码紧凑"}, {"id": "B", "text": "让字符串自动排序"}, {"id": "C", "text": "让坐标完成投影"}, {"id": "D", "text": "让索引消除候选"}]},
+        {"id": "M02-Q05", "critical": false, "prompt": "观察到稳定字节模式后应先标记为什么？", "options": [{"id": "A", "text": "真实样本观察证据"}, {"id": "B", "text": "官方格式完整规范"}, {"id": "C", "text": "所有版本公共合同"}, {"id": "D", "text": "完整行为恢复证明"}]},
+        {"id": "M02-Q06", "critical": false, "prompt": "截断输入的安全处理是什么？", "options": [{"id": "A", "text": "停止并报告损坏"}, {"id": "B", "text": "补零并继续解析"}, {"id": "C", "text": "跳过后宣称成功"}, {"id": "D", "text": "改用随机字节值"}]}
+      ],
+      "question_standard_views": {"M02-D01": "M02-S02", "M02-D02": "M02-S01", "M02-D03": "M02-S01", "M02-D04": "M02-S01", "M02-D05": "M02-S02", "M02-Q01": "M02-S01", "M02-Q02": "M02-S01", "M02-Q03": "M02-S02", "M02-Q04": "M02-S01", "M02-Q05": "M02-S02", "M02-Q06": "M02-S02"},
+      "standard_views": [
+        {
+          "id": "M02-S01",
+          "knowledge_point_id": "M02-K01",
+          "kind": "bytes",
+          "title": "同一字节、不同编码的标准解码",
+          "summary": "先看编码上下文，再解释字节；不能只凭十六进制外观猜类型。",
+          "diagram": {
+            "rows": [
+              {"label": "VarUInt", "bytes": "81 01", "decode": "1 + (1 << 7) = 129", "conclusion": "每字节低 7 位贡献数值，最高位表示继续。"},
+              {"label": "小端 UInt16", "bytes": "81 01", "decode": "0x0181 = 385", "conclusion": "低有效字节位于较低文件地址。"},
+              {"label": "ZigZag", "bytes": "05", "decode": "(5 >> 1) ^ -(5 & 1) = -3", "conclusion": "奇数编码负数，偶数编码非负数。"},
+              {"label": "NULL bitmap", "bytes": "05", "decode": "二进制 00000101 → bit 0、2", "conclusion": "每一位表达一个字段状态，位编号从 0 开始。"}
+            ]
+          },
+          "standard_answer": "81 01 在 VarUInt 上是 129，在小端 UInt16 上是 385；同样的字节没有脱离上下文的唯一解释。ZigZag 先把有符号整数映射为无符号值，bitmap 则按位表达状态。读取变长值前必须同时检查长度和剩余边界。",
+          "evidence": [{"level": "DataObserved", "claim": "以上数值是对课程示例字节的可复现解码结果。"}, {"level": "Inferred", "claim": "具体 FileGDB 字段的编码解释仍需结合对应格式实现和真实样本。"}],
+          "not_proven": ["示例解码不等于所有 FileGDB 字段都采用同一编码。", "观察到模式不能单独证明官方公开规范。"],
+          "common_mistakes": ["把 81 01 直接当作一个固定端序整数。", "变长字段越界后补零继续解析。"],
+          "sources": [{"label": "课程二进制观察课件", "href": "lessons/0002-binary-foundations.html#M02-U02"}]
+        },
+        {
+          "id": "M02-S02",
+          "knowledge_point_id": "M02-K02",
+          "kind": "bytes",
+          "title": "安全解析边界标准答案",
+          "summary": "所有字节推导都要同时写出输入、上下文、边界和结论强度。",
+          "diagram": {
+            "rows": [
+              {"label": "输入", "bytes": "offset + length", "decode": "先确认起点和长度", "conclusion": "不能从单个字节脱离记录边界读取。"},
+              {"label": "检查", "bytes": "offset + length <= file_size", "decode": "边界成立才继续", "conclusion": "失败应报告截断或损坏。"},
+              {"label": "证据", "bytes": "sample → rule → test", "decode": "样本、推断、测试分开", "conclusion": "DataObserved 不自动升级为 EsriConfirmed。"}
+            ]
+          },
+          "standard_answer": "标准解析记录至少包含：输入字节、编码上下文、边界检查、解码值、证据等级和未知范围。遇到截断、未知类型或不一致 Schema，应 fail-closed 并报告原因，不补造数据。",
+          "evidence": [{"level": "FastGdbConfirmed", "claim": "当前课程把真实样本实验产物和校验值作为可重复证据。"}],
+          "not_proven": ["课程示例不能替代所有版本和所有配置关键字的兼容性测试。"],
+          "common_mistakes": ["只记录最终数字，不记录编码上下文。", "把推断的字段含义写成确定规范。"],
+          "sources": [{"label": "课程证据等级约定", "href": "../README.md"}]
+        }
+      ],
+      "labs": [{"id": "M02-L01", "kind": "hex-observation", "title": "观察真实 GDBTABLE 前 64 字节"}],
+      "evidence_task": {
+        "id": "M02-E01",
+        "prompt": "为同一组字节写出 DataObserved 与 Inferred 两种不同强度的结论，并说明不能证明什么。",
+        "required_levels": ["DataObserved", "Inferred"]
+      },
+      "oral_review": {"id": "M02-O01", "focus": ["编码上下文", "边界检查", "观察与规范的区别"]},
+      "review_days": [2, 7, 21],
+      "review_tasks": [
+        {"day": 2, "question_ids": ["M02-Q01", "M02-Q03", "M02-Q05"]},
+        {"day": 7, "question_ids": ["M02-Q02", "M02-Q04", "M02-Q06"]},
+        {"day": 21, "question_ids": ["M02-Q01", "M02-Q02", "M02-Q03", "M02-Q06"]}
+      ]
+    },
+    {
+      "id": "M03",
+      "title": "FileGDB 文件家族",
+      "delivery_state": "current",
+      "prerequisites": ["M02"],
+      "lesson": "lessons/0003-file-family.html",
+      "micro_units": [
+        {"id": "M03-U01", "title": ".gdb 目录与内部编号", "minutes": 10},
+        {"id": "M03-U02", "title": "TABLE、TABLX、SPX 与 ATX", "minutes": 15},
+        {"id": "M03-U03", "title": "可选文件、版本与损坏边界", "minutes": 12}
+      ],
+      "diagnostic_questions": [
+        {"id": "M03-D01", "prompt": ".gdb 在文件系统中是什么？", "options": [{"id": "A", "text": "包含文件的一层目录"}, {"id": "B", "text": "单个压缩归档文件"}, {"id": "C", "text": "只读空间索引文件"}, {"id": "D", "text": "远程数据库连接串"}]},
+        {"id": "M03-D02", "prompt": ".gdbtablx 主要承担什么职责？", "options": [{"id": "A", "text": "逻辑位置映射偏移"}, {"id": "B", "text": "完整保存字段定义"}, {"id": "C", "text": "执行精确空间相交"}, {"id": "D", "text": "声明对象逻辑名称"}]},
+        {"id": "M03-D03", "prompt": ".spx 返回的结果通常是什么？", "options": [{"id": "A", "text": "空间条件候选标识"}, {"id": "B", "text": "最终精确要素结果"}, {"id": "C", "text": "全部字段默认取值"}, {"id": "D", "text": "数据集完整关系图"}]},
+        {"id": "M03-D04", "prompt": ".freelist 主要与什么相关？", "options": [{"id": "A", "text": "空闲物理空间复用"}, {"id": "B", "text": "坐标参考精度网格"}, {"id": "C", "text": "属性索引排序规则"}, {"id": "D", "text": "目录逻辑层级关系"}]},
+        {"id": "M03-D05", "prompt": "缺少 .spx 应怎样判断？", "options": [{"id": "A", "text": "允许回退并记录原因"}, {"id": "B", "text": "直接断言数据损坏"}, {"id": "C", "text": "伪造空的索引结果"}, {"id": "D", "text": "删除对应业务数据"}]}
+      ],
+      "quiz_questions": [
+        {"id": "M03-Q01", "critical": true, "prompt": "记录内容主要位于哪类文件？", "options": [{"id": "A", "text": "gdbtable 文件"}, {"id": "B", "text": "gdbtablx 文件"}, {"id": "C", "text": "freelist 文件"}, {"id": "D", "text": "timestamps 文件"}]},
+        {"id": "M03-Q02", "critical": true, "prompt": "FID 到记录 offset 的关键桥梁是什么？", "options": [{"id": "A", "text": "TABLX 偏移索引"}, {"id": "B", "text": "SPX 空间索引"}, {"id": "C", "text": "ATX 属性索引"}, {"id": "D", "text": "WKT 空间参考"}]},
+        {"id": "M03-Q03", "critical": false, "prompt": "为什么不能按文件数量推断图层数量？", "options": [{"id": "A", "text": "一个对象对应文件家族"}, {"id": "B", "text": "全部文件名称都相同"}, {"id": "C", "text": "目录不能保存多个文件"}, {"id": "D", "text": "图层完全不需要文件"}]},
+        {"id": "M03-Q04", "critical": false, "prompt": "空间索引缺失时合理策略是什么？", "options": [{"id": "A", "text": "回退扫描并报告原因"}, {"id": "B", "text": "返回未过滤的候选"}, {"id": "C", "text": "拒绝打开整个目录"}, {"id": "D", "text": "临时编造索引页面"}]},
+        {"id": "M03-Q05", "critical": false, "prompt": "同一内部编号说明什么？", "options": [{"id": "A", "text": "文件可能属于同一对象"}, {"id": "B", "text": "文件内容一定完全相同"}, {"id": "C", "text": "对象名称就是该编号"}, {"id": "D", "text": "文件一定全部存在"}]},
+        {"id": "M03-Q06", "critical": false, "prompt": "看到未知辅助扩展名应怎样处理？", "options": [{"id": "A", "text": "保留观察并标记未知"}, {"id": "B", "text": "仅凭名称定义规范"}, {"id": "C", "text": "立即删除未知文件"}, {"id": "D", "text": "宣称完整支持语义"}]}
+      ],
+      "question_standard_views": {"M03-D01": "M03-S01", "M03-D02": "M03-S01", "M03-D03": "M03-S01", "M03-D04": "M03-S01", "M03-D05": "M03-S01", "M03-Q01": "M03-S01", "M03-Q02": "M03-S02", "M03-Q03": "M03-S01", "M03-Q04": "M03-S02", "M03-Q05": "M03-S01", "M03-Q06": "M03-S01"},
+      "standard_views": [
+        {
+          "id": "M03-S01",
+          "knowledge_point_id": "M03-K01",
+          "kind": "file-family",
+          "title": "FileGDB 文件家族标准表",
+          "summary": "同一个内部编号代表一个文件家族候选，扩展名表达不同物理职责。",
+          "diagram": {
+            "items": [
+              {"name": ".gdbtable", "role": "字段描述和记录内容", "query": "读取 Schema 与业务值", "required": "核心"},
+              {"name": ".gdbtablx", "role": "FID/记录位置到 offset 的映射", "query": "定位记录", "required": "常用"},
+              {"name": ".spx", "role": "空间索引候选集合", "query": "缩小空间查询候选", "required": "可选/可回退"},
+              {"name": ".atx", "role": "属性索引候选集合", "query": "加速属性条件", "required": "可选"},
+              {"name": ".freelist", "role": "可复用空闲物理空间", "query": "服务存储生命周期", "required": "辅助"}
+            ]
+          },
+          "standard_answer": "业务记录主要在 .gdbtable；.gdbtablx 是从逻辑记录标识到物理 offset 的关键桥梁；.spx 和 .atx 是查询加速用的候选索引，不能替代精确记录/几何过滤；.freelist 与空间复用有关。缺少可选索引时应回退并记录原因。",
+          "evidence": [{"level": "FastGdbConfirmed", "claim": "当前 fast-gdb 课程实验对文件家族职责和样本清单进行版本化校验。"}, {"level": "DataObserved", "claim": "核心教学包提供真实目录、文件数量和后缀统计。"}],
+          "not_proven": ["同一编号不能单独证明逻辑图层名称。", "文件存在不能证明索引内容没有损坏。"],
+          "common_mistakes": ["按文件数量直接推断图层数量。", "把 .spx 返回的候选集合当作最终空间查询结果。", "把缺少 .spx 直接等同为数据损坏。"],
+          "sources": [{"label": "GDAL OpenFileGDB driver", "href": "https://gdal.org/en/stable/drivers/vector/openfilegdb.html"}]
+        },
+        {
+          "id": "M03-S02",
+          "knowledge_point_id": "M03-K02",
+          "kind": "graph",
+          "title": "查询读取链路标准图",
+          "summary": "文件职责要放回查询链路中理解：逻辑 FID 经过位置索引到记录，再经过候选索引和精确过滤。",
+          "diagram": {
+            "viewBox": "0 0 900 270",
+            "nodes": [
+              {"id": "fid", "label": "FID / WHERE\n查询条件", "layer": "logic", "x": 25, "y": 90, "w": 165, "h": 75},
+              {"id": "tablx", "label": ".gdbtablx\n定位 offset", "layer": "physical", "x": 250, "y": 90, "w": 165, "h": 75},
+              {"id": "table", "label": ".gdbtable\n读取记录/几何", "layer": "physical", "x": 475, "y": 90, "w": 165, "h": 75},
+              {"id": "filter", "label": ".spx / .atx\n候选 + 精确过滤", "layer": "behavior", "x": 700, "y": 90, "w": 175, "h": 75}
+            ],
+            "edges": [{"from": "fid", "to": "tablx", "label": "映射"}, {"from": "tablx", "to": "table", "label": "读取"}, {"from": "table", "to": "filter", "label": "过滤/校验"}]
+          },
+          "standard_answer": "查询时，FID 或条件先决定候选，TABLX 帮助定位记录，GDBTABLE 提供真实字段和几何，SPX/ATX 只负责缩小候选范围；最终结果仍要做记录级或几何级精确判断。",
+          "evidence": [{"level": "GdalConfirmed", "claim": "GDAL OpenFileGDB 的公开驱动文档是对照查询能力和回退边界的来源。"}],
+          "not_proven": ["索引命中不等于谓词一定成立。", "课程链路图不证明所有 Query Planner 优化都已实现。"],
+          "common_mistakes": ["跳过 GDBTABLE 直接从索引返回业务记录。", "空间索引候选未精确过滤就作为最终结果。"],
+          "sources": [{"label": "GDAL OpenFileGDB driver", "href": "https://gdal.org/en/stable/drivers/vector/openfilegdb.html"}]
+        }
+      ],
+      "labs": [{"id": "M03-L01", "kind": "file-inventory", "title": "生成真实 FileGDB 文件家族清单"}],
+      "evidence_task": {
+        "id": "M03-E01",
+        "prompt": "从清单中选一个 FastGdbConfirmed 职责和一个 Unknown 辅助文件，并说明不能证明什么。",
+        "required_levels": ["FastGdbConfirmed", "Unknown"]
+      },
+      "oral_review": {"id": "M03-O01", "focus": ["文件职责", "可选索引回退", "版本与未知边界"]},
+      "review_days": [2, 7, 21],
+      "review_tasks": [
+        {"day": 2, "question_ids": ["M03-Q01", "M03-Q03", "M03-Q05"]},
+        {"day": 7, "question_ids": ["M03-Q02", "M03-Q04", "M03-Q06"]},
+        {"day": 21, "question_ids": ["M03-Q01", "M03-Q02", "M03-Q04", "M03-Q06"]}
+      ]
+    }
+  ],
+  "module_files": [
+    "modules/M04.json",
+    "modules/M05.json",
+    "modules/M06.json",
+    "modules/M07.json",
+    "modules/M08.json",
+    "modules/M09.json",
+    "modules/M10.json",
+    "modules/M11.json",
+    "modules/M12.json",
+    "modules/M13.json",
+    "modules/M14.json",
+    "modules/M15.json",
+    "modules/M16.json",
+    "modules/M17.json",
+    "modules/M18.json"
+  ]
+}

@@ -1,4 +1,9 @@
-test_data/
+/test_data/**
+!/test_data/gdb/
+!/test_data/gdb/acceptance_metadata.gdb/
+!/test_data/gdb/acceptance_metadata.gdb/**
+!/test_data/gdb/acceptance_metadata/
+!/test_data/gdb/acceptance_metadata/**
 /benchmark_results/
 /artifacts/benchmark-results/
 .DS_Store

@@ -191,7 +191,7 @@
 | 缺陷 | 文件 | 修复 |
 |------|------|------|
 | Unified 回退时 SRS WKT 含 GUID 导致 schema 比较失败 | `src/edgar/explorgdb/unified/unified.cpp` | `freeze_schema` 跳过 GUID 形式的未知空间参考 (`{B286C06B-...}`) |
-| Driver 测试字段名与实际数据不匹配 | `tests/edgar/explorgdb/gdal_driver/test_fastfilegdb_driver.cpp` | `value_000` → `int_0` |
+| Driver 测试字段名随生成器不同而变化 | `tests/edgar/explorgdb/gdal_driver/test_fastfilegdb_driver.cpp` | 运行时兼容 `int_0` 与 `value_000` |
 
 ## 已知限制与后续建议
 

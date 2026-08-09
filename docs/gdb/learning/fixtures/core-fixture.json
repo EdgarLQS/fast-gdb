@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "name": "acceptance_metadata.gdb",
+  "source": "tests/createdata/python/generate_acceptance_metadata.py",
+  "generated_by": "ArcGIS Pro 3.5.0.57366 arcpy",
+  "generated_at": "2026-07-29T17:12:22.528014",
+  "tree_hash_algorithm": "SHA-256 over sorted relative-path, newline, file-SHA-256, newline records",
+  "tree_sha256": "e9a4e276e5d4d0e11781ae658bb41ab08b0cd77ee09c6187c019b73ae80141cc",
+  "file_count": 111,
+  "size_bytes": 604591,
+  "known_boundaries": [
+    "Attributed relationship classes were not generated.",
+    "Raster and MultiPatch are outside this fixture.",
+    "explorgdb_cli currently prints Magic file UNEXPECTED; this diagnostic is not graded."
+  ]
+}

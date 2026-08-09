@@ -1,0 +1,4 @@
+RelationshipName,Type,OriginTable,DestinationTable,Cardinality,ForwardLabel,BackwardLabel,OriginPrimaryKey,OriginForeignKey,IsAttributed,IsComposite
+roads_inspections_rel,Simple,roads,road_inspections,1:M,Road Inspections,Parent Road,OBJECTID,road_id,N,N
+parcels_parts_rel,Composite,parcels,parcel_parts,1:M,Parcel Parts,Parent Parcel,OBJECTID,parcel_id,N,Y
+assets_guid_rel,Simple,roads,road_assets,1:1,Road Assets,Parent Road,GlobalID,asset_guid,N,N

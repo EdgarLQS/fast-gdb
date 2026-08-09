@@ -8,7 +8,7 @@
 
 | 文档 | 内容 |
 |---|---|
-| [FileGDB 数据结构学习课程](learning/README.md) | 18 周概念、结构、真实数据与 AI 审核课程 |
+| [FileGDB 全面学习实验室](learning/README.md) | M01–M18 均提供标准答案、证据实验、AI 口试和间隔复习 |
 | [GDB 二进制格式图解教程](08_GDB二进制格式图解教程.md) | FileGDB 目录和二进制结构 |
 | [Reader 读取流程专题](06_Reader读取流程专题.md) | Catalog、表、索引、几何和 Cursor 生命周期 |
 | [矢量 GDB 完整解析实施计划](02_矢量GDB完整解析实施计划.md) | 格式解析能力计划 |

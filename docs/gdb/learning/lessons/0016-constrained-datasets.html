@@ -1,6 +1,7 @@
 <!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>第 16 周：空间约束型数据集</title><link rel="stylesheet" href="../assets/course.css"></head><body><main>
 <nav><a href="0015-raster-imagery.html">← 第 15 周</a><a href="0017-modern-models.html">第 17 周 →</a></nav>
 <p class="kicker">Week 16 · Rules and derived state</p><h1>基础 Feature 可读，不代表约束型数据集可用</h1>
+<div class="unit-index"><span id="M16-U01">参与要素与数据集定义</span><span id="M16-U02">规则、派生结构与脏区</span><span id="M16-U03">Topology、Terrain 与 Network 边界</span></div>
 <p class="lead">Topology、Terrain、TIN 和 Network Dataset 都在基础要素之上叠加规则、参与者、派生结构和维护状态。</p>
 <h2>共同模式</h2>
 <pre>participating feature classes
@@ -12,7 +13,7 @@
 <table><thead><tr><th>数据集</th><th>核心问题</th></tr></thead><tbody>
 <tr><td>Topology</td><td>哪些类参与、有哪些规则、哪些区域未验证？</td></tr><tr><td>Terrain/TIN</td><td>哪些点线面参与、金字塔/三角网如何派生？</td></tr>
 <tr><td>Network Dataset</td><td>连通性、成本、限制、转向和图结构是什么？</td></tr><tr><td>Geometric Network</td><td>旧式网络的边/点角色与连通关系如何表示？</td></tr></tbody></table>
-<div class="exercise"><strong>四层拆分</strong><p>任选 Topology 或 Network Dataset，画出：基础 Feature → Definition → Rules → Derived state。每一层写出“只读底层表是否足够”。</p></div>
+<div class="exercise"><strong>标准答案提示</strong><p>学习台中的 M16 标准答案直接展示基础 Feature → Definition → Rules → Derived state 四层关系，以及“只读底层表是否足够”的能力判断；无需自行绘图。</p></div>
 <div class="evidence"><span class="tag">EsriConfirmed</span>官方文档确认这些数据集及其行为概念。<span class="tag">DataObserved</span>只有拿到对应真实 GDB 才能确认系统对象和物理表。<span class="tag">Unknown</span>缺少源码/样本时不描述内部二进制。</div>
 <h2>AI 审核题</h2><blockquote>AI 能读网络参与的道路和节点图层，因此宣布支持 Network Dataset。</blockquote><p>审核要点：尚未证明连通性图、成本、限制、转向、层级和网络构建状态。</p>
 <h2>闭卷复述</h2><details><summary>派生结构为什么不能从“表可读”推出？</summary><p>派生结构可能依赖多个参与表、规则和构建版本，其一致性不是单表记录能够证明的。</p></details>

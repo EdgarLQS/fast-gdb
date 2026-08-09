@@ -1,6 +1,7 @@
 <!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>第 18 周：知识图与 AI 审核</title><link rel="stylesheet" href="../assets/course.css"></head><body><main>
 <nav><a href="0017-modern-models.html">← 第 17 周</a><a href="../README.md">课程入口 →</a></nav>
 <p class="kicker">Week 18 · Capstone</p><h1>把知识变成对 AI 的约束</h1>
+<div class="unit-index"><span id="M18-U01">八层知识图谱标准答案</span><span id="M18-U02">问题定位和证据审查</span><span id="M18-U03">AI 方案与补丁审核</span></div>
 <p class="lead">最终目标不是独立写完 Reader，而是能让 AI 在正确层工作、提供足够证据、保留未知项，并用测试证明修改没有破坏格式语义。</p>
 <div class="evidence"><strong>证据标签：</strong><span class="tag">EsriConfirmed</span>约束产品语义。<span class="tag">GdalConfirmed</span>约束外部实现对照。<span class="tag">FastGdbConfirmed</span>约束当前代码合同。<span class="tag">DataObserved</span>约束样本范围。其余结论保持 <span class="tag">Inferred</span> 或 <span class="tag">Unknown</span>。</div>
 <h2>综合知识图必须包含</h2>
@@ -22,7 +23,7 @@ GDAL parity：
 <tr><td>“格式就是这样”</td><td>哪个版本、哪个来源、哪个字节样本？</td></tr><tr><td>“测试通过所以支持”</td><td>测试覆盖哪些变体，哪些被跳过？</td></tr>
 <tr><td>“索引返回正确结果”</td><td>最终 WHERE/几何谓词在哪里？</td></tr><tr><td>“未知字段可忽略”</td><td>如何保证后续游标不偏移？</td></tr>
 <tr><td>“能读取高级数据集”</td><td>发现、物理读、Schema 还是行为执行？</td></tr></tbody></table>
-<div class="checkpoint"><strong>毕业标准：</strong>不看资料重画八层知识图；给任何问题定位层级；给每个结论标证据；能指出一个 AI 方案的反例、未知项和验证缺口。</div>
+<div class="checkpoint"><strong>毕业标准：</strong>能读懂课程提供的八层标准知识图并复述；给任何问题定位层级；给每个结论标证据；能指出一个 AI 方案的反例、未知项和验证缺口。</div>
 <h2>建立第一条学习记录</h2><p>只有完成上述任务后，创建 <code>learning-records/0001-filegdb-mental-model.md</code>，记录已经证明掌握的内容和证据。不要提前创建。</p>
 <h2>最终参考</h2><ul><li><a href="../reference/0001-knowledge-map.html">八层知识地图</a></li><li><a href="../reference/0003-evidence-review.html">证据审核清单</a></li><li><a href="../RESOURCES.md">一手资料</a></li></ul>
 <footer>课程结束后，继续让 AI 帮你编码；但格式事实、边界和发布结论必须由证据决定。有任何不清楚的地方，请继续向 AI 提问。</footer>

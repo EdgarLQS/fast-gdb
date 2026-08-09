@@ -1,0 +1,9 @@
+Layer,FeatureDataset,Type,GeometryType,CRS_Name,CRS_WKID
+root_points,,Feature Class,POINT,GCS_WGS_1984,4326
+root_table,,Table,N/A,N/A,N/A
+all_field_types,,Table,N/A,N/A,N/A
+roads,TransportFD,Feature Class,POLYLINE,GCS_WGS_1984,4326
+road_inspections,TransportFD,Feature Class,POINT,GCS_WGS_1984,4326
+road_assets,TransportFD,Feature Class,POINT,GCS_WGS_1984,4326
+parcels,AdminFD,Feature Class,POLYGON,WGS_1984_Web_Mercator_Auxiliary_Sphere,3857
+parcel_parts,AdminFD,Feature Class,POLYGON,WGS_1984_Web_Mercator_Auxiliary_Sphere,3857

@@ -1,6 +1,7 @@
 <!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>第 15 周：Raster 与影像</title><link rel="stylesheet" href="../assets/course.css"></head><body><main>
 <nav><a href="0014-schema-compatibility.html">← 第 14 周</a><a href="0016-constrained-datasets.html">第 16 周 →</a></nav>
 <p class="kicker">Week 15 · Raster</p><h1>Raster 不是“Geometry 字段的另一种值”</h1>
+<div class="unit-index"><span id="M15-U01">Raster 组成层次</span><span id="M15-U02">Raster 与 Mosaic Dataset</span><span id="M15-U03">能力分层与证据边界</span></div>
 <p class="lead">Raster 数据集需要像元块、波段、NoData、统计值、金字塔、地理参考和可能的镶嵌管理结构。课程目标是理解组成和边界，不猜测未公开字节。</p>
 <p>同时区分旧式 Raster Catalog 与现代 Mosaic Dataset：二者都可能通过目录记录组织多个影像，但能力和内部对象不能互相代替。</p>
 <h2>组成视图</h2>
@@ -17,7 +18,7 @@ Mosaic dataset
 ├─ processing functions
 └─ derived raster behavior</pre>
 <div class="card"><strong>边界：</strong>能列出 Raster 相关系统对象、读取某个 Binary payload，或读取 footprint Feature，都不等于能重建 Raster 像元和 Mosaic 行为。</div>
-<div class="exercise"><strong>能力拆分</strong><p>为 Raster Dataset 和 Mosaic Dataset 分别列出：基础表、元数据、像元存储、派生结构、运行时行为。对 fast-gdb、GDAL 和 ArcGIS 标记“已确认/未确认”。</p></div>
+<div class="exercise"><strong>标准答案提示</strong><p>学习台中的 M15 标准答案直接给出 Raster/Mosaic 的组成图和 Discovery、Metadata、Pixels、Derived、Behavior 能力表；无需自行列矩阵。</p></div>
 <div class="evidence"><span class="tag">EsriConfirmed</span>FileGDB 可包含 Raster/Mosaic 等数据集。<span class="tag">GdalConfirmed</span>OpenFileGDB 当前文档列出 Raster 能力和版本。<span class="tag">Unknown</span>课程不把公开驱动能力反推为完整 Esri 私有内部规范。</div>
 <h2>AI 审核题</h2><blockquote>AI 在 FieldType 中看到 Raster，于是复用普通 Binary 字段逻辑并宣称支持 Raster Dataset。</blockquote><p>审核要点：字段 payload 只是组成部分；像元块、波段、金字塔和数据集元数据仍未被证明。</p>
 <h2>闭卷复述</h2><details><summary>为什么 Raster 支持必须分层声明？</summary><p>列举数据集、读取元数据、读取像元、应用函数和完整 Mosaic 行为是不同能力。</p></details>

@@ -1,6 +1,7 @@
 <!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>第 6 周：字段描述符</title><link rel="stylesheet" href="../assets/course.css"></head><body><main>
 <nav><a href="0005-gdbtable-layout.html">← 第 5 周</a><a href="0007-record-encoding.html">第 7 周 →</a></nav>
 <p class="kicker">Week 06 · Schema</p><h1>字段类型只是描述符的一部分</h1>
+<div class="unit-index"><span id="M06-U01">描述符组成</span><span id="M06-U02">字段类型与兼容性</span><span id="M06-U03">未知类型和默认值</span></div>
 <p class="lead">正确读取字段需要同时理解名称、类型、宽度、nullable/required/editable 标志、默认值和类型专属 payload。Geometry descriptor 还携带空间参考与精度模型。</p>
 <h2>字段描述符问题清单</h2>
 <table><thead><tr><th>维度</th><th>问题</th></tr></thead><tbody>

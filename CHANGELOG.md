@@ -62,7 +62,7 @@ All notable changes to fast-gdb are documented in this file.
 - CI checks that verify no Writer target or installed Writer headers remain.
 - `src/edgar/usegdal/README.md` documenting the non-product reference boundary.
 - Accepted ADR-008 defining Adaptive Reader write-activity detection, source-change validation, Reader invalidation and fresh GDAL read-only recovery.
-- Active design-first implementation plan `docs/planning/22_AdaptiveReader写入检测与GDAL回退计划.md`, including phased implementation, test names, stress gates and performance budgets.
+- Active design-first implementation plan `docs/gdal/02_AdaptiveReader写入检测与GDAL回退计划.md`, including phased implementation, test names, stress gates and performance budgets.
 
 ### Removed
 

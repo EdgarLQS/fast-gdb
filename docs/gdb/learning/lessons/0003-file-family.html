@@ -2,15 +2,17 @@
 <nav><a href="0002-binary-foundations.html">← 第 2 周</a><a href="0004-system-catalog.html">第 4 周 →</a></nav>
 <p class="kicker">Week 03 · File family</p><h1>一个逻辑表，对应一组物理文件</h1>
 <p class="lead">`.gdb` 是目录。内部编号把同一对象的数据、偏移、空间索引、属性索引和空闲空间组织成文件家族。</p>
-<h2>职责分工</h2>
+<h2 id="M03-U01">.gdb 目录与内部编号</h2>
+<p>目录中的 <code>a00000009</code> 一类编号用于关联文件家族，不是稳定的图层名称。逻辑名称和数据集层级必须回到系统表与关系元数据中还原。</p>
+<h2 id="M03-U02">TABLE、TABLX、SPX 与 ATX</h2>
 <table><thead><tr><th>文件</th><th>回答的问题</th></tr></thead><tbody>
 <tr><td><code>.gdbtable</code></td><td>Schema 和记录内容是什么？</td></tr><tr><td><code>.gdbtablx</code></td><td>某个逻辑 slot 的记录位于哪里？</td></tr>
 <tr><td><code>.spx</code></td><td>哪些 FID 可能与空间范围相交？</td></tr><tr><td><code>.atx</code></td><td>哪些 FID 可能满足属性比较？</td></tr>
 <tr><td><code>.freelist</code></td><td>Writer 可以复用哪些物理区域？</td></tr><tr><td>辅助文件</td><td>版本、锁、边界或其他内部状态是什么？</td></tr>
 </tbody></table>
-<div class="exercise"><strong>目录盘点</strong><pre>find test_data/gdb/acceptance_metadata.gdb -maxdepth 1 -type f | sort
+<div class="exercise"><strong>标准答案提示</strong><p>学习台中的 M03 标准答案会直接给出 .gdbtable、.gdbtablx、.spx、.atx 和 .freelist 的职责表，以及从 FID 到记录和候选过滤的查询链路图。真实目录盘点由课程 CLI 生成，不要求手工分类文件。</p><pre>find test_data/gdb/acceptance_metadata.gdb -maxdepth 1 -type f | sort
 du -ah test_data/gdb/acceptance_metadata.gdb | sort -h | tail</pre><p>任选一个编号，列出它拥有的文件。解释“文件缺失”可能代表不需要、未创建、损坏或版本差异，不能只给一种结论。</p></div>
-<h2>版本入口</h2>
+<h2 id="M03-U03">可选文件、版本与损坏边界</h2>
 <p>ArcGIS 9、10+、不同 ArcGIS Pro 版本可能改变系统元数据、字段类型和 OID 能力；CDF/SDC 压缩还会改变可读边界。版本差异必须单独建矩阵，不能藏在通用解析逻辑中。</p>
 <div class="evidence"><span class="tag">GdalConfirmed</span>GDAL 文档明确列出 ArcGIS 版本、CDF/SDC 和 64 位 OID 等限制。<span class="tag">DataObserved</span>当前样本出现 <code>.horizon</code> 等辅助文件，其语义不能仅凭文件名推断。</div>
 <h2>AI 审核题</h2>
@@ -18,5 +20,5 @@ du -ah test_data/gdb/acceptance_metadata.gdb | sort -h | tail</pre><p>任选一�
 <h2>闭卷复述</h2>
 <details><summary>为什么不能按文件数推断图层数？</summary><p>一个逻辑对象可能有多个伴随文件，目录还包含系统表和辅助对象。</p></details>
 <h2>资料</h2><ul><li><a href="https://gdal.org/en/stable/drivers/vector/openfilegdb.html">GDAL OpenFileGDB driver</a></li><li><a href="../reference/0002-file-family.html">文件家族速查</a></li></ul>
-<footer>本周只学“职责”，不要提前猜每个文件的完整字节布局。有任何不清楚的地方，请继续向 AI 提问。</footer>
+<footer>先在学习台展开 M03 标准答案，再学习文件职责；不要提前猜每个文件的完整字节布局。有任何不清楚的地方，请继续向 AI 提问。</footer>
 </main></body></html>
