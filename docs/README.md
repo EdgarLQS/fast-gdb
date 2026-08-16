@@ -2,6 +2,14 @@
 
 fast-gdb 当前定位为 **FileGDB Reader only**。文档按“使用、格式解析、后端适配、质量验收、项目治理”分层；当前有效内容与历史资料分离。
 
+公共入口：
+
+- [中文 README](../README.md)
+- [English README](../README.en.md)
+- [贡献指南](../CONTRIBUTING.md)
+- [安全策略](../SECURITY.md)
+- [许可证](../LICENSE)
+
 ## 从目标出发
 
 | 目标 | 入口 |
@@ -21,6 +29,7 @@ fast-gdb 当前定位为 **FileGDB Reader only**。文档按“使用、格式�
 - 本地 `.gdb` 默认由 fast-gdb 读取；S3 和 fast-gdb 不支持的只读能力通过统一入口路由到 GDAL/OpenFileGDB。
 - 同一 `.gdb` 的 GDAL 写入与 fast-gdb 并发读取不属于支持合同；写入前关闭 Reader，写入后完整重开。
 - S3、跨平台、多 GDAL 版本和未完成真实数据验收的内容，必须按 `quality/` 标记为已验证或未验证。
+- `src/reference/usegdal` 是历史参考代码，不属于支持的 Reader 或 Writer API。
 
 ## 文档状态
 

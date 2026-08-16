@@ -1,6 +1,38 @@
-import arcpy, json, uuid, datetime, os, csv
-GDB = r"E:/gitdesktop/fast-gdb/test_data/gdb/acceptance_metadata.gdb"
-OUT_DIR = r"E:/gitdesktop/fast-gdb/test_data/gdb/acceptance_metadata"
+import arcpy, json, uuid, datetime, os, csv, re
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_GDB = REPO_ROOT / "test_data" / "gdb" / "acceptance_metadata.gdb"
+DEFAULT_OUT_DIR = REPO_ROOT / "test_data" / "gdb" / "acceptance_metadata"
+GDB = os.environ.get("FAST_GDB_ARCPY_GDB", str(DEFAULT_GDB))
+OUT_DIR = os.environ.get("FAST_GDB_ARCPY_OUT_DIR", str(DEFAULT_OUT_DIR))
+PUBLIC_GDB_PATH = "test_data/gdb/acceptance_metadata.gdb"
+
+
+def public_gdb_path(*parts):
+    return "/".join((PUBLIC_GDB_PATH, *parts))
+
+
+MACHINE_PATH_RE = re.compile(rb"(?<![A-Za-z])[A-Za-z]:[\\/](?![\\/])[^ \t\r\n\"'<>]+")
+
+
+def normalize_lineage_paths():
+    """Keep ArcGIS lineage metadata portable without changing file lengths."""
+    marker = b"./repo_root/lineage"
+    for path in Path(GDB).rglob("*"):
+        if not path.is_file():
+            continue
+        data = path.read_bytes()
+
+        def replace_path(match):
+            value = marker if len(marker) <= len(match.group(0)) else b"."
+            return value.ljust(len(match.group(0)), b"_")
+
+        normalized = MACHINE_PATH_RE.sub(replace_path, data)
+        if normalized != data:
+            path.write_bytes(normalized)
+
+
 SR_4326 = arcpy.SpatialReference(4326)
 SR_3857 = arcpy.SpatialReference(3857)
 arcpy.env.overwriteOutput = True
@@ -380,7 +412,7 @@ manifest = {
     "arcgis_version": "3.5.0.57366",
     "python_version": py_ver,
     "generated_at": now().isoformat(),
-    "gdb_path": GDB,
+    "gdb_path": PUBLIC_GDB_PATH,
     "feature_datasets": ["TransportFD", "AdminFD"],
     "domains": ["road_status_domain", "speed_range_domain", "road_type_domain", "inspection_result_domain"],
     "relationship_classes": ["roads_inspections_rel", "parcels_parts_rel", "assets_guid_rel"],
@@ -454,15 +486,16 @@ print("--- dataset-hierarchy.csv ---")
 with open(os.path.join(OUT_DIR, "dataset-hierarchy.csv"), "w", encoding="utf-8", newline="") as f:
     w = csv.writer(f)
     w.writerow(["Level", "Name", "Type", "FullPath", "ParentDataset"])
-    w.writerow([0, "acceptance_metadata.gdb", "Workspace", GDB, ""])
+    w.writerow([0, "acceptance_metadata.gdb", "Workspace", PUBLIC_GDB_PATH, ""])
     for root_item in [("root_points", "Feature Class"), ("root_table", "Table"), ("all_field_types", "Table")]:
-        w.writerow([1, root_item[0], root_item[1], os.path.join(GDB, root_item[0]), ""])
+        w.writerow([1, root_item[0], root_item[1], public_gdb_path(root_item[0]), ""])
     for fd_name in ["TransportFD", "AdminFD"]:
         fd_path = os.path.join(GDB, fd_name)
-        w.writerow([1, fd_name, "Feature Dataset", fd_path, ""])
+        public_fd_path = public_gdb_path(fd_name)
+        w.writerow([1, fd_name, "Feature Dataset", public_fd_path, ""])
         arcpy.env.workspace = fd_path
         for fc in arcpy.ListFeatureClasses():
-            w.writerow([2, fc, "Feature Class", os.path.join(fd_path, fc), fd_name])
+            w.writerow([2, fc, "Feature Class", public_gdb_path(fd_name, fc), fd_name])
         # Relationship classes listed in relationship-expected.csv
         # Relationship classes: roads_inspections_rel, parcels_parts_rel, assets_guid_rel
         arcpy.env.workspace = GDB
@@ -534,6 +567,7 @@ with open(os.path.join(OUT_DIR, "metadata-expected.json"), "w", encoding="utf-8"
     json.dump(md_export, f, indent=2, ensure_ascii=False, default=str)
 print("  [OK] metadata-expected.json")
 print("")
+normalize_lineage_paths()
 print("--- source-notes.md ---")
 with open(os.path.join(OUT_DIR, "source-notes.md"), "w", encoding="utf-8") as f:
     f.write("# acceptance_metadata.gdb Source Notes\n\n")
@@ -543,6 +577,12 @@ with open(os.path.join(OUT_DIR, "source-notes.md"), "w", encoding="utf-8") as f:
     f.write("| ArcGIS Pro Version | 3.5.0.57366 |\n")
     f.write("| Generation Script | generate_acceptance_metadata.py |\n")
     f.write("| Generation Time | " + now().isoformat() + " |\n\n")
+    f.write("## Redistribution\n\n")
+    f.write("This generated acceptance fixture may be redistributed with the "
+            "fast-gdb repository. It contains generated test data only and "
+            "does not include ArcGIS Pro binaries, ArcGIS API code, or the "
+            "ArcGIS Pro runtime. Expected-value paths are repository-relative; "
+            "checked-in lineage paths use normalized placeholders.\n\n")
     f.write("## Feature Datasets\n\n")
     f.write("- TransportFD (EPSG:4326): roads, road_inspections, road_assets\n")
     f.write("- AdminFD (EPSG:3857): parcels, parcel_parts\n")

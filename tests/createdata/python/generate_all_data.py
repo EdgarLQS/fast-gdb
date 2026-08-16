@@ -5,7 +5,7 @@ generate_all_data.py
 包含：基础几何、曲线、椭圆、M/ZM、FID 间断、坏拓扑、大规模性能数据等。
 
 执行前设置：
-    FAST_GDB_ARCPY_OUTPUT=C:\\fast-gdb-data\\testcurve.gdb
+    FAST_GDB_ARCPY_OUTPUT=<path-to-testcurve.gdb>
 
 环境要求：ArcGIS Pro 3.0+（含 arcpy）
 输出路径：testcurve.gdb/VectorData, FIDTest, BadTopology, PerfTest

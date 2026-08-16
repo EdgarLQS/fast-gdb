@@ -12,7 +12,7 @@
 int main(int argc, char* argv[]) {
     const char* output_path = argc > 1
         ? argv[1]
-        : "E:/gitdesktop/fast-gdb/test_data/benchmark/wide_50_gdal.gdb";
+        : "test_data/benchmark/wide_50_gdal.gdb";
 
     GDALAllRegister();
     CPLSetConfigOption("GDAL_FILENAME_IS_UTF8", "NO");

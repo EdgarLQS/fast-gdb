@@ -5,7 +5,7 @@
   "arcgis_version": "3.5.0.57366",
   "python_version": "3.11",
   "generated_at": "2026-07-29T17:12:22.528014",
-  "gdb_path": "E:/gitdesktop/fast-gdb/test_data/gdb/acceptance_metadata.gdb",
+  "gdb_path": "test_data/gdb/acceptance_metadata.gdb",
   "feature_datasets": [
     "TransportFD",
     "AdminFD"

@@ -11,7 +11,7 @@
 | 项目 | 要求 |
 |------|------|
 | 工具 | ArcGIS Pro 3.0+ (arcpy) |
-| 本机路径 | `D:\software\arcgis\install\arcpro352\bin\Python\envs\arcgispro-py3\python.exe` |
+| ArcGIS Pro Python | 通过 `-PythonPath` 指定，或由脚本从系统注册表自动检测 |
 | 生成脚本 | `tests/createdata/python/generate_acceptance_metadata.py` |
 | 输出 GDB | `test_data/gdb/acceptance_metadata.gdb` |
 | 交付目录 | `test_data/gdb/acceptance_metadata/` |
@@ -106,24 +106,25 @@ roads.road_type 字段:
 Get-ItemProperty "HKLM:\SOFTWARE\ESRI\ArcGISPro" | Select-Object PythonCondaRoot, PythonCondaEnv
 ```
 
-典型路径: `D:\software\arcgis\install\arcpro352\bin\Python\envs\arcgispro-py3\python.exe`
+实际路径取决于本机 ArcGIS Pro 安装位置；也可以直接运行
+`tests/createdata/powershell/generate_test_data.ps1 -PythonPath <python.exe>`。
 
 ### 3.2 运行脚本
 
 ```powershell
-& "D:\software\arcgis\install\arcpro352\bin\Python\envs\arcgispro-py3\python.exe" -X utf8 `
-    E:\gitdesktop\fast-gdb\tests\createdata\python\generate_acceptance_metadata.py
+& "D:\path\to\arcgispro-py3\python.exe" -X utf8 `
+    "<repo-root>\tests\createdata\python\generate_acceptance_metadata.py"
 ```
 
 > 脚本会自动删除旧 GDB 并重建，每次运行结果一致。
 
 ### 3.3 脚本内部路径
 
-如果要修改输出路径，编辑脚本开头的几行:
+脚本默认根据自身位置定位仓库根目录。需要使用其他输出位置时，设置环境变量：
 
-```python
-GDB = r"E:/gitdesktop/fast-gdb/test_data/gdb/acceptance_metadata.gdb"
-OUT_DIR = r"E:/gitdesktop/fast-gdb/test_data/gdb/acceptance_metadata"
+```powershell
+$env:FAST_GDB_ARCPY_GDB = "<path-to-acceptance_metadata.gdb>"
+$env:FAST_GDB_ARCPY_OUT_DIR = "<path-to-expected-files>"
 ```
 
 ---
@@ -154,7 +155,7 @@ OUT_DIR = r"E:/gitdesktop/fast-gdb/test_data/gdb/acceptance_metadata"
 | per-subtype 默认值 | arcpy 3.5 无 SetDefaultValueForSubtype API，subtype 默认值未写入 |
 | Attributed Relationship | arcpy 3.5 不支持创建带属性的关系类 |
 | 空几何 | 通过 InsertCursor 写 None 实现，不是 arcpy.Geometry() 空对象 |
-| 路径 | 脚本使用正斜杠 E:/gitdesktop/... 避免反斜杠转义问题 |
+| 路径 | 生成结果使用仓库相对路径，避免写入机器相关路径 |
 
 ---
 

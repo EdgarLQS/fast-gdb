@@ -1,16 +1,34 @@
-# fast-gdb — 高性能 FileGDB C++ Reader
+# fast-gdb — FileGDB C++ Reader
+
+[English README](README.en.md) | 中文
 
 fast-gdb 是面向 ESRI FileGDB 的 C++17 读取、查询和几何解析库。项目正式定位为 **Reader only**：不提供 FileGDB 创建、追加、更新、删除、Schema 编辑、事务或发布 API；所有 FileGDB 编辑统一交给 GDAL/OpenFileGDB。
 
-当前开发版本：**v0.2.0**。
+当前开发版本：**v0.2.0**。该版本仍以开发分支和发布门禁状态为准，不代表所有平台、GDAL 版本和 S3 场景均已完成验收。
+
+[Apache-2.0 许可证](LICENSE) · [第三方说明](THIRD_PARTY_NOTICES.md) · [贡献指南](CONTRIBUTING.md) · [安全策略](SECURITY.md)
 
 ## 产品形态
 
-| 安装目标 | 用途 | GDAL 依赖 |
-|---|---|---:|
-| `fast_gdb::linear` | 纯 C++ FileGDB Reader、几何与查询 | 无 |
-| `fast_gdb::hybrid` | fast-gdb 主路径 + GDAL 复杂几何回退 | 有 |
-| `fast_gdb::adaptive` | 同进程协调、Reader 失效和 fresh GDAL 只读回退 | 有 |
+| 安装目标 | 用途 | GDAL 依赖 | 当前状态 |
+|---|---|---:|---|
+| `fast_gdb::linear` | 纯 C++ FileGDB Reader、几何与查询 | 无 | 可用；本地构建与测试已验证 |
+| `fast_gdb::hybrid` | fast-gdb 主路径 + GDAL 复杂几何回退 | 有 | 可用；本地构建与测试已验证 |
+| `fast_gdb::adaptive` | 同进程协调、Reader 失效和 fresh GDAL 只读回退 | 有 | 已实现；跨平台、压力和性能证据待补 |
+| `fast_gdb::unified` | Source-neutral Dataset/Layer/Feature/Cursor 入口 | 通常有 | 已实现；S3 仍为 Experimental / Unverified |
+
+上述状态描述实现和当前证据边界，不等同于所有平台和后端均已发布验收。
+
+## 支持矩阵
+
+| 场景 | 当前状态 | 证据边界 |
+|---|---|---|
+| 本地 `.gdb` + `linear` | 可用 | 当前 macOS 构建、完整测试和安装包消费者已验证 |
+| 本地 `.gdb` + `hybrid` | 可用 | 当前 macOS + GDAL 构建、完整测试和安装包消费者已验证 |
+| 协调型 `adaptive` | 已实现 | 跨平台、压力、性能和多 GDAL 版本证据待补 |
+| `unified` 本地路由 | 已实现 | 本地安装包消费者已验证；完整远端矩阵待补 |
+| `s3://` / `/vsis3/` | Experimental / Unverified | 真实 AWS、目录枚举、Range Read、断网和性能证据待补 |
+| Writer 或同一 GDB 边写边读 | 不支持 | 使用 GDAL/OpenFileGDB 独占写入，完成后关闭并重建 Reader |
 
 安装包不导出 `fast_gdb::writer`。仓库不维护受支持的 FileGDB Writer 产品；`src/reference/usegdal` 仅作为历史 GDAL/OGR 包装探索代码保留，不构建、不安装、不导出，也不提供兼容性承诺。
 
@@ -243,6 +261,17 @@ ctest --test-dir build-hybrid --output-on-failure
 
 CMake 使用 `find_package(GDAL)`，不绑定本机安装路径。
 
+### 安装
+
+```bash
+cmake --install build-linear --prefix install-fast-gdb
+find install-fast-gdb/share/fast_gdb -maxdepth 1 -type f | sort
+```
+
+安装包包含 `README.md`、`README.en.md`、`CHANGELOG.md`、`LICENSE` 和
+`THIRD_PARTY_NOTICES.md`。GDAL 版本的安装只需将 `build-linear` 替换为
+`build-hybrid`。
+
 ### Adaptive Reader
 
 ```bash
@@ -297,3 +326,16 @@ if (table.read_geometry_value(fid, geometry) && geometry.valid()) {
 - 在线副本发布、跨进程锁、版本管理和垃圾回收由业务系统实现；
 - `.spx` 和 `.atx` 只提供候选，最终结果必须复核；
 - 关系、域、层级、栅格、MultiPatch 和稀疏 64-bit ObjectID 仍需专项兼容性验证。
+
+## 依赖与许可证
+
+- `fast_gdb::linear` 不依赖 GDAL；`hybrid`、`adaptive` 和 `unified` 的部分能力需要 GDAL；
+- 完整测试在未找到兼容的系统 GoogleTest 时，可能通过 CMake `FetchContent` 获取 GoogleTest 1.15.2；
+- 依赖和 ArcGIS Pro 生成测试数据的来源见 [第三方说明](THIRD_PARTY_NOTICES.md)；
+- fast-gdb 原创源码和文档使用 [Apache-2.0](LICENSE)；第三方组件保留其各自许可证。
+
+## 贡献与安全
+
+- 外部贡献请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)；
+- 安全漏洞不要公开创建 Issue，请按 [SECURITY.md](SECURITY.md) 的方式私下报告；
+- 当前有效文档从 [docs/README.md](docs/README.md) 进入，历史 Writer 资料只在 `docs/archive/` 中保留。

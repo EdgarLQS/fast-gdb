@@ -15,7 +15,7 @@ All notable changes to fast-gdb are documented in this file.
 - Reader objects, mmap regions, table parsers, catalogs, query engines, cursors, FID mappings and index caches must not survive an external GDAL edit.
 - Same-directory GDAL update plus fast-gdb reading is explicitly classified as unsupported and may expose old, new, mixed or error states.
 - Online copy/edit/switch publication is an application responsibility outside fast-gdb.
-- `src/edgar/usegdal` is retained as reference-only historical GDAL/OGR wrapper code. It is not built, installed, exported, release-gated, or covered by API/ABI compatibility promises.
+- `src/reference/usegdal` is retained as reference-only historical GDAL/OGR wrapper code. It is not built, installed, exported, release-gated, or covered by API/ABI compatibility promises.
 - The optional Adaptive Reader is implemented as a Reader-only orchestration layer. Writer-active requests fail closed; source changes expire old Reader state; recovery uses a fresh GDAL read-only Dataset only after the source is quiescent.
 - Coordinated `writer_active/generation` detection is the accepted deterministic contract. Uncoordinated external Writer detection is explicitly best-effort and cannot guarantee discovery of every Writer lifecycle.
 
@@ -60,7 +60,7 @@ All notable changes to fast-gdb are documented in this file.
 - ADR-007 for the Reader-only product decision and GDAL edit boundary.
 - Architecture, usage and evidence documents defining Reader quiescence, GDAL lifecycle and result interpretation.
 - CI checks that verify no Writer target or installed Writer headers remain.
-- `src/edgar/usegdal/README.md` documenting the non-product reference boundary.
+- `src/reference/usegdal/README.md` documenting the non-product reference boundary.
 - Accepted ADR-008 defining Adaptive Reader write-activity detection, source-change validation, Reader invalidation and fresh GDAL read-only recovery.
 - Active design-first implementation plan `docs/gdal/02_AdaptiveReader写入检测与GDAL回退计划.md`, including phased implementation, test names, stress gates and performance budgets.
 

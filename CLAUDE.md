@@ -28,7 +28,7 @@ Not part of the supported product:
 
 ## Reference-only `usegdal`
 
-`src/edgar/usegdal` is intentionally retained as historical GDAL/OGR wrapper and design-reference code. It may contain datasource, query, transaction and batch-write examples, but it is:
+`src/reference/usegdal` is intentionally retained as historical GDAL/OGR wrapper and design-reference code. It may contain datasource, query, transaction and batch-write examples, but it is:
 
 - not built by the root CMake project;
 - not installed or exported;
@@ -85,7 +85,7 @@ Reject or require an explicit accepted ADR for changes that:
 - add FileGDB write code to supported Reader/product targets;
 - export a Writer API;
 - reintroduce `include/fast_gdb/writer` or `src/edgar/explorgdb/writer`;
-- link Reader targets to `src/edgar/usegdal`;
+- link Reader targets to `src/reference/usegdal`;
 - install or export `usegdal` reference types;
 - reuse Reader state after an external edit;
 - claim concurrent GDAL write / fast-gdb read support;

@@ -28,7 +28,11 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y ninja-build libgdal-dev
       - name: Verify project version
         shell: bash
-        run: grep -Eq 'project\(fast_gdb VERSION 0\.2\.0 LANGUAGES CXX\)' CMakeLists.txt
+        run: |
+          test -f LICENSE
+          test -f THIRD_PARTY_NOTICES.md
+          test "$(tr -d '\r\n' < VERSION)" = "$RELEASE_VERSION"
+          grep -Eq "project\\(fast_gdb VERSION ${RELEASE_VERSION} LANGUAGES CXX\\)" CMakeLists.txt
       - name: Configure
         run: >-
           cmake -S . -B build-verify -G Ninja
@@ -247,6 +251,9 @@ jobs:
         shell: bash
         run: |
           cmake --install build-package --prefix "$GITHUB_WORKSPACE/install-package" --config Release
+          for file in LICENSE THIRD_PARTY_NOTICES.md README.md README.en.md CHANGELOG.md; do
+            test -f "$GITHUB_WORKSPACE/install-package/share/fast_gdb/$file"
+          done
           cmake -S tests/package_consumer -B build-consumer -G Ninja \
             -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/install-package" \
             -DFAST_GDB_CONSUMER_TARGET=${{ matrix.variant }}
@@ -257,6 +264,11 @@ jobs:
         shell: pwsh
         run: |
           cmake --install build-package --prefix "$env:GITHUB_WORKSPACE/install-package" --config Release
+          foreach ($file in @('LICENSE', 'THIRD_PARTY_NOTICES.md', 'README.md', 'README.en.md', 'CHANGELOG.md')) {
+            if (-not (Test-Path "$env:GITHUB_WORKSPACE/install-package/share/fast_gdb/$file")) {
+              throw "Installed package is missing $file"
+            }
+          }
           cmake -S tests/package_consumer -B build-consumer -A x64 `
             -DCMAKE_PREFIX_PATH="$env:GITHUB_WORKSPACE/install-package" `
             -DFAST_GDB_CONSUMER_TARGET=${{ matrix.variant }}
@@ -272,6 +284,25 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Package
         run: cpack --config build-package/CPackConfig.cmake -C Release -G ${{ matrix.generator }} -B dist
+      - name: Verify package notices (POSIX)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          package=$(find dist -maxdepth 1 -type f -name '*.tar.gz' -print -quit)
+          test -n "$package"
+          tar -tzf "$package" | grep -q '/LICENSE$'
+          tar -tzf "$package" | grep -q '/THIRD_PARTY_NOTICES.md$'
+      - name: Verify package notices (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $package = Get-ChildItem dist -Filter *.zip | Select-Object -First 1
+          if (-not $package) { throw 'CPack did not produce a ZIP archive.' }
+          $inspect = Join-Path $PWD 'package-inspect'
+          if (Test-Path $inspect) { Remove-Item -Recurse -Force $inspect }
+          Expand-Archive -Path $package.FullName -DestinationPath $inspect
+          if (-not (Get-ChildItem $inspect -Recurse -Filter LICENSE)) { throw 'Archive is missing LICENSE' }
+          if (-not (Get-ChildItem $inspect -Recurse -Filter THIRD_PARTY_NOTICES.md)) { throw 'Archive is missing THIRD_PARTY_NOTICES.md' }
       - name: Normalize package name (POSIX)
         if: runner.os != 'Windows'
         shell: bash

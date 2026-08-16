@@ -9,6 +9,15 @@
 | Generation Script | generate_acceptance_metadata.py |
 | Generation Time | 2026-07-29T17:12:23.887208 |
 
+## Redistribution
+
+The repository owner has confirmed that this generated acceptance fixture may
+be redistributed with the fast-gdb repository. The fixture contains generated
+test data only; it does not include ArcGIS Pro binaries, ArcGIS API code, or
+the ArcGIS Pro runtime. Paths recorded in the expected-value files and ArcGIS
+lineage metadata are repository-relative or normalized placeholders so that
+the fixture remains portable across machines.
+
 ## Feature Datasets
 
 - TransportFD (EPSG:4326): roads, road_inspections, road_assets

@@ -1,12 +1,12 @@
 Level,Name,Type,FullPath,ParentDataset
-0,acceptance_metadata.gdb,Workspace,E:/gitdesktop/fast-gdb/test_data/gdb/acceptance_metadata.gdb,
-1,root_points,Feature Class,E:/gitdesktop/fast-gdb/test_data/gdb/acceptance_metadata.gdb\root_points,
-1,root_table,Table,E:/gitdesktop/fast-gdb/test_data/gdb/acceptance_metadata.gdb\root_table,
-1,all_field_types,Table,E:/gitdesktop/fast-gdb/test_data/gdb/acceptance_metadata.gdb\all_field_types,
-1,TransportFD,Feature Dataset,E:/gitdesktop/fast-gdb/test_data/gdb/acceptance_metadata.gdb\TransportFD,
-2,roads,Feature Class,E:/gitdesktop/fast-gdb/test_data/gdb/acceptance_metadata.gdb\TransportFD\roads,TransportFD
-2,road_inspections,Feature Class,E:/gitdesktop/fast-gdb/test_data/gdb/acceptance_metadata.gdb\TransportFD\road_inspections,TransportFD
-2,road_assets,Feature Class,E:/gitdesktop/fast-gdb/test_data/gdb/acceptance_metadata.gdb\TransportFD\road_assets,TransportFD
-1,AdminFD,Feature Dataset,E:/gitdesktop/fast-gdb/test_data/gdb/acceptance_metadata.gdb\AdminFD,
-2,parcels,Feature Class,E:/gitdesktop/fast-gdb/test_data/gdb/acceptance_metadata.gdb\AdminFD\parcels,AdminFD
-2,parcel_parts,Feature Class,E:/gitdesktop/fast-gdb/test_data/gdb/acceptance_metadata.gdb\AdminFD\parcel_parts,AdminFD
+0,acceptance_metadata.gdb,Workspace,test_data/gdb/acceptance_metadata.gdb,
+1,root_points,Feature Class,test_data/gdb/acceptance_metadata.gdb/root_points,
+1,root_table,Table,test_data/gdb/acceptance_metadata.gdb/root_table,
+1,all_field_types,Table,test_data/gdb/acceptance_metadata.gdb/all_field_types,
+1,TransportFD,Feature Dataset,test_data/gdb/acceptance_metadata.gdb/TransportFD,
+2,roads,Feature Class,test_data/gdb/acceptance_metadata.gdb/TransportFD/roads,TransportFD
+2,road_inspections,Feature Class,test_data/gdb/acceptance_metadata.gdb/TransportFD/road_inspections,TransportFD
+2,road_assets,Feature Class,test_data/gdb/acceptance_metadata.gdb/TransportFD/road_assets,TransportFD
+1,AdminFD,Feature Dataset,test_data/gdb/acceptance_metadata.gdb/AdminFD,
+2,parcels,Feature Class,test_data/gdb/acceptance_metadata.gdb/AdminFD/parcels,AdminFD
+2,parcel_parts,Feature Class,test_data/gdb/acceptance_metadata.gdb/AdminFD/parcel_parts,AdminFD

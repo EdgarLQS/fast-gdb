@@ -15,7 +15,7 @@
     .\generate_test_data.ps1
 
     # 手动指定 Python 路径
-    .\generate_test_data.ps1 -PythonPath "D:\software\arcgis\install\arcpro352\bin\Python\envs\arcgispro-py3\python.exe"
+    .\generate_test_data.ps1 -PythonPath "<path-to-arcgispro-py3>\python.exe"
 
     # 跳过清理和验证
     .\generate_test_data.ps1 -SkipCleanup -SkipVerify
@@ -29,7 +29,7 @@ param(
 
 # ── 项目路径 ──
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$ProjectRoot = Resolve-Path "$ScriptDir\..\.."
+$ProjectRoot = Resolve-Path "$ScriptDir\..\..\.."
 $TestDataDir = "$ProjectRoot\test_data"
 $GdbDir = "$TestDataDir\gdb"
 
