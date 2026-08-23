@@ -37,6 +37,11 @@ All notable changes to fast-gdb are documented in this file.
 
 ### Fixed
 
+- `BinaryReader` bounds checks now use overflow-safe subtraction and reject
+  cursor-plus-length `size_t` wraparound.
+- VarUInt/VarInt decoding now rejects inputs longer than ten bytes or outside
+  the 64-bit value range; signed encoding supports `INT64_MIN` without signed
+  negation overflow.
 - Unified query validation now rejects invalid filters, projections and
   envelopes before backend selection.
 - `FidAscending` and native raw reads enforce allocation budgets before
@@ -77,6 +82,9 @@ All notable changes to fast-gdb are documented in this file.
 
 ### Validation status
 
+- Linux ASan/UBSan CI covers geometry and the complete GDAL-free Reader;
+  CodeQL and Dependency Review add static analysis and dependency checks,
+  while Dependabot monitors pinned GitHub Actions weekly.
 - The Reader-only build graph, install surface and boundary tests are implemented on the development branch.
 - Formal acceptance requires usable CMake/CTest logs and artifacts for the pure Reader surface and the GDAL boundary target.
 - Characterization observations are diagnostic only and never constitute a concurrent read/write support statement.

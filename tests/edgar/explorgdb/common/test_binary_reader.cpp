@@ -5,6 +5,7 @@
 #include "binary_reader.h"
 #include <gtest/gtest.h>
 #include <cstring>
+#include <limits>
 
 using namespace explorgdb;
 
@@ -160,6 +161,22 @@ TEST(BinaryReaderTest, CanReadCheck) {
     br.read_u8();
     EXPECT_TRUE(br.can_read(2));
     EXPECT_FALSE(br.can_read(3));
+}
+
+/**
+ * 测试方法：验证极大读取长度不会通过整数回绕绕过边界检查。
+ * 输入与前置条件：读取器已经前进一个字节，再请求 size_t 最大长度。
+ * 预期结果：can_read 返回 false，skip 抛出越界异常且位置保持不变。
+ */
+TEST(BinaryReaderTest, OverflowSizedBoundsFailClosed) {
+    std::vector<uint8_t> data = {0x01, 0x02, 0x03};
+    BinaryReader br(data);
+    br.read_u8();
+
+    const size_t oversized = std::numeric_limits<size_t>::max();
+    EXPECT_FALSE(br.can_read(oversized));
+    EXPECT_THROW(br.skip(oversized), std::out_of_range);
+    EXPECT_EQ(br.tell(), 1u);
 }
 
 // ── Seek/Tell 测试 ──

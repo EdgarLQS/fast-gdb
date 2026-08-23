@@ -338,4 +338,6 @@ if (table.read_geometry_value(fid, geometry) && geometry.valid()) {
 
 - 外部贡献请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)；
 - 安全漏洞不要公开创建 Issue，请按 [SECURITY.md](SECURITY.md) 的方式私下报告；
+- Reader 对越界缓冲区和超过 64 位值域的畸形 VarInt 失败关闭；
+- CI 使用 ASan/UBSan 覆盖 geometry 与 GDAL-free 完整 Reader，并运行 CodeQL 和依赖审查；Dependabot 每周监控 GitHub Actions；
 - 当前有效文档从 [docs/README.md](docs/README.md) 进入，历史 Writer 资料只在 `docs/archive/` 中保留。

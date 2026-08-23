@@ -17,6 +17,9 @@ on:
       - 'tests/edgar/explorgdb/reader/geometry/test_geometry_writer_exact.cpp'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
   group: spatial-where-performance-${{ github.ref }}
   cancel-in-progress: true

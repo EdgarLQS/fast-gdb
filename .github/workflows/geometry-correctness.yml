@@ -8,6 +8,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
   group: geometry-correctness-${{ github.ref }}
   cancel-in-progress: true
@@ -159,8 +162,8 @@ jobs:
           path: build.log
           if-no-files-found: warn
 
-  sanitizer-core:
-    name: geometry-core-asan-ubsan
+  sanitizer-reader:
+    name: reader-geometry-asan-ubsan
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -176,13 +179,15 @@ jobs:
           -DFAST_GDB_WITH_GDAL=OFF
           -DFAST_GDB_CURVE_BACKEND=BUILTIN
           -DFAST_GDB_BUILD_TOOLS=OFF
-          -DFAST_GDB_BUILD_FULL_TESTS=OFF
+          -DFAST_GDB_BUILD_FULL_TESTS=ON
           -DBUILD_TESTING=ON
       - name: Build
         shell: bash
         run: |
           set -o pipefail
-          cmake --build build-sanitize --target fast_gdb_geometry_test_runner --parallel --verbose 2>&1 | tee build.log
+          cmake --build build-sanitize \
+            --target fast_gdb_geometry_test_runner gdb_tutorial_test_runner \
+            --parallel --verbose 2>&1 | tee build.log
       - name: Upload build diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -197,7 +202,8 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          ctest --test-dir build-sanitize --output-on-failure -R '^geometry\.' 2>&1 | tee test.log
+          ctest --test-dir build-sanitize --output-on-failure \
+            -R '^(geometry|full)\.' 2>&1 | tee test.log
       - name: Upload test diagnostics
         if: always()
         uses: actions/upload-artifact@v4

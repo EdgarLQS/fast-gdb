@@ -5,6 +5,7 @@
 #include "binary_reader.h"
 #include "varint.h"
 #include <gtest/gtest.h>
+#include <limits>
 
 using namespace explorgdb;
 
@@ -92,6 +93,32 @@ TEST(VaruintTest, MultiByte) {
     }
 }
 
+/**
+ * 测试方法：验证超过 uint64_t 表示范围的十字节 VarUInt 被拒绝。
+ * 输入与前置条件：前九字节带 continuation，第十字节携带非法高位。
+ * 预期结果：解码抛出越界异常，不返回截断或回绕后的值。
+ */
+TEST(VaruintTest, RejectsOverflowingTenBytePayload) {
+    std::vector<uint8_t> encoded(9, 0x80);
+    encoded.push_back(0x02);
+
+    BinaryReader br(encoded);
+    EXPECT_THROW(br.read_varuint(), std::out_of_range);
+}
+
+/**
+ * 测试方法：验证 continuation 不得把 VarUInt 延长到十字节以上。
+ * 输入与前置条件：十个 continuation 字节后仍提供终止字节。
+ * 预期结果：解码在第十字节处失败关闭。
+ */
+TEST(VaruintTest, RejectsMoreThanTenBytes) {
+    std::vector<uint8_t> encoded(10, 0x80);
+    encoded.push_back(0x00);
+
+    BinaryReader br(encoded);
+    EXPECT_THROW(br.read_varuint(), std::out_of_range);
+}
+
 // ── 有符号 Varint 测试 ──
 
 // 测试 0 的编码解码
@@ -158,4 +185,69 @@ TEST(VarintTest, EdgeValues) {
         BinaryReader br(encoded);
         EXPECT_EQ(br.read_varint(), -63);
     }
+}
+
+/**
+ * 测试方法：验证两种编码接口都覆盖完整 int64_t 值域。
+ * 输入与前置条件：分别编码并解码 INT64_MIN 与 INT64_MAX。
+ * 预期结果：编码长度合法，往返值与输入完全一致。
+ */
+TEST(VarintTest, FullSignedRangeRoundTrips) {
+    const int64_t values[] = {
+        std::numeric_limits<int64_t>::min(),
+        std::numeric_limits<int64_t>::max()};
+
+    for (const int64_t value : values) {
+        const auto encoded = encode_varint(value);
+        ASSERT_LE(encoded.size(), kMaxVarintLen);
+        BinaryReader vector_reader(encoded);
+        EXPECT_EQ(vector_reader.read_varint(), value);
+
+        uint8_t buffer[kMaxVarintLen]{};
+        const size_t written = encode_varint_to(buffer, value);
+        ASSERT_LE(written, kMaxVarintLen);
+        BinaryReader buffer_reader(buffer, written);
+        EXPECT_EQ(buffer_reader.read_varint(), value);
+    }
+}
+
+/**
+ * 测试方法：验证超过 int64_t 正数范围的十字节 VarInt 被拒绝。
+ * 输入与前置条件：符号位为正，最高有效负载设置第 63 位。
+ * 预期结果：解码抛出越界异常，不产生负数或未定义行为。
+ */
+TEST(VarintTest, RejectsOutOfRangePositiveMagnitude) {
+    std::vector<uint8_t> encoded = {0x80};
+    encoded.insert(encoded.end(), 8, 0x80);
+    encoded.push_back(0x02);
+
+    BinaryReader br(encoded);
+    EXPECT_THROW(br.read_varint(), std::out_of_range);
+}
+
+/**
+ * 测试方法：验证超过 int64_t 负数范围的十字节 VarInt 被拒绝。
+ * 输入与前置条件：符号位为负，magnitude 大于 2^63。
+ * 预期结果：解码抛出越界异常，不截断为有效负数。
+ */
+TEST(VarintTest, RejectsOutOfRangeNegativeMagnitude) {
+    std::vector<uint8_t> encoded = {0xC0};
+    encoded.insert(encoded.end(), 8, 0x80);
+    encoded.push_back(0x03);
+
+    BinaryReader br(encoded);
+    EXPECT_THROW(br.read_varint(), std::out_of_range);
+}
+
+/**
+ * 测试方法：验证 continuation 不得把 VarInt 延长到十字节以上。
+ * 输入与前置条件：十个 continuation 字节后仍提供终止字节。
+ * 预期结果：解码在最大编码长度处失败关闭。
+ */
+TEST(VarintTest, RejectsMoreThanTenBytes) {
+    std::vector<uint8_t> encoded(10, 0x80);
+    encoded.push_back(0x00);
+
+    BinaryReader br(encoded);
+    EXPECT_THROW(br.read_varint(), std::out_of_range);
 }

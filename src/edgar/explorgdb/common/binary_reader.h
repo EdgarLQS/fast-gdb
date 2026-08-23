@@ -114,6 +114,7 @@ public:
     // 编码示例：0 → [0x00], 127 → [0x7F], 128 → [0x80, 0x01]
     /** 读取无符号 Varuint。
      * @return 解码后的无符号整数。
+     * @throws std::out_of_range 输入截断、超过十字节或超出 uint64_t 范围。
      */
     uint64_t    read_varuint();
 
@@ -121,6 +122,7 @@ public:
     // 编码示例：0 → [0x00], +1 → [0x02], -1 → [0x03]
     /** 读取有符号 Varint。
      * @return 解码后的有符号整数。
+     * @throws std::out_of_range 输入截断、超过十字节或超出 int64_t 范围。
      */
     int64_t     read_varint();
 
@@ -155,7 +157,9 @@ public:
      * @param bytes 需要读取的字节数。
      * @return 足够时返回 true。
      */
-    bool   can_read(size_t bytes) const { return pos_ + bytes <= size_; }
+    bool   can_read(size_t bytes) const {
+        return pos_ <= size_ && bytes <= size_ - pos_;
+    }
 
     // 缓冲区总大小
     /** 获取缓冲区总长度。
@@ -172,7 +176,8 @@ public:
 private:
     // 确保当前位置后至少有 n 字节可读，否则抛出 std::out_of_range
     void ensure(size_t n) const {
-        if (pos_ + n > size_) throw std::out_of_range("BinaryReader: read past end");
+        if (!can_read(n))
+            throw std::out_of_range("BinaryReader: read past end");
     }
 
     const uint8_t* data_;   // 不拥有数据，仅指向加载到内存的文件内容

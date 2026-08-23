@@ -9,6 +9,7 @@
 #include "binary_reader.h"
 #include "utf16.h"
 #include <cstring>
+#include <limits>
 
 namespace explorgdb {
 
@@ -133,15 +134,18 @@ std::string BinaryReader::read_utf16(int char_count) {
 // 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 uint64_t BinaryReader::read_varuint() {
     uint64_t ret = 0;
-    int shift = 0;
-    uint8_t byte;
-    do {
+    for (unsigned byte_index = 0; byte_index < 10; ++byte_index) {
         ensure(1);
-        byte = data_[pos_++];
-        ret |= static_cast<uint64_t>(byte & 0x7F) << shift;
-        shift += 7;
-    } while (byte & 0x80);  // bit 7 = continuation
-    return ret;
+        const uint8_t byte = data_[pos_++];
+        const uint64_t payload = byte & 0x7fU;
+        if (byte_index == 9 &&
+            ((byte & 0x80U) != 0 || payload > 1U)) {
+            throw std::out_of_range("BinaryReader: invalid varuint");
+        }
+        ret |= payload << (byte_index * 7U);
+        if ((byte & 0x80U) == 0) return ret;
+    }
+    throw std::out_of_range("BinaryReader: invalid varuint");
 }
 
 // ── 有符号 VarInt 解码 ──
@@ -150,17 +154,31 @@ uint64_t BinaryReader::read_varuint() {
 // 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 int64_t BinaryReader::read_varint() {
     ensure(1);
-    uint8_t b = data_[pos_++];
-    int64_t sign = (b & 0x40) ? -1 : 1;  // bit 6 = sign
-    int64_t ret = b & 0x3F;               // 低 6 bit = 数据
-    int shift = 6;
-    while (b & 0x80) {                    // continuation bit
+    uint8_t byte = data_[pos_++];
+    const bool negative = (byte & 0x40U) != 0;
+    uint64_t magnitude = byte & 0x3fU;
+    const uint64_t max_magnitude = negative
+        ? static_cast<uint64_t>(std::numeric_limits<int64_t>::max()) + 1U
+        : static_cast<uint64_t>(std::numeric_limits<int64_t>::max());
+
+    for (unsigned byte_index = 1; byte & 0x80U; ++byte_index) {
+        if (byte_index >= 10)
+            throw std::out_of_range("BinaryReader: invalid varint");
         ensure(1);
-        b = data_[pos_++];
-        ret |= static_cast<int64_t>(b & 0x7F) << shift;
-        shift += 7;
+        byte = data_[pos_++];
+        const unsigned shift = 6U + (byte_index - 1U) * 7U;
+        const uint64_t payload = byte & 0x7fU;
+        if (payload > (max_magnitude >> shift))
+            throw std::out_of_range("BinaryReader: invalid varint");
+        magnitude |= payload << shift;
+        if (magnitude > max_magnitude)
+            throw std::out_of_range("BinaryReader: invalid varint");
     }
-    return sign * ret;
+
+    if (!negative) return static_cast<int64_t>(magnitude);
+    if (magnitude == max_magnitude)
+        return std::numeric_limits<int64_t>::min();
+    return -static_cast<int64_t>(magnitude);
 }
 
 // ── 原始字节块读取 ──

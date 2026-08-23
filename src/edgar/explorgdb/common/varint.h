@@ -92,14 +92,11 @@ inline size_t varuint_encoded_len(uint64_t value) {
  * @return 实际写入的字节数。
  */
 inline size_t encode_varint_to(uint8_t* dst, int64_t value) {
-    uint64_t sign_bit = 0;
-    uint64_t abs_val;
-    if (value < 0) {
-        sign_bit = 0x40;
-        abs_val = static_cast<uint64_t>(-value);
-    } else {
-        abs_val = static_cast<uint64_t>(value);
-    }
+    const bool negative = value < 0;
+    const uint64_t sign_bit = negative ? 0x40U : 0U;
+    uint64_t abs_val = negative
+        ? uint64_t{0} - static_cast<uint64_t>(value)
+        : static_cast<uint64_t>(value);
 
     uint64_t first_data = abs_val & 0x3F;
     abs_val >>= 6;

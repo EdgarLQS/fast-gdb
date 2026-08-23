@@ -34,33 +34,8 @@ std::vector<uint8_t> encode_varuint(uint64_t value) {
 // ── 有符号 Varint 编码 ──
 // 算法: 先提取符号位（bit 6），首字节用 6-bit 数据，后续用 7-bit
 std::vector<uint8_t> encode_varint(int64_t value) {
-    // 分离符号和绝对值
-    int64_t sign = value < 0 ? -1 : 1;
-    value *= sign;  // 转为非负数（绝对值）
-
-    // 首字节: 低 6 bit = 数据, bit 6 = 符号, bit 7 = 延续（视情况）
-    uint8_t first = (value & 0x3F);     // 取低 6 位
-    if (sign < 0) first |= 0x40;        // 负数设置符号位
-    value >>= 6;                         // 右移 6 位（已处理）
-
-    std::vector<uint8_t> out;
-    if (value == 0) {
-        // 6-bit 足够表示，不需要延续
-        out.push_back(first);
-        return out;
-    }
-
-    // 需要更多字节，在首字节设置延续标志
-    first |= 0x80;
-    out.push_back(first);
-
-    // 后续字节: 每字节 7-bit 数据 + 延续标志
-    while (value != 0) {
-        uint8_t byte = value & 0x7F;
-        value >>= 7;
-        if (value != 0) byte |= 0x80;   // 还有后续，设置延续
-        out.push_back(byte);
-    }
+    std::vector<uint8_t> out(kMaxVarintLen);
+    out.resize(encode_varint_to(out.data(), value));
     return out;
 }
 

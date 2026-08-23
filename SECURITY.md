@@ -28,6 +28,14 @@ The project is especially interested in memory-safety issues, malformed input
 handling, path traversal, denial-of-service behavior, and unsafe interaction
 between FileGDB readers and GDAL-backed components.
 
+## Automated security checks
+
+Pull requests and `main` are checked with CodeQL for C/C++ and with the full
+Reader and geometry test suites under AddressSanitizer and
+UndefinedBehaviorSanitizer. Dependency Review rejects newly introduced known
+vulnerabilities of moderate severity or higher, and Dependabot monitors pinned
+GitHub Actions versions weekly.
+
 ## Scope notes
 
 fast-gdb is a Reader-only library. Same-directory GDAL update operations while

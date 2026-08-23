@@ -1,0 +1,59 @@
+name: codeql
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '23 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: codeql-cpp
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      packages: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libgdal-dev
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: c-cpp
+          build-mode: manual
+          queries: security-extended
+
+      - name: Configure
+        run: >-
+          cmake -S . -B build-codeql -G Ninja
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DFAST_GDB_WITH_GDAL=ON
+          -DFAST_GDB_BUILD_ADAPTIVE_READER=ON
+          -DFAST_GDB_BUILD_UNIFIED=ON
+          -DFAST_GDB_BUILD_GDAL_DRIVER=ON
+          -DFAST_GDB_BUILD_TOOLS=OFF
+          -DFAST_GDB_BUILD_FULL_TESTS=OFF
+          -DBUILD_TESTING=OFF
+
+      - name: Build production targets
+        run: cmake --build build-codeql --parallel 2
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:c-cpp

@@ -23,6 +23,9 @@ on:
       - 'CMakeLists.txt'
       - '.github/workflows/gdal-write-reader-boundary.yml'
 
+permissions:
+  contents: read
+
 jobs:
   reader-only-surface:
     name: reader-only-surface-${{ matrix.os }}

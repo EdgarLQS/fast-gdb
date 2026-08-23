@@ -103,6 +103,11 @@ unsupported and may expose old, new, mixed, or error states.
 
 ## Documentation and contribution
 
+- The Reader fails closed on out-of-bounds buffers and malformed VarInts that
+  exceed the 64-bit value range.
+- CI covers geometry and the complete GDAL-free Reader with ASan/UBSan, and
+  also runs CodeQL and Dependency Review; Dependabot monitors GitHub Actions
+  weekly.
 - [中文文档入口](docs/README.md)
 - [English contribution guide](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
