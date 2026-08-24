@@ -89,7 +89,7 @@ jobs:
           cmake --build baseline/build-posix --target gdb_tutorial_test_runner --parallel 2
 
       - name: Restore reusable 10M point fixture
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: test_data/spatial_matrix/posix/point_10m
           key: posix-${{ matrix.label }}-spatial-point-10m-v1
