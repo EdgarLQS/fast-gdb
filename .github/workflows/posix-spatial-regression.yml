@@ -34,10 +34,10 @@ jobs:
     timeout-minutes: 360
     steps:
       - name: Checkout current branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Checkout main baseline
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: main
           path: baseline
