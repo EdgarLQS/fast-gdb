@@ -83,7 +83,7 @@ jobs:
         shell: bash -el {0}
     steps:
       - uses: actions/checkout@v4
-      - uses: conda-incubator/setup-miniconda@v3
+      - uses: conda-incubator/setup-miniconda@v4
         with:
           auto-update-conda: true
           activate-environment: fast-gdb-release
@@ -203,7 +203,7 @@ jobs:
           if [[ '${{ matrix.with_gdal }}' == 'ON' ]]; then
             brew install gdal
           fi
-      - uses: conda-incubator/setup-miniconda@v3
+      - uses: conda-incubator/setup-miniconda@v4
         if: runner.os == 'Windows' && matrix.with_gdal == 'ON'
         with:
           auto-update-conda: true
