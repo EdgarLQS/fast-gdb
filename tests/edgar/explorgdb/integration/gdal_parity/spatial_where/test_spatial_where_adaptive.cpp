@@ -42,7 +42,7 @@ bool rewrite_features(OGRLayer* layer) {
     return true;
 }
 
-std::vector<uint32_t> collect_gdal(
+std::vector<explorgdb::RowSlot> collect_gdal(
     const std::string& path,
     double xmin, double ymin, double xmax, double ymax,
     const char* where) {
@@ -62,11 +62,12 @@ std::vector<uint32_t> collect_gdal(
         return {};
     }
 
-    std::vector<uint32_t> fids;
+    std::vector<explorgdb::RowSlot> fids;
     layer->ResetReading();
     while (OGRFeature* feature = layer->GetNextFeature()) {
         if (feature->GetFID() > 0) {
-            fids.push_back(static_cast<uint32_t>(feature->GetFID() - 1));
+            fids.push_back(static_cast<explorgdb::RowSlot>(
+                feature->GetFID() - 1));
         }
         OGRFeature::DestroyFeature(feature);
     }
@@ -189,7 +190,7 @@ TEST_F(SpatialWhereAdaptiveTest,
     EXPECT_EQ(result.combined_metrics.attribute_tested, 10U);
     EXPECT_GE(result.combined_metrics.fused_candidate_scan_ms, 0.0);
     EXPECT_EQ(result.matched_fids,
-              (std::vector<uint32_t>{5, 6, 7, 8, 9}));
+              (std::vector<explorgdb::RowSlot>{5, 6, 7, 8, 9}));
     EXPECT_EQ(result.matched_fids,
               collect_gdal(path, 0.0, -1.0, 9.0, 1.0, "value >= 5"));
 }
@@ -218,8 +219,8 @@ TEST_F(SpatialWhereAdaptiveTest,
     EXPECT_GT(result.combined_metrics.attribute_index_page_count, 0U);
     EXPECT_GT(result.combined_metrics.attribute_index_pages_visited, 0U);
     EXPECT_EQ(result.matched_fids,
-              (std::vector<uint32_t>{90, 91, 92, 93, 94,
-                                     95, 96, 97, 98, 99}));
+              (std::vector<explorgdb::RowSlot>{90, 91, 92, 93, 94,
+                                               95, 96, 97, 98, 99}));
     EXPECT_EQ(result.matched_fids,
               collect_gdal(path, 0.0, -1.0, 99.0, 1.0, "value >= 90"));
 }

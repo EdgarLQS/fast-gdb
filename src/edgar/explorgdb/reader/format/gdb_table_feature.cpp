@@ -144,6 +144,15 @@ bool materialize_zero_length_record(
                 static_cast<int32_t>(record.fid + kFidBaseOffset));
             continue;
         }
+        if (field.type == FieldType::Geometry) {
+            if (nullable) {
+                record.nullable_flags[current_nullable_bit / kBitsPerByte] |=
+                    static_cast<uint8_t>(
+                        1U << (current_nullable_bit % kBitsPerByte));
+            }
+            record.field_values.emplace_back(std::string{});
+            continue;
+        }
         if (!nullable) return false;
 
         record.nullable_flags[current_nullable_bit / kBitsPerByte] |=
@@ -156,19 +165,21 @@ bool materialize_zero_length_record(
 } // namespace
 
 bool GdbTableParser::read_feature_by_fid_wkb_internal(
-    uint32_t fid,
+    RowSlot fid,
     FeatureRecord& record,
     GeometryValue& geometry,
     FeatureReadMetrics* metrics,
-    const std::vector<size_t>* projection) {
+    const std::vector<size_t>* projection,
+    const GeometryReadOptions& geometry_options,
+    bool include_geometry) {
     if (metrics != nullptr) *metrics = FeatureReadMetrics{};
 
     const auto lookup_start = metric_start(metrics);
     if (fd_ < 0 && file_data_.empty() && !open()) return false;
     if (fields_.empty() && fd_ >= 0 && !ensure_fields_loaded()) return false;
-    if (feature_offsets_.empty() || fid >= feature_offsets_.size()) return false;
+    if (fid >= logical_row_count_) return false;
 
-    const uint64_t raw_offset = feature_offsets_[fid];
+    const uint64_t raw_offset = feature_offset(fid);
     if (raw_offset == 0 ||
         raw_offset > static_cast<uint64_t>(std::numeric_limits<size_t>::max())) {
         return false;
@@ -229,7 +240,10 @@ bool GdbTableParser::read_feature_by_fid_wkb_internal(
                    fields_start);
 
         GeometryValue output_geometry;
-        if (geometry_field_index_ < 0) {
+        if (!include_geometry) {
+            output_geometry.status = GeometryStatus::NotRequested;
+            output_geometry.diagnostic = "geometry was not requested";
+        } else if (geometry_field_index_ < 0) {
             output_geometry.status = GeometryStatus::UnsupportedType;
             output_geometry.diagnostic = "table has no geometry field";
         } else {
@@ -293,17 +307,38 @@ bool GdbTableParser::read_feature_by_fid_wkb_internal(
                             continue;
                         }
 
-                        if (field.type == FieldType::ObjectId ||
-                            fixed_physical_width(field.type) != 0) {
+                        const bool selected =
+                            field_is_selected(projection, field_index);
+                        if (field.type == FieldType::ObjectId) {
+                            if (selected) {
+                                candidate.field_values.push_back(
+                                    static_cast<int32_t>(
+                                        fid + kFidBaseOffset));
+                            } else {
+                                candidate.field_values.push_back(nullptr);
+                            }
+                            continue;
+                        }
+
+                        const size_t fixed_width =
+                            fixed_physical_width(field.type);
+                        if (fixed_width != 0) {
+                            if (!selected) {
+                                if (!reader.can_read(fixed_width)) {
+                                    valid = false;
+                                    break;
+                                }
+                                reader.skip(fixed_width);
+                                candidate.field_values.push_back(nullptr);
+                                continue;
+                            }
                             FieldValue value;
                             if (!read_fixed_field_value(
                                     reader, field.type, fid + kFidBaseOffset, value)) {
                                 valid = false;
                                 break;
                             }
-                            candidate.field_values.push_back(
-                                field_is_selected(projection, field_index)
-                                    ? std::move(value) : FieldValue(nullptr));
+                            candidate.field_values.push_back(std::move(value));
                             continue;
                         }
 
@@ -404,6 +439,13 @@ bool GdbTableParser::read_feature_by_fid_wkb_internal(
     if (!found) return false;
 
     GeometryValue output_geometry;
+    if (!include_geometry) {
+        output_geometry.status = GeometryStatus::NotRequested;
+        output_geometry.diagnostic = "geometry was not requested";
+        record = std::move(best_record);
+        geometry = std::move(output_geometry);
+        return true;
+    }
     if (geometry_field_index_ < 0) {
         output_geometry.status = GeometryStatus::UnsupportedType;
         output_geometry.diagnostic = "table has no geometry field";
@@ -427,26 +469,23 @@ bool GdbTableParser::read_feature_by_fid_wkb_internal(
 
     const FieldDescriptor& geometry_field =
         fields_[best_geometry.field_index];
+    GdbGeomDecoder decoder = make_geom_decoder(geometry_field);
     const auto decode_start = metric_start(metrics);
-    GeometryModel model = make_geom_decoder(geometry_field).decode_model(
-        row_data + best_geometry.offset, best_geometry.size);
+    GeometryModel model = decoder.decode_model_with_options(
+        row_data + best_geometry.offset, best_geometry.size,
+        geometry_options);
     metric_add(metrics, &FeatureReadMetrics::geometry_decode_ms,
                decode_start);
 
-    if (!model.valid()) {
-        const auto wkb_start = metric_start(metrics);
-        output_geometry = WkbWriter::write(model);
-        metric_add(metrics, &FeatureReadMetrics::wkb_write_ms, wkb_start);
-        geometry = std::move(output_geometry);
-        return false;
-    }
-
-    // WKB 序列化 -- field_values 中的几何字段占位空字符串保留不动，
-    // 因为当前没有任何消费者从 field_values 读取 WKT。
     const auto wkb_start = metric_start(metrics);
-    output_geometry = WkbWriter::write(model);
+    output_geometry = decoder.write_value_with_options(
+        model, row_data + best_geometry.offset, best_geometry.size,
+        geometry_options);
     metric_add(metrics, &FeatureReadMetrics::wkb_write_ms, wkb_start);
-    if (!output_geometry.valid()) {
+
+    if (!output_geometry.valid() &&
+        output_geometry.source_payload_state ==
+            GeometrySourcePayloadState::NotPresent) {
         geometry = std::move(output_geometry);
         return false;
     }

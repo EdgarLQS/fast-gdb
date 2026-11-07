@@ -41,7 +41,7 @@ bool rewrite_features_for_spatial_index(OGRLayer* layer) {
     return true;
 }
 
-std::vector<uint32_t> collect_gdal_fids(
+std::vector<explorgdb::RowSlot> collect_gdal_fids(
     OGRLayer* layer,
     double xmin, double ymin, double xmax, double ymax,
     const std::string& where,
@@ -62,13 +62,14 @@ std::vector<uint32_t> collect_gdal_fids(
         EXPECT_EQ(layer->SetAttributeFilter(where.c_str()), OGRERR_NONE);
     }
 
-    std::vector<uint32_t> result;
+    std::vector<explorgdb::RowSlot> result;
     layer->ResetReading();
     while (OGRFeature* feature = layer->GetNextFeature()) {
         if (feature->GetFID() <= 0) {
             ADD_FAILURE() << "OpenFileGDB returned a non-positive FID";
         } else {
-            result.push_back(static_cast<uint32_t>(feature->GetFID() - 1));
+            result.push_back(static_cast<explorgdb::RowSlot>(
+                feature->GetFID() - 1));
         }
         OGRFeature::DestroyFeature(feature);
     }
@@ -205,7 +206,7 @@ TEST_F(SpatialWhereIntegrationTest,
     EXPECT_TRUE(result.combined_metrics.used_spatial_index);
     EXPECT_TRUE(result.combined_metrics.used_attribute_index);
     EXPECT_EQ(result.combined_metrics.final_match_count, 2U);
-    EXPECT_EQ(result.matched_fids, (std::vector<uint32_t>{1, 3}));
+    EXPECT_EQ(result.matched_fids, (std::vector<explorgdb::RowSlot>{1, 3}));
     EXPECT_TRUE(std::is_sorted(
         result.matched_fids.begin(), result.matched_fids.end()));
 
@@ -255,7 +256,7 @@ TEST_F(SpatialWhereIntegrationTest,
     EXPECT_FALSE(result.combined_metrics.used_attribute_index);
     EXPECT_EQ(result.combined_metrics.attribute_tested,
               result.combined_metrics.spatial_match_count);
-    EXPECT_EQ(result.matched_fids, (std::vector<uint32_t>{1, 3}));
+    EXPECT_EQ(result.matched_fids, (std::vector<explorgdb::RowSlot>{1, 3}));
 
     GDALDataset* dataset = static_cast<GDALDataset*>(GDALOpenEx(
         path.c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY,
@@ -299,7 +300,7 @@ TEST_F(SpatialWhereIntegrationTest,
     EXPECT_EQ(result.execution_path, "spatial-where:spx+atx");
     EXPECT_TRUE(result.combined_metrics.used_attribute_index);
     EXPECT_GT(result.combined_metrics.attribute_tested, 0U);
-    EXPECT_EQ(result.matched_fids, (std::vector<uint32_t>{1}));
+    EXPECT_EQ(result.matched_fids, (std::vector<explorgdb::RowSlot>{1}));
 }
 
 /**

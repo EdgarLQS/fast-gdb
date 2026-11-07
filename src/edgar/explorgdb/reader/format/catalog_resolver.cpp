@@ -53,7 +53,7 @@ bool CatalogResolver::load() {
     if (name_index < 0 || id_index < 0) return false;
 
     std::vector<SystemCatalogRow> rows;
-    for (uint32_t fid = 0; fid < parser.feature_count(); ++fid) {
+    for (RowSlot fid : parser.active_feature_fids()) {
         FeatureRecord record;
         if (!parser.read_record_by_fid(fid, record)) continue;
         if (static_cast<size_t>(std::max(name_index, id_index)) >= record.field_values.size()) continue;

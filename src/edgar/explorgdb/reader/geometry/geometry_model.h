@@ -6,7 +6,9 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <array>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -21,7 +23,11 @@ enum class GeometryKind : uint32_t {
     Polygon = 3,
     MultiPoint = 4,
     MultiLineString = 5,
-    MultiPolygon = 6
+    MultiPolygon = 6,
+    GeometryCollection = 7,
+    PolyhedralSurface = 15,
+    TIN = 16,
+    Triangle = 17
 };
 
 /** 实际完成几何解码或曲线处理的后端。 */
@@ -30,6 +36,13 @@ enum class GeometryBackend : uint8_t {
     BuiltinCurve = 1,
     Gdal = 2,
     Reject = 3
+};
+
+/** 是否保留了无法由标准几何输出表达的源几何载荷。 */
+enum class GeometrySourcePayloadState : uint8_t {
+    NotPresent = 0,
+    Preserved,
+    LimitExceeded
 };
 
 /** 几何读取的稳定状态；调用方不得用 WKB/WKT 是否为空替代该状态。 */
@@ -45,7 +58,8 @@ enum class GeometryStatus : uint8_t {
     SelfIntersection,
     TouchingRings,
     DuplicateRing,
-    NumericOverflow
+    NumericOverflow,
+    NotRequested
 };
 
 /** 单个环在拓扑归一化阶段的校验结果。 */
@@ -106,6 +120,66 @@ struct GridPoint {
     int64_t y = 0;
     double z = 0.0;
     double m = 0.0;
+};
+
+/** ArcGIS MultiPatch part type stored in the FileGDB geometry payload. */
+enum class MultiPatchPartType : uint8_t {
+    TriangleStrip = 0,
+    TriangleFan = 1,
+    OuterRing = 2,
+    InnerRing = 3,
+    FirstRing = 4,
+    Ring = 5,
+    Triangles = 6,
+    Unknown = 255
+};
+
+/** Ring grouping convention retained from the source part sequence. */
+enum class MultiPatchRingEncoding : uint8_t {
+    OuterAndInner = 0,
+    FirstAndFollowing = 1
+};
+
+/** Decoded real-world MultiPatch vertex coordinates. */
+struct MultiPatchVertex {
+    double x = 0.0;
+    double y = 0.0;
+    double z = 0.0;
+    double m = 0.0;
+    int64_t grid_x = 0;
+    int64_t grid_y = 0;
+};
+
+/** One typed patch over a contiguous range of MultiPatchModel::vertices. */
+struct MultiPatchPart {
+    MultiPatchPartType type = MultiPatchPartType::Unknown;
+    uint64_t raw_type = 0;
+    size_t vertex_offset = 0;
+    size_t vertex_count = 0;
+    size_t triangle_count = 0;
+
+    /** Return one triangle as absolute indices into MultiPatchModel::vertices. */
+    bool triangle_vertices(size_t triangle_index,
+                           std::array<size_t, 3>& indices) const;
+};
+
+/** Consecutive ring parts belonging to one source polygon group. */
+struct MultiPatchRingGroup {
+    MultiPatchRingEncoding encoding =
+        MultiPatchRingEncoding::OuterAndInner;
+    std::vector<size_t> part_indices;
+};
+
+/** Structured read-only representation of a FileGDB MultiPatch payload. */
+struct MultiPatchModel {
+    bool present = false;
+    bool structure_complete = false;
+    uint64_t format_marker = 0;
+    std::array<uint64_t, 4> bbox_header{};
+    std::vector<MultiPatchVertex> vertices;
+    std::vector<MultiPatchPart> parts;
+    std::vector<MultiPatchRingGroup> ring_groups;
+    size_t opaque_tail_bytes = 0;
 };
 
 /** 判断两个网格点的 XY 坐标是否相同。
@@ -202,6 +276,9 @@ struct GeometryModel {
     bool has_m = false;
     bool source_was_curve = false;
     bool linearized = false;
+    double linearization_max_chord_error = 0.0;
+    double linearization_max_angle_step_degrees = 0.0;
+    size_t linearization_max_segments_per_curve = 0;
 
     GeometryBackend backend = GeometryBackend::FastGdb;
     GeometryStatus status = GeometryStatus::Valid;
@@ -211,6 +288,7 @@ struct GeometryModel {
     std::vector<GridPoint> points;       // MultiPoint
     std::vector<PointSequence> lines;    // LineString/MultiLineString
     MultiPolygonModel multipolygon;
+    std::shared_ptr<const MultiPatchModel> multipatch;
 
     /** 判断几何模型是否为空。
      * @return 状态为空或没有有效几何成员时返回 true。
@@ -228,6 +306,10 @@ struct GeometryModel {
             case GeometryKind::Polygon:
             case GeometryKind::MultiPolygon:
                 return multipolygon.polygons.empty();
+            case GeometryKind::Unknown:
+                return !multipatch ||
+                       (multipatch->structure_complete &&
+                        multipatch->vertices.empty());
             default:
                 return true;
         }
@@ -251,6 +333,11 @@ struct GeometryModel {
  */
 struct GeometryValue {
     std::vector<uint8_t> wkb;  ///< ISO WKB 字节流；失败或未读取时可为空。
+    std::vector<uint8_t> source_payload; ///< FileGDB 原始 geometry blob。
+    std::shared_ptr<const MultiPatchModel> multipatch;
+    ///< 结构化 MultiPatch；非空时有效，跨 Unified 映射共享只读数据。
+    GeometrySourcePayloadState source_payload_state =
+        GeometrySourcePayloadState::NotPresent;
     int32_t srid = 0;          ///< 空间参考 ID。
     uint32_t geometry_type = 0;///< ISO WKB 类型码（含 Z/M 偏移）。
 
@@ -258,6 +345,9 @@ struct GeometryValue {
     bool has_m = false;
     bool source_was_curve = false;
     bool linearized = false;
+    double linearization_max_chord_error = 0.0;
+    double linearization_max_angle_step_degrees = 0.0;
+    size_t linearization_max_segments_per_curve = 0;
 
     GeometryBackend backend = GeometryBackend::FastGdb;
     GeometryStatus status = GeometryStatus::Valid;

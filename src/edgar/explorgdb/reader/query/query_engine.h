@@ -19,6 +19,13 @@
 
 namespace explorgdb {
 
+class CompiledWhere;
+
+namespace detail {
+class QueryPreparationCache;
+std::shared_ptr<QueryPreparationCache> make_query_preparation_cache();
+}  // namespace detail
+
 /** QueryRequest 的执行类型。 */
 enum class QueryKind {
     ReadByFid,
@@ -47,7 +54,7 @@ const char* query_status_name(QueryStatus status) noexcept;
 /** 查询参数；不同 QueryKind 只读取与自身相关的字段。 */
 struct QueryRequest {
     QueryKind kind = QueryKind::SequentialScan;
-    uint32_t fid = 0;
+    RowSlot fid = 0;
     double xmin = 0;
     double ymin = 0;
     double xmax = 0;
@@ -66,6 +73,14 @@ struct QueryRequest {
     size_t max_result_features = 0;
     bool sort_fids = false;
     std::function<bool()> cancel_requested;
+
+    // Cursor geometry defaults to source preservation. Older direct table
+    // methods keep their build-configured behavior unless options are passed.
+    GeometryReadOptions geometry_read_options =
+        GeometryReadOptions::preserve_source();
+    // Applies to FeatureCursor output; geometry needed by a spatial predicate
+    // is still decoded by the query planner.
+    bool include_geometry = true;
 
     // 显式启用 Cursor 阶段计时；默认关闭以避免 steady_clock 热路径开销。
     bool profile_feature_reads = false;
@@ -136,18 +151,19 @@ struct FeatureCursorMetrics {
 struct QueryResult {
     QueryStatus status = QueryStatus::Ok;
     std::string error;
-    std::vector<uint32_t> matched_fids;
+    std::vector<RowSlot> matched_fids;
     std::optional<FeatureRecord> record;
     std::string execution_path;
     std::string fallback_reason;
     SpatialQueryMetrics spatial_metrics;
     CombinedQueryMetrics combined_metrics;
     FeatureCursorMetrics feature_cursor_metrics;
+    bool query_preparation_cache_hit = false;
 };
 
 /** FeatureCursor 返回的完整对象；几何独立由 WKB-first GeometryValue 承载。 */
 struct QueryFeature {
-    uint32_t fid = 0;
+    RowSlot fid = 0;
     FeatureRecord record;
     GeometryValue geometry;
 };
@@ -199,7 +215,7 @@ public:
      * @param fid 目标零基 FID。
      * @return 定位成功时返回 true，否则返回 false。
      */
-    bool move_to(uint32_t fid);
+    bool move_to(RowSlot fid);
 
     /** 判断游标是否已经结束或失效。
      * @return 游标不可再读取时返回 true。
@@ -229,7 +245,11 @@ public:
      * @param catalog 已完成扫描的目录对象。
      * @param table 解析得到的目标表描述。
      */
-    QueryEngine(const GdbCatalog& catalog, const ResolvedTable& table);
+    QueryEngine(
+        const GdbCatalog& catalog,
+        const ResolvedTable& table,
+        std::shared_ptr<detail::QueryPreparationCache>
+            query_preparation_cache = {});
     QueryEngine(const QueryEngine&) = delete;
     QueryEngine& operator=(const QueryEngine&) = delete;
     QueryEngine(QueryEngine&&) noexcept = default;
@@ -254,7 +274,7 @@ public:
      * @param record 接收属性字段的输出对象。
      * @return 找到并成功解析时返回 true。
      */
-    bool read_by_fid(uint32_t fid, FeatureRecord& record);
+    bool read_by_fid(RowSlot fid, FeatureRecord& record);
     /** 顺序扫描表中的记录。
      * @param callback 每读取一条记录时调用的回调函数。
      * @return 实际扫描的记录数量。
@@ -269,7 +289,7 @@ public:
      * @param skipped_unsupported_curve 可选输出，记录是否跳过不支持曲线。
      * @return 命中的 FID 列表。
      */
-    std::vector<uint32_t> query_bbox(
+    std::vector<RowSlot> query_bbox(
         double xmin, double ymin, double xmax, double ymax,
         bool* skipped_unsupported_curve = nullptr);
 
@@ -289,7 +309,7 @@ public:
      * @param op 比较操作符。
      * @return 满足条件的 FID 列表。
      */
-    std::vector<uint32_t> query_attribute_double(
+    std::vector<RowSlot> query_attribute_double(
         const std::string& index_name, double value, AttrOp op);
     /** 使用字符串属性索引查询 FID。
      * @param index_name 属性索引名称。
@@ -297,7 +317,7 @@ public:
      * @param op 比较操作符。
      * @return 满足条件的 FID 列表。
      */
-    std::vector<uint32_t> query_attribute_string(
+    std::vector<RowSlot> query_attribute_string(
         const std::string& index_name,
         const std::string& value, AttrOp op);
 
@@ -307,7 +327,7 @@ public:
      * @param size 输出 blob 长度，单位为字节。
      * @return 成功定位几何数据时返回 true。
      */
-    bool peek_bbox_source(uint32_t fid,
+    bool peek_bbox_source(RowSlot fid,
                           const uint8_t*& blob, size_t& size);
 
     static bool should_fallback_spatial_index(bool spx_exists,
@@ -323,8 +343,10 @@ public:
     const GdbTableParser* table() const { return parser_.get(); }
 
 private:
+    CompiledWhere prepare_where(const std::string& text,
+                                bool* cache_hit = nullptr) const;
     const FieldDescriptor* geometry_field() const;
-    bool feature_intersects(uint32_t fid,
+    bool feature_intersects(RowSlot fid,
                             double xmin, double ymin,
                             double xmax, double ymax,
                             bool* skipped_unsupported_curve = nullptr);
@@ -349,6 +371,8 @@ private:
         bool feature_cursor_active() const noexcept;
     };
     std::unique_ptr<CursorControl> cursor_control_;
+    std::shared_ptr<detail::QueryPreparationCache>
+        query_preparation_cache_;
 
     const GdbCatalog& catalog_;
     ResolvedTable resolved_;

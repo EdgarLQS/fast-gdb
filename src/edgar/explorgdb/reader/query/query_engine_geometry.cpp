@@ -126,7 +126,6 @@ QueryResult QueryEngine::query_bbox_unified(
         return result;
     }
 
-    const size_t fid_slot_count = parser_->feature_count();
     const size_t feature_count = parser_->active_feature_count();
     result.spatial_metrics.feature_count = feature_count;
     if (feature_count == 0) {
@@ -151,15 +150,18 @@ QueryResult QueryEngine::query_bbox_unified(
             direct_scan_coverage_threshold();
     result.spatial_metrics.spx_bypassed = planner_direct_scan;
 
-    std::vector<uint32_t> candidates;
+    std::vector<RowSlot> candidates;
     const auto candidate_start = SpatialClock::now();
 
     if (!planner_direct_scan) {
         if (!spatial_index_initialized_) {
             spatial_index_initialized_ = true;
             const auto* spx = catalog_.find_spx(resolved_.id);
-            spatial_index_present_ = spx != nullptr;
-            if (spx != nullptr) {
+            const bool metadata_declares_no_index =
+                resolved_.has_spatial_index == false;
+            spatial_index_present_ =
+                spx != nullptr && !metadata_declares_no_index;
+            if (spatial_index_present_) {
                 auto index = std::make_unique<GdbSpatialIndexParser>(
                     catalog_.path() + "/" + spx->filename);
                 if (index->parse()) {
@@ -175,15 +177,25 @@ QueryResult QueryEngine::query_bbox_unified(
     }
 
     const bool spx_parse_ok = spatial_index_ != nullptr;
+    const bool spx_extent_supported = spx_parse_ok &&
+        GdbSpatialIndexParser::supports_layer_extent(
+            geom_field->xmin, geom_field->ymin,
+            geom_field->xmax, geom_field->ymax,
+            geom_field->grid_sizes);
+    if (spx_parse_ok && !spx_extent_supported) {
+        capabilities_.spatial_index = {
+            CapabilityState::Degraded,
+            kDiagnosticSpxGridUnsupported};
+    }
     const bool sequential_fallback =
         !planner_direct_scan &&
-        (!spatial_index_present_ || !spx_parse_ok);
-    if (!planner_direct_scan && spx_parse_ok) {
+        (!spatial_index_present_ || !spx_extent_supported);
+    if (!planner_direct_scan && spx_extent_supported) {
         candidates = spatial_index_->query_bbox(
             xmin, ymin, xmax, ymax,
             geom_field->xorig, geom_field->yorig,
             geom_field->xyscale, geom_field->grid_sizes,
-            static_cast<uint32_t>(fid_slot_count - 1));
+            parser_->feature_count() == 0 ? 0 : parser_->feature_count() - 1U);
     }
 
     if (planner_direct_scan) {
@@ -192,9 +204,11 @@ QueryResult QueryEngine::query_bbox_unified(
         result.spatial_metrics.candidate_ratio = 1.0;
     } else if (sequential_fallback) {
         result.execution_path = kPathBboxModelSequentialFallback;
-        result.fallback_reason = !spatial_index_present_
-            ? kDiagnosticSpatialIndexMissing
-            : capabilities_.spatial_index.reason;
+        result.fallback_reason = resolved_.has_spatial_index == false
+            ? kDiagnosticSpatialIndexNotDeclared
+            : (!spatial_index_present_ ? kDiagnosticSpatialIndexMissing
+            : (!spx_parse_ok ? capabilities_.spatial_index.reason
+                             : kDiagnosticSpxGridUnsupported));
         result.spatial_metrics.candidate_count = feature_count;
         result.spatial_metrics.candidate_ratio = 1.0;
     } else {
@@ -229,7 +243,7 @@ QueryResult QueryEngine::query_bbox_unified(
         geom_field->morig, geom_field->mscale,
         has_z, has_m);
 
-    auto evaluate_blob = [&](uint32_t fid,
+    auto evaluate_blob = [&](RowSlot fid,
                              const uint8_t* blob,
                              size_t blob_size) {
         if (blob == nullptr || blob_size == 0) {
@@ -307,9 +321,8 @@ QueryResult QueryEngine::query_bbox_unified(
     auto ensure_all_candidates = [&]() {
         if (!candidates.empty()) return;
         candidates.reserve(feature_count);
-        for (uint32_t fid = 0; fid < fid_slot_count; ++fid) {
-            if (parser_->has_feature(fid)) candidates.push_back(fid);
-        }
+        for (size_t index = 0; index < feature_count; ++index)
+            candidates.push_back(parser_->active_feature_fid_at(index));
     };
 
     auto evaluate_candidates = [&]() {
@@ -321,7 +334,7 @@ QueryResult QueryEngine::query_bbox_unified(
             const size_t matched_before = result.matched_fids.size();
             const uint64_t scanned = parser_->scan_geometry_candidates(
                 candidates,
-                [&](uint32_t fid, const uint8_t* geometry,
+                [&](RowSlot fid, const uint8_t* geometry,
                     size_t geometry_size, bool is_null) {
                     if (is_null || geometry == nullptr || geometry_size == 0) {
                         ++result.spatial_metrics.invalid_geometries;
@@ -342,7 +355,7 @@ QueryResult QueryEngine::query_bbox_unified(
             result.spatial_metrics = metrics_before;
         }
 
-        for (uint32_t fid : candidates) {
+        for (RowSlot fid : candidates) {
             const uint8_t* blob = nullptr;
             size_t blob_size = 0;
             bool located = false;
@@ -368,7 +381,7 @@ QueryResult QueryEngine::query_bbox_unified(
             result.execution_path = kPathBboxModelSequentialAdaptive;
         const auto scan_start = SpatialClock::now();
         const uint64_t scanned = parser_->scan_geometry_blobs(
-            [&](uint32_t fid, const uint8_t* geometry,
+            [&](RowSlot fid, const uint8_t* geometry,
                 size_t geometry_size, bool is_null) {
                 if (is_null || geometry == nullptr || geometry_size == 0) {
                     ++result.spatial_metrics.invalid_geometries;

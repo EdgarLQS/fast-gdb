@@ -118,6 +118,20 @@ TEST(OleDateTest, DateTimeString) {
     EXPECT_EQ(s, "2024-01-15 12:00:00");
 }
 
+TEST(OleDateTest, PreservesMillisecondPrecision) {
+    constexpr double milliseconds_per_day = 86400000.0;
+    const double ole_date = 45306.0 + (12 * 3600000 + 34567) /
+        milliseconds_per_day;
+    EXPECT_EQ(ole_datetime(ole_date), "2024-01-15 12:00:34.567");
+    EXPECT_EQ(ole_time_only(ole_date), "12:00:34.567");
+}
+
+TEST(OleDateTest, RoundsMillisecondCarryAcrossDayBoundary) {
+    constexpr double milliseconds_per_day = 86400000.0;
+    const double ole_date = 45306.0 + 86399999.8 / milliseconds_per_day;
+    EXPECT_EQ(ole_datetime(ole_date), "2024-01-16 00:00:00");
+}
+
 /**
  * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
  * 输入与前置条件：由测试体构造；无显式方法参数。

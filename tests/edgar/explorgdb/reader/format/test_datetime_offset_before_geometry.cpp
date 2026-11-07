@@ -56,7 +56,12 @@ void prepare_datetime_before_geometry(GdbTableParser& parser) {
     parser.file_data_.push_back(0x01); // geometry blob length
     parser.file_data_.push_back(0x00); // Null geometry type
 
-    parser.feature_offsets_ = {1};
+    parser.feature_offsets_ = std::make_shared<const std::vector<uint64_t>>(
+        std::vector<uint64_t>{1});
+    parser.logical_row_count_ = 1;
+    parser.active_feature_fids_ = {0};
+    parser.active_feature_count_ = 1;
+    parser.active_feature_count_known_ = true;
     parser.file_size_ = parser.file_data_.size();
 }
 
@@ -139,7 +144,12 @@ TEST(DateTimeWithOffsetBeforeGeometry_GeometryOnlyScan,
     GdbTableParser parser("unused");
     prepare_datetime_before_geometry(parser);
 
-    parser.feature_offsets_.push_back(parser.file_size_ - 1);
+    parser.feature_offsets_ = std::make_shared<const std::vector<uint64_t>>(
+        std::vector<uint64_t>{1, parser.file_size_ - 1});
+    parser.logical_row_count_ = 2;
+    parser.active_feature_fids_ = {0, 1};
+    parser.active_feature_count_ = 2;
+    parser.active_feature_count_known_ = true;
     parser.mapped_data_ = parser.file_data_.data();
     const uint64_t scanned = parser.scan_geometry_blobs(
         [](uint32_t, const uint8_t*, size_t, bool) { return true; });

@@ -19,13 +19,13 @@ bool is_zero_padding(const uint8_t* cursor, const uint8_t* end) {
 } // namespace
 
 bool GdbTableParser::read_raw_record_by_fid(
-        uint32_t fid, std::vector<uint8_t>& raw_record,
+        RowSlot fid, std::vector<uint8_t>& raw_record,
         std::size_t max_bytes, bool* limit_exceeded) {
     raw_record.clear();
     if (limit_exceeded != nullptr) *limit_exceeded = false;
     if (fd_ < 0 && file_data_.empty() && !open()) return false;
-    if (fid >= feature_offsets_.size()) return false;
-    const uint64_t offset = feature_offsets_[fid];
+    if (fid >= logical_row_count_) return false;
+    const uint64_t offset = feature_offset(fid);
     if (offset == 0) return false;
 
     uint32_t blob_len = 0;
@@ -42,9 +42,15 @@ bool GdbTableParser::read_raw_record_by_fid(
         }
         source = mapped_data_ + offset + sizeof(blob_len);
     } else if (fd_ >= 0) {
-        if (!read_at(offset, &blob_len, sizeof(blob_len)) ||
-            blob_len > file_size_ -
-                           static_cast<size_t>(offset + sizeof(blob_len))) {
+        if (offset > file_size_ ||
+            file_size_ - static_cast<size_t>(offset) < sizeof(blob_len) ||
+            !read_at(offset, &blob_len, sizeof(blob_len)) ||
+            blob_len > file_size_ - static_cast<size_t>(offset) -
+                           sizeof(blob_len)) {
+            return false;
+        }
+        if (blob_len > max_bytes) {
+            if (limit_exceeded != nullptr) *limit_exceeded = true;
             return false;
         }
         try {
@@ -81,19 +87,21 @@ bool GdbTableParser::read_raw_record_by_fid(
     return true;
 }
 
-bool GdbTableParser::peek_geometry_blob(uint32_t fid,
+bool GdbTableParser::peek_geometry_blob(RowSlot fid,
                                         const uint8_t*& blob_data,
-                                        size_t& blob_size) {
+                                        size_t& blob_size,
+                                        bool* geometry_is_null) {
     blob_data = nullptr;
     blob_size = 0;
+    if (geometry_is_null != nullptr) *geometry_is_null = false;
 
     if (fd_ < 0 && file_data_.empty()) {
         if (!open()) return false;
     }
     if (!ensure_fields_loaded()) return false;
-    if (fid >= feature_offsets_.size()) return false;
+    if (fid >= logical_row_count_) return false;
 
-    const uint64_t offset = feature_offsets_[fid];
+    const uint64_t offset = feature_offset(fid);
     if (offset == 0) return false;
 
     const uint8_t* row_data = nullptr;
@@ -105,8 +113,11 @@ bool GdbTableParser::peek_geometry_blob(uint32_t fid,
         if (offset > file_size_ - std::min<size_t>(file_size_, 4U)) return false;
         uint32_t blob_len = 0;
         std::memcpy(&blob_len, mapped_data_ + offset, sizeof(blob_len));
-        if (blob_len == 0 ||
-            blob_len > file_size_ - static_cast<size_t>(offset + 4)) {
+        if (blob_len == 0) {
+            if (geometry_is_null != nullptr) *geometry_is_null = true;
+            return true;
+        }
+        if (blob_len > file_size_ - static_cast<size_t>(offset + 4)) {
             return false;
         }
         row_data = mapped_data_ + offset + 4;
@@ -119,8 +130,11 @@ bool GdbTableParser::peek_geometry_blob(uint32_t fid,
         // exact positional reads so no cached data can survive descriptor reuse.
         uint32_t blob_len = 0;
         if (!read_at(offset, &blob_len, sizeof(blob_len))) return false;
-        if (blob_len == 0 ||
-            blob_len > file_size_ - static_cast<size_t>(offset + 4)) {
+        if (blob_len == 0) {
+            if (geometry_is_null != nullptr) *geometry_is_null = true;
+            return true;
+        }
+        if (blob_len > file_size_ - static_cast<size_t>(offset + 4)) {
             return false;
         }
         try {
@@ -139,8 +153,11 @@ bool GdbTableParser::peek_geometry_blob(uint32_t fid,
         BinaryReader len_reader(file_data_.data() + offset,
                                 file_data_.size() - offset);
         const uint32_t blob_len = len_reader.read_u32();
-        if (blob_len == 0 ||
-            blob_len > file_data_.size() - static_cast<size_t>(offset + 4)) {
+        if (blob_len == 0) {
+            if (geometry_is_null != nullptr) *geometry_is_null = true;
+            return true;
+        }
+        if (blob_len > file_data_.size() - static_cast<size_t>(offset + 4)) {
             return false;
         }
         row_data = file_data_.data() + offset + 4;
@@ -154,6 +171,8 @@ bool GdbTableParser::peek_geometry_blob(uint32_t fid,
         const uint8_t* best_blob = nullptr;
         size_t best_size = 0;
         size_t best_padding = row_size + 1;
+        bool best_geometry_found = false;
+        bool best_geometry_is_null = false;
 
         for (size_t bitmap_size = max_bitmap_size;; --bitmap_size) {
             if (bitmap_size > row_size) {
@@ -175,6 +194,7 @@ bool GdbTableParser::peek_geometry_blob(uint32_t fid,
 
                 const uint8_t* candidate_blob = nullptr;
                 size_t candidate_size = 0;
+                bool candidate_geometry_is_null = false;
                 int nullable_bit = 0;
                 bool valid = true;
                 for (const auto& field : fields_) {
@@ -188,7 +208,11 @@ bool GdbTableParser::peek_geometry_blob(uint32_t fid,
                              ((nullable_bitmap[byte_index] >> bit_index) & 1U) != 0);
                         ++nullable_bit;
                     }
-                    if (is_null) continue;
+                    if (is_null) {
+                        if (field.type == FieldType::Geometry)
+                            candidate_geometry_is_null = true;
+                        continue;
+                    }
 
                     if (field.type == FieldType::Geometry) {
                         const uint64_t geometry_size = reader.read_varuint();
@@ -198,6 +222,7 @@ bool GdbTableParser::peek_geometry_blob(uint32_t fid,
                         }
                         candidate_blob = reader.data() + reader.tell();
                         candidate_size = static_cast<size_t>(geometry_size);
+                        candidate_geometry_is_null = false;
                         reader.skip(candidate_size);
                         continue;
                     }
@@ -211,13 +236,17 @@ bool GdbTableParser::peek_geometry_blob(uint32_t fid,
                 if (valid && reader.tell() <= row_size &&
                     is_zero_padding(row_data + reader.tell(),
                                     row_data + row_size) &&
-                    candidate_blob != nullptr) {
+                    (candidate_blob != nullptr ||
+                     candidate_geometry_is_null)) {
                     const size_t padding = row_size - reader.tell();
                     if (padding < best_padding ||
                         (padding == best_padding && candidate_size > best_size)) {
                         best_blob = candidate_blob;
                         best_size = candidate_size;
                         best_padding = padding;
+                        best_geometry_found = true;
+                        best_geometry_is_null =
+                            candidate_geometry_is_null;
                     }
                 }
             }
@@ -225,7 +254,14 @@ bool GdbTableParser::peek_geometry_blob(uint32_t fid,
             if (bitmap_size == 0) break;
         }
 
-        if (best_blob != nullptr) {
+        if (best_geometry_found) {
+            if (best_geometry_is_null) {
+                if (geometry_is_null != nullptr) {
+                    *geometry_is_null = true;
+                    return true;
+                }
+                return false;
+            }
             blob_data = best_blob;
             blob_size = best_size;
             return true;

@@ -20,10 +20,14 @@ namespace explorgdb {
 struct IndexableWherePredicate {
     size_t field_index = 0;
     std::string field_name;
+    FieldType field_type = FieldType::String;
     AttrOp op = AttrOp::Eq;
     bool is_string = false;
     std::string string_value;
     double numeric_value = 0.0;
+    bool numeric_is_integer = false;
+    bool numeric_integer_overflow = false;
+    int64_t integer_value = 0;
 };
 
 struct CompiledWhereImpl;
@@ -92,7 +96,7 @@ CompiledWhere compile_where(
  * @param expression 已编译 WHERE 表达式。
  * @param fields 当前扫描行的字段数组。
  * @param field_count 字段数量。
- * @return 表达式匹配时返回 true。
+ * @return 表达式为 SQL TRUE 时返回 true；FALSE 和 UNKNOWN 均返回 false。
  */
 bool evaluate_where(
     const CompiledWhere& expression,
@@ -102,7 +106,7 @@ bool evaluate_where(
 /** 在已物化记录上复核完整 WHERE 语义。
  * @param expression 已编译 WHERE 表达式。
  * @param record 已物化字段记录。
- * @return 表达式匹配时返回 true。
+ * @return 表达式为 SQL TRUE 时返回 true；FALSE 和 UNKNOWN 均返回 false。
  */
 bool evaluate_where(
     const CompiledWhere& expression,
@@ -116,9 +120,9 @@ bool evaluate_where(
  * @param right 右侧升序 FID 序列。
  * @return 两个序列的唯一交集。
  */
-std::vector<uint32_t> intersect_sorted_fids(
-    const std::vector<uint32_t>& left,
-    const std::vector<uint32_t>& right);
+std::vector<RowSlot> intersect_sorted_fids(
+    const std::vector<RowSlot>& left,
+    const std::vector<RowSlot>& right);
 
 } // namespace explorgdb
 

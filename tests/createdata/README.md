@@ -6,6 +6,7 @@
 |---|---|
 | `cpp/` | 需要编译的 GDAL/C++ 数据生成器 |
 | `generate_*.py` | Python 数据生成器 |
+| `python/generate_attachment_fixture.py` | ArcGIS Pro 原生附件关系和 BLOB 验收样本 |
 | `powershell/generate_test_data.ps1` | Windows/ArcGIS 数据生成入口 |
 | `DATASET_GUIDE.md` | 真实验收数据结构和生成说明 |
 

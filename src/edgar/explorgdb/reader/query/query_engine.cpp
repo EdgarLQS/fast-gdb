@@ -6,10 +6,17 @@
 #include "catalog_resolver.h"
 #include "explorgdb_constants.h"
 #include "gdb_geometry.h"
+#include "gdb_indexes.h"
 #include "query_where_internal.h"
 
 #include <algorithm>
+#include <iomanip>
 #include <limits>
+#include <list>
+#include <locale>
+#include <mutex>
+#include <sstream>
+#include <unordered_map>
 #include <utility>
 
 namespace explorgdb {
@@ -153,14 +160,105 @@ QueryResult apply_request_options(QueryResult result,
 
 } // namespace
 
+namespace detail {
+
+class QueryPreparationCache {
+public:
+    CompiledWhere get_or_compile(
+        uint32_t table_id,
+        const std::string& text,
+        const std::vector<FieldDescriptor>& fields,
+        bool* cache_hit) {
+        if (cache_hit != nullptr) *cache_hit = false;
+
+        std::string key = std::to_string(table_id);
+        key.push_back('\0');
+        for (const FieldDescriptor& field : fields) {
+            key += std::to_string(field.name.size());
+            key.push_back(':');
+            key += field.name;
+            key.push_back(':');
+            key += std::to_string(static_cast<unsigned>(field.type));
+            key.push_back(';');
+        }
+        key.push_back('\0');
+        key += text;
+        if (key.size() > kMaxKeyBytes) {
+            return compile_where(text, fields);
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            const auto found = entries_.find(key);
+            if (found != entries_.end()) {
+                lru_.splice(lru_.begin(), lru_, found->second.lru_position);
+                if (cache_hit != nullptr) *cache_hit = true;
+                return found->second.expression;
+            }
+        }
+
+        CompiledWhere compiled = compile_where(text, fields);
+        std::lock_guard<std::mutex> lock(mutex_);
+        const auto raced = entries_.find(key);
+        if (raced != entries_.end()) {
+            lru_.splice(lru_.begin(), lru_, raced->second.lru_position);
+            if (cache_hit != nullptr) *cache_hit = true;
+            return raced->second.expression;
+        }
+        lru_.push_front(key);
+        entries_.emplace(
+            key, Entry{compiled, lru_.begin()});
+        while (entries_.size() > kMaxEntries) {
+            entries_.erase(lru_.back());
+            lru_.pop_back();
+        }
+        return compiled;
+    }
+
+private:
+    struct Entry {
+        CompiledWhere expression;
+        std::list<std::string>::iterator lru_position;
+    };
+
+    static constexpr std::size_t kMaxEntries = 128;
+    static constexpr std::size_t kMaxKeyBytes = 64U * 1024U;
+    std::mutex mutex_;
+    std::list<std::string> lru_;
+    std::unordered_map<std::string, Entry> entries_;
+};
+
+std::shared_ptr<QueryPreparationCache> make_query_preparation_cache() {
+    return std::make_shared<QueryPreparationCache>();
+}
+
+}  // namespace detail
+
 // ────────────────────────────────────────────────
 // 1. 引擎与游标代次控制
 // ────────────────────────────────────────────────
 
 QueryEngine::QueryEngine(const GdbCatalog& catalog,
-                         const ResolvedTable& table)
-    : catalog_(catalog), resolved_(table) {
+                         const ResolvedTable& table,
+                         std::shared_ptr<detail::QueryPreparationCache>
+                             query_preparation_cache)
+    : query_preparation_cache_(
+          query_preparation_cache != nullptr
+              ? std::move(query_preparation_cache)
+              : detail::make_query_preparation_cache()),
+      catalog_(catalog), resolved_(table) {
     cursor_control_ = std::make_unique<CursorControl>();
+}
+
+CompiledWhere QueryEngine::prepare_where(
+        const std::string& text, bool* cache_hit) const {
+    if (!parser_ || query_preparation_cache_ == nullptr) {
+        if (cache_hit != nullptr) *cache_hit = false;
+        return compile_where(text, parser_ ? parser_->fields()
+                                          : std::vector<FieldDescriptor>{});
+    }
+    return query_preparation_cache_->get_or_compile(
+        resolved_.id, text, parser_->fields(), cache_hit);
 }
 
 uint64_t QueryEngine::CursorControl::register_feature_cursor() noexcept {
@@ -224,6 +322,11 @@ bool QueryEngine::open() {
         resolver.load();
         capabilities_ = CapabilityReport::inspect(
             catalog_, resolver, resolved_.id, *parser_);
+    }
+    if (resolved_.has_spatial_index == false) {
+        capabilities_.spatial_index = {
+            CapabilityState::Degraded,
+            kDiagnosticSpatialIndexNotDeclared};
     }
 
     opened_ = capabilities_.can_read_layer();
@@ -301,7 +404,7 @@ QueryResult QueryEngine::query(const QueryRequest& request) {
 }
 
 // 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
-bool QueryEngine::read_by_fid(uint32_t fid, FeatureRecord& record) {
+bool QueryEngine::read_by_fid(RowSlot fid, FeatureRecord& record) {
     if (feature_cursor_active()) return false;
     return parser_ && parser_->read_record_by_fid(fid, record);
 }
@@ -322,7 +425,7 @@ QueryResult QueryEngine::query_sequential_scan(const QueryRequest& request) cons
 
     const size_t stop_after = scan_stop_after(request);
     parser_->sequential_scan(
-        [&](uint32_t fid, const FieldRef*, int) {
+        [&](RowSlot fid, const FieldRef*, int) {
             result.matched_fids.push_back(fid);
             const bool cancelled = request.cancel_requested &&
                 request.cancel_requested();
@@ -345,7 +448,7 @@ const FieldDescriptor* QueryEngine::geometry_field() const {
 }
 
 bool QueryEngine::feature_intersects(
-    uint32_t fid,
+    RowSlot fid,
     double xmin,
     double ymin,
     double xmax,
@@ -384,7 +487,7 @@ bool QueryEngine::feature_intersects(
         blob, size, xmin, ymin, xmax, ymax);
 }
 
-std::vector<uint32_t> QueryEngine::query_bbox(
+std::vector<RowSlot> QueryEngine::query_bbox(
     double xmin,
     double ymin,
     double xmax,
@@ -415,58 +518,145 @@ QueryResult QueryEngine::query_spatial(const QueryRequest& request) {
 // 5. 属性索引与 WHERE
 // ────────────────────────────────────────────────
 
-std::vector<uint32_t> QueryEngine::query_attribute_double(
+std::vector<RowSlot> QueryEngine::query_attribute_double(
     const std::string& index_name,
     double value,
     AttrOp op) {
-    if (feature_cursor_active()) return {};
+    if (feature_cursor_active() || !parser_) return {};
     const auto* atx = catalog_.find_atx(resolved_.id, index_name);
     if (!atx) return {};
 
     GdbAttributeIndexParser index(
         catalog_.path() + "/" + atx->filename);
-    return index.parse()
-        ? index.query_double(value, op)
-        : std::vector<uint32_t>{};
+    std::vector<RowSlot> indexed;
+    if (!index.query_double_direct(
+            value, op, static_cast<size_t>(std::min<RowSlot>(
+                parser_->feature_count(), std::numeric_limits<size_t>::max())),
+            indexed)) {
+        return {};
+    }
+    return indexed;
 }
 
-std::vector<uint32_t> QueryEngine::query_attribute_string(
+std::vector<RowSlot> QueryEngine::query_attribute_string(
     const std::string& index_name,
     const std::string& value,
     AttrOp op) {
-    if (feature_cursor_active()) return {};
+    if (feature_cursor_active() || !parser_) return {};
     const auto* atx = catalog_.find_atx(resolved_.id, index_name);
     if (!atx) return {};
 
     GdbAttributeIndexParser index(
         catalog_.path() + "/" + atx->filename);
-    return index.parse()
-        ? index.query_string(value, op)
-        : std::vector<uint32_t>{};
+    std::vector<RowSlot> indexed;
+    if (!index.query_string_direct(
+            value, op, static_cast<size_t>(std::min<RowSlot>(
+                parser_->feature_count(), std::numeric_limits<size_t>::max())),
+            indexed)) {
+        return {};
+    }
+    return indexed;
 }
 
 // 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 QueryResult QueryEngine::query_attribute(const QueryRequest& request) {
     QueryResult result;
     result.execution_path = kPathAttributeAtx;
-    if (request.kind == QueryKind::AttributeDouble) {
-        result.matched_fids = query_attribute_double(
-            request.index_name, request.double_value, request.attr_op);
-    } else {
-        result.matched_fids = query_attribute_string(
-            request.index_name, request.string_value, request.attr_op);
-    }
-
     const auto* atx =
         catalog_.find_atx(resolved_.id, request.index_name);
-    if (!atx) {
-        // 该兼容入口只报告缺索引，不在此处重复实现通用 WHERE 扫描。
-        result.execution_path = kPathAttributeSequential;
-        result.fallback_reason = kFallbackAttributeIndexMissing;
-    } else if (result.matched_fids.empty()) {
-        // 合法空结果不是错误，不保留 fallback 原因。
-        result.fallback_reason.clear();
+    if (atx != nullptr) {
+        try {
+            GdbAttributeIndexParser index(
+                catalog_.path() + "/" + atx->filename);
+            std::vector<RowSlot> indexed_fids;
+            const auto max_fid_count = static_cast<size_t>(std::min<RowSlot>(
+                parser_->feature_count(), std::numeric_limits<size_t>::max()));
+            const bool indexed = request.kind == QueryKind::AttributeDouble
+                ? index.query_double_direct(
+                      request.double_value, request.attr_op,
+                      max_fid_count, indexed_fids)
+                : index.query_string_direct(
+                      request.string_value, request.attr_op,
+                      max_fid_count, indexed_fids);
+            if (indexed) {
+                result.matched_fids = std::move(indexed_fids);
+                return result;
+            }
+        } catch (...) {
+            // A damaged or concurrently replaced ATX uses the same scan
+            // fallback as an explicit parse failure.
+        }
     }
+
+    result.execution_path = kPathAttributeSequential;
+    result.fallback_reason = atx == nullptr
+        ? kFallbackAttributeIndexMissing
+        : "attribute index could not be parsed; sequential scan used";
+
+    // An index name is not sufficient to infer a field. Only fall back when
+    // the catalog declares a direct-field index that can be compiled safely.
+    std::vector<IndexEntry> index_metadata;
+    if (!catalog_.read_index_metadata(resolved_.id, index_metadata)) {
+        return result;
+    }
+    const auto metadata = std::find_if(
+        index_metadata.begin(), index_metadata.end(),
+        [&](const IndexEntry& entry) {
+            return entry.name == request.index_name &&
+                   GdbIndexesParser::is_direct_field_expression(
+                       entry.column_name);
+        });
+    if (metadata == index_metadata.end()) {
+        if (atx != nullptr) {
+            result.fallback_reason +=
+                "; direct indexed-field metadata unavailable";
+        }
+        return result;
+    }
+
+    const char* operation = "=";
+    switch (request.attr_op) {
+        case AttrOp::Eq: operation = "="; break;
+        case AttrOp::Ne: operation = "!="; break;
+        case AttrOp::Lt: operation = "<"; break;
+        case AttrOp::Le: operation = "<="; break;
+        case AttrOp::Gt: operation = ">"; break;
+        case AttrOp::Ge: operation = ">="; break;
+    }
+
+    std::string literal;
+    if (request.kind == QueryKind::AttributeString) {
+        literal.reserve(request.string_value.size() + 2U);
+        literal.push_back('\'');
+        for (char character : request.string_value) {
+            literal.push_back(character);
+            if (character == '\'') literal.push_back('\'');
+        }
+        literal.push_back('\'');
+    } else {
+        std::ostringstream number;
+        number.imbue(std::locale::classic());
+        number << std::setprecision(
+                      std::numeric_limits<double>::max_digits10)
+               << request.double_value;
+        literal = number.str();
+    }
+
+    const CompiledWhere expression = prepare_where(
+        metadata->column_name + " " + operation + " " + literal,
+        &result.query_preparation_cache_hit);
+    if (!expression.valid()) {
+        result.fallback_reason +=
+            "; sequential scan predicate unsupported: " + expression.error();
+        return result;
+    }
+
+    parser_->sequential_scan(
+        [&](RowSlot fid, const FieldRef* fields, int field_count) {
+            if (evaluate_where(expression, fields, field_count))
+                result.matched_fids.push_back(fid);
+            return true;
+        });
     return result;
 }
 
@@ -479,8 +669,8 @@ QueryResult QueryEngine::query_where(const QueryRequest& request) {
         return result;
     }
 
-    const CompiledWhere expression = compile_where(
-        request.where_clause, parser_->fields());
+    const CompiledWhere expression = prepare_where(
+        request.where_clause, &result.query_preparation_cache_hit);
     if (!expression.valid()) {
         result.fallback_reason = expression.error();
         return result;
@@ -489,7 +679,7 @@ QueryResult QueryEngine::query_where(const QueryRequest& request) {
     // FieldRef 只在当前扫描回调有效；求值器不得把底层指针保存到回调外。
     const size_t stop_after = scan_stop_after(request);
     parser_->sequential_scan(
-        [&](uint32_t fid, const FieldRef* fields, int field_count) {
+        [&](RowSlot fid, const FieldRef* fields, int field_count) {
             if (evaluate_where(expression, fields, field_count)) {
                 result.matched_fids.push_back(fid);
             }

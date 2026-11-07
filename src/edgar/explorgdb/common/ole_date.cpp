@@ -35,17 +35,21 @@ static void civil_from_days(int64_t z, int& year, unsigned& month,
 
 static std::string format_timepoint(std::chrono::system_clock::time_point tp,
                                     bool date_only, bool time_only) {
-    auto total_sec = std::chrono::duration_cast<std::chrono::seconds>(
-                         tp.time_since_epoch()).count();
-    // Decompose seconds into days + time-of-day
-    int64_t days = total_sec >= 0 ? total_sec / 86400
-                                  : (total_sec - 86399) / 86400;
-    int64_t rem = total_sec - days * 86400;  // seconds since midnight
-    if (rem < 0) { rem += 86400; days -= 1; }
+    constexpr int64_t milliseconds_per_day = 86400000;
+    const int64_t total_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            tp.time_since_epoch()).count();
+    // Decompose milliseconds into days + time-of-day, including pre-epoch values.
+    int64_t days = total_ms >= 0
+        ? total_ms / milliseconds_per_day
+        : (total_ms - (milliseconds_per_day - 1)) / milliseconds_per_day;
+    int64_t rem = total_ms - days * milliseconds_per_day;
+    if (rem < 0) { rem += milliseconds_per_day; --days; }
 
-    unsigned hour = static_cast<unsigned>(rem / 3600);
-    unsigned min  = static_cast<unsigned>((rem % 3600) / 60);
-    unsigned sec  = static_cast<unsigned>(rem % 60);
+    unsigned hour = static_cast<unsigned>(rem / 3600000);
+    unsigned min = static_cast<unsigned>((rem % 3600000) / 60000);
+    unsigned sec = static_cast<unsigned>((rem % 60000) / 1000);
+    unsigned millisecond = static_cast<unsigned>(rem % 1000);
 
     int year = 0;
     unsigned month = 0, day = 0;
@@ -64,6 +68,9 @@ static std::string format_timepoint(std::chrono::system_clock::time_point tp,
             << std::setw(2) << hour << ':'
             << std::setw(2) << min << ':'
             << std::setw(2) << sec;
+        if (millisecond != 0) {
+            oss << '.' << std::setw(3) << millisecond;
+        }
     }
     return oss.str();
 }
@@ -81,13 +88,14 @@ std::chrono::system_clock::time_point ole_to_timepoint(double ole_date) {
     }
 
     int64_t total_days = static_cast<int64_t>(int_part) + days_to_unix;
-    int64_t total_seconds = total_days * 86400;
-    // 时间部分: 小数 → 秒
-    int64_t time_seconds = static_cast<int64_t>(std::round(frac * 86400.0));
-    total_seconds += time_seconds;
+    int64_t total_milliseconds = total_days * 86400000;
+    // Preserve FileGDB high-precision Date and TimestampOffset values to 1 ms.
+    const int64_t time_milliseconds = static_cast<int64_t>(
+        std::round(frac * 86400000.0));
+    total_milliseconds += time_milliseconds;
 
     return std::chrono::system_clock::time_point(
-        std::chrono::seconds(total_seconds));
+        std::chrono::milliseconds(total_milliseconds));
 }
 
 std::string ole_to_string(double ole_date, bool date_only, bool time_only) {

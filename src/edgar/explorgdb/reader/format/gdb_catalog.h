@@ -4,7 +4,7 @@
 // GdbCatalog 是 explorgdb 的入口类。调用 scan(gdb_path) 后：
 //   1. 遍历目录，匹配 aXXXXXXXX.<ext> 格式的文件
 //   2. 从文件名提取 numeric_id（如 a00000001.gdbtable → id=1）
-//   3. 读取 "gdb" 文件的 8 字节头部（version + magic）
+//   3. 读取 "gdb" 文件的 4 字节版本号，兼容附带 4 字节 magic 的变体
 //   4. 读取 "timestamps" 文件的 384 字节
 //
 // 通过 find_table(id) / find_tablx(id) 可按 ID 查找配对文件，
@@ -30,8 +30,8 @@ public:
      */
     bool scan(const std::string& gdb_path);
 
-    /** 读取 gdb 文件的 8 字节目录头并校验 magic。
-     * @return 读取并校验成功时返回 true。
+    /** 读取 gdb 文件的 4/8 字节目录头。
+     * @return 完整读取 4 或 8 字节头部时返回 true。
      */
     bool read_magic();
 

@@ -16,12 +16,15 @@
 #ifndef TEST_FIXTURE_EXPLORGDB_H
 #define TEST_FIXTURE_EXPLORGDB_H
 
+#include <array>
 #include <cstdint>
+#include <cstddef>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace explorgdb_test {
@@ -901,6 +904,99 @@ inline std::vector<uint8_t> build_geom_multipatch_m() {
     write_svarint(buf, 5001);
     write_svarint(buf, 1000);
     write_svarint(buf, 1000);
+    return buf;
+}
+
+/**
+ * 构造带显式 part type 和 part size 的 MultiPatch 几何。
+ * part type 使用 ArcGIS/Shapefile MultiPatch 的稳定编码；坐标采用确定的
+ * 累积 delta，供结构解析、三角索引和 Ring 分组测试使用。
+ */
+inline std::vector<uint8_t> build_geom_multipatch_parts(
+    const std::vector<uint64_t>& part_types,
+    const std::vector<size_t>& part_sizes,
+    bool has_m = false,
+    uint64_t geometry_type = 0) {
+    std::vector<uint8_t> buf;
+    if (part_types.empty() || part_types.size() != part_sizes.size())
+        return buf;
+
+    uint64_t point_count = 0;
+    for (size_t part_size : part_sizes) point_count += part_size;
+    write_varuint(buf, geometry_type != 0
+        ? geometry_type : (has_m ? 31 : 32));
+    write_varuint(buf, point_count);
+    write_varuint(buf, 0);  // format marker
+    write_varuint(buf, part_types.size());
+    write_varuint(buf, 1); write_varuint(buf, 1);
+    write_varuint(buf, 1000); write_varuint(buf, 1000);
+    for (size_t index = 0; index + 1 < part_sizes.size(); ++index)
+        write_varuint(buf, part_sizes[index]);
+    for (uint64_t part_type : part_types)
+        write_varuint(buf, part_type);
+
+    int64_t x = 0;
+    int64_t y = 0;
+    for (uint64_t index = 0; index < point_count; ++index) {
+        const int64_t next_x = 1 + static_cast<int64_t>(index) * 1000;
+        const int64_t next_y = 1 + static_cast<int64_t>(index % 4) * 1000;
+        write_svarint(buf, next_x - x);
+        write_svarint(buf, next_y - y);
+        x = next_x;
+        y = next_y;
+    }
+
+    int64_t z = 0;
+    for (uint64_t index = 0; index < point_count; ++index) {
+        const int64_t next_z = 1001 + static_cast<int64_t>(index) * 1000;
+        write_svarint(buf, next_z - z);
+        z = next_z;
+    }
+    if (has_m) {
+        int64_t m = 0;
+        for (uint64_t index = 0; index < point_count; ++index) {
+            const int64_t next_m = 5001 + static_cast<int64_t>(index) * 1000;
+            write_svarint(buf, next_m - m);
+            m = next_m;
+        }
+    }
+    return buf;
+}
+
+/** 构造两个共享边且均以 OuterRing 编码的三角面。 */
+inline std::vector<uint8_t> build_geom_multipatch_outer_ring_tin() {
+    std::vector<uint8_t> buf;
+    write_varuint(buf, 32U);
+    write_varuint(buf, 8U);
+    write_varuint(buf, 0U);
+    write_varuint(buf, 2U);
+    write_varuint(buf, 0U);
+    write_varuint(buf, 0U);
+    write_varuint(buf, 2000U);
+    write_varuint(buf, 1000U);
+    write_varuint(buf, 4U);
+    write_varuint(buf, 2U);
+    write_varuint(buf, 2U);
+
+    const std::array<std::pair<int64_t, int64_t>, 8> xy{{
+        {0, 0}, {1000, 0}, {0, 1000}, {0, 0},
+        {0, 0}, {0, 1000}, {-1000, 0}, {0, 0}}};
+    int64_t x = 0;
+    int64_t y = 0;
+    for (const auto& point : xy) {
+        write_svarint(buf, point.first - x);
+        write_svarint(buf, point.second - y);
+        x = point.first;
+        y = point.second;
+    }
+
+    const std::array<int64_t, 8> z{{0, 1000, 2000, 0,
+                                    0, 2000, 3000, 0}};
+    int64_t previous_z = 0;
+    for (int64_t value : z) {
+        write_svarint(buf, value - previous_z);
+        previous_z = value;
+    }
     return buf;
 }
 

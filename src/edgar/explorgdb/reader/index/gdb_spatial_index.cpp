@@ -1,18 +1,8 @@
 // src/edgar/explorgdb/gdb_spatial_index.cpp
 // .spx 空间索引解析实现 — B+ 树按需导航（参考 GDAL OpenFileGDB 实现）
 //
-// 页面布局（value_size=8）：
-//   分支页面：
-//     bytes 0-3:   next_page_id
-//     bytes 4-7:   entry_count
-//     bytes 8..8+N*4:     child_page_id 数组 (N+1 × 4)
-//     bytes kPageHeaderSize+mpp*4..:   值数组 (N × 8) — 固定偏移
-//   叶子页面：
-//     bytes 0-3:   next_page_id
-//     bytes 4-7:   entry_count
-//     bytes 8-11:  UNUSED (padding)
-//     bytes kPageHeaderSize..kPageHeaderSize+N*4:     fid 数组 (N × 4)
-//     bytes kPageHeaderSize+mpp*4..:     值数组 (N × 8) — 固定偏移
+// 页面布局（value_size=8）：v1 使用 4096 字节页和 4 字节 ID，v2 使用
+// 65536 字节页和 8 字节 ID；header、子页/FID 数组及值数组偏移由版本决定。
 //
 // B+ 树语义（GDAL FindPages）：
 //   - entry[i] 是分隔符，entry[i].raw 是 child[i] 范围的上界参考
@@ -22,8 +12,6 @@
 //   - 叶子层：FindMinMaxIdx 完整 64-bit 比较
 
 #include "gdb_spatial_index.h"
-#include "binary_reader.h"
-#include "explorgdb_constants.h"
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -31,15 +19,82 @@
 #include <cstring>
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace explorgdb {
 
-static inline int calc_max_per_page(uint8_t value_size) {
-    return static_cast<int>((GdbSpatialIndexParser::kPageSize - kPageHeaderSize) / (4 + value_size));
+namespace {
+
+uint32_t read_u32_le(const uint8_t* bytes) {
+    return static_cast<uint32_t>(bytes[0]) |
+           (static_cast<uint32_t>(bytes[1]) << 8U) |
+           (static_cast<uint32_t>(bytes[2]) << 16U) |
+           (static_cast<uint32_t>(bytes[3]) << 24U);
 }
+
+ObjectId read_object_id(const uint8_t* bytes, uint8_t width) {
+    ObjectId value = 0U;
+    for (size_t index = 0; index < width; ++index) {
+        value |= static_cast<ObjectId>(bytes[index]) << (index * 8U);
+    }
+    return value;
+}
+
+size_t leaf_header_size(uint32_t version) {
+    return version == 1U ? 12U : 20U;
+}
+
+size_t nonleaf_header_size(uint32_t version) {
+    return version == 1U ? 8U : 12U;
+}
+
+size_t calc_max_per_page(uint8_t value_size,
+                         size_t page_size,
+                         uint8_t object_id_size,
+                         size_t leaf_header) {
+    if (page_size < leaf_header || value_size == 0U || object_id_size == 0U)
+        return 0U;
+    return (page_size - leaf_header) /
+           (object_id_size + static_cast<size_t>(value_size));
+}
+
+} // namespace
 
 GdbSpatialIndexParser::GdbSpatialIndexParser(const std::string& file_path)
     : file_path_(file_path) {}
+
+bool GdbSpatialIndexParser::supports_layer_extent(
+    double xmin, double ymin, double xmax, double ymax,
+    const std::vector<double>& grid_resolutions) {
+    if (grid_resolutions.empty() ||
+        grid_resolutions.size() > kMaxDepth ||
+        !std::isfinite(grid_resolutions.front()) ||
+        grid_resolutions.front() <= 0.0 ||
+        !std::isfinite(xmin) || !std::isfinite(ymin) ||
+        !std::isfinite(xmax) || !std::isfinite(ymax) ||
+        xmin > xmax || ymin > ymax) {
+        return false;
+    }
+    for (double resolution : grid_resolutions) {
+        if (!std::isfinite(resolution) || resolution <= 0.0) return false;
+    }
+
+    const long double grid_resolution = grid_resolutions.front();
+    const long double cell_offset = 1LL << 29U;
+    const long double maximum_cell =
+        static_cast<long double>(std::numeric_limits<int32_t>::max());
+    const auto scaled_center_is_representable = [&](double minimum,
+                                                     double maximum) {
+        const long double center = static_cast<long double>(minimum) +
+            (static_cast<long double>(maximum) - minimum) / 2.0L;
+        const long double scaled = center / grid_resolution + cell_offset;
+        return std::isfinite(scaled) && scaled >= 0.0L &&
+               scaled <= maximum_cell;
+    };
+
+    return scaled_center_is_representable(xmin, xmax) &&
+           scaled_center_is_representable(ymin, ymax);
+}
 
 // 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 GdbSpatialIndexParser::~GdbSpatialIndexParser() {
@@ -49,6 +104,21 @@ GdbSpatialIndexParser::~GdbSpatialIndexParser() {
 
 // 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 bool GdbSpatialIndexParser::parse() {
+    if (mapped_data_) {
+        munmap(const_cast<uint8_t*>(mapped_data_), mapped_size_);
+        mapped_data_ = nullptr;
+    }
+    if (fd_ >= 0) {
+        close(fd_);
+        fd_ = -1;
+    }
+    mapped_size_ = 0U;
+    page_count_ = 0U;
+    trailer_ = BPlusTreeTrailer{};
+    max_per_page_ = 0U;
+    values_offset_ = 0U;
+    clear_cache();
+
 #ifdef _WIN32
     fd_ = fast_gdb_open_utf8(file_path_.c_str(), O_RDONLY);
 #else
@@ -58,13 +128,54 @@ bool GdbSpatialIndexParser::parse() {
 
     struct stat st;
     if (fstat(fd_, &st) < 0) { close(fd_); fd_ = -1; return false; }
+    if (st.st_size < 0 || static_cast<uintmax_t>(st.st_size) >
+            static_cast<uintmax_t>(std::numeric_limits<size_t>::max())) {
+        close(fd_);
+        fd_ = -1;
+        return false;
+    }
     mapped_size_ = static_cast<size_t>(st.st_size);
-    if (mapped_size_ < kTrailerSize) { close(fd_); fd_ = -1; return false; }
+    if (mapped_size_ < sizeof(uint32_t)) {
+        close(fd_);
+        fd_ = -1;
+        return false;
+    }
 
     if (!parse_trailer()) { close(fd_); fd_ = -1; return false; }
 
-    max_per_page_ = calc_max_per_page(trailer_.value_size);
-    values_offset_ = kPageHeaderSize + max_per_page_ * 4;
+    const size_t trailer_size = trailer_.version == 1U
+        ? kTrailerSize : kV2TrailerSize;
+    if (mapped_size_ < trailer_size) {
+        close(fd_);
+        fd_ = -1;
+        return false;
+    }
+    const size_t page_bytes = mapped_size_ - trailer_size;
+    if (page_bytes % trailer_.page_size != 0U) {
+        close(fd_);
+        fd_ = -1;
+        return false;
+    }
+    page_count_ = page_bytes / trailer_.page_size;
+    if (page_count_ == 0U || trailer_.tree_depth > page_count_) {
+        close(fd_);
+        fd_ = -1;
+        return false;
+    }
+    max_per_page_ = calc_max_per_page(
+        trailer_.value_size, trailer_.page_size, trailer_.object_id_size,
+        leaf_header_size(trailer_.version));
+    values_offset_ = leaf_header_size(trailer_.version) +
+        max_per_page_ * trailer_.object_id_size;
+    if (max_per_page_ == 0U || values_offset_ > trailer_.page_size ||
+        trailer_.value_size > trailer_.page_size - values_offset_) {
+        close(fd_);
+        fd_ = -1;
+        return false;
+    }
+    for (PageCache& page : page_cache_) {
+        page.data.resize(trailer_.page_size);
+    }
     void* mapping = mmap(nullptr, mapped_size_, PROT_READ, MAP_PRIVATE, fd_, 0);
     if (mapping != MAP_FAILED) {
         mapped_data_ = static_cast<const uint8_t*>(mapping);
@@ -75,28 +186,58 @@ bool GdbSpatialIndexParser::parse() {
 
 // 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 bool GdbSpatialIndexParser::parse_trailer() {
-    size_t trailer_off = mapped_size_ - kTrailerSize;
-    uint8_t buf[kTrailerSize];
-    if (pread(fd_, buf, kTrailerSize, trailer_off) != kTrailerSize) return false;
+    uint8_t version_bytes[sizeof(uint32_t)]{};
+    const off_t version_offset = static_cast<off_t>(
+        mapped_size_ - sizeof(version_bytes));
+    if (pread(fd_, version_bytes, sizeof(version_bytes), version_offset) !=
+        static_cast<ssize_t>(sizeof(version_bytes))) return false;
+    trailer_.version = read_u32_le(version_bytes);
+    if (trailer_.version == 1U) {
+        trailer_.page_size = static_cast<uint32_t>(kPageSize);
+        trailer_.object_id_size = 4U;
+    } else if (trailer_.version == 2U) {
+        trailer_.page_size = static_cast<uint32_t>(kV2PageSize);
+        trailer_.object_id_size = 8U;
+    } else {
+        return false;
+    }
+    const size_t trailer_size = trailer_.version == 1U
+        ? kTrailerSize : kV2TrailerSize;
+    if (mapped_size_ < trailer_size) return false;
+    uint8_t bytes[kV2TrailerSize]{};
+    const size_t trailer_offset = mapped_size_ - trailer_size;
+    if (pread(fd_, bytes, trailer_size, static_cast<off_t>(trailer_offset)) !=
+        static_cast<ssize_t>(trailer_size)) return false;
 
-    BinaryReader br(buf, kTrailerSize);
-    trailer_.value_size = br.read_u8();
-    uint8_t flags = br.read_u8();
-    trailer_.is_string = (flags & 0x20) != 0;
-    trailer_.is_numeric = (flags & 0x40) != 0;
-    trailer_.magic1 = br.read_u32();
-    trailer_.tree_depth = br.read_u32();
-    trailer_.total_value_count = br.read_u32();
+    trailer_.value_size = bytes[0];
+    const uint8_t flags = bytes[1];
+    trailer_.is_string = (flags & 0x20U) != 0U;
+    trailer_.is_numeric = (flags & 0x40U) != 0U;
+    trailer_.magic1 = read_u32_le(bytes + 2U);
+    trailer_.tree_depth = read_u32_le(bytes + 6U);
+    trailer_.total_value_count = trailer_.version == 1U
+        ? read_u32_le(bytes + 10U) : read_object_id(bytes + 10U, 8U);
+    const uint32_t stored_version = read_u32_le(
+        bytes + trailer_size - sizeof(uint32_t));
 
-    if (trailer_.magic1 != 1) return false;
+    if (trailer_.magic1 != 1U || stored_version != trailer_.version)
+        return false;
     if (trailer_.value_size != 8) return false;
-    if (trailer_.tree_depth < 1 || trailer_.tree_depth > 4) return false;
+    if (trailer_.tree_depth < 1U || trailer_.tree_depth > 4U) return false;
     return true;
 }
 
-const uint8_t* GdbSpatialIndexParser::read_page(uint32_t page_id, int depth) const {
-    size_t off = static_cast<size_t>(page_id - 1) * kPageSize;
-    if (page_id == 0 || off + kPageSize > mapped_size_) return nullptr;
+const uint8_t* GdbSpatialIndexParser::read_page(
+    ObjectId page_id, int depth) const {
+    if (page_id == 0U || page_id > page_count_) return nullptr;
+    const ObjectId page_index = page_id - 1U;
+    if (page_index > static_cast<ObjectId>(
+                         std::numeric_limits<size_t>::max() /
+                         trailer_.page_size)) return nullptr;
+    const size_t off = static_cast<size_t>(page_index) * trailer_.page_size;
+    const size_t page_bytes = page_count_ * trailer_.page_size;
+    if (off > page_bytes || page_bytes - off < trailer_.page_size)
+        return nullptr;
     if (mapped_data_) return mapped_data_ + off;
 
     int depth_idx = (depth - 1) % kMaxDepth;
@@ -106,7 +247,7 @@ const uint8_t* GdbSpatialIndexParser::read_page(uint32_t page_id, int depth) con
     for (int i = slot_start; i < slot_end; i++) {
         if (page_cache_[i].valid && page_cache_[i].page_id == page_id) {
             page_cache_[i].last_used = ++cache_counter_;
-            return page_cache_[i].data;
+            return page_cache_[i].data.data();
         }
     }
 
@@ -131,11 +272,13 @@ const uint8_t* GdbSpatialIndexParser::read_page(uint32_t page_id, int depth) con
     page_cache_[slot].last_used = ++cache_counter_;
     page_cache_[slot].depth = depth;
 
-    if (pread(fd_, page_cache_[slot].data, kPageSize, off) != kPageSize) {
+    if (pread(fd_, page_cache_[slot].data.data(), trailer_.page_size,
+              static_cast<off_t>(off)) !=
+        static_cast<ssize_t>(trailer_.page_size)) {
         page_cache_[slot].valid = false;
         return nullptr;
     }
-    return page_cache_[slot].data;
+    return page_cache_[slot].data.data();
 }
 
 void GdbSpatialIndexParser::clear_cache() const {
@@ -156,11 +299,11 @@ bool GdbSpatialIndexParser::find_minmax_idx(
     int lo = 0, hi = n_vals - 1;
     while (hi - lo >= 2) {
         int mid = (lo + hi) / 2;
-        uint64_t v; std::memcpy(&v, base + mid * 8, 8);
+        const uint64_t v = read_object_id(base + mid * 8, 8U);
         if (v <= max_val) lo = mid; else hi = mid;
     }
     while (true) {
-        uint64_t v; std::memcpy(&v, base + hi * 8, 8);
+        const uint64_t v = read_object_id(base + hi * 8, 8U);
         if (v <= max_val) break;
         hi--;
         if (hi < 0) return false;
@@ -171,11 +314,11 @@ bool GdbSpatialIndexParser::find_minmax_idx(
     lo = 0;
     while (step1_max - lo >= 2) {
         int mid = (lo + step1_max) / 2;
-        uint64_t v; std::memcpy(&v, base + mid * 8, 8);
+        const uint64_t v = read_object_id(base + mid * 8, 8U);
         if (v >= min_val) step1_max = mid; else lo = mid;
     }
     while (true) {
-        uint64_t v; std::memcpy(&v, base + lo * 8, 8);
+        const uint64_t v = read_object_id(base + lo * 8, 8U);
         if (v >= min_val) break;
         lo++;
         if (lo == n_vals) return false;
@@ -185,18 +328,16 @@ bool GdbSpatialIndexParser::find_minmax_idx(
 }
 
 void GdbSpatialIndexParser::collect_fids_btree(
-    uint32_t page_id, int depth,
+    ObjectId page_id, int depth,
     uint64_t start_raw, uint64_t end_raw,
-    std::vector<uint32_t>& out_fids) const {
+    std::vector<RowSlot>& out_fids) const {
 
     if (page_id == 0 || depth <= 0) return;
     const uint8_t* page = read_page(page_id, depth);
     if (!page) return;
 
-    uint32_t entry_count;
-    std::memcpy(&entry_count, page + 4, 4);
-    if (entry_count == 0 || entry_count >
-        static_cast<uint32_t>(max_per_page_))
+    const uint32_t entry_count = read_u32_le(page + trailer_.object_id_size);
+    if (entry_count == 0U || entry_count > max_per_page_)
         return;
 
     uint32_t q_min_cx = static_cast<uint32_t>((start_raw >> 31) & 0x7FFFFFFF);
@@ -207,24 +348,31 @@ void GdbSpatialIndexParser::collect_fids_btree(
         if (!find_minmax_idx(page, entry_count, start_raw, end_raw, min_idx, max_idx))
             return;
         for (int i = min_idx; i <= max_idx; i++) {
-            uint64_t v; std::memcpy(&v, page + values_offset_ + i * 8, 8);
+            const uint64_t v = read_object_id(
+                page + values_offset_ + static_cast<size_t>(i) * 8U, 8U);
             if (v >= start_raw && v <= end_raw) {
-                uint32_t fid;
-                std::memcpy(&fid, (uint8_t*)page + kPageHeaderSize + i * 4, 4);
-                if (fid != 0) out_fids.push_back(fid - 1);
+                const ObjectId fid = read_object_id(
+                    page + leaf_header_size(trailer_.version) +
+                        static_cast<size_t>(i) * trailer_.object_id_size,
+                    trailer_.object_id_size);
+                RowSlot row_slot = 0U;
+                if (object_id_to_row_slot(fid, row_slot))
+                    out_fids.push_back(row_slot);
             }
         }
     } else {
         int i_last = static_cast<int>(entry_count);
         for (int i = 0; i < static_cast<int>(entry_count); i++) {
-            uint64_t v; std::memcpy(&v, page + values_offset_ + i * 8, 8);
+            const uint64_t v = read_object_id(
+                page + values_offset_ + static_cast<size_t>(i) * 8U, 8U);
             uint32_t cx = static_cast<uint32_t>((v >> 31) & 0x7FFFFFFF);
             if (cx > q_max_cx) { i_last = i; break; }
         }
 
         int i_first = 0;
         for (int i = 0; i < static_cast<int>(entry_count); i++) {
-            uint64_t v; std::memcpy(&v, page + values_offset_ + i * 8, 8);
+            const uint64_t v = read_object_id(
+                page + values_offset_ + static_cast<size_t>(i) * 8U, 8U);
             uint32_t cx = static_cast<uint32_t>((v >> 31) & 0x7FFFFFFF);
             if (cx >= q_min_cx) { i_first = (i > 0) ? i - 1 : 0; break; }
         }
@@ -232,27 +380,31 @@ void GdbSpatialIndexParser::collect_fids_btree(
         int visit_end = std::min(i_last, static_cast<int>(entry_count));
         if (i_first > visit_end) return;
 
-        int num_children = visit_end - i_first + 1;
-        uint32_t children[342];
+        const int num_children = visit_end - i_first + 1;
+        const size_t child_offset = nonleaf_header_size(trailer_.version);
+        std::vector<ObjectId> children(static_cast<size_t>(num_children));
         for (int j = 0; j < num_children; j++) {
-            std::memcpy(&children[j], (uint8_t*)page + 8 + (i_first + j) * 4, 4);
+            const size_t child_index = static_cast<size_t>(i_first + j);
+            children[static_cast<size_t>(j)] = read_object_id(
+                page + child_offset + child_index * trailer_.object_id_size,
+                trailer_.object_id_size);
         }
-        for (int j = 0; j < num_children; j++) {
-            collect_fids_btree(children[j], depth - 1,
+        for (ObjectId child : children) {
+            collect_fids_btree(child, depth - 1,
                                start_raw, end_raw, out_fids);
         }
     }
 }
 
-std::vector<uint32_t> GdbSpatialIndexParser::query_bbox(
+std::vector<RowSlot> GdbSpatialIndexParser::query_bbox(
     double xmin, double ymin, double xmax, double ymax,
     double /*xorig*/, double /*yorig*/, double /*xyscale*/,
     const std::vector<double>& grid_resolutions,
-    uint32_t max_fid,
+    RowSlot max_fid,
     bool merge_x_ranges) const {
 
     clear_cache();
-    std::vector<uint32_t> result_fids;
+    std::vector<RowSlot> result_fids;
     if (mapped_size_ == 0 || grid_resolutions.empty() ||
         grid_resolutions.size() > kMaxDepth || trailer_.tree_depth == 0 ||
         !std::isfinite(xmin) || !std::isfinite(ymin) ||
@@ -320,27 +472,27 @@ std::vector<uint32_t> GdbSpatialIndexParser::query_bbox(
     }
 
     if (max_fid > 0 && max_fid < 100000000) {
-        std::vector<bool> seen(max_fid + 1, false);
+        std::vector<bool> seen(static_cast<size_t>(max_fid + 1U), false);
         size_t unique_count = 0;
-        for (uint32_t fid : result_fids) {
+        for (RowSlot fid : result_fids) {
             if (fid <= max_fid && !seen[fid]) {
                 seen[fid] = true;
                 ++unique_count;
             }
         }
 
-        std::vector<uint32_t> unique_fids;
+        std::vector<RowSlot> unique_fids;
         unique_fids.reserve(unique_count);
         const size_t fid_domain = static_cast<size_t>(max_fid) + 1U;
         const bool dense_enough_to_enumerate =
             unique_count != 0 && fid_domain / unique_count <= 16U;
         if (dense_enough_to_enumerate) {
-            for (uint32_t fid = 0; fid <= max_fid; ++fid) {
+            for (RowSlot fid = 0; fid <= max_fid; ++fid) {
                 if (seen[fid]) unique_fids.push_back(fid);
                 if (fid == max_fid) break;
             }
         } else {
-            for (uint32_t fid : result_fids) {
+            for (RowSlot fid : result_fids) {
                 if (fid <= max_fid && seen[fid]) {
                     unique_fids.push_back(fid);
                     seen[fid] = false;

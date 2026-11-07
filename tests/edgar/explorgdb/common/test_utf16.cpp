@@ -181,3 +181,44 @@ TEST(Utf16Test, MixedWithNull) {
     std::string result = utf16le_to_utf8(buf.data(), 3);
     EXPECT_EQ(result, "A");
 }
+
+TEST(Utf16Test, Utf16SurrogatePairEmitsFourByteUtf8) {
+    const auto input = to_utf16le({0xD83D, 0xDE00});
+    EXPECT_EQ(utf16le_to_utf8(input.data(), 2), "\xF0\x9F\x98\x80");
+}
+
+TEST(Utf16Test, UnpairedSurrogatesEmitReplacementCharacter) {
+    const std::string replacement = "\xEF\xBF\xBD";
+    EXPECT_EQ(utf16le_to_utf8(to_utf16le({0xD83D, 'A'}).data(), 2),
+              replacement + "A");
+    EXPECT_EQ(utf16le_to_utf8(to_utf16le({0xDE00}).data(), 1), replacement);
+}
+
+TEST(Utf16Test, SupplementaryUtf8RoundTripsThroughUtf16Pair) {
+    const std::string input = "A\xF0\x9F\x98\x80";
+    const std::u16string utf16 = utf8_to_utf16(input);
+    ASSERT_EQ(utf16.size(), 3U);
+    EXPECT_EQ(utf16[0], u'A');
+    EXPECT_EQ(utf16[1], 0xD83D);
+    EXPECT_EQ(utf16[2], 0xDE00);
+    EXPECT_EQ(utf16le_to_utf8(
+                  reinterpret_cast<const uint8_t*>(utf16.data()),
+                  static_cast<int>(utf16.size())), input);
+}
+
+TEST(Utf16Test, InvalidUtf8BytesEmitReplacementCharacters) {
+    const std::string input = "\xF0\x28\x8C\x28";
+    const std::string expected = "\xEF\xBF\xBD(\xEF\xBF\xBD(";
+    const std::u16string converted = utf8_to_utf16(input);
+    EXPECT_EQ(converted, u"\uFFFD(\uFFFD(");
+    EXPECT_EQ(utf16le_to_utf8(
+                  reinterpret_cast<const uint8_t*>(converted.data()),
+                  static_cast<int>(converted.size())), expected);
+}
+
+TEST(Utf16Test, TruncatedUtf8AndNullInputAreHandled) {
+    EXPECT_EQ(utf8_to_utf16("\xE2\x82"), u"\uFFFD\uFFFD");
+    EXPECT_TRUE(utf16le_to_utf8(nullptr, 0).empty());
+    EXPECT_TRUE(utf16le_to_utf8(nullptr, -1).empty());
+    EXPECT_TRUE(utf16le_to_utf8(nullptr, 1).empty());
+}

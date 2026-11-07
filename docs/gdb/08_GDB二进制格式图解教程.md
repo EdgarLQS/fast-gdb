@@ -141,7 +141,7 @@ graph LR
         RN["... 记录 N"]
     end
 
-    H["File Header<br/>40 B (v3)<br/>48 B (v4)"] --> SH
+    H["File Header<br/>40 B (v3)<br/>40 B prefix (v4, GDAL reference)"] --> SH
     SH --> FD0
     FD0 --> FD1
     FD1 --> FDN
@@ -168,22 +168,22 @@ packet-beta
 
 /
 
-**v4 格式（48 字节，FGDB 10.x / ArcGIS Pro）**：
+**v4 表头（GDAL OpenFileGDB 上游读取 40 字节前缀；fast-gdb 已支持表头解析）**：
 
 ```mermaid
 packet-beta
   0-31: "version=4 (uint32)"
-  32-63: "has_deleted_features (uint32)"
-  64-95: "largest_size_record (uint32)"
-  96-127: "unknown_role=5 (uint32)"
-  128-159: "padding (uint32)"
-  160-191: "padding (uint32)"
-  192-255: "nfeatures (uint64)"
-  256-319: "file_size (uint64)"
-  320-383: "field_desc_offset (uint64)"
+  32-63: "has_deleted_features (+4)"
+  64-95: "largest_size_record (+8)"
+  96-127: "unknown_role (+12)"
+  128-191: "有效记录数 (+16, int64)"
+  192-255: "file_size (+24, uint64)"
+  256-319: "field_desc_offset (+32, uint64)"
 ```
 
-**源代码**：header 解析 → [`src/edgar/explorgdb/reader/format/gdb_table.cpp`](../../src/edgar/explorgdb/reader/format/gdb_table.cpp#L244) `GdbTableParser::parse_header()`
+**源代码**：GDAL 上游读取 40 字节表头、在偏移 16 取有效记录数并在偏移 32 取字段区偏移：[filegdbtable.cpp](https://github.com/OSGeo/gdal/blob/master/ogr/ogrsf_frmts/openfilegdb/filegdbtable.cpp#L793-L919)。fast-gdb 可解析密集 v4 行槽，也能按 GDAL 已识别的固定 bitmap section 将逻辑 1024 行块映射到紧凑物理偏移块。合成 GDAL 参考样本验证了四条密集记录；额外合成位图只验证映射边界，不是 ArcGIS 原生稀疏记录样本。
+
+带 deleted 标志的 v4 表和未知 bitmap 布局仍 fail closed。真实 64 位 ObjectID 尚未贯通 SPX/ATX、查询候选与对外 API，不能把零基物理行槽当作真实 ObjectID。完整状态和合成样本边界见 [S3.4 格式映射验证记录](../plan/evidence/2026-11-06-S3.4-dense-v4-baseline.md)。
 
 ### 3.2 Section Header
 
@@ -301,7 +301,7 @@ packet-beta
   after4: "..."
 ```
 
-**注意**：字段顺序完全按字段描述符的顺序，不是固定「几何在前」或「几何在后」。FileGDB SDK 创建表时 Geometry 总是第一个字段描述符，所以实际中几何在记录中排第一位。ObjectId 不存储（隐式 = FID+1）。
+**注意**：字段顺序完全按字段描述符的顺序，不是固定「几何在前」或「几何在后」。许多常规 32 位 ObjectID 表不在记录中存储 ObjectID，Reader 以零基行槽映射 `ObjectID = FID + 1`。这只是已验证格式的映射；稀疏 64 位 ObjectID 可能使用额外映射，不能用物理行槽推算，fast-gdb 当前对此 fail closed，见 [S3.4](../plan/22_完整只读能力与GDAL对照升级计划.md#s3-几何保真与格式兼容)。
 
 **记录之间没有预留空间** — 格式为 `[blob_len][data][blob_len][next data]...`，连续存储（[`filegdbtable.cpp:540`](https://github.com/OSGeo/gdal/blob/master/ogr/ogrsf_frmts/openfilegdb/filegdbtable.cpp#L540) `GuessFeatureLocations()`）。
 
@@ -418,7 +418,7 @@ graph LR
     end
 
     subgraph "特殊类型"
-        OID["ObjectId=6<br/>不存储<br/>隐式 = FID+1"]
+        OID["常规 32 位 ObjectId<br/>通常不存储<br/>按已验证映射 = row slot+1"]
 /
 
         U1["UUID_1=10<br/>16 字节"]
@@ -462,7 +462,7 @@ packet-beta
 | String | varuint(len) + UTF-8 字节 | `0x05 "Hello"` |
 | DateTime | 8 字节 double (OLE DATE) | 44205.5 → 2021-01-05 12:00:00 |
 | Geometry | varuint(len) + 几何 blob | 见第 7 节 |
-| ObjectId | 不存储 | 隐式 = FID + 1 |
+| 常规 32 位 ObjectId | 通常不存储 | 已验证的常见映射为 row slot + 1；稀疏 64 位映射不由本表描述 |
 
 ---
 
@@ -475,11 +475,11 @@ packet-beta
 ```mermaid
 graph LR
     subgraph ".gdbtablx 文件"
-        H["Header<br/>16 B (v3)<br/>24 B (v4)"]
+        H["Header<br/>16 B (v3)<br/>16 B fixed prefix (v4, GDAL reference)"]
         O["Offset Entries<br/>N × (4/5/6) B"]
 /
 
-        T["Trailer<br/>16 B (v3)"]
+        T["Trailer<br/>16 B (v3)<br/>variable/partially reversed (v4)"]
     end
 
     H --> O
@@ -490,6 +490,8 @@ graph LR
     O -.->|FID 1 → offset_1| R1["记录 1"]
     O -.->|FID N → offset_N| RN["记录 N"]
 ```
+
+GDAL OpenFileGDB 上游按 16 字节固定头读取 v4 `.gdbtablx`：版本号、64 位 1024 块数和偏移宽度；偏移表后包含逻辑行数、bitmap section 长度和可选位图区。fast-gdb 校验 dense 前缀，并识别 GDAL 已知固定 bitmap section 的标记和块数；未知布局拒绝映射，不当作空偏移表。
 
 ### 5.2 v3 Header（16 字节）
 
@@ -977,7 +979,7 @@ flowchart TD
     SWITCH -->|"Polygon"| PG["同 Polyline<br/>但环自动闭合<br/>→ MULTIPOLYGON WKT"]
 /
 
-    SWITCH -->|"MultiPatch"| MPCH["同 Polygon<br/>但输出不同 WKT"]
+    SWITCH -->|"MultiPatch"| MPCH["读部件类型与坐标<br/>已知结构归一为 TIN/MultiPolygon<br/>未知结构不输出 WKT"]
 
 /
 
@@ -1031,7 +1033,7 @@ GDB 的查询有**三层架构**，从高层到底层：
 
 ### 8.1 FID/ObjectId 查询流程（最快路径）
 
-**ObjectId = N 在 GDB 中等价于 FID = N-1**。ObjectId 不存储在记录中，是隐式值。
+**对当前已验证的常规 32 位表，ObjectId = N 可映射为零基行槽 FID = N-1**。这不适用于稀疏 64 位 ObjectID；fast-gdb 当前 Reader 的物理行槽为 `uint32_t`，尚无覆盖稀疏 64 位 ID 的真实映射实现，不能把 Unified API 的 `int64` 类型声明视为该能力已完成。
 
 ```mermaid
 flowchart LR
@@ -1260,7 +1262,7 @@ flowchart TD
 
 | 查询类型 | 推荐路径 | 性能 | 说明 |
 |----------|----------|------|------|
-| ObjectId = N | `.gdbtablx` 直接索引 | O(1) | 最快路径，不涉及任何索引结构 |
+| 常规 32 位 ObjectId = N | 常见样本可由 row slot = N-1 后直接查 `.gdbtablx` | O(1) | 稀疏 64 位 ObjectID 需要独立映射，当前不支持该推算 |
 | 属性 = 值（有 .atx 索引） | `.atx` B+ 树 → `.gdbtablx` | O(log N + K) | K 为匹配要素数 |
 | 属性 = 值（无索引） | 全表扫描 | O(N) | 依靠 GDAL SWQ 逐要素过 |
 | 空间查询（有 .spx 索引） | `.spx` B+ 树 → peek_bbox → `.gdbtablx` | O(log N + K) | 两层过滤排除大部分不匹配要素 |

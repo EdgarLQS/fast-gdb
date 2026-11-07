@@ -699,10 +699,18 @@ TEST(GeometryTest, MultiPatch) {
     EXPECT_FALSE(geom.is_empty);
     EXPECT_TRUE(geom.has_z);  // MultiPatch always has Z
     EXPECT_FALSE(geom.has_m);
-    EXPECT_NE(geom.wkt.find("GEOMETRYCOLLECTION Z"), std::string::npos);
-    EXPECT_NE(geom.wkt.find("POLYGON Z"), std::string::npos);
+    EXPECT_EQ(geom.wkt.rfind("TIN Z (((", 0), 0U) << geom.wkt;
     EXPECT_EQ(geom.wkt.find("MultiPatch"), std::string::npos);
     EXPECT_NE(geom.wkt.find("0.001 0.001 1.001"), std::string::npos);
+    ASSERT_TRUE(geom.multipatch);
+    ASSERT_TRUE(geom.multipatch->structure_complete);
+    ASSERT_EQ(geom.multipatch->parts.size(), 1U);
+    EXPECT_EQ(geom.multipatch->parts[0].type,
+              MultiPatchPartType::TriangleStrip);
+    const auto normalized_wkt =
+        decoder.decode_value(buf.data(), buf.size()).to_wkt();
+    ASSERT_TRUE(normalized_wkt.has_value());
+    EXPECT_EQ(geom.wkt, *normalized_wkt);
 }
 
 /**
@@ -718,10 +726,13 @@ TEST(GeometryTest, MultiPatchM) {
     EXPECT_FALSE(geom.is_empty);
     EXPECT_TRUE(geom.has_z);
     EXPECT_TRUE(geom.has_m);
-    EXPECT_NE(geom.wkt.find("GEOMETRYCOLLECTION ZM"), std::string::npos);
-    EXPECT_NE(geom.wkt.find("POLYGON ZM"), std::string::npos);
+    EXPECT_EQ(geom.wkt.rfind("MULTIPOLYGON ZM (((", 0), 0U);
     EXPECT_EQ(geom.wkt.find("MultiPatch"), std::string::npos);
     EXPECT_NE(geom.wkt.find("0.001 0.001 1.001 5.001"), std::string::npos);
+    const auto normalized_wkt =
+        decoder.decode_value(buf.data(), buf.size()).to_wkt();
+    ASSERT_TRUE(normalized_wkt.has_value());
+    EXPECT_EQ(geom.wkt, *normalized_wkt);
 }
 
 /**
@@ -737,6 +748,31 @@ TEST(GeometryTest, MultiPatchEmpty) {
     auto geom = decoder.decode(buf.data(), buf.size());
     EXPECT_TRUE(geom.is_empty);
     EXPECT_EQ(geom.wkt, "GEOMETRYCOLLECTION Z EMPTY");
+}
+
+TEST(GeometryTest, MultiPatchLegacyWktFailsClosedForUnknownPartTypes) {
+    auto decoder = make_decoder_2d();
+    const auto unknown = explorgdb_test::build_geom_multipatch_parts({7}, {3});
+    const auto geom = decoder.decode(unknown.data(), unknown.size());
+
+    ASSERT_TRUE(geom.multipatch);
+    EXPECT_EQ(geom.multipatch->parts[0].type,
+              MultiPatchPartType::Unknown);
+    EXPECT_EQ(geom.wkt.rfind("UNSUPPORTED_MULTIPATCH(", 0), 0U);
+    EXPECT_EQ(geom.wkt.find("POLYGON"), std::string::npos);
+
+    auto opaque = explorgdb_test::build_geom_multipatch();
+    opaque.push_back(0x7fU);
+    const auto opaque_geometry = decoder.decode(opaque.data(), opaque.size());
+    EXPECT_EQ(opaque_geometry.wkt.rfind("UNSUPPORTED_MULTIPATCH(", 0), 0U);
+    EXPECT_EQ(opaque_geometry.wkt.find("POLYGON"), std::string::npos);
+
+    const auto malformed =
+        explorgdb_test::build_geom_multipatch_parts({6}, {4});
+    const auto malformed_geometry =
+        decoder.decode(malformed.data(), malformed.size());
+    EXPECT_EQ(malformed_geometry.wkt.rfind("INVALID_GEOMETRY(", 0), 0U);
+    EXPECT_EQ(malformed_geometry.wkt.find("POLYGON"), std::string::npos);
 }
 
 // ── General Types (50-54) 测试 ──

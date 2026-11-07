@@ -28,7 +28,7 @@ std::chrono::system_clock::time_point ole_to_timepoint(double ole_date);
  * 将 OLE DATE 格式化为稳定诊断字符串。
  *
  * date_only 与 time_only 由调用方按字段物理类型选择；两者均为 false 时输出
- * `YYYY-MM-DD HH:MM:SS`。该函数不追加时区后缀。
+ * `YYYY-MM-DD HH:MM:SS`；存在毫秒时追加三位毫秒。该函数不追加时区后缀。
  *
  * @param ole_date OLE DATE double 值。
  * @param date_only 仅输出日期部分。
@@ -40,9 +40,9 @@ std::string ole_to_string(double ole_date,
                           bool time_only);
 
 /** 格式化完整日期时间。 */
-/** 将 OLE 日期格式化为日期时间字符串。
+/** 将 OLE 日期格式化为日期时间字符串，保留毫秒精度。
  * @param ole_date OLE 日期数值。
- * @return 本地化日期时间文本。
+ * @return ISO 风格日期时间文本，不含时区后缀。
  */
 std::string ole_datetime(double ole_date);
 

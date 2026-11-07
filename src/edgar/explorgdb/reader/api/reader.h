@@ -36,9 +36,9 @@ struct ReaderError {
 };
 
 struct ReaderOptions {
-    // fast-gdb currently exposes zero-based uint32_t FIDs. A source with more
-    // slots is rejected instead of silently truncating the FID domain.
-    size_t max_fid_slots = static_cast<size_t>(std::numeric_limits<uint32_t>::max());
+    // Zero-based RowSlot values remain uint64-bit; this limit is an explicit
+    // caller resource guard, not a format-imposed FID width.
+    size_t max_fid_slots = std::numeric_limits<size_t>::max();
 };
 
 /** Layer 对外可消费的只读元数据快照；不暴露 catalog 物理表路径细节。 */
@@ -50,14 +50,63 @@ struct LayerMetadataSnapshot {
     std::vector<DomainInfo> workspace_domains;
     std::vector<RelationshipSummary> relationships;
     std::vector<RelationshipClassDefinition> relationship_definitions;
+    std::vector<RelationshipClassInfo> relationship_classes;
+    std::vector<AttachmentRelationshipInfo> attachments;
     std::vector<DatasetGroupSummary> dataset_groups;
     std::vector<MetadataTableAudit> system_table_audit;
     std::vector<SubtypeInfo> subtypes;
+    MetadataXmlInspection definition_xml;
+    MetadataXmlInspection field_domains_xml;
+    MetadataXmlInspection subtypes_xml;
+    MetadataXmlInspection relationship_classes_xml;
+    MetadataXmlInspection feature_datasets_xml;
+    MetadataXmlInspection attachments_xml;
     CapabilityReport capabilities;
 };
 
 struct MetadataReadResult {
     LayerMetadataSnapshot snapshot;
+    ReaderError error;
+
+    bool ok() const noexcept { return error.ok(); }
+};
+
+/** 数据集范围的拥有型元数据快照。 */
+struct WorkspaceMetadataSnapshot {
+    std::vector<DomainInfo> domains;
+    std::vector<RelationshipSummary> relationships;
+    std::vector<RelationshipClassDefinition> relationship_definitions;
+    std::vector<RelationshipClassInfo> relationship_classes;
+    std::vector<AttachmentRelationshipInfo> attachments;
+    std::vector<DatasetGroupSummary> dataset_groups;
+    std::vector<MetadataTableAudit> system_table_audit;
+    CatalogObjectInventory catalog_objects;
+    MetadataXmlInspection domains_xml;
+    MetadataXmlInspection relationship_classes_xml;
+    MetadataXmlInspection feature_datasets_xml;
+    MetadataXmlInspection attachments_xml;
+};
+
+enum class BinaryValueReadStatus {
+    Available,
+    NullValue,
+    FieldNotFound,
+    NotBinaryField,
+    FeatureNotFound,
+    LimitExceeded,
+    ReadFailed,
+    SourceChanged,
+};
+
+struct BinaryValueReadResult {
+    BinaryValueReadStatus status = BinaryValueReadStatus::ReadFailed;
+    std::size_t byte_size = 0;
+    std::vector<std::uint8_t> bytes;
+    std::string diagnostic;
+};
+
+struct WorkspaceMetadataReadResult {
+    WorkspaceMetadataSnapshot snapshot;
     ReaderError error;
 
     bool ok() const noexcept { return error.ok(); }
@@ -114,7 +163,10 @@ public:
      * @param record 接收字段值的输出对象。
      * @return 读取成功时返回 true。
      */
-    bool read_by_fid(uint32_t fid, FeatureRecord& record);
+    bool read_by_fid(RowSlot fid, FeatureRecord& record);
+    /** 有上限地读取 Binary 字段；超限时不复制 payload。 */
+    BinaryValueReadResult read_binary_field_by_fid(
+        RowSlot fid, const std::string& field_name, std::size_t max_bytes);
     /** 获取当前有效要素数量。
      * @return 当前快照中的有效要素数。
      */
@@ -125,7 +177,7 @@ public:
      * @param raw_record 接收原始记录字节的输出数组。
      * @return 读取成功时返回 true。
      */
-    bool read_raw_by_fid(uint32_t fid,
+    bool read_raw_by_fid(RowSlot fid,
                          FeatureRecord& record,
                          std::vector<uint8_t>& raw_record);
     /** 按最大字节数限制读取原始记录。
@@ -135,7 +187,7 @@ public:
      * @param limit_exceeded 可选输出，记录是否因大小限制截断/拒绝。
      * @return 读取成功且未超过限制时返回 true。
      */
-    bool read_raw_by_fid(uint32_t fid,
+    bool read_raw_by_fid(RowSlot fid,
                          std::vector<uint8_t>& raw_record,
                          std::size_t max_bytes,
                          bool* limit_exceeded = nullptr);
@@ -167,7 +219,7 @@ public:
     Reader& operator=(const Reader&) = delete;
 
     /** 打开一个 FileGDB 数据源。
-     * @param gdb_path FileGDB 目录路径。
+     * @param gdb_path UTF-8 编码的 FileGDB 目录路径。
      * @param options FID 范围等读取约束。
      * @param error 可选输出，接收失败原因。
      * @return 打开成功时返回 Reader，否则返回空值。
@@ -197,6 +249,11 @@ public:
      * @return 图层名称列表。
      */
     std::vector<std::string> layer_names() const;
+    /** 读取数据集范围的元数据，不依赖某个图层存在。 */
+    WorkspaceMetadataReadResult read_workspace_metadata() const;
+    /** 按 FileGDB UUID 读取对象的原始定义和属性。 */
+    CatalogObjectReadResult read_catalog_object_by_uuid(
+        const std::string& uuid) const;
     /** 按名称打开一个图层。
      * @param layer_name 目标图层名称。
      * @param error 可选输出，接收失败原因。

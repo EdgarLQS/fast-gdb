@@ -16,6 +16,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
+#include <iomanip>
 #include <thread>
 #include <vector>
 
@@ -76,10 +77,28 @@ TEST(TablxCacheTest, HitReturnsCorrectData) {
     auto result = TablxCache::instance().get(key);
     ASSERT_NE(result, nullptr);
     EXPECT_EQ(result->feature_count, 3u);
-    ASSERT_EQ(result->offsets.size(), expected_offsets.size());
+    ASSERT_NE(result->offsets, nullptr);
+    ASSERT_EQ(result->offsets->size(), expected_offsets.size());
     for (size_t i = 0; i < expected_offsets.size(); ++i) {
-        EXPECT_EQ(result->offsets[i], expected_offsets[i]);
+        EXPECT_EQ((*result->offsets)[i], expected_offsets[i]);
     }
+
+    TablxCache::instance().clear();
+}
+
+TEST(TablxCacheTest, SharedOffsetsRetainSameImmutableArray) {
+    TablxCacheKey key;
+    key.device = 2;
+    key.inode = 1001;
+    key.file_size = 200;
+    auto offsets = std::make_shared<const std::vector<uint64_t>>(
+        std::vector<uint64_t>{0, 42, 99});
+
+    TablxCache::instance().put_shared(key, offsets, 2, 3);
+    const auto cached = TablxCache::instance().get(key);
+    ASSERT_NE(cached, nullptr);
+    EXPECT_EQ(cached->offsets, offsets);
+    EXPECT_EQ(cached->feature_count, 2u);
 
     TablxCache::instance().clear();
 }
@@ -124,9 +143,29 @@ TEST(TablxCacheTest, SameKeyReturnsSameData) {
     auto r2 = TablxCache::instance().get(key);
     ASSERT_NE(r1, nullptr);
     ASSERT_NE(r2, nullptr);
-    EXPECT_EQ(r1->offsets.size(), r2->offsets.size());
+    ASSERT_NE(r1->offsets, nullptr);
+    ASSERT_NE(r2->offsets, nullptr);
+    EXPECT_EQ(r1->offsets, r2->offsets);
+    EXPECT_EQ(r1->offsets->size(), r2->offsets->size());
     EXPECT_EQ(r1->feature_count, r2->feature_count);
 
+    TablxCache::instance().clear();
+}
+
+TEST(TablxCacheTest, InvalidateRemovesOnlyMatchingIdentity) {
+    TablxCache::instance().clear();
+    TablxCacheKey removed;
+    removed.device = 8;
+    removed.inode = 800;
+    TablxCacheKey retained;
+    retained.device = 8;
+    retained.inode = 801;
+    TablxCache::instance().put(removed, {1, 2}, 2);
+    TablxCache::instance().put(retained, {3, 4}, 2);
+
+    TablxCache::instance().invalidate(removed);
+    EXPECT_EQ(TablxCache::instance().get(removed), nullptr);
+    EXPECT_NE(TablxCache::instance().get(retained), nullptr);
     TablxCache::instance().clear();
 }
 
@@ -240,6 +279,30 @@ TEST(TablxCacheTest, EvictsOldestWhenFull) {
     EXPECT_NE(TablxCache::instance().get(kept_key), nullptr);
 
     TablxCache::instance().clear();
+}
+
+TEST(TablxCacheTest, HitRefreshesLruOrder) {
+    auto& cache = TablxCache::instance();
+    cache.clear();
+    std::vector<TablxCacheKey> keys(TablxCache::kMaxEntries);
+    for (size_t index = 0; index < keys.size(); ++index) {
+        keys[index].device = 7;
+        keys[index].inode = static_cast<uint64_t>(index);
+        keys[index].file_size = 100;
+        cache.put(keys[index], {static_cast<uint64_t>(index)}, 1);
+    }
+
+    ASSERT_NE(cache.get(keys.front()), nullptr);
+    TablxCacheKey newest;
+    newest.device = 7;
+    newest.inode = static_cast<uint64_t>(keys.size());
+    newest.file_size = 100;
+    cache.put(newest, {999}, 1);
+
+    EXPECT_NE(cache.get(keys.front()), nullptr);
+    EXPECT_EQ(cache.get(keys[1]), nullptr);
+    EXPECT_NE(cache.get(newest), nullptr);
+    cache.clear();
 }
 
 // ── 并发安全测试 ──
@@ -358,6 +421,8 @@ TEST(TablxCacheTest, NanosecondTimestampDistinguishesSameSizeRewrite) {
 
     std::fstream file(path, std::ios::binary | std::ios::in | std::ios::out);
     ASSERT_TRUE(file.is_open());
+    // Let filesystems with a coarser timestamp clock advance past creation.
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
     const uint8_t replacement[] = {9, 8, 7, 6};
     file.seekp(24);
     file.write(reinterpret_cast<const char*>(replacement), sizeof(replacement));
@@ -365,6 +430,32 @@ TEST(TablxCacheTest, NanosecondTimestampDistinguishesSameSizeRewrite) {
 
     TablxCacheKey after;
     ASSERT_TRUE(TablxCache::make_key(path, after));
+    EXPECT_FALSE(before == after);
+    fs::remove(path);
+}
+
+TEST(TablxCacheTest, SameSizeRewriteWithRestoredMtimeInvalidatesKey) {
+    const std::string path = create_temp_tablx("_ctime");
+    const auto original_mtime = fs::last_write_time(path);
+    TablxCacheKey before;
+    ASSERT_TRUE(TablxCache::make_key(path, before));
+
+    // ctime only distinguishes this rewrite after the filesystem clock ticks.
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    {
+        std::fstream file(path, std::ios::binary | std::ios::in | std::ios::out);
+        ASSERT_TRUE(file.is_open());
+        const uint8_t replacement[] = {7, 6, 5, 4};
+        file.seekp(24);
+        file.write(reinterpret_cast<const char*>(replacement), sizeof(replacement));
+        ASSERT_TRUE(file.good());
+    }
+    fs::last_write_time(path, original_mtime);
+
+    TablxCacheKey after;
+    ASSERT_TRUE(TablxCache::make_key(path, after));
+    EXPECT_EQ(fs::last_write_time(path), original_mtime);
+    EXPECT_EQ(before.file_size, after.file_size);
     EXPECT_FALSE(before == after);
     fs::remove(path);
 }
@@ -387,4 +478,236 @@ TEST(TablxCacheTest, ClearEmptiesCache) {
     TablxCache::instance().clear();
     EXPECT_EQ(TablxCache::instance().size(), 0u);
     EXPECT_EQ(TablxCache::instance().get(key), nullptr);
+}
+
+namespace {
+
+struct CacheContentionPhase {
+    double throughput_ops_per_second = 0.0;
+    size_t misses = 0;
+    std::vector<uint64_t> sampled_latency_ns;
+};
+
+enum class CacheKeyPattern {
+    OneHot,
+    WorkerLocal,
+    SharedSet
+};
+
+CacheContentionPhase run_cache_contention_phase(
+    TablxCache& cache,
+    const std::vector<TablxCacheKey>& keys,
+    size_t thread_count,
+    size_t iterations_per_thread,
+    CacheKeyPattern key_pattern,
+    bool collect_latency) {
+    using Clock = std::chrono::steady_clock;
+    struct WorkerResult {
+        Clock::time_point start;
+        Clock::time_point finish;
+        size_t misses = 0;
+        uint64_t sink = 0;
+        std::vector<uint64_t> latency_ns;
+    };
+
+    constexpr size_t kLatencySampleStride = 64;
+    std::atomic<size_t> ready{0};
+    std::atomic<bool> start{false};
+    std::vector<WorkerResult> workers(thread_count);
+    std::vector<std::thread> threads;
+    threads.reserve(thread_count);
+
+    for (size_t worker = 0; worker < thread_count; ++worker) {
+        threads.emplace_back([&, worker] {
+            WorkerResult& result = workers[worker];
+            ready.fetch_add(1, std::memory_order_release);
+            while (!start.load(std::memory_order_acquire))
+                std::this_thread::yield();
+
+            result.start = Clock::now();
+            for (size_t operation = 0;
+                 operation < iterations_per_thread; ++operation) {
+                const size_t key_index = key_pattern == CacheKeyPattern::OneHot
+                    ? 0
+                    : (key_pattern == CacheKeyPattern::WorkerLocal
+                           ? worker % keys.size()
+                           : (operation + worker) % keys.size());
+                std::shared_ptr<const TablxCacheValue> value;
+                if (collect_latency &&
+                    operation % kLatencySampleStride == 0) {
+                    const auto before = Clock::now();
+                    value = cache.get(keys[key_index]);
+                    const auto after = Clock::now();
+                    result.latency_ns.push_back(static_cast<uint64_t>(
+                        std::chrono::duration_cast<std::chrono::nanoseconds>(
+                            after - before).count()));
+                } else {
+                    value = cache.get(keys[key_index]);
+                }
+                if (value == nullptr) {
+                    ++result.misses;
+                } else {
+                    result.sink += value->feature_count;
+                }
+            }
+            result.finish = Clock::now();
+        });
+    }
+
+    while (ready.load(std::memory_order_acquire) != thread_count)
+        std::this_thread::yield();
+    start.store(true, std::memory_order_release);
+    for (auto& thread : threads) thread.join();
+
+    CacheContentionPhase phase;
+    auto earliest = workers.front().start;
+    auto latest = workers.front().finish;
+    uint64_t sink = 0;
+    for (const auto& worker : workers) {
+        earliest = std::min(earliest, worker.start);
+        latest = std::max(latest, worker.finish);
+        phase.misses += worker.misses;
+        sink += worker.sink;
+        phase.sampled_latency_ns.insert(
+            phase.sampled_latency_ns.end(),
+            worker.latency_ns.begin(), worker.latency_ns.end());
+    }
+    const double elapsed_seconds =
+        std::chrono::duration<double>(latest - earliest).count();
+    const size_t operations = thread_count * iterations_per_thread;
+    phase.throughput_ops_per_second = elapsed_seconds > 0.0
+        ? static_cast<double>(operations) / elapsed_seconds
+        : 0.0;
+    EXPECT_GT(sink, 0U);
+    return phase;
+}
+
+uint64_t nearest_rank_percentile(std::vector<uint64_t> samples,
+                                 size_t numerator,
+                                 size_t denominator) {
+    if (samples.empty()) return 0;
+    std::sort(samples.begin(), samples.end());
+    const size_t rank =
+        (numerator * samples.size() + denominator - 1) / denominator;
+    return samples[std::max<size_t>(1, rank) - 1];
+}
+
+} // namespace
+
+TEST(TablxCacheBenchmarkTest, SharedHitContentionProfile) {
+    const char* enabled =
+        std::getenv("FAST_GDB_TABLX_CACHE_BENCHMARK");
+    if (enabled == nullptr || std::string(enabled) != "1")
+        GTEST_SKIP() << "set FAST_GDB_TABLX_CACHE_BENCHMARK=1";
+
+    const char* dataset_value =
+        std::getenv("FAST_GDB_TABLX_CACHE_BENCHMARK_DATASET");
+    const char* output_value =
+        std::getenv("FAST_GDB_TABLX_CACHE_BENCHMARK_OUTPUT");
+    if (dataset_value == nullptr || *dataset_value == '\0' ||
+        output_value == nullptr || *output_value == '\0') {
+        GTEST_SKIP() << "set benchmark dataset and output paths";
+    }
+
+    size_t iterations_per_thread = 200000;
+    if (const char* value =
+            std::getenv("FAST_GDB_TABLX_CACHE_BENCHMARK_ITERATIONS")) {
+        const unsigned long long parsed = std::strtoull(value, nullptr, 10);
+        if (parsed > 0 && parsed <= 100000000ULL)
+            iterations_per_thread = static_cast<size_t>(parsed);
+    }
+
+    namespace fs = std::filesystem;
+    const fs::path dataset(dataset_value);
+    ASSERT_TRUE(fs::is_directory(dataset)) << dataset.string();
+    std::vector<fs::path> sidecars;
+    for (const auto& entry : fs::recursive_directory_iterator(dataset)) {
+        if (entry.is_regular_file() &&
+            entry.path().extension() == ".gdbtablx") {
+            sidecars.push_back(entry.path());
+        }
+    }
+    std::sort(sidecars.begin(), sidecars.end());
+    if (sidecars.size() > TablxCache::kMaxEntries)
+        sidecars.resize(TablxCache::kMaxEntries);
+    ASSERT_GE(sidecars.size(), 2U);
+
+    std::vector<TablxCacheKey> keys;
+    keys.reserve(sidecars.size());
+    for (const auto& sidecar : sidecars) {
+        TablxCacheKey key;
+        ASSERT_TRUE(TablxCache::make_key(sidecar.u8string(), key))
+            << sidecar.string();
+        keys.push_back(key);
+    }
+
+    auto& cache = TablxCache::instance();
+    cache.clear();
+    struct CacheReset {
+        TablxCache& cache;
+        ~CacheReset() { cache.clear(); }
+    } cache_reset{cache};
+    for (size_t index = 0; index < keys.size(); ++index) {
+        auto offsets = std::make_shared<const std::vector<uint64_t>>(
+            std::vector<uint64_t>{static_cast<uint64_t>(index + 1)});
+        cache.put_shared(keys[index], std::move(offsets), index + 1, 1);
+    }
+    ASSERT_EQ(cache.size(), keys.size());
+
+    struct ProfileRow {
+        size_t thread_count = 0;
+        std::string key_mode;
+        CacheContentionPhase throughput;
+        CacheContentionPhase latency;
+    };
+    std::vector<ProfileRow> rows;
+    for (const CacheKeyPattern key_pattern : {
+             CacheKeyPattern::OneHot,
+             CacheKeyPattern::WorkerLocal,
+             CacheKeyPattern::SharedSet}) {
+        for (const size_t thread_count : {size_t{1}, size_t{2},
+                                          size_t{4}, size_t{8}}) {
+            ProfileRow row;
+            row.thread_count = thread_count;
+            row.key_mode = key_pattern == CacheKeyPattern::OneHot
+                ? "one_hot_key"
+                : (key_pattern == CacheKeyPattern::WorkerLocal
+                       ? "worker_local_keys" : "shared_key_set");
+            row.throughput = run_cache_contention_phase(
+                cache, keys, thread_count, iterations_per_thread,
+                key_pattern, false);
+            row.latency = run_cache_contention_phase(
+                cache, keys, thread_count, iterations_per_thread,
+                key_pattern, true);
+            EXPECT_EQ(row.throughput.misses, 0U);
+            EXPECT_EQ(row.latency.misses, 0U);
+            rows.push_back(std::move(row));
+        }
+    }
+
+    const fs::path output_path(output_value);
+    if (!output_path.parent_path().empty())
+        fs::create_directories(output_path.parent_path());
+    std::ofstream csv(output_path);
+    ASSERT_TRUE(csv.good()) << output_path.string();
+    csv << "key_mode,threads,cache_entries,iterations_per_thread,"
+           "throughput_ops_per_second,latency_samples,sample_stride,"
+           "p50_ns,p95_ns,p99_ns,min_ns,max_ns,misses\n"
+        << std::fixed << std::setprecision(2);
+    for (const auto& row : rows) {
+        const auto& samples = row.latency.sampled_latency_ns;
+        const auto [minimum, maximum] = std::minmax_element(
+            samples.begin(), samples.end());
+        csv << row.key_mode << ',' << row.thread_count << ',' << keys.size()
+            << ',' << iterations_per_thread << ','
+            << row.throughput.throughput_ops_per_second << ','
+            << samples.size() << ',' << 64 << ','
+            << nearest_rank_percentile(samples, 50, 100) << ','
+            << nearest_rank_percentile(samples, 95, 100) << ','
+            << nearest_rank_percentile(samples, 99, 100) << ','
+            << (samples.empty() ? 0 : *minimum) << ','
+            << (samples.empty() ? 0 : *maximum) << ','
+            << (row.throughput.misses + row.latency.misses) << '\n';
+    }
+    EXPECT_TRUE(csv.good());
 }

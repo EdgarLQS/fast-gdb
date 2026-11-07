@@ -39,15 +39,16 @@ OGRGeometry* geometry_from_wkt(const std::string& text) {
     return geometry;
 }
 
-std::vector<uint32_t> collect_gdal(OGRLayer* layer) {
-    std::vector<uint32_t> result;
+std::vector<explorgdb::RowSlot> collect_gdal(OGRLayer* layer) {
+    std::vector<explorgdb::RowSlot> result;
     layer->SetSpatialFilterRect(0.0, 0.0, 10.0, 10.0);
     if (layer->SetAttributeFilter("keep = 1") != OGRERR_NONE)
         return result;
     layer->ResetReading();
     while (OGRFeature* feature = layer->GetNextFeature()) {
         if (feature->GetFID() > 0)
-            result.push_back(static_cast<uint32_t>(feature->GetFID() - 1));
+            result.push_back(static_cast<explorgdb::RowSlot>(
+                feature->GetFID() - 1));
         OGRFeature::DestroyFeature(feature);
     }
     layer->SetSpatialFilter(nullptr);
@@ -153,7 +154,8 @@ TEST_F(SpatialWhereDimensionTest, PointZPointMAndPointZMUseXYForBbox) {
         request.where_clause = "keep = 1";
         const QueryResult fast = engine.query(request);
         EXPECT_EQ(fast.execution_path, "spatial-where:spx+atx");
-        EXPECT_EQ(fast.matched_fids, (std::vector<uint32_t>{0}));
+        EXPECT_EQ(fast.matched_fids,
+                  (std::vector<explorgdb::RowSlot>{0}));
 
         dataset = static_cast<GDALDataset*>(GDALOpenEx(
             path.c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY,

@@ -20,22 +20,25 @@ namespace explorgdb {
 // 方法实现：具体用途、参数和返回值契约见对应头文件或本文件声明。
 // 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 bool GdbCatalog::scan(const std::string& gdb_path) {
+    const fs::path directory = fs::u8path(gdb_path);
     gdb_path_ = gdb_path;
     entries_.clear();
     index_metadata_cache_ = std::make_shared<IndexMetadataCacheState>();
     has_magic_ = false;
     has_timestamps_ = false;
+    magic_ = GdbDirectoryHeader{};
+    timestamps_ = GdbTimestamps{};
 
-    if (!fs::exists(gdb_path) || !fs::is_directory(gdb_path)) {
+    if (!fs::exists(directory) || !fs::is_directory(directory)) {
         std::cerr << "Error: " << gdb_path << " is not a directory\n";
         return false;
     }
 
     static const std::regex hex_file_re("^a([0-9a-fA-F]{8})\\.(.+)$");
 
-    for (const auto& entry : fs::directory_iterator(gdb_path)) {
+    for (const auto& entry : fs::directory_iterator(directory)) {
         if (!entry.is_regular_file()) continue;
-        const std::string fname = entry.path().filename().string();
+        const std::string fname = entry.path().filename().u8string();
 
         if (fname == "gdb") {
             read_magic();
@@ -68,18 +71,19 @@ bool GdbCatalog::scan(const std::string& gdb_path) {
 // 方法实现：具体用途、参数和返回值契约见对应头文件或本文件声明。
 // 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 bool GdbCatalog::read_magic() {
-    const std::string magic_file =
-        (fs::path(gdb_path_) / "gdb").string();
+    const fs::path magic_file = fs::u8path(gdb_path_) / "gdb";
     std::ifstream input(magic_file, std::ios::binary);
     if (!input.is_open()) return false;
 
     std::vector<uint8_t> buffer(8);
     input.read(reinterpret_cast<char*>(buffer.data()), 8);
-    if (input.gcount() != 8) return false;
+    const std::streamsize bytes_read = input.gcount();
+    if (bytes_read != 4 && bytes_read != 8) return false;
+    buffer.resize(static_cast<size_t>(bytes_read));
 
     BinaryReader reader(buffer);
     magic_.version = reader.read_u32();
-    magic_.magic = reader.read_u32();
+    magic_.magic = bytes_read == 8 ? reader.read_u32() : 0U;
     has_magic_ = true;
     return true;
 }
@@ -87,8 +91,7 @@ bool GdbCatalog::read_magic() {
 // 方法实现：具体用途、参数和返回值契约见对应头文件或本文件声明。
 // 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 bool GdbCatalog::read_timestamps() {
-    const std::string timestamps_file =
-        (fs::path(gdb_path_) / "timestamps").string();
+    const fs::path timestamps_file = fs::u8path(gdb_path_) / "timestamps";
     std::ifstream input(timestamps_file, std::ios::binary);
     if (!input.is_open()) return false;
 

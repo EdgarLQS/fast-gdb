@@ -147,8 +147,9 @@ Error parse_source(const std::string& uri, Source& source) {
         return invalid_uri("local source must name a .gdb directory");
     }
     source.kind = SourceKind::LocalFileGdb;
-    source.normalized_uri =
-        std::filesystem::path(uri).lexically_normal().string();
+    source.normalized_uri = std::filesystem::u8path(uri)
+                                .lexically_normal()
+                                .generic_u8string();
     return {};
 }
 

@@ -306,19 +306,21 @@ Polygon 判断遵循：
 
 ## 11. 发布检查清单
 
-- [x] 三平台纯 C++ 编译和测试通过；
-- [x] Linux GDAL Hybrid 编译和测试通过；
-- [x] GDAL 默认后端单独构建通过；
-- [x] ASan/UBSan/LSan 通过；
+- [x] macOS 当前 Release 构建、安装 consumer 和 GDAL 3.13.0/3.13.3 回归有本地证据；
+- [ ] Linux/Windows 当前分支的完整构建、consumer 和真实数据回归；
+- [x] GDAL ON/OFF 构建均有 macOS 本地证据；其它平台结果另行核对；
+- [x] macOS GDAL-free Reader ASan/UBSan 240/240，独立 Reader/TablxCache TSan 2/2；
+- [ ] LeakSanitizer（本机 runtime 不支持，未记为通过）；
 - [x] 普通真实 FileGDB 回归通过；
-- [x] 仓库真实 CircularArc 样本与 GDAL 类型、bbox、长度对比；
-- [x] ArcGIS Pro 原生 Bezier/Ellipse/ZM/曲线 Polygon 样本与 GDAL 对比；
+- [x] 可打开的参数化曲线样本至少一个真实曲线与 GDAL 的类型、bbox、长度有对照；
+- [ ] Bezier、Ellipse、Z/M/ZM、曲线 Polygon 的逐类型/逐要素 ArcGIS 与 GDAL 对照；完整 `testcurve.gdb` 已提供，`Curve_Polyline_M_FC` 两条记录的类型、bbox、长度合同通过；控制点、M 值及其它曲线类型的逐要素真值仍待补；
 /
 
-- [x] ObjectID/GDAL FID 映射抽样通过；
+- [x] 稀疏 32 位 ObjectID/GDAL FID 映射有样本；
+- [ ] 稀疏 64 位 ObjectID 端到端映射；
 - [x] Polygon 数量、洞数量、面积、bbox 和点包含结果对比；
-- [x] 受控性能基线记录普通几何和曲线数据；
+- [x] macOS 受控性能基线记录普通数据与性能夹具；真实 1～20GB 生产数据仍待测；
 - [ ] WKT 调用方已登记迁移计划；
 - [x] MultiPatch 降级能力在发布说明中明确。
 
-本清单的通过项仅表示当前支持范围内的发布证据。35GB/5 亿级真实数据的读取、过滤重写、追加和索引构建耗时仍需单独实测；原生 curve WKB、MultiPatch 完整表面拓扑和未知/未来编码不因本清单通过而获得支持。
+本清单以 2026-11-06 当前工作区证据为准，阶段状态详见[完整只读能力与 GDAL 对照升级计划](../plan/22_完整只读能力与GDAL对照升级计划.md)。通过项只覆盖明确列出的样本、平台和能力，不自动推广到其它曲线编码、64 位 ObjectID、MultiPatch 完整表面拓扑或未知/未来格式。

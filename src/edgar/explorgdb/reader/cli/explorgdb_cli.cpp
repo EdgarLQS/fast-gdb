@@ -18,6 +18,15 @@
 
 namespace fs = std::filesystem;
 
+static std::string join_utf8_path(const std::string& directory,
+                                  const std::string& filename) {
+    return (fs::u8path(directory) / fs::u8path(filename)).u8string();
+}
+
+static uint64_t table_feature_count(const explorgdb::TableHeader& header) {
+    return header.version == 4 ? header.nfeatures_v4 : header.nfeatures_v3;
+}
+
 static void print_usage(const char* prog) {
     printf("Usage: %s <command> [args]\n\n", prog);
     printf("Commands:\n");
@@ -51,6 +60,8 @@ static void cmd_explore(const std::string& gdb_path) {
     printf("Magic file: version=%u, magic=0x%08X", catalog.magic().version, catalog.magic().magic);
     if (catalog.magic().version == 5 && catalog.magic().magic == 0xEFBEADDE) {
         printf(" (valid)\n");
+    } else if (catalog.magic().version == 5 && catalog.magic().magic == 0) {
+        printf(" (version 5, no recognized magic word)\n");
     } else {
         printf(" (UNEXPECTED)\n");
     }
@@ -101,21 +112,18 @@ static void cmd_explore(const std::string& gdb_path) {
     if (!tables.empty()) {
         printf("\n=== .gdbtable details ===\n");
         for (const auto* te : tables) {
-            std::string table_path = (fs::path(gdb_path) / te->filename).string();
+            std::string table_path = join_utf8_path(gdb_path, te->filename);
             explorgdb::GdbTableParser parser(table_path);
             if (parser.parse_header()) {
-                printf("\n  File: %s (id=%u, size=%lu bytes)\n",
+                printf("\n  File: %s (id=%u, size=%llu bytes)\n",
                        te->filename.c_str(), te->numeric_id, static_cast<unsigned long long>(te->file_size));
                 const auto& hdr = parser.header();
                 printf("  Version: %u\n", hdr.version);
-                if (hdr.version == 3) {
-                    printf("  Features: %u\n", hdr.nfeatures_v3);
-                } else {
-                    printf("  Features: %lu (has_deleted=%u)\n",
-                           hdr.nfeatures_v4, hdr.has_deleted_features);
-                }
+                printf("  Features: %llu\n", static_cast<unsigned long long>(
+                    table_feature_count(hdr)));
                 printf("  Largest record: %u bytes\n", hdr.largest_size_record);
-                printf("  Field section offset: %lu\n", hdr.field_desc_offset);
+                printf("  Field section offset: %llu\n",
+                       static_cast<unsigned long long>(hdr.field_desc_offset));
 
                 if (parser.parse_fields()) {
                     printf("  Fields (%zu):\n", parser.fields().size());
@@ -137,10 +145,10 @@ static void cmd_explore(const std::string& gdb_path) {
     if (!tablxes.empty()) {
         printf("\n=== .gdbtablx details ===\n");
         for (const auto* te : tablxes) {
-            std::string tablx_path = (fs::path(gdb_path) / te->filename).string();
+            std::string tablx_path = join_utf8_path(gdb_path, te->filename);
             explorgdb::GdbTablxParser parser(tablx_path);
             if (parser.parse()) {
-                printf("\n  File: %s (id=%u, size=%lu bytes)\n",
+                printf("\n  File: %s (id=%u, size=%llu bytes)\n",
                        te->filename.c_str(), te->numeric_id, static_cast<unsigned long long>(te->file_size));
                 const auto& hdr = parser.header();
                 printf("  Version: %u, offset_size: %u bytes\n", hdr.version, hdr.size_tablx_offsets);
@@ -161,11 +169,12 @@ static void cmd_explore(const std::string& gdb_path) {
     if (!indexes.empty()) {
         printf("\n=== .gdbindexes details ===\n");
         for (const auto* ie : indexes) {
-            std::string idx_path = (fs::path(gdb_path) / ie->filename).string();
+            std::string idx_path = join_utf8_path(gdb_path, ie->filename);
             explorgdb::GdbIndexesParser parser(idx_path);
             if (parser.parse()) {
-                printf("\n  File: %s (id=%u, size=%lu bytes)\n",
-                       ie->filename.c_str(), ie->numeric_id, ie->file_size);
+                printf("\n  File: %s (id=%u, size=%llu bytes)\n",
+                       ie->filename.c_str(), ie->numeric_id,
+                       static_cast<unsigned long long>(ie->file_size));
                 printf("  Indexes (%zu):\n", parser.index_count());
                 for (const auto& entry : parser.entries()) {
                     printf("    name=%s, col=%s, magic=(%u,%d,%u)\n",
@@ -181,15 +190,19 @@ static void cmd_explore(const std::string& gdb_path) {
     if (!spx_files.empty()) {
         printf("\n=== .spx spatial index files ===\n");
         for (const auto* se : spx_files) {
-            std::string spx_path = (fs::path(gdb_path) / se->filename).string();
+            std::string spx_path = join_utf8_path(gdb_path, se->filename);
             explorgdb::GdbSpatialIndexParser parser(spx_path);
             if (parser.parse()) {
                 const auto& tr = parser.trailer();
-                printf("  %s (id=%u, %lu bytes) depth=%u entries=%u\n",
-                       se->filename.c_str(), se->numeric_id, se->file_size,
-                       tr.tree_depth, tr.total_value_count);
+                printf("  %s (id=%u, %llu bytes) depth=%u entries=%llu\n",
+                       se->filename.c_str(), se->numeric_id,
+                       static_cast<unsigned long long>(se->file_size),
+                       tr.tree_depth,
+                       static_cast<unsigned long long>(tr.total_value_count));
             } else {
-                printf("  %s (%lu bytes) [parse failed]\n", se->filename.c_str(), se->file_size);
+                printf("  %s (%llu bytes) [parse failed]\n",
+                       se->filename.c_str(),
+                       static_cast<unsigned long long>(se->file_size));
             }
         }
     }
@@ -198,16 +211,21 @@ static void cmd_explore(const std::string& gdb_path) {
     if (!atx_files.empty()) {
         printf("\n=== .atx attribute index files ===\n");
         for (const auto* ae : atx_files) {
-            std::string atx_path = (fs::path(gdb_path) / ae->filename).string();
+            std::string atx_path = join_utf8_path(gdb_path, ae->filename);
             explorgdb::GdbAttributeIndexParser parser(atx_path);
             if (parser.parse()) {
                 const auto& tr = parser.trailer();
                 const char* type_str = tr.is_string ? "string" : "numeric";
-                printf("  %s (id=%u, %lu bytes) type=%s depth=%u entries=%u value_size=%u\n",
-                       ae->filename.c_str(), ae->numeric_id, ae->file_size,
-                       type_str, tr.tree_depth, tr.total_value_count, tr.value_size);
+                printf("  %s (id=%u, %llu bytes) type=%s depth=%u entries=%llu value_size=%u\n",
+                       ae->filename.c_str(), ae->numeric_id,
+                       static_cast<unsigned long long>(ae->file_size),
+                       type_str, tr.tree_depth,
+                       static_cast<unsigned long long>(tr.total_value_count),
+                       tr.value_size);
             } else {
-                printf("  %s (%lu bytes) [parse failed]\n", ae->filename.c_str(), ae->file_size);
+                printf("  %s (%llu bytes) [parse failed]\n",
+                       ae->filename.c_str(),
+                       static_cast<unsigned long long>(ae->file_size));
             }
         }
     }
@@ -227,14 +245,13 @@ static void cmd_dump_table(const std::string& path) {
     const auto& hdr = parser.header();
     printf("=== .gdbtable: %s ===\n", path.c_str());
     printf("Version: %u\n", hdr.version);
-    if (hdr.version == 3) {
-        printf("Features: %u\n", hdr.nfeatures_v3);
-    } else {
-        printf("Features: %lu\n", hdr.nfeatures_v4);
-    }
+    printf("Features: %llu\n", static_cast<unsigned long long>(
+        table_feature_count(hdr)));
     printf("Largest record: %u bytes\n", hdr.largest_size_record);
-    printf("File size: %lu bytes\n", hdr.file_size);
-    printf("Field section offset: %lu\n", hdr.field_desc_offset);
+    printf("File size: %llu bytes\n",
+           static_cast<unsigned long long>(hdr.file_size));
+    printf("Field section offset: %llu\n",
+           static_cast<unsigned long long>(hdr.field_desc_offset));
 
     if (!parser.parse_fields()) {
         std::cerr << "Failed to parse fields\n";
@@ -266,7 +283,9 @@ static void cmd_dump_tablx(const std::string& path) {
     const auto& hdr = parser.header();
     printf("=== .gdbtablx: %s ===\n", path.c_str());
     printf("Version: %u, offset_size: %u bytes\n", hdr.version, hdr.size_tablx_offsets);
-    printf("Total entries: %zu\n", parser.offsets().size());
+    printf("Physical offset entries: %zu\n", parser.offsets().size());
+    printf("Logical row slots: %llu\n",
+           static_cast<unsigned long long>(parser.logical_row_count()));
     printf("Valid FIDs: %zu\n", parser.valid_fids().size());
 
     if (!parser.block_bitmap().empty()) {
@@ -276,10 +295,14 @@ static void cmd_dump_tablx(const std::string& path) {
                active, static_cast<int>(parser.block_bitmap().size()));
     }
 
-    // Show first 10 offsets
-    printf("\nFirst 10 offsets:\n");
-    for (size_t i = 0; i < std::min(parser.offsets().size(), (size_t)10); ++i) {
-        printf("  FID %zu -> offset %lu\n", i, parser.offsets()[i]);
+    // Show first 10 logical FIDs with nonzero physical offsets.
+    printf("\nFirst 10 valid FID offsets:\n");
+    const size_t shown = std::min(parser.valid_fids().size(), size_t{10});
+    for (size_t i = 0; i < shown; ++i) {
+        const auto fid = parser.valid_fids()[i];
+        printf("  FID %llu -> offset %llu\n",
+               static_cast<unsigned long long>(fid),
+               static_cast<unsigned long long>(parser.get_offset(fid)));
     }
 }
 
@@ -343,7 +366,8 @@ static void cmd_dump_records(const std::string& table_path) {
     size_t limit = std::min(parser.records().size(), (size_t)5);
     for (size_t i = 0; i < limit; ++i) {
         const auto& rec = parser.records()[i];
-        printf("FID %u (blob_len=%u):\n", rec.fid, rec.blob_len);
+        printf("FID %llu (blob_len=%u):\n",
+               static_cast<unsigned long long>(rec.fid), rec.blob_len);
         for (size_t j = 0; j < rec.field_values.size() && j < parser.fields().size(); ++j) {
             const auto& fd = parser.fields()[j];
             const auto& val = rec.field_values[j];
@@ -353,7 +377,7 @@ static void cmd_dump_records(const std::string& table_path) {
             } else if (std::holds_alternative<int32_t>(val)) {
                 printf("%d", std::get<int32_t>(val));
             } else if (std::holds_alternative<int64_t>(val)) {
-                printf("%ld", std::get<int64_t>(val));
+                printf("%lld", static_cast<long long>(std::get<int64_t>(val)));
             } else if (std::holds_alternative<double>(val)) {
                 printf("%.6f", std::get<double>(val));
             } else if (std::holds_alternative<explorgdb::DateTimeOffsetValue>(val)) {
@@ -388,8 +412,9 @@ static void cmd_dump_spx(const std::string& path) {
 
     const auto& tr = parser.trailer();
     printf("=== .spx: %s ===\n", path.c_str());
-    printf("Trailer: value_size=%u, depth=%u, total_entries=%u\n",
-           tr.value_size, tr.tree_depth, tr.total_value_count);
+    printf("Trailer: value_size=%u, depth=%u, total_entries=%llu\n",
+           tr.value_size, tr.tree_depth,
+           static_cast<unsigned long long>(tr.total_value_count));
     printf("String=%d, Numeric=%d\n", tr.is_string, tr.is_numeric);
     auto get_file_size = [&](const std::string& p) -> size_t {
         FILE* f = fopen(p.c_str(), "rb");
@@ -415,15 +440,16 @@ static void cmd_dump_atx(const std::string& path) {
     const auto& tr = parser.trailer();
     const char* type_str = tr.is_string ? "string" : "numeric";
     printf("=== .atx: %s ===\n", path.c_str());
-    printf("Trailer: value_size=%u, type=%s, depth=%u, total_entries=%u\n",
-           tr.value_size, type_str, tr.tree_depth, tr.total_value_count);
+    printf("Trailer: value_size=%u, type=%s, depth=%u, total_entries=%llu\n",
+           tr.value_size, type_str, tr.tree_depth,
+           static_cast<unsigned long long>(tr.total_value_count));
     printf("Parsed entries: %zu\n\n", parser.all_entries().size());
 
     // Show first 50 entries
     size_t limit = std::min(parser.all_entries().size(), (size_t)50);
     for (size_t i = 0; i < limit; ++i) {
         const auto& e = parser.all_entries()[i];
-        printf("  FID=%u  ", e.fid);
+        printf("  FID=%llu  ", static_cast<unsigned long long>(e.fid));
         if (std::isnan(e.numeric_value)) {
             printf("value=\"%s\"", e.string_value.c_str());
         } else {
@@ -439,6 +465,12 @@ static void cmd_dump_atx(const std::string& path) {
 static void cmd_query_spx(const std::string& path, double xmin, double ymin,
                           double xmax, double ymax,
                           double grid_step_x, double grid_step_y) {
+    if (!std::isfinite(grid_step_x) || !std::isfinite(grid_step_y) ||
+        grid_step_x != grid_step_y) {
+        std::cerr << "The .spx query path requires a uniform XY grid step\n";
+        return;
+    }
+
     explorgdb::GdbSpatialIndexParser parser(path);
     if (!parser.parse()) {
         std::cerr << "Failed to parse: " << path << "\n";
@@ -460,7 +492,8 @@ static void cmd_query_spx(const std::string& path, double xmin, double ymin,
 
     // Show first 20
     for (size_t i = 0; i < std::min(result_fids.size(), (size_t)20); ++i) {
-        printf("  FID=%u\n", result_fids[i]);
+        printf("  FID=%llu\n",
+               static_cast<unsigned long long>(result_fids[i]));
     }
     if (result_fids.size() > 20) {
         printf("  ... and %zu more\n", result_fids.size() - 20);
@@ -476,7 +509,7 @@ static void cmd_query_atx(const std::string& path, const std::string& op_str,
     }
 
     const auto& tr = parser.trailer();
-    std::vector<uint32_t> result_fids;
+    std::vector<explorgdb::RowSlot> result_fids;
 
     if (tr.is_string) {
         auto op_map = [&](const std::string& s) {
@@ -508,7 +541,8 @@ static void cmd_query_atx(const std::string& path, const std::string& op_str,
     printf("Matched FIDs: %zu\n", result_fids.size());
 
     for (size_t i = 0; i < std::min(result_fids.size(), (size_t)20); ++i) {
-        printf("  FID=%u\n", result_fids[i]);
+        printf("  FID=%llu\n",
+               static_cast<unsigned long long>(result_fids[i]));
     }
     if (result_fids.size() > 20) {
         printf("  ... and %zu more\n", result_fids.size() - 20);
@@ -518,7 +552,8 @@ static void cmd_query_atx(const std::string& path, const std::string& op_str,
 // 辅助：打印单条记录
 static void print_record(const explorgdb::FeatureRecord& rec,
                          const std::vector<explorgdb::FieldDescriptor>& fields) {
-    printf("FID %u (blob_len=%u):\n", rec.fid, rec.blob_len);
+    printf("FID %llu (blob_len=%u):\n",
+           static_cast<unsigned long long>(rec.fid), rec.blob_len);
     for (size_t j = 0; j < rec.field_values.size() && j < fields.size(); ++j) {
         const auto& fd = fields[j];
         const auto& val = rec.field_values[j];
@@ -528,7 +563,7 @@ static void print_record(const explorgdb::FeatureRecord& rec,
         } else if (std::holds_alternative<int32_t>(val)) {
             printf("%d", std::get<int32_t>(val));
         } else if (std::holds_alternative<int64_t>(val)) {
-            printf("%ld", std::get<int64_t>(val));
+            printf("%lld", static_cast<long long>(std::get<int64_t>(val)));
         } else if (std::holds_alternative<double>(val)) {
             printf("%.6f", std::get<double>(val));
         } else if (std::holds_alternative<explorgdb::DateTimeOffsetValue>(val)) {
@@ -567,7 +602,7 @@ static void cmd_query(const std::string& gdb_path, uint32_t table_id,
         std::cerr << "Table id=" << table_id << " not found\n";
         return;
     }
-    std::string table_path = (fs::path(gdb_path) / table_entry->filename).string();
+    std::string table_path = join_utf8_path(gdb_path, table_entry->filename);
     GdbTableParser table_parser(table_path);
     if (!table_parser.load_file() || !table_parser.parse_header() || !table_parser.parse_fields()) {
         std::cerr << "Failed to parse table: " << table_path << "\n";
@@ -580,7 +615,7 @@ static void cmd_query(const std::string& gdb_path, uint32_t table_id,
         std::cerr << "No .gdbtablx for table id=" << table_id << "\n";
         return;
     }
-    std::string tablx_path = (fs::path(gdb_path) / tablx_entry->filename).string();
+    std::string tablx_path = join_utf8_path(gdb_path, tablx_entry->filename);
     if (!table_parser.load_tablx(tablx_path)) {
         std::cerr << "Failed to load .gdbtablx: " << tablx_path << "\n";
         return;
@@ -588,7 +623,7 @@ static void cmd_query(const std::string& gdb_path, uint32_t table_id,
     (void)table_parser.nullable_field_count();  // suppress unused warning
 
     // 4. 索引查询 → FID 列表
-    std::vector<uint32_t> result_fids;
+    std::vector<explorgdb::RowSlot> result_fids;
 
     if (query_type == "spatial") {
         if (args.size() < 6) {
@@ -601,13 +636,17 @@ static void cmd_query(const std::string& gdb_path, uint32_t table_id,
         double ymax = std::stod(args[3]);
         double gsx = std::stod(args[4]);
         double gsy = std::stod(args[5]);
+        if (!std::isfinite(gsx) || !std::isfinite(gsy) || gsx != gsy) {
+            std::cerr << "The .spx query path requires a uniform XY grid step\n";
+            return;
+        }
 
         const auto* spx_entry = catalog.find_spx(table_id);
         if (!spx_entry) {
             std::cerr << "No .spx for table id=" << table_id << "\n";
             return;
         }
-        std::string spx_file = (fs::path(gdb_path) / spx_entry->filename).string();
+        std::string spx_file = join_utf8_path(gdb_path, spx_entry->filename);
         GdbSpatialIndexParser spx_parser(spx_file);
         if (!spx_parser.parse()) {
             std::cerr << "Failed to parse .spx: " << spx_file << "\n";
@@ -657,7 +696,7 @@ static void cmd_query(const std::string& gdb_path, uint32_t table_id,
             return;
         }
 
-        std::string atx_file = (fs::path(gdb_path) / atx_entry->filename).string();
+        std::string atx_file = join_utf8_path(gdb_path, atx_entry->filename);
         GdbAttributeIndexParser atx_parser(atx_file);
         if (!atx_parser.parse()) {
             std::cerr << "Failed to parse .atx: " << atx_file << "\n";
@@ -680,13 +719,14 @@ static void cmd_query(const std::string& gdb_path, uint32_t table_id,
     printf("=== Query Result: table_id=%u, type=%s ===\n", table_id, query_type.c_str());
     printf("Matched FIDs: %zu\n\n", result_fids.size());
 
-    for (uint32_t fid : result_fids) {
+    for (explorgdb::RowSlot fid : result_fids) {
         FeatureRecord rec;
         if (table_parser.read_record_by_fid(fid, rec)) {
             print_record(rec, table_parser.fields());
             printf("\n");
         } else {
-            printf("FID %u: failed to read\n\n", fid);
+            printf("FID %llu: failed to read\n\n",
+                   static_cast<unsigned long long>(fid));
         }
     }
 }
@@ -711,7 +751,7 @@ static void cmd_bench_spatial(const std::string& gdb_path, uint32_t table_id) {
     // 加载 .gdbtable
     const auto* table_entry = catalog.find_table(table_id);
     if (!table_entry) { std::cerr << "Table id=" << table_id << " not found\n"; return; }
-    std::string table_path = (fs::path(gdb_path) / table_entry->filename).string();
+    std::string table_path = join_utf8_path(gdb_path, table_entry->filename);
     GdbTableParser table_parser(table_path);
     if (!table_parser.load_file() || !table_parser.parse_header() || !table_parser.parse_fields()) {
         std::cerr << "Failed to parse table: " << table_path << "\n"; return;
@@ -720,20 +760,18 @@ static void cmd_bench_spatial(const std::string& gdb_path, uint32_t table_id) {
     // 加载 .gdbtablx
     const auto* tablx_entry = catalog.find_tablx(table_id);
     if (!tablx_entry) { std::cerr << "No .gdbtablx for table id=" << table_id << "\n"; return; }
-    std::string tablx_path = (fs::path(gdb_path) / tablx_entry->filename).string();
+    std::string tablx_path = join_utf8_path(gdb_path, tablx_entry->filename);
     if (!table_parser.load_tablx(tablx_path)) { std::cerr << "Failed to load .gdbtablx\n"; return; }
 
     // 加载 .spx
     const auto* spx_entry = catalog.find_spx(table_id);
     if (!spx_entry) { std::cerr << "No .spx for table id=" << table_id << "\n"; return; }
-    std::string spx_file = (fs::path(gdb_path) / spx_entry->filename).string();
+    std::string spx_file = join_utf8_path(gdb_path, spx_entry->filename);
     GdbSpatialIndexParser spx_parser(spx_file);
     if (!spx_parser.parse()) { std::cerr << "Failed to parse .spx\n"; return; }
 
     size_t n_spx = spx_parser.trailer().total_value_count;
-    uint32_t n_features = table_parser.header().version == 3
-                              ? table_parser.header().nfeatures_v3
-                              : static_cast<uint32_t>(table_parser.header().nfeatures_v4);
+    const uint64_t n_features = table_feature_count(table_parser.header());
 
     // 提取几何字段参数
     double xorig = 0, yorig = 0;
@@ -755,8 +793,9 @@ static void cmd_bench_spatial(const std::string& gdb_path, uint32_t table_id) {
     };
 
     printf("\n=== Spatial Query Benchmark (explorgdb) ===\n");
-    printf("Table: %s (id=%u, %u features, %zu spx entries)\n\n",
-           table_entry->filename.c_str(), table_id, n_features, n_spx);
+    printf("Table: %s (id=%u, %llu features, %zu spx entries)\n\n",
+           table_entry->filename.c_str(), table_id,
+           static_cast<unsigned long long>(n_features), n_spx);
 
     printf("%-20s %8s %12s %12s %10s %10s\n",
            "Scenario", "Results", "Total(ms)", "Query(ms)", "Scan(ms)", "Fetch(ms)");
@@ -767,14 +806,14 @@ static void cmd_bench_spatial(const std::string& gdb_path, uint32_t table_id) {
         auto t0 = std::chrono::high_resolution_clock::now();
 
         // B+ 树导航空间查询
-        std::vector<uint32_t> result_fids = spx_parser.query_bbox(
+        std::vector<explorgdb::RowSlot> result_fids = spx_parser.query_bbox(
             c.xmin, c.ymin, c.xmax, c.ymax, xorig, yorig, grid_resolutions[0], grid_resolutions);
 
         auto t1 = std::chrono::high_resolution_clock::now();
         auto t2 = t1;  // scan_ms ≈ query_ms for B+ tree mode
 
         // 获取记录
-        for (uint32_t fid : result_fids) {
+        for (explorgdb::RowSlot fid : result_fids) {
             FeatureRecord rec;
             table_parser.read_record_by_fid(fid, rec);
         }

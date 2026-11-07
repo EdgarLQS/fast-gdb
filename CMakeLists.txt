@@ -188,6 +188,7 @@ set(FAST_GDB_READER_API_SOURCES
     src/edgar/explorgdb/reader/api/feature_cursor.cpp
     src/edgar/explorgdb/reader/api/reader.cpp)
 set(FAST_GDB_READER_FORMAT_SOURCES
+    third_party/pugixml/src/pugixml.cpp
     src/edgar/explorgdb/reader/format/catalog_resolver.cpp
     src/edgar/explorgdb/reader/format/gdb_catalog.cpp
     src/edgar/explorgdb/reader/format/gdb_table.cpp
@@ -236,10 +237,17 @@ fast_gdb_enable_warnings(explorgdb_common_lib)
 add_library(explorgdb_reader_lib STATIC ${FAST_GDB_READER_SOURCES})
 target_include_directories(explorgdb_reader_lib PUBLIC
     ${FAST_GDB_READER_INCLUDE_DIRS})
+target_include_directories(explorgdb_reader_lib PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/pugixml/src)
 target_link_libraries(explorgdb_reader_lib PUBLIC
     explorgdb_common_lib fast_gdb_geometry_core)
 target_compile_features(explorgdb_reader_lib PUBLIC cxx_std_17)
 fast_gdb_enable_warnings(explorgdb_reader_lib)
+
+# These static libraries are linked into the shared runtime and GDAL module.
+set_target_properties(
+    fast_gdb_geometry_core explorgdb_common_lib explorgdb_reader_lib
+    PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 add_library(fast_gdb_linear INTERFACE)
 target_link_libraries(fast_gdb_linear INTERFACE explorgdb_reader_lib)
@@ -349,6 +357,7 @@ if(BUILD_TESTING)
         tests/edgar/explorgdb/reader/format/test_gdb_tablx_cache.cpp
         tests/edgar/explorgdb/reader/format/test_gdbtable.cpp
         tests/edgar/explorgdb/reader/format/test_gdbtablx.cpp
+        tests/edgar/explorgdb/reader/format/test_metadata_contracts.cpp
         tests/edgar/explorgdb/reader/format/test_metadata_reader.cpp
         tests/edgar/explorgdb/reader/format/test_nullable_bitmap_compat.cpp
         tests/edgar/explorgdb/reader/format/test_synthetic.cpp)
@@ -387,11 +396,13 @@ if(BUILD_TESTING)
         tests/edgar/explorgdb/integration/gdal_parity/benchmark/test_feature_cursor_benchmark.cpp
         tests/edgar/explorgdb/integration/gdal_parity/benchmark/test_spatial_benchmark.cpp
         tests/edgar/explorgdb/integration/gdal_parity/benchmark/test_spatial_where_benchmark.cpp
+        tests/edgar/explorgdb/integration/gdal_parity/benchmark/test_runtime_benchmark.cpp
         tests/edgar/explorgdb/integration/gdal_parity/feature_cursor/test_feature_cursor_empty_geometry.cpp
         tests/edgar/explorgdb/integration/gdal_parity/feature_cursor/test_feature_cursor_gdal.cpp
         tests/edgar/explorgdb/integration/gdal_parity/feature_cursor/test_feature_cursor_one_pass.cpp
         tests/edgar/explorgdb/integration/gdal_parity/feature_cursor/test_feature_cursor_one_pass_geometry.cpp
         tests/edgar/explorgdb/integration/gdal_parity/feature_cursor/test_feature_cursor_reopen.cpp
+        tests/edgar/explorgdb/integration/gdal_parity/feature_cursor/test_nullable_schema_evolution.cpp
         tests/edgar/explorgdb/integration/gdal_parity/feature_cursor/test_feature_cursor_zero_length.cpp
         tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_adaptive.cpp
         tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_dimensions.cpp
@@ -440,6 +451,10 @@ if(BUILD_TESTING)
             FAST_GDB_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
         target_link_libraries(fast_gdb_unified_test_runner PRIVATE
             GTest::gtest fast_gdb_runtime)
+        if(FAST_GDB_WITH_GDAL)
+            target_link_libraries(fast_gdb_unified_test_runner PRIVATE
+                ${FAST_GDB_GDAL_TARGET})
+        endif()
         fast_gdb_enable_warnings(fast_gdb_unified_test_runner)
         gtest_discover_tests(fast_gdb_unified_test_runner
                              TEST_PREFIX "unified.")
@@ -599,7 +614,17 @@ if(BUILD_TESTING)
         gtest_discover_tests(
             gdb_tutorial_test_runner
             TEST_PREFIX "full."
-            PROPERTIES RESOURCE_LOCK fast_gdb_full_test_fixture)
+            PROPERTIES RESOURCE_LOCK fast_gdb_full_test_fixture
+                       FIXTURES_REQUIRED fast_gdb_fixture_manifest)
+        find_package(Python3 REQUIRED COMPONENTS Interpreter)
+        add_test(
+            NAME full.fixture-manifest.acceptance-metadata
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/ci/verify_gdb_fixture_manifest.py
+        )
+        set_tests_properties(
+            full.fixture-manifest.acceptance-metadata
+            PROPERTIES FIXTURES_SETUP fast_gdb_fixture_manifest)
     endif()
 endif()
 

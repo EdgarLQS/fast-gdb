@@ -7,6 +7,7 @@
 #include "explorgdb_types.h"
 #include "binary_reader.h"
 #include "gdb_geometry.h"
+#include "gdb_tablx_cache.h"
 
 #ifdef _WIN32
 #include "windows_sliding_map.h"
@@ -15,6 +16,8 @@
 #include <cstddef>
 #include <functional>
 #include <limits>
+#include <memory>
+#include <mutex>
 #include <shared_mutex>
 #include <string>
 #include <vector>
@@ -88,21 +91,70 @@ public:
      */
     const std::vector<FeatureRecord>& records() const { return records_; }
 
-    /** .gdbtablx 物理槽位数，也是 FID 的排他上界。 */
-    size_t feature_count() const { return feature_offsets_.size(); }
+    /** .gdbtablx 声明的逻辑行槽数，也是零基 FID 的排他上界。 */
+    RowSlot feature_count() const {
+        return logical_row_count_;
+    }
 
     /** 返回活动记录数；缓存未知时根据非零偏移计算。 */
     size_t active_feature_count() const {
         if (active_feature_count_known_) return active_feature_count_;
         size_t count = 0;
-        for (uint64_t offset : feature_offsets_) {
+        if (!feature_offsets_) return 0;
+        for (uint64_t offset : *feature_offsets_) {
             if (offset != 0) ++count;
         }
         return count;
     }
 
-    bool has_feature(uint32_t fid) const {
-        return fid < feature_offsets_.size() && feature_offsets_[fid] != 0;
+    /** 返回逻辑行槽对应的物理记录偏移；缺行、删除行或越界返回 0。 */
+    uint64_t feature_offset(RowSlot fid) const {
+        if (fid >= logical_row_count_) return 0;
+        uint64_t physical_block = fid / 1024U;
+        if (!feature_block_bitmap_.empty()) {
+            if (physical_block >= feature_block_bitmap_.size() ||
+                !feature_block_bitmap_[static_cast<size_t>(physical_block)]) {
+                return 0;
+            }
+            physical_block =
+                block_rank_prefix_[static_cast<size_t>(physical_block)];
+        }
+        const uint64_t physical_index =
+            physical_block * 1024U + (fid % 1024U);
+        return feature_offsets_ &&
+                physical_index < feature_offsets_->size()
+            ? (*feature_offsets_)[static_cast<size_t>(physical_index)]
+            : 0;
+    }
+
+    const std::vector<RowSlot>& active_feature_fids() const {
+        if (active_feature_fids_dense_) {
+            std::lock_guard<std::mutex> lock(active_feature_fids_mutex_);
+            if (active_feature_fids_.empty() && active_feature_count_ != 0) {
+                active_feature_fids_.resize(active_feature_count_);
+                for (size_t index = 0;
+                     index < active_feature_fids_.size(); ++index) {
+                    active_feature_fids_[index] = static_cast<RowSlot>(index);
+                }
+            }
+        }
+        return active_feature_fids_;
+    }
+
+    /** 返回活动顺序中的 FID；密集表无需物化完整 FID 向量。 */
+    RowSlot active_feature_fid_at(size_t active_index) const {
+        if (active_index >= active_feature_count_) return logical_row_count_;
+        return active_feature_fids_dense_
+            ? static_cast<RowSlot>(active_index)
+            : active_feature_fids_[active_index];
+    }
+
+    bool active_feature_fids_are_dense() const noexcept {
+        return active_feature_fids_dense_;
+    }
+
+    bool has_feature(RowSlot fid) const {
+        return feature_offset(fid) != 0;
     }
 
     /** 载入并解析表文件内容。
@@ -127,7 +179,7 @@ public:
      * @param record 接收字段值的输出对象。
      * @return 成功读取时返回 true。
      */
-    bool read_record_by_fid(uint32_t fid, FeatureRecord& record);
+    bool read_record_by_fid(RowSlot fid, FeatureRecord& record);
     /** 按 FID 读取原始记录字节。
      * @param fid 要读取的零基 FID。
      * @param raw_record 接收原始记录的输出数组。
@@ -135,7 +187,7 @@ public:
      * @param limit_exceeded 可选输出，记录是否超过限制。
      * @return 读取成功且未超过限制时返回 true。
      */
-    bool read_raw_record_by_fid(uint32_t fid,
+    bool read_raw_record_by_fid(RowSlot fid,
                                 std::vector<uint8_t>& raw_record,
                                 std::size_t max_bytes =
                                     std::numeric_limits<std::size_t>::max(),
@@ -153,13 +205,17 @@ public:
      * @param geometry 接收几何值的输出对象。
      * @param metrics 可选输出的阶段耗时指标。
      * @param projection 可选字段投影列表。
+     * @param include_geometry 为 false 时校验并跳过几何 blob，但不解码几何。
      * @return 成功读取时返回 true。
      */
-    bool read_feature_by_fid(uint32_t fid,
+    bool read_feature_by_fid(RowSlot fid,
                              FeatureRecord& record,
                              GeometryValue& geometry,
                              FeatureReadMetrics* metrics = nullptr,
-                             const std::vector<size_t>* projection = nullptr);
+                             const std::vector<size_t>* projection = nullptr,
+                             const GeometryReadOptions& geometry_options =
+                                 GeometryReadOptions{},
+                             bool include_geometry = true);
 
     /**
      * 定位一行中的规范几何 blob。
@@ -173,9 +229,10 @@ public:
      * @param blob_size 输出 blob 长度，单位为字节。
      * @return 成功定位时返回 true。
      */
-    bool peek_geometry_blob(uint32_t fid,
+    bool peek_geometry_blob(RowSlot fid,
                             const uint8_t*& blob_data,
-                            size_t& blob_size);
+                            size_t& blob_size,
+                            bool* is_null = nullptr);
 
     /** WKB-first 几何接口，不经过 record 的几何占位字段。 */
     /** 按 FID 读取 GeometryModel。
@@ -183,13 +240,13 @@ public:
      * @param model 接收几何模型的输出对象。
      * @return 成功解码时返回 true。
      */
-    bool read_geometry_model(uint32_t fid, GeometryModel& model);
+    bool read_geometry_model(RowSlot fid, GeometryModel& model);
     /** 按 FID 读取 GeometryValue。
      * @param fid 要读取的零基 FID。
      * @param value 接收统一几何值的输出对象。
      * @return 成功解码时返回 true。
      */
-    bool read_geometry_value(uint32_t fid, GeometryValue& value);
+    bool read_geometry_value(RowSlot fid, GeometryValue& value);
 
     /** 获取可空字段数量。
      * @return 字段描述中标记为可空的字段数。
@@ -197,7 +254,7 @@ public:
     int nullable_field_count() const;
 
     using ScanCallback =
-        std::function<bool(uint32_t fid,
+        std::function<bool(RowSlot fid,
                            const FieldRef* fields,
                            int field_count)>;
 
@@ -215,7 +272,7 @@ public:
      * mmap 路径使用稳定零拷贝视图，fd 路径使用有界物理窗口。
      */
     using GeometryScanCallback =
-        std::function<bool(uint32_t fid,
+        std::function<bool(RowSlot fid,
                            const uint8_t* geometry_blob,
                            size_t geometry_size,
                            bool is_null)>;
@@ -228,7 +285,7 @@ public:
      * 顺序，QueryEngine 在发布结果前恢复 FID 升序。返回 0 表示应走规范回退。
      */
     uint64_t scan_geometry_candidates(
-        const std::vector<uint32_t>& candidates,
+        const std::vector<RowSlot>& candidates,
         GeometryScanCallback callback);
 
     /**
@@ -238,10 +295,25 @@ public:
      * read_record_by_fid() 规范回退。
      */
     uint64_t scan_field_candidates(
-        const std::vector<uint32_t>& candidates,
+        const std::vector<RowSlot>& candidates,
         ScanCallback callback);
 
+    /** Reads one Binary value while skipping oversized payloads without copying. */
+    bool read_binary_field_by_fid(RowSlot fid,
+                                  size_t field_index,
+                                  size_t max_bytes,
+                                  std::vector<uint8_t>& output,
+                                  size_t& value_size,
+                                  bool& is_null,
+                                  bool& limit_exceeded);
+
 private:
+    bool source_is_current() const noexcept;
+    bool install_tablx_data(
+                            std::shared_ptr<const std::vector<uint64_t>> offsets,
+                            uint64_t logical_row_count,
+                            std::vector<bool> block_bitmap,
+                            size_t expected_active_count);
     void parse_field_descriptor(BinaryReader& reader,
                                 bool layer_has_z,
                                 bool layer_has_m);
@@ -251,17 +323,20 @@ private:
 
     // 公开包装器在成功后统一 Geometry 空占位契约。
     bool read_feature_by_fid_wkb_internal(
-        uint32_t fid,
+        RowSlot fid,
         FeatureRecord& record,
         GeometryValue& geometry,
         FeatureReadMetrics* metrics,
-        const std::vector<size_t>* projection);
+        const std::vector<size_t>* projection,
+        const GeometryReadOptions& geometry_options,
+        bool include_geometry);
 
     std::string file_path_;
     std::vector<uint8_t> file_data_;
 
     int fd_ = -1;
     size_t file_size_ = 0;
+    TablxCacheKey source_identity_;
     uint8_t* mapped_data_ = nullptr;
     std::vector<uint8_t> row_buffer_;
 
@@ -273,7 +348,13 @@ private:
     TableHeader header_;
     std::vector<FieldDescriptor> fields_;
     std::vector<FeatureRecord> records_;
-    std::vector<uint64_t> feature_offsets_;
+    std::shared_ptr<const std::vector<uint64_t>> feature_offsets_;
+    std::vector<bool> feature_block_bitmap_;
+    std::vector<uint64_t> block_rank_prefix_;
+    uint64_t logical_row_count_ = 0;
+    mutable std::vector<RowSlot> active_feature_fids_;
+    mutable std::mutex active_feature_fids_mutex_;
+    bool active_feature_fids_dense_ = false;
     size_t active_feature_count_ = 0;
     bool active_feature_count_known_ = false;
 

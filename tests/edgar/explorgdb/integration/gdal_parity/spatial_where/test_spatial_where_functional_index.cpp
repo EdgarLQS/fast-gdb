@@ -122,5 +122,5 @@ TEST_F(SpatialWhereFunctionalIndexTest,
     EXPECT_FALSE(result.combined_metrics.used_attribute_index);
     EXPECT_NE(result.fallback_reason.find("functional attribute index"),
               std::string::npos);
-    EXPECT_EQ(result.matched_fids, (std::vector<uint32_t>{0}));
+    EXPECT_EQ(result.matched_fids, (std::vector<explorgdb::RowSlot>{0}));
 }

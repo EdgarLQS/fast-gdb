@@ -150,7 +150,7 @@ TimedQueryResult query_fast_gdb(QueryEngine& engine,
 }
 
 struct GdalTimedResult {
-    std::vector<uint32_t> fids;
+    std::vector<explorgdb::RowSlot> fids;
     double wall_ms = 0.0;
 };
 
@@ -167,7 +167,8 @@ GdalTimedResult query_gdal_steady_state(GDALDataset* dataset,
     while (OGRFeature* feature = layer->GetNextFeature()) {
         const GIntBig source_fid = feature->GetFID();
         if (source_fid >= 1)
-            timed.fids.push_back(static_cast<uint32_t>(source_fid - 1));
+            timed.fids.push_back(
+                static_cast<explorgdb::RowSlot>(source_fid - 1));
         OGRFeature::DestroyFeature(feature);
     }
     timed.wall_ms = std::chrono::duration<double, std::milli>(

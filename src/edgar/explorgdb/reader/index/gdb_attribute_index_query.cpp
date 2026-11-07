@@ -1,11 +1,14 @@
 // src/edgar/explorgdb/reader/index/gdb_attribute_index_query.cpp
-// .atx 直接查询 — 校验完整 B+ 树叶链并只物化命中的零基 FID。
+// .atx 直接查询 — 按页下探 B+ 树并只物化命中的零基 FID。
 
 #include "gdb_attribute_index.h"
+#include "gdb_tablx_cache.h"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <limits>
 
@@ -32,36 +35,54 @@ void metric_set(AttributeIndexQueryMetrics* metrics,
     if (metrics != nullptr) metrics->*member = elapsed_ms(start);
 }
 
-/** 根据值宽度计算单页能够容纳的最大 FID/value 对数量。 */
-int max_per_page(uint8_t value_size) {
-    if (value_size == 0) return 0;
-    return static_cast<int>(
-        (GdbAttributeIndexParser::kPageSize - 12U) /
-        (4U + static_cast<size_t>(value_size)));
+size_t leaf_header_size(uint32_t version) {
+    return version == 1U ? 12U : 20U;
 }
 
-/**
- * 将 1-based page id 转为文件偏移，并在乘法前限制到 size_t 范围。
- */
-bool page_offset_for(uint32_t page_id,
+size_t nonleaf_header_size(uint32_t version) {
+    return version == 1U ? 8U : 12U;
+}
+
+/** 根据 trailer 布局计算页面能容纳的最大 ObjectID/value 对数量。 */
+size_t max_per_page(const BPlusTreeTrailer& trailer) {
+    const size_t header_size = leaf_header_size(trailer.version);
+    const size_t object_id_size = trailer.object_id_size;
+    if (trailer.page_size < header_size || object_id_size == 0U ||
+        trailer.value_size == 0U) {
+        return 0U;
+    }
+    return (trailer.page_size - header_size) /
+           (object_id_size + trailer.value_size);
+}
+
+ObjectId read_object_id(const uint8_t* bytes, uint8_t object_id_size) {
+    ObjectId value = 0U;
+    for (size_t index = 0; index < object_id_size; ++index) {
+        value |= static_cast<ObjectId>(bytes[index]) << (index * 8U);
+    }
+    return value;
+}
+
+/** 将 1-based 页号转为文件偏移，并在乘法前限制到 size_t 范围。 */
+bool page_offset_for(ObjectId page_id,
                      size_t page_count,
+                     size_t page_size,
                      size_t& page_offset) {
-    if (page_id == 0 || page_id > page_count) return false;
-    const uint64_t raw_offset =
-        static_cast<uint64_t>(page_id - 1U) *
-        static_cast<uint64_t>(GdbAttributeIndexParser::kPageSize);
-    if (raw_offset > static_cast<uint64_t>(
-                         std::numeric_limits<size_t>::max())) {
+    if (page_id == 0U || page_id > page_count || page_size == 0U) return false;
+    const ObjectId page_index = page_id - 1U;
+    if (page_index > static_cast<ObjectId>(
+                         std::numeric_limits<size_t>::max() / page_size)) {
         return false;
     }
-    page_offset = static_cast<size_t>(raw_offset);
+    page_offset = static_cast<size_t>(page_index) * page_size;
     return true;
 }
 
 uint32_t read_u32(const uint8_t* bytes) {
-    uint32_t value = 0;
-    std::memcpy(&value, bytes, sizeof(value));
-    return value;
+    return static_cast<uint32_t>(bytes[0]) |
+           (static_cast<uint32_t>(bytes[1]) << 8U) |
+           (static_cast<uint32_t>(bytes[2]) << 16U) |
+           (static_cast<uint32_t>(bytes[3]) << 24U);
 }
 
 bool comparison_matches(int comparison, AttrOp op) {
@@ -79,22 +100,40 @@ bool comparison_matches(int comparison, AttrOp op) {
 /** 按 trailer 的 value_size 解码当前数值物理表示。 */
 bool decode_numeric(const uint8_t* bytes,
                     uint8_t value_size,
-                    double& value) {
+                    bool decode_as_int64,
+                    double& double_value,
+                    int64_t& integer_value) {
     switch (value_size) {
         case 2: {
+            if (decode_as_int64) return false;
             const uint16_t raw = static_cast<uint16_t>(bytes[0]) |
                 (static_cast<uint16_t>(bytes[1]) << 8U);
-            value = static_cast<double>(raw);
+            double_value = static_cast<double>(raw);
             return true;
         }
         case 4: {
+            if (decode_as_int64) return false;
             int32_t raw = 0;
             std::memcpy(&raw, bytes, sizeof(raw));
-            value = static_cast<double>(raw);
+            double_value = static_cast<double>(raw);
             return true;
         }
         case 8:
-            std::memcpy(&value, bytes, sizeof(value));
+            if (decode_as_int64) {
+                uint64_t raw = 0;
+                for (size_t index = 0; index < sizeof(raw); ++index) {
+                    raw |= static_cast<uint64_t>(bytes[index]) <<
+                           (index * 8U);
+                }
+                if (raw <= static_cast<uint64_t>(
+                               std::numeric_limits<int64_t>::max())) {
+                    integer_value = static_cast<int64_t>(raw);
+                } else {
+                    integer_value = -1 - static_cast<int64_t>(~raw);
+                }
+            } else {
+                std::memcpy(&double_value, bytes, sizeof(double_value));
+            }
             return true;
         default:
             return false;
@@ -138,10 +177,21 @@ bool GdbAttributeIndexParser::query_double_direct(
     double value,
     AttrOp op,
     size_t max_fid_count,
-    std::vector<uint32_t>& result,
+    std::vector<RowSlot>& result,
     AttributeIndexQueryMetrics* metrics) {
     const std::string unused;
-    return query_direct(value, unused, false, op,
+    return query_direct(value, 0, false, unused, false, op,
+                        max_fid_count, result, metrics);
+}
+
+bool GdbAttributeIndexParser::query_int64_direct(
+    int64_t value,
+    AttrOp op,
+    size_t max_fid_count,
+    std::vector<RowSlot>& result,
+    AttributeIndexQueryMetrics* metrics) {
+    const std::string unused;
+    return query_direct(0.0, value, true, unused, false, op,
                         max_fid_count, result, metrics);
 }
 
@@ -149,31 +199,38 @@ bool GdbAttributeIndexParser::query_string_direct(
     const std::string& value,
     AttrOp op,
     size_t max_fid_count,
-    std::vector<uint32_t>& result,
+    std::vector<RowSlot>& result,
     AttributeIndexQueryMetrics* metrics) {
-    return query_direct(0.0, value, true, op,
+    return query_direct(0.0, 0, false, value, true, op,
                         max_fid_count, result, metrics);
 }
 
 bool GdbAttributeIndexParser::query_direct(
     double numeric_value,
+    int64_t integer_value,
+    bool numeric_is_int64,
     const std::string& string_value,
     bool is_string,
     AttrOp op,
     size_t max_fid_count,
-    std::vector<uint32_t>& result,
+    std::vector<RowSlot>& result,
     AttributeIndexQueryMetrics* metrics) {
     if (metrics != nullptr) *metrics = AttributeIndexQueryMetrics{};
     const auto total_start = metric_start(metrics);
 
-    // 每次查询使用当前文件快照；旧物化结果和 trailer 不跨文件版本复用。
-    file_data_.clear();
-    all_entries_.clear();
+    // Direct queries use bounded page reads; parse() remains the explicit
+    // full-materialization API for diagnostics and compatibility.
+    std::vector<uint8_t>().swap(file_data_);
+    std::vector<AttributeIndexEntry>().swap(all_entries_);
     trailer_ = BPlusTreeTrailer{};
 
-    // ── 文件加载与尺寸边界 ──
+    TablxCacheKey source_before;
+    if (!TablxCache::make_key(file_path_, source_before)) return false;
+
+    // ── 文件大小与 trailer ──
     const auto load_start = metric_start(metrics);
-    std::ifstream input(file_path_, std::ios::binary | std::ios::ate);
+    std::ifstream input(std::filesystem::u8path(file_path_),
+                        std::ios::binary | std::ios::ate);
     if (!input.is_open()) return false;
     const std::streamoff end_offset = input.tellg();
     if (end_offset < 0) return false;
@@ -186,53 +243,96 @@ bool GdbAttributeIndexParser::query_direct(
     }
 
     const size_t byte_count = static_cast<size_t>(unsigned_size);
-    input.seekg(0, std::ios::beg);
-    file_data_.resize(byte_count);
-    if (byte_count != 0) {
-        input.read(reinterpret_cast<char*>(file_data_.data()),
-                   static_cast<std::streamsize>(byte_count));
-        if (!input) return false;
+    if (byte_count < sizeof(uint32_t)) return false;
+    std::array<uint8_t, sizeof(uint32_t)> version_bytes{};
+    input.clear();
+    input.seekg(static_cast<std::streamoff>(
+                    byte_count - sizeof(uint32_t)),
+                std::ios::beg);
+    input.read(reinterpret_cast<char*>(version_bytes.data()),
+               static_cast<std::streamsize>(version_bytes.size()));
+    if (!input) return false;
+    const uint32_t version = read_u32(version_bytes.data());
+    if (version == 1U) {
+        trailer_.version = 1U;
+        trailer_.page_size = static_cast<uint32_t>(kPageSize);
+        trailer_.object_id_size = 4U;
+    } else if (version == 2U) {
+        trailer_.version = 2U;
+        trailer_.page_size = static_cast<uint32_t>(kV2PageSize);
+        trailer_.object_id_size = 8U;
+    } else {
+        return false;
     }
+    const size_t trailer_size = version == 1U ? kTrailerSize : kV2TrailerSize;
+    const size_t page_size = trailer_.page_size;
+    if (byte_count < trailer_size) return false;
+    const size_t page_bytes = byte_count - trailer_size;
+    if (page_bytes % page_size != 0U) return false;
+    const size_t page_count = page_bytes / page_size;
     if (metrics != nullptr) {
         metrics->file_bytes = byte_count;
         metrics->file_load_ms = elapsed_ms(load_start);
     }
 
-    // ── Trailer 与页面布局验证 ──
     const auto trailer_start = metric_start(metrics);
-    if (file_data_.size() < kTrailerSize) return false;
-    const size_t page_bytes = file_data_.size() - kTrailerSize;
-    if (page_bytes % kPageSize != 0) return false;
-    const size_t page_count = page_bytes / kPageSize;
-    if (!parse_trailer() || trailer_.value_size == 0) return false;
+    std::array<uint8_t, GdbAttributeIndexParser::kV2TrailerSize>
+        trailer_storage{};
+    uint8_t* trailer_bytes = trailer_storage.data();
+    input.clear();
+    input.seekg(static_cast<std::streamoff>(page_bytes), std::ios::beg);
+    input.read(reinterpret_cast<char*>(trailer_bytes),
+               static_cast<std::streamsize>(trailer_size));
+    if (!input) return false;
+    trailer_.value_size = trailer_bytes[0];
+    const uint8_t flags = trailer_bytes[1];
+    trailer_.is_string = (flags & 0x20U) != 0;
+    trailer_.is_numeric = (flags & 0x40U) != 0;
+    trailer_.magic1 = read_u32(trailer_bytes + 2U);
+    trailer_.tree_depth = read_u32(trailer_bytes + 6U);
+    trailer_.total_value_count = version == 1U
+        ? read_u32(trailer_bytes + 10U)
+        : read_object_id(trailer_bytes + 10U, 8U);
+    const uint32_t stored_version = read_u32(
+        trailer_bytes + trailer_size - sizeof(uint32_t));
+    if (trailer_.magic1 != 1U || trailer_.value_size == 0U ||
+        stored_version != version) return false;
     if (metrics != nullptr) {
         metrics->page_count = page_count;
         metrics->trailer_ms = elapsed_ms(trailer_start);
     }
 
     if ((is_string && !trailer_.is_string) ||
-        (!is_string && !trailer_.is_numeric)) {
+        (!is_string && !trailer_.is_numeric) ||
+        (numeric_is_int64 && trailer_.value_size != 8U) ||
+        (is_string && (trailer_.value_size % 2U) != 0U)) {
         return false;
     }
 
     // 深度为 0 只允许真正的空树；空结果是成功，不是回退信号。
     if (trailer_.tree_depth == 0) {
         if (trailer_.total_value_count != 0) return false;
+        TablxCacheKey source_after;
+        if (!TablxCache::make_key(file_path_, source_after) ||
+            !(source_before == source_after)) {
+            return false;
+        }
         result.clear();
         if (metrics != nullptr) {
             metrics->total_ms = elapsed_ms(total_start);
         }
         return true;
     }
-    if (page_count == 0 || trailer_.tree_depth > page_count) return false;
+    if (page_count == 0 || trailer_.tree_depth > 4U ||
+        trailer_.tree_depth > page_count) return false;
 
-    const int capacity = max_per_page(trailer_.value_size);
-    if (capacity <= 0) return false;
-    const size_t values_offset =
-        12U + static_cast<size_t>(capacity) * 4U;
-    if (values_offset > kPageSize ||
+    const size_t capacity = max_per_page(trailer_);
+    if (capacity == 0U) return false;
+    const size_t values_offset = leaf_header_size(version) +
+        capacity * trailer_.object_id_size;
+    if (values_offset > page_size ||
         static_cast<size_t>(trailer_.value_size) >
-            kPageSize - values_offset) {
+            page_size - values_offset) {
         return false;
     }
 
@@ -241,71 +341,201 @@ bool GdbAttributeIndexParser::query_direct(
               string_value, trailer_.value_size / 2U)
         : std::string{};
 
-    // visited 同时保护根到叶导航和叶链扫描，任何循环或重复页面均视为损坏。
-    std::vector<uint8_t> visited(page_count + 1U, 0U);
-    uint32_t leaf_page_id = 1U;
+    // A fixed 16-page LRU bounds temporary memory independently of ATX size.
+    struct CachedPage {
+        ObjectId page_id = 0;
+        std::vector<uint8_t> bytes;
+        uint64_t last_used = 0;
+        bool valid = false;
+    };
+    std::array<CachedPage, 16> page_cache{};
+    for (CachedPage& cached : page_cache) cached.bytes.resize(page_size);
+    uint64_t cache_clock = 0;
+    const auto read_page = [&](ObjectId page_id) -> const uint8_t* {
+        size_t page_offset = 0;
+        if (!page_offset_for(page_id, page_count, page_size, page_offset))
+            return nullptr;
+        for (CachedPage& cached : page_cache) {
+            if (cached.valid && cached.page_id == page_id) {
+                cached.last_used = ++cache_clock;
+                if (metrics != nullptr) ++metrics->pages_visited;
+                return cached.bytes.data();
+            }
+        }
+        CachedPage* slot = &page_cache[0];
+        for (CachedPage& cached : page_cache) {
+            if (!cached.valid) {
+                slot = &cached;
+                break;
+            }
+            if (cached.last_used < slot->last_used) slot = &cached;
+        }
+        input.clear();
+        input.seekg(static_cast<std::streamoff>(page_offset), std::ios::beg);
+        input.read(reinterpret_cast<char*>(slot->bytes.data()),
+                   static_cast<std::streamsize>(slot->bytes.size()));
+        if (!input) {
+            slot->valid = false;
+            return nullptr;
+        }
+        slot->page_id = page_id;
+        slot->last_used = ++cache_clock;
+        slot->valid = true;
+        if (metrics != nullptr) ++metrics->pages_visited;
+        return slot->bytes.data();
+    };
 
-    // ── 根节点导航到最左叶 ──
-    // 当前直接查询仍扫描完整叶链，以验证全树计数并正确支持所有比较操作。
+    const auto compare_key_to_query = [&](const uint8_t* bytes,
+                                          int& comparison) -> bool {
+        if (is_string) {
+            const AttributeIndexEntry entry = decode_value(
+                bytes, trailer_.value_size, true, 0U);
+            comparison = entry.string_value.compare(effective_string);
+            comparison = (comparison > 0) - (comparison < 0);
+            return true;
+        }
+        double indexed_value = 0.0;
+        int64_t indexed_integer = 0;
+        if (!decode_numeric(bytes, trailer_.value_size, numeric_is_int64,
+                            indexed_value, indexed_integer)) {
+            return false;
+        }
+        if (numeric_is_int64) {
+            comparison = (indexed_integer > integer_value) -
+                         (indexed_integer < integer_value);
+        } else {
+            comparison = (indexed_value > numeric_value) -
+                         (indexed_value < numeric_value);
+        }
+        return true;
+    };
+    const auto compare_keys = [&](const uint8_t* lhs,
+                                  const uint8_t* rhs,
+                                  int& comparison) -> bool {
+        if (is_string) {
+            const AttributeIndexEntry left = decode_value(
+                lhs, trailer_.value_size, true, 0U);
+            const AttributeIndexEntry right = decode_value(
+                rhs, trailer_.value_size, true, 0U);
+            comparison = left.string_value.compare(right.string_value);
+            comparison = (comparison > 0) - (comparison < 0);
+            return true;
+        }
+        double left_value = 0.0;
+        double right_value = 0.0;
+        int64_t left_integer = 0;
+        int64_t right_integer = 0;
+        if (!decode_numeric(lhs, trailer_.value_size, numeric_is_int64,
+                            left_value, left_integer) ||
+            !decode_numeric(rhs, trailer_.value_size, numeric_is_int64,
+                            right_value, right_integer)) {
+            return false;
+        }
+        if (numeric_is_int64) {
+            comparison = (left_integer > right_integer) -
+                         (left_integer < right_integer);
+        } else {
+            comparison = (left_value > right_value) -
+                         (left_value < right_value);
+        }
+        return true;
+    };
+
+    const bool descend_to_lower_bound =
+        op == AttrOp::Eq || op == AttrOp::Ge || op == AttrOp::Gt;
+    bool starts_at_leftmost = true;
+    ObjectId leaf_page_id = 1U;
+    std::vector<ObjectId> navigation_pages;
+
+    // ── 内部页按键下探 ──
     const auto navigation_start = metric_start(metrics);
     for (uint32_t depth = trailer_.tree_depth; depth > 1U; --depth) {
-        size_t page_offset = 0;
-        if (!page_offset_for(leaf_page_id, page_count, page_offset) ||
-            visited[leaf_page_id] != 0U) {
+        if (std::find(navigation_pages.begin(), navigation_pages.end(),
+                      leaf_page_id) != navigation_pages.end()) {
             return false;
         }
-        visited[leaf_page_id] = 1U;
-        if (metrics != nullptr) ++metrics->pages_visited;
+        navigation_pages.push_back(leaf_page_id);
+        const uint8_t* page = read_page(leaf_page_id);
+        if (page == nullptr) return false;
+        const size_t nonleaf_header = nonleaf_header_size(version);
+        const uint32_t entry_count = read_u32(page + trailer_.object_id_size);
+        if (entry_count == 0U || entry_count > capacity) {
+            return false;
+        }
 
-        const uint8_t* page = file_data_.data() + page_offset;
-        const uint32_t entry_count = read_u32(page + 4U);
-        if (entry_count == 0U ||
-            entry_count > static_cast<uint32_t>(capacity)) {
-            return false;
+        uint32_t child_index = 0U;
+        if (descend_to_lower_bound) {
+            child_index = entry_count - 1U;
+            for (uint32_t index = 0U; index < entry_count; ++index) {
+                const uint8_t* separator = page + values_offset +
+                    static_cast<size_t>(index) * trailer_.value_size;
+                int comparison = 0;
+                if (!compare_key_to_query(separator, comparison)) return false;
+                if (index != 0U) {
+                    const uint8_t* previous = page + values_offset +
+                        static_cast<size_t>(index - 1U) * trailer_.value_size;
+                    int order = 0;
+                    if (!compare_keys(previous, separator, order) ||
+                        order > 0) {
+                        return false;
+                    }
+                }
+                const bool is_lower_bound = op == AttrOp::Gt
+                    ? comparison > 0 : comparison >= 0;
+                if (is_lower_bound) {
+                    child_index = index;
+                    break;
+                }
+            }
         }
-        const uint32_t first_child = read_u32(page + 8U);
-        if (first_child == 0U) return false;
-        leaf_page_id = first_child;
+        if (child_index != 0U) starts_at_leftmost = false;
+        for (uint32_t index = 0U; index < entry_count; ++index) {
+            const ObjectId child = read_object_id(
+                page + nonleaf_header +
+                    static_cast<size_t>(index) * trailer_.object_id_size,
+                trailer_.object_id_size);
+            if (child == 0U || child > page_count) {
+                return false;
+            }
+        }
+        leaf_page_id = read_object_id(
+            page + nonleaf_header +
+                static_cast<size_t>(child_index) * trailer_.object_id_size,
+            trailer_.object_id_size);
     }
     metric_set(metrics,
                &AttributeIndexQueryMetrics::tree_navigation_ms,
                navigation_start);
 
-    // ── 完整叶链扫描 ──
-    // 候选只暂存在局部 vector；文件结构全部通过后才移动到 result，确保 fail closed。
+    // ── 定位叶页扫描到目标范围结束 ──
+    // 候选在本次查询成功前只保存在局部 vector，失败时由上层回退扫描。
     const auto scan_start = metric_start(metrics);
-    std::vector<uint32_t> candidates;
+    std::vector<RowSlot> candidates;
     size_t entries_seen = 0;
-    uint32_t current_page_id = leaf_page_id;
+    ObjectId current_page_id = leaf_page_id;
+    size_t leaf_pages_seen = 0;
+    std::vector<uint8_t> previous_key(trailer_.value_size);
+    bool have_previous_key = false;
+    bool stopped_at_range_end = false;
     while (current_page_id != 0U) {
-        size_t page_offset = 0;
-        if (!page_offset_for(current_page_id, page_count, page_offset) ||
-            visited[current_page_id] != 0U) {
-            return false;
-        }
-        visited[current_page_id] = 1U;
-        if (metrics != nullptr) ++metrics->pages_visited;
-
-        const uint8_t* page = file_data_.data() + page_offset;
-        const uint32_t next_page_id = read_u32(page);
-        const uint32_t entry_count = read_u32(page + 4U);
-        if (entry_count > static_cast<uint32_t>(capacity)) return false;
-
-        // 累积计数在加法前验证，避免损坏条目数产生 size_t 下溢/溢出。
-        if (entries_seen > static_cast<size_t>(
-                               trailer_.total_value_count) ||
-            static_cast<size_t>(entry_count) >
-                static_cast<size_t>(trailer_.total_value_count) -
-                    entries_seen) {
-            return false;
-        }
+        if (++leaf_pages_seen > page_count) return false;
+        const uint8_t* page = read_page(current_page_id);
+        if (page == nullptr) return false;
+        const ObjectId next_page_id = read_object_id(
+            page, trailer_.object_id_size);
+        if (next_page_id > page_count) return false;
+        const uint32_t entry_count = read_u32(
+            page + trailer_.object_id_size);
+        if (entry_count > capacity) return false;
 
         for (uint32_t index = 0; index < entry_count; ++index) {
-            const uint32_t stored_fid =
-                read_u32(page + 12U + static_cast<size_t>(index) * 4U);
+            const ObjectId stored_fid = read_object_id(
+                page + leaf_header_size(version) +
+                    static_cast<size_t>(index) * trailer_.object_id_size,
+                trailer_.object_id_size);
             if (stored_fid == 0U ||
                 (max_fid_count != 0U &&
-                 static_cast<size_t>(stored_fid) > max_fid_count)) {
+                 stored_fid > max_fid_count)) {
                 return false;
             }
 
@@ -313,32 +543,46 @@ bool GdbAttributeIndexParser::query_direct(
                 page + values_offset +
                 static_cast<size_t>(index) * trailer_.value_size;
             int comparison = 0;
-            if (is_string) {
-                const AttributeIndexEntry entry = decode_value(
-                    value_bytes, trailer_.value_size, true, stored_fid);
-                comparison = entry.string_value.compare(effective_string);
-            } else {
-                double indexed_value = 0.0;
-                if (!decode_numeric(
-                        value_bytes, trailer_.value_size, indexed_value)) {
+            if (!compare_key_to_query(value_bytes, comparison)) return false;
+            if (have_previous_key) {
+                int order = 0;
+                if (!compare_keys(previous_key.data(), value_bytes, order) ||
+                    order > 0) {
                     return false;
                 }
-                if (indexed_value < numeric_value) comparison = -1;
-                else if (indexed_value > numeric_value) comparison = 1;
             }
 
             if (comparison_matches(comparison, op)) {
                 // .atx 存储 1-based ObjectID，Reader 对外统一发布 0-based FID。
-                candidates.push_back(stored_fid - 1U);
+                RowSlot row_slot = 0U;
+                if (!object_id_to_row_slot(stored_fid, row_slot)) return false;
+                candidates.push_back(row_slot);
+            }
+            std::memcpy(previous_key.data(), value_bytes,
+                        trailer_.value_size);
+            have_previous_key = true;
+            ++entries_seen;
+
+            if ((op == AttrOp::Eq && comparison > 0) ||
+                (op == AttrOp::Lt && comparison >= 0) ||
+                (op == AttrOp::Le && comparison > 0)) {
+                stopped_at_range_end = true;
+                break;
             }
         }
 
-        entries_seen += entry_count;
+        if (stopped_at_range_end) break;
+        if (static_cast<uint64_t>(entries_seen) >
+            trailer_.total_value_count) {
+            return false;
+        }
         current_page_id = next_page_id;
     }
 
-    if (entries_seen != static_cast<size_t>(
-                            trailer_.total_value_count)) {
+    if (current_page_id == 0U && !stopped_at_range_end &&
+        starts_at_leftmost &&
+        static_cast<uint64_t>(entries_seen) !=
+            trailer_.total_value_count) {
         return false;
     }
     if (metrics != nullptr) {
@@ -356,10 +600,15 @@ bool GdbAttributeIndexParser::query_direct(
     if (metrics != nullptr) {
         metrics->candidate_count = candidates.size();
         metrics->candidate_order_ms = elapsed_ms(order_start);
-        metrics->total_ms = elapsed_ms(total_start);
     }
 
+    TablxCacheKey source_after;
+    if (!TablxCache::make_key(file_path_, source_after) ||
+        !(source_before == source_after)) {
+        return false;
+    }
     result = std::move(candidates);
+    if (metrics != nullptr) metrics->total_ms = elapsed_ms(total_start);
     return true;
 }
 

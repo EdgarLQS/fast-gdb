@@ -14,6 +14,7 @@
 
 #include "explorgdb/reader/index/gdb_spatial_index.h"
 #include "explorgdb/reader/index/gdb_attribute_index.h"
+#include <cmath>
 #include <iostream>
 #include <string>
 #include <vector>

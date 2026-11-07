@@ -20,13 +20,16 @@ bool projection_includes(const std::vector<size_t>* projection,
 }  // namespace
 
 bool GdbTableParser::read_feature_by_fid(
-    uint32_t fid,
+    RowSlot fid,
     FeatureRecord& record,
     GeometryValue& geometry,
     FeatureReadMetrics* metrics,
-    const std::vector<size_t>* projection) {
+    const std::vector<size_t>* projection,
+    const GeometryReadOptions& geometry_options,
+    bool include_geometry) {
     const bool success = read_feature_by_fid_wkb_internal(
-        fid, record, geometry, metrics, projection);
+        fid, record, geometry, metrics, projection, geometry_options,
+        include_geometry);
 
     if (success && projection != nullptr) {
         record.materialized_fields.assign(record.field_values.size(), 0U);

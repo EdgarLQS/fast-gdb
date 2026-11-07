@@ -107,7 +107,7 @@ TEST_F(SpatialWhereUnicodeTest, BmpTextUsesIndexAndRechecks) {
     const QueryResult result = query(catalog, table, "name = '成都'");
     EXPECT_EQ(result.execution_path, "spatial-where:spx+atx");
     EXPECT_TRUE(result.combined_metrics.used_attribute_index);
-    EXPECT_EQ(result.matched_fids, (std::vector<uint32_t>{1}));
+    EXPECT_EQ(result.matched_fids, (std::vector<explorgdb::RowSlot>{1}));
 }
 
 /**
@@ -127,5 +127,5 @@ TEST_F(SpatialWhereUnicodeTest, NonBmpTextFallsBackWithoutFalseNegative) {
     EXPECT_FALSE(result.combined_metrics.used_attribute_index);
     EXPECT_NE(result.fallback_reason.find("not safely representable"),
               std::string::npos);
-    EXPECT_EQ(result.matched_fids, (std::vector<uint32_t>{2}));
+    EXPECT_EQ(result.matched_fids, (std::vector<explorgdb::RowSlot>{2}));
 }

@@ -28,16 +28,17 @@ bool execute_sql(GDALDataset* dataset, const std::string& sql) {
     return CPLGetLastErrorType() < CE_Failure;
 }
 
-std::vector<uint32_t> collect_gdal(OGRLayer* layer,
-                                   const std::string& where) {
-    std::vector<uint32_t> result;
+std::vector<explorgdb::RowSlot> collect_gdal(OGRLayer* layer,
+                                             const std::string& where) {
+    std::vector<explorgdb::RowSlot> result;
     layer->SetSpatialFilterRect(0.0, 0.0, 10.0, 10.0);
     if (layer->SetAttributeFilter(where.c_str()) != OGRERR_NONE)
         return result;
     layer->ResetReading();
     while (OGRFeature* feature = layer->GetNextFeature()) {
         if (feature->GetFID() > 0)
-            result.push_back(static_cast<uint32_t>(feature->GetFID() - 1));
+            result.push_back(static_cast<explorgdb::RowSlot>(
+                feature->GetFID() - 1));
         OGRFeature::DestroyFeature(feature);
     }
     layer->SetSpatialFilter(nullptr);
@@ -53,7 +54,8 @@ class SpatialWhereNullTest : public GdbTutorialFixture {};
  * 输入与前置条件：由测试体构造；无显式方法参数。
  * 预期结果：断言全部通过；测试方法无返回值。
  */
-TEST_F(SpatialWhereNullTest, NullNotEqualMatchesGdal) {
+TEST_F(SpatialWhereNullTest,
+       NullNotEqualUsesSqlThreeValuedLogicAndRecordsGdalDifference) {
     const std::string path =
         (std::filesystem::temp_directory_path() /
          "fast_gdb_spatial_where_null.gdb").string();
@@ -116,7 +118,8 @@ TEST_F(SpatialWhereNullTest, NullNotEqualMatchesGdal) {
               "spatial-where:spatial-candidates");
     EXPECT_FALSE(fast.combined_metrics.used_attribute_index);
     EXPECT_NE(fast.fallback_reason.find("not-equal"), std::string::npos);
-    EXPECT_EQ(fast.matched_fids, (std::vector<uint32_t>{1, 2, 3}));
+    EXPECT_EQ(fast.matched_fids,
+              (std::vector<explorgdb::RowSlot>{1, 3}));
 
     dataset = static_cast<GDALDataset*>(GDALOpenEx(
         path.c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY,
@@ -124,6 +127,11 @@ TEST_F(SpatialWhereNullTest, NullNotEqualMatchesGdal) {
     ASSERT_NE(dataset, nullptr);
     layer = dataset->GetLayerByName(kLayer);
     ASSERT_NE(layer, nullptr);
-    EXPECT_EQ(fast.matched_fids, collect_gdal(layer, "value != 5"));
+    // The installed OpenFileGDB driver returns the NULL row for !=. FastGdb
+    // deliberately follows the plan's SQL three-valued logic contract.
+    const std::vector<explorgdb::RowSlot> gdal_matches =
+        collect_gdal(layer, "value != 5");
+    EXPECT_EQ(gdal_matches, (std::vector<explorgdb::RowSlot>{1, 2, 3}));
+    EXPECT_NE(fast.matched_fids, gdal_matches);
     GDALClose(dataset);
 }

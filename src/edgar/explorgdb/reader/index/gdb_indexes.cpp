@@ -12,6 +12,7 @@
 #include <cctype>
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <limits>
 #include <utility>
@@ -58,7 +59,8 @@ bool GdbIndexesParser::is_direct_field_expression(
 
 // 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 bool GdbIndexesParser::parse() {
-    std::ifstream input(file_path_, std::ios::binary | std::ios::ate);
+    std::ifstream input(std::filesystem::u8path(file_path_),
+                        std::ios::binary | std::ios::ate);
     if (!input.is_open()) return false;
 
     const std::streamoff end_offset = input.tellg();

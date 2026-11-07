@@ -9,8 +9,10 @@
 
 #include "query_where_internal.h"
 #include "explorgdb_constants.h"
+#include "ole_date.h"
 
 #include <algorithm>
+#include <cerrno>
 #include <cctype>
 #include <cmath>
 #include <cstdlib>
@@ -49,8 +51,16 @@ struct Token {
 
 struct Literal {
     bool is_string = false;
+    bool is_temporal = false;
     std::string string_value;
+    FieldType temporal_type = FieldType::DateTime;
+    double temporal_value = 0.0;
+    int16_t temporal_offset_minutes = 0;
     double numeric_value = 0.0;
+    bool numeric_is_integer = false;
+    bool numeric_integer_overflow = false;
+    bool numeric_integer_overflow_positive = false;
+    int64_t integer_value = 0;
 };
 
 enum class ExprKind {
@@ -81,6 +91,142 @@ std::string lower_copy(std::string value) {
     return value;
 }
 
+int64_t days_from_civil(int year, unsigned month, unsigned day) {
+    year -= month <= 2;
+    const int era = (year >= 0 ? year : year - 399) / 400;
+    const unsigned year_of_era = static_cast<unsigned>(year - era * 400);
+    const unsigned adjusted_month = month > 2 ? month - 3 : month + 9;
+    const unsigned day_of_year =
+        (153U * adjusted_month + 2U) / 5U + day - 1U;
+    const unsigned day_of_era = year_of_era * 365U + year_of_era / 4U -
+        year_of_era / 100U + day_of_year;
+    return static_cast<int64_t>(era) * 146097 + day_of_era - 719468;
+}
+
+bool parse_fixed_digits(const std::string& text, size_t offset,
+                        size_t count, int& value) {
+    if (offset + count > text.size()) return false;
+    value = 0;
+    for (size_t i = 0; i < count; ++i) {
+        const char ch = text[offset + i];
+        if (ch < '0' || ch > '9') return false;
+        value = value * 10 + (ch - '0');
+    }
+    return true;
+}
+
+bool valid_calendar_date(int year, int month, int day) {
+    if (year < 1 || month < 1 || month > 12 || day < 1) return false;
+    static constexpr int month_days[] =
+        {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    const bool leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+    const int maximum = month_days[month - 1] +
+        (month == 2 && leap ? 1 : 0);
+    return day <= maximum;
+}
+
+bool parse_temporal_text(const std::string& text, FieldType requested_type,
+                         Literal& literal) {
+    size_t index = 0;
+    int year = 1899;
+    int month = 12;
+    int day = 30;
+    int hour = 0;
+    int minute = 0;
+    int second = 0;
+    int millisecond = 0;
+
+    auto parse_date = [&]() {
+        return parse_fixed_digits(text, index, 4, year) &&
+            (index += 4, index < text.size() && text[index++] == '-') &&
+            parse_fixed_digits(text, index, 2, month) &&
+            (index += 2, index < text.size() && text[index++] == '-') &&
+            parse_fixed_digits(text, index, 2, day) &&
+            (index += 2, valid_calendar_date(year, month, day));
+    };
+    auto parse_time = [&]() {
+        if (!parse_fixed_digits(text, index, 2, hour)) return false;
+        index += 2;
+        if (index >= text.size() || text[index++] != ':') return false;
+        if (!parse_fixed_digits(text, index, 2, minute)) return false;
+        index += 2;
+        if (index >= text.size() || text[index++] != ':') return false;
+        if (!parse_fixed_digits(text, index, 2, second)) return false;
+        index += 2;
+        if (index < text.size() && text[index] == '.') {
+            ++index;
+            size_t digits = 0;
+            while (index < text.size() && text[index] >= '0' &&
+                   text[index] <= '9' && digits < 3) {
+                millisecond = millisecond * 10 + (text[index++] - '0');
+                ++digits;
+            }
+            if (digits == 0 || (index < text.size() &&
+                text[index] >= '0' && text[index] <= '9')) return false;
+            while (digits++ < 3) millisecond *= 10;
+        }
+        return hour <= 23 && minute <= 59 && second <= 59;
+    };
+
+    if (requested_type == FieldType::Date) {
+        if (!parse_date() || index != text.size()) return false;
+    } else if (requested_type == FieldType::Time) {
+        if (!parse_time() || index != text.size()) return false;
+    } else {
+        if (!parse_date() || index >= text.size() ||
+            (text[index] != ' ' && text[index] != 'T' && text[index] != 't')) {
+            return false;
+        }
+        ++index;
+        if (!parse_time()) return false;
+        while (index < text.size() &&
+               (text[index] == ' ' || text[index] == '\t')) ++index;
+
+        bool has_offset = false;
+        int16_t offset_minutes = 0;
+        if (index < text.size() &&
+            (text[index] == '+' || text[index] == '-')) {
+            const int sign = text[index++] == '+' ? 1 : -1;
+            int offset_hour = 0;
+            int offset_minute = 0;
+            if (!parse_fixed_digits(text, index, 2, offset_hour)) return false;
+            index += 2;
+            if (index >= text.size() || text[index++] != ':') return false;
+            if (!parse_fixed_digits(text, index, 2, offset_minute)) return false;
+            index += 2;
+            if (offset_hour > 14 || offset_minute > 59 ||
+                (offset_hour == 14 && offset_minute != 0)) return false;
+            offset_minutes = static_cast<int16_t>(
+                sign * (offset_hour * 60 + offset_minute));
+            has_offset = true;
+        }
+        while (index < text.size() &&
+               (text[index] == ' ' || text[index] == '\t')) ++index;
+        if (index != text.size()) return false;
+
+        if (requested_type == FieldType::DateTimeWithOffset && !has_offset)
+            return false;
+        literal.temporal_type = has_offset
+            ? FieldType::DateTimeWithOffset : FieldType::DateTime;
+        literal.temporal_offset_minutes = offset_minutes;
+    }
+
+    const int64_t day_delta = days_from_civil(year,
+        static_cast<unsigned>(month), static_cast<unsigned>(day)) -
+        days_from_civil(1899, 12, 30);
+    const int64_t time_ms =
+        ((static_cast<int64_t>(hour) * 60 + minute) * 60 + second) * 1000 +
+        millisecond;
+    literal.temporal_type = requested_type == FieldType::DateTimeWithOffset
+        ? FieldType::DateTimeWithOffset :
+        (requested_type == FieldType::Date || requested_type == FieldType::Time
+            ? requested_type : literal.temporal_type);
+    literal.temporal_value = static_cast<double>(day_delta) +
+        static_cast<double>(time_ms) / 86400000.0;
+    literal.is_temporal = true;
+    return true;
+}
+
 bool is_numeric_field(FieldType type) {
     switch (type) {
         case FieldType::Int16:
@@ -88,11 +234,19 @@ bool is_numeric_field(FieldType type) {
         case FieldType::Int64:
         case FieldType::Float32:
         case FieldType::Float64:
+        case FieldType::ObjectId:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool is_temporal_field(FieldType type) {
+    switch (type) {
         case FieldType::DateTime:
         case FieldType::Date:
         case FieldType::Time:
         case FieldType::DateTimeWithOffset:
-        case FieldType::ObjectId:
             return true;
         default:
             return false;
@@ -116,6 +270,28 @@ bool parse_numeric_literal(const std::string& text, double& value) {
     value = std::strtod(text.c_str(), &end);
     return end != nullptr && end != text.c_str() && *end == '\0' &&
            std::isfinite(value);
+}
+
+bool parse_integer_literal(const std::string& text, Literal& literal) {
+    size_t digit = 0;
+    if (!text.empty() && (text[0] == '+' || text[0] == '-')) digit = 1;
+    if (digit == text.size()) return false;
+    for (size_t index = digit; index < text.size(); ++index) {
+        if (text[index] < '0' || text[index] > '9') return false;
+    }
+
+    errno = 0;
+    char* end = nullptr;
+    const long long value = std::strtoll(text.c_str(), &end, 10);
+    if (end == text.c_str() || end == nullptr || *end != '\0') return false;
+    if (errno == ERANGE) {
+        literal.numeric_integer_overflow = true;
+        literal.numeric_integer_overflow_positive = text[0] != '-';
+        return true;
+    }
+    literal.numeric_is_integer = true;
+    literal.integer_value = static_cast<int64_t>(value);
+    return true;
 }
 
 /** 词法分析：将 WHERE 文本拆分为 Token 流。 */
@@ -338,6 +514,22 @@ private:
     }
 
     bool parse_literal(Literal& literal) {
+        if (current().kind == TokenKind::Identifier &&
+            index_ + 1 < tokens_.size() &&
+            tokens_[index_ + 1].kind == TokenKind::String) {
+            const std::string introducer = lower_copy(current().text);
+            std::optional<FieldType> temporal_type;
+            if (introducer == "date") temporal_type = FieldType::Date;
+            else if (introducer == "time") temporal_type = FieldType::Time;
+            else if (introducer == "timestamp") {
+                temporal_type = FieldType::DateTime;
+            }
+            if (temporal_type) {
+                ++index_;
+                const std::string value = tokens_[index_++].text;
+                return parse_temporal_text(value, *temporal_type, literal);
+            }
+        }
         if (current().kind == TokenKind::String) {
             literal.is_string = true;
             literal.string_value = current().text;
@@ -348,6 +540,7 @@ private:
             literal.is_string = false;
             if (!parse_numeric_literal(current().text, literal.numeric_value))
                 return false;
+            (void)parse_integer_literal(current().text, literal);
             ++index_;
             return true;
         }
@@ -380,6 +573,72 @@ bool bind_fields(Expr& expression,
     return false;
 }
 
+bool validate_literal_types(const Expr& expression,
+                            const std::vector<FieldDescriptor>& fields,
+                            std::string& error) {
+    if (expression.kind == ExprKind::And || expression.kind == ExprKind::Or) {
+        return expression.left && expression.right &&
+               validate_literal_types(*expression.left, fields, error) &&
+               validate_literal_types(*expression.right, fields, error);
+    }
+    if (expression.field_index >= fields.size()) {
+        error = "unknown field in where clause";
+        return false;
+    }
+
+    const FieldType field_type = fields[expression.field_index].type;
+    auto compatible = [&](const Literal& literal) {
+        if (is_temporal_field(field_type)) {
+            return literal.is_temporal &&
+                   literal.temporal_type == field_type;
+        }
+        if (literal.is_temporal) return false;
+        return literal.is_string
+            ? is_string_field(field_type)
+            : is_numeric_field(field_type);
+    };
+
+    if (expression.kind == ExprKind::Comparison) {
+        if (compatible(expression.literal)) return true;
+    } else {
+        for (const Literal& literal : expression.literals) {
+            if (!compatible(literal)) {
+                error = "incompatible field and literal types in where clause";
+                return false;
+            }
+        }
+        return true;
+    }
+    error = "incompatible field and literal types in where clause";
+    return false;
+}
+
+enum class TruthValue {
+    False,
+    True,
+    Unknown
+};
+
+TruthValue truth_from_bool(bool value) {
+    return value ? TruthValue::True : TruthValue::False;
+}
+
+TruthValue logical_and(TruthValue left, TruthValue right) {
+    if (left == TruthValue::False || right == TruthValue::False)
+        return TruthValue::False;
+    if (left == TruthValue::True && right == TruthValue::True)
+        return TruthValue::True;
+    return TruthValue::Unknown;
+}
+
+TruthValue logical_or(TruthValue left, TruthValue right) {
+    if (left == TruthValue::True || right == TruthValue::True)
+        return TruthValue::True;
+    if (left == TruthValue::False && right == TruthValue::False)
+        return TruthValue::False;
+    return TruthValue::Unknown;
+}
+
 /** 数值比较，用于 FieldRef/FeatureRecord 求值。 */
 bool compare_numeric(double left, double right, AttrOp op) {
     switch (op) {
@@ -391,6 +650,70 @@ bool compare_numeric(double left, double right, AttrOp op) {
         case AttrOp::Ge: return left >= right;
     }
     return false;
+}
+
+bool comparison_matches(int comparison, AttrOp op) {
+    switch (op) {
+        case AttrOp::Eq: return comparison == 0;
+        case AttrOp::Ne: return comparison != 0;
+        case AttrOp::Lt: return comparison < 0;
+        case AttrOp::Le: return comparison <= 0;
+        case AttrOp::Gt: return comparison > 0;
+        case AttrOp::Ge: return comparison >= 0;
+    }
+    return false;
+}
+
+int compare_int64_to_int64(int64_t left, int64_t right) {
+    if (left < right) return -1;
+    if (left > right) return 1;
+    return 0;
+}
+
+// Compare an exact signed 64-bit integer with a finite IEEE double without
+// first rounding the integer to double.
+int compare_int64_to_double(int64_t integer, double value) {
+    constexpr double kInt64Min = -0x1p63;
+    constexpr double kInt64UpperBound = 0x1p63;
+    if (value >= kInt64UpperBound) return -1;
+    if (value < kInt64Min) return 1;
+
+    const int64_t truncated = static_cast<int64_t>(value);
+    if (integer < truncated) return -1;
+    if (integer > truncated) return 1;
+    const double truncated_as_double = static_cast<double>(truncated);
+    if (value > truncated_as_double) return -1;
+    if (value < truncated_as_double) return 1;
+    return 0;
+}
+
+bool compare_int64_to_literal(int64_t actual,
+                              const Literal& literal,
+                              AttrOp op) {
+    if (literal.numeric_is_integer) {
+        return comparison_matches(
+            compare_int64_to_int64(actual, literal.integer_value), op);
+    }
+    if (literal.numeric_integer_overflow) {
+        const int comparison = literal.numeric_integer_overflow_positive
+            ? -1
+            : 1;
+        return comparison_matches(comparison, op);
+    }
+    return comparison_matches(
+        compare_int64_to_double(actual, literal.numeric_value), op);
+}
+
+bool compare_double_to_literal(double actual,
+                               const Literal& literal,
+                               AttrOp op) {
+    if (literal.numeric_is_integer) {
+        if (std::isnan(actual)) return op == AttrOp::Ne;
+        const int comparison = -compare_int64_to_double(
+            literal.integer_value, actual);
+        return comparison_matches(comparison, op);
+    }
+    return compare_numeric(actual, literal.numeric_value, op);
 }
 
 bool compare_string(std::string_view left,
@@ -408,6 +731,22 @@ bool compare_string(std::string_view left,
     return false;
 }
 
+int64_t temporal_epoch_milliseconds(double ole_value) {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+        ole_to_timepoint(ole_value).time_since_epoch()).count();
+}
+
+bool compare_temporal(int64_t actual_milliseconds,
+                      const Literal& literal, AttrOp op) {
+    int64_t expected = temporal_epoch_milliseconds(literal.temporal_value);
+    if (literal.temporal_type == FieldType::DateTimeWithOffset) {
+        expected -= static_cast<int64_t>(literal.temporal_offset_minutes) *
+                    60000;
+    }
+    return comparison_matches(
+        compare_int64_to_int64(actual_milliseconds, expected), op);
+}
+
 bool field_ref_as_double(const FieldRef& value, double& output) {
     if (value.is_null) return false;
     switch (value.type) {
@@ -415,8 +754,10 @@ bool field_ref_as_double(const FieldRef& value, double& output) {
             output = static_cast<double>(value.as_i16());
             return true;
         case FieldType::Int32:
-        case FieldType::ObjectId:
             output = static_cast<double>(value.as_i32());
+            return true;
+        case FieldType::ObjectId:
+            output = static_cast<double>(value.as_i64());
             return true;
         case FieldType::Int64:
             output = static_cast<double>(value.as_i64());
@@ -430,6 +771,26 @@ bool field_ref_as_double(const FieldRef& value, double& output) {
         case FieldType::Time:
         case FieldType::DateTimeWithOffset:
             output = value.as_f64();
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool field_ref_as_int64(const FieldRef& value, int64_t& output) {
+    if (value.is_null) return false;
+    switch (value.type) {
+        case FieldType::Int16:
+            output = value.as_i16();
+            return true;
+        case FieldType::Int32:
+            output = value.as_i32();
+            return true;
+        case FieldType::ObjectId:
+            output = value.as_i64();
+            return true;
+        case FieldType::Int64:
+            output = value.as_i64();
             return true;
         default:
             return false;
@@ -462,6 +823,18 @@ bool field_value_as_double(const FieldValue& value, double& output) {
     return false;
 }
 
+bool field_value_as_int64(const FieldValue& value, int64_t& output) {
+    if (const auto* current = std::get_if<int32_t>(&value)) {
+        output = *current;
+        return true;
+    }
+    if (const auto* current = std::get_if<int64_t>(&value)) {
+        output = *current;
+        return true;
+    }
+    return false;
+}
+
 bool field_value_as_string(const FieldValue& value, std::string_view& output) {
     if (const auto* current = std::get_if<std::string>(&value)) {
         output = *current;
@@ -470,91 +843,153 @@ bool field_value_as_string(const FieldValue& value, std::string_view& output) {
     return false;
 }
 
-bool evaluate_literal(const FieldRef& value,
-                      const Literal& literal,
-                      AttrOp op) {
-    if (value.is_null) return op == AttrOp::Ne;
+TruthValue evaluate_literal(const FieldRef& value,
+                            const Literal& literal,
+                            AttrOp op) {
+    if (value.is_null) return TruthValue::Unknown;
+    if (literal.is_temporal) {
+        if (value.type != literal.temporal_type) return TruthValue::False;
+        int64_t actual = temporal_epoch_milliseconds(value.as_f64());
+        if (value.type == FieldType::DateTimeWithOffset) {
+            actual -= static_cast<int64_t>(
+                value.as_datetime_offset_minutes()) * 60000;
+        }
+        return truth_from_bool(compare_temporal(actual, literal, op));
+    }
     if (literal.is_string) {
         std::string_view actual;
-        return field_ref_as_string(value, actual) &&
-               compare_string(actual, literal.string_value, op);
+        return truth_from_bool(
+            field_ref_as_string(value, actual) &&
+            compare_string(actual, literal.string_value, op));
     }
+    int64_t integer = 0;
+    if (field_ref_as_int64(value, integer))
+        return truth_from_bool(compare_int64_to_literal(integer, literal, op));
     double actual = 0.0;
-    return field_ref_as_double(value, actual) &&
-           compare_numeric(actual, literal.numeric_value, op);
+    return truth_from_bool(
+        field_ref_as_double(value, actual) &&
+        compare_double_to_literal(actual, literal, op));
 }
 
-bool evaluate_literal(const FieldValue& value,
-                      const Literal& literal,
-                      AttrOp op) {
+TruthValue evaluate_literal(const FieldValue& value,
+                            const Literal& literal,
+                            AttrOp op) {
     if (std::holds_alternative<std::nullptr_t>(value))
-        return op == AttrOp::Ne;
+        return TruthValue::Unknown;
+    if (literal.is_temporal) {
+        double actual_ole = 0.0;
+        int16_t actual_offset = 0;
+        if (literal.temporal_type == FieldType::DateTimeWithOffset) {
+            const auto* current = std::get_if<DateTimeOffsetValue>(&value);
+            if (current == nullptr) return TruthValue::False;
+            actual_ole = current->date;
+            actual_offset = current->offset_minutes;
+        } else {
+            const auto* current = std::get_if<double>(&value);
+            if (current == nullptr) return TruthValue::False;
+            actual_ole = *current;
+        }
+        int64_t actual = temporal_epoch_milliseconds(actual_ole);
+        if (literal.temporal_type == FieldType::DateTimeWithOffset) {
+            actual -= static_cast<int64_t>(actual_offset) * 60000;
+        }
+        return truth_from_bool(compare_temporal(actual, literal, op));
+    }
     if (literal.is_string) {
         std::string_view actual;
-        return field_value_as_string(value, actual) &&
-               compare_string(actual, literal.string_value, op);
+        return truth_from_bool(
+            field_value_as_string(value, actual) &&
+            compare_string(actual, literal.string_value, op));
     }
+    int64_t integer = 0;
+    if (field_value_as_int64(value, integer))
+        return truth_from_bool(compare_int64_to_literal(integer, literal, op));
     double actual = 0.0;
-    return field_value_as_double(value, actual) &&
-           compare_numeric(actual, literal.numeric_value, op);
+    return truth_from_bool(
+        field_value_as_double(value, actual) &&
+        compare_double_to_literal(actual, literal, op));
 }
 
-bool evaluate_expr(const Expr& expression,
-                   const FieldRef* fields,
-                   int field_count) {
+TruthValue evaluate_expr(const Expr& expression,
+                         const FieldRef* fields,
+                         int field_count) {
     switch (expression.kind) {
-        case ExprKind::And:
-            return expression.left && expression.right &&
-                   evaluate_expr(*expression.left, fields, field_count) &&
-                   evaluate_expr(*expression.right, fields, field_count);
-        case ExprKind::Or:
-            return expression.left && expression.right &&
-                   (evaluate_expr(*expression.left, fields, field_count) ||
-                    evaluate_expr(*expression.right, fields, field_count));
+        case ExprKind::And: {
+            if (!expression.left || !expression.right)
+                return TruthValue::False;
+            const TruthValue left =
+                evaluate_expr(*expression.left, fields, field_count);
+            const TruthValue right =
+                evaluate_expr(*expression.right, fields, field_count);
+            return logical_and(left, right);
+        }
+        case ExprKind::Or: {
+            if (!expression.left || !expression.right)
+                return TruthValue::False;
+            const TruthValue left =
+                evaluate_expr(*expression.left, fields, field_count);
+            const TruthValue right =
+                evaluate_expr(*expression.right, fields, field_count);
+            return logical_or(left, right);
+        }
         case ExprKind::Comparison:
-            return expression.field_index < static_cast<size_t>(field_count) &&
-                   evaluate_literal(fields[expression.field_index],
-                                    expression.literal, expression.op);
-        case ExprKind::InList:
+            return expression.field_index < static_cast<size_t>(field_count)
+                ? evaluate_literal(fields[expression.field_index],
+                                   expression.literal, expression.op)
+                : TruthValue::False;
+        case ExprKind::InList: {
             if (expression.field_index >= static_cast<size_t>(field_count))
-                return false;
+                return TruthValue::False;
+            bool saw_unknown = false;
             for (const Literal& literal : expression.literals) {
-                if (evaluate_literal(fields[expression.field_index],
-                                     literal, AttrOp::Eq)) {
-                    return true;
-                }
+                const TruthValue match = evaluate_literal(
+                    fields[expression.field_index], literal, AttrOp::Eq);
+                if (match == TruthValue::True) return TruthValue::True;
+                saw_unknown = saw_unknown || match == TruthValue::Unknown;
             }
-            return false;
+            return saw_unknown ? TruthValue::Unknown : TruthValue::False;
+        }
     }
-    return false;
+    return TruthValue::False;
 }
 
-bool evaluate_expr(const Expr& expression, const FeatureRecord& record) {
+TruthValue evaluate_expr(const Expr& expression, const FeatureRecord& record) {
     switch (expression.kind) {
-        case ExprKind::And:
-            return expression.left && expression.right &&
-                   evaluate_expr(*expression.left, record) &&
-                   evaluate_expr(*expression.right, record);
-        case ExprKind::Or:
-            return expression.left && expression.right &&
-                   (evaluate_expr(*expression.left, record) ||
-                    evaluate_expr(*expression.right, record));
+        case ExprKind::And: {
+            if (!expression.left || !expression.right)
+                return TruthValue::False;
+            const TruthValue left = evaluate_expr(*expression.left, record);
+            const TruthValue right = evaluate_expr(*expression.right, record);
+            return logical_and(left, right);
+        }
+        case ExprKind::Or: {
+            if (!expression.left || !expression.right)
+                return TruthValue::False;
+            const TruthValue left = evaluate_expr(*expression.left, record);
+            const TruthValue right = evaluate_expr(*expression.right, record);
+            return logical_or(left, right);
+        }
         case ExprKind::Comparison:
-            return expression.field_index < record.field_values.size() &&
-                   evaluate_literal(record.field_values[expression.field_index],
-                                    expression.literal, expression.op);
+            return expression.field_index < record.field_values.size()
+                ? evaluate_literal(record.field_values[expression.field_index],
+                                   expression.literal, expression.op)
+                : TruthValue::False;
         case ExprKind::InList:
             if (expression.field_index >= record.field_values.size())
-                return false;
+                return TruthValue::False;
+            {
+            bool saw_unknown = false;
             for (const Literal& literal : expression.literals) {
-                if (evaluate_literal(record.field_values[expression.field_index],
-                                     literal, AttrOp::Eq)) {
-                    return true;
-                }
+                const TruthValue match = evaluate_literal(
+                    record.field_values[expression.field_index],
+                    literal, AttrOp::Eq);
+                if (match == TruthValue::True) return TruthValue::True;
+                saw_unknown = saw_unknown || match == TruthValue::Unknown;
             }
-            return false;
+            return saw_unknown ? TruthValue::Unknown : TruthValue::False;
+            }
     }
-    return false;
+    return TruthValue::False;
 }
 
 // ========== 求值函数 ==========
@@ -607,6 +1042,11 @@ CompiledWhere compile_where(
         result.error_ = "unknown field in where clause";
         return result;
     }
+    std::string type_error;
+    if (!validate_literal_types(*root, fields, type_error)) {
+        result.error_ = std::move(type_error);
+        return result;
+    }
     std::sort(referenced.begin(), referenced.end());
     referenced.erase(std::unique(referenced.begin(), referenced.end()),
                      referenced.end());
@@ -620,10 +1060,16 @@ CompiledWhere compile_where(
             IndexableWherePredicate predicate;
             predicate.field_index = root->field_index;
             predicate.field_name = fields[root->field_index].name;
+            predicate.field_type = type;
             predicate.op = root->op;
             predicate.is_string = root->literal.is_string;
             predicate.string_value = root->literal.string_value;
             predicate.numeric_value = root->literal.numeric_value;
+            predicate.numeric_is_integer =
+                root->literal.numeric_is_integer;
+            predicate.numeric_integer_overflow =
+                root->literal.numeric_integer_overflow;
+            predicate.integer_value = root->literal.integer_value;
             implementation->indexable = std::move(predicate);
         }
     }
@@ -638,26 +1084,27 @@ bool evaluate_where(
     const FieldRef* fields,
     int field_count) {
     return expression.valid() && fields != nullptr && field_count >= 0 &&
-           evaluate_expr(*expression.impl_->root, fields, field_count);
+           evaluate_expr(*expression.impl_->root, fields, field_count) ==
+               TruthValue::True;
 }
 
 bool evaluate_where(
     const CompiledWhere& expression,
     const FeatureRecord& record) {
     return expression.valid() &&
-           evaluate_expr(*expression.impl_->root, record);
+           evaluate_expr(*expression.impl_->root, record) == TruthValue::True;
 }
 
-std::vector<uint32_t> intersect_sorted_fids(
-    const std::vector<uint32_t>& left,
-    const std::vector<uint32_t>& right) {
-    std::vector<uint32_t> result;
+std::vector<RowSlot> intersect_sorted_fids(
+    const std::vector<RowSlot>& left,
+    const std::vector<RowSlot>& right) {
+    std::vector<RowSlot> result;
     result.reserve(std::min(left.size(), right.size()));
     size_t left_index = 0;
     size_t right_index = 0;
     while (left_index < left.size() && right_index < right.size()) {
-        const uint32_t left_value = left[left_index];
-        const uint32_t right_value = right[right_index];
+        const RowSlot left_value = left[left_index];
+        const RowSlot right_value = right[right_index];
         if (left_value < right_value) {
             do {
                 ++left_index;

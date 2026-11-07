@@ -42,10 +42,10 @@ bool build_indexes(GDALDataset* dataset, const std::string& layer_name) {
                         layer_name + "(keep)");
 }
 
-std::vector<uint32_t> gdal_fids(OGRLayer* layer,
-                                double xmin, double ymin,
-                                double xmax, double ymax) {
-    std::vector<uint32_t> result;
+std::vector<explorgdb::RowSlot> gdal_fids(OGRLayer* layer,
+                                          double xmin, double ymin,
+                                          double xmax, double ymax) {
+    std::vector<explorgdb::RowSlot> result;
     // Use exact geometry filter (not just envelope) for proper geometry-level comparison
     OGRPolygon query_geom;
     OGRLinearRing ring;
@@ -61,7 +61,8 @@ std::vector<uint32_t> gdal_fids(OGRLayer* layer,
     layer->ResetReading();
     while (OGRFeature* feature = layer->GetNextFeature()) {
         if (feature->GetFID() > 0)
-            result.push_back(static_cast<uint32_t>(feature->GetFID() - 1));
+            result.push_back(static_cast<explorgdb::RowSlot>(
+                feature->GetFID() - 1));
         OGRFeature::DestroyFeature(feature);
     }
     layer->SetSpatialFilter(nullptr);
@@ -74,7 +75,7 @@ void expect_fast_equals_gdal(const std::string& path,
                              const std::string& layer_name,
                              double xmin, double ymin,
                              double xmax, double ymax,
-                             const std::vector<uint32_t>& expected) {
+                             const std::vector<explorgdb::RowSlot>& expected) {
     GdbCatalog catalog;
     ASSERT_TRUE(catalog.scan(path));
     CatalogResolver resolver(catalog);

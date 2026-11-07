@@ -37,6 +37,30 @@ struct CurveLinearizationOptions {
     size_t max_segments_per_curve = 4096;
 };
 
+/** 调用方对曲线及无法解码几何的处理策略。 */
+enum class CurveReadPolicy : uint8_t {
+    PreserveSource = 0,
+    Linearize,
+    Reject,
+    LegacyConfigured
+};
+
+/** 单次几何读取的保真策略与资源上限。 */
+struct GeometryReadOptions {
+    // preserve mode returns the raw source payload and an explicit geometry
+    // status when ISO WKB cannot represent the source without loss.
+    CurveReadPolicy curve_policy = CurveReadPolicy::LegacyConfigured;
+    CurveLinearizationOptions curve_linearization;
+    size_t max_source_payload_bytes = 64U * 1024U * 1024U;
+    bool preserve_source_payload = true;
+
+    static GeometryReadOptions preserve_source() {
+        GeometryReadOptions options;
+        options.curve_policy = CurveReadPolicy::PreserveSource;
+        return options;
+    }
+};
+
 /** 带溢出状态的顶点索引加法结果。 */
 struct CurveVertexIndexSum {
     size_t value = 0;

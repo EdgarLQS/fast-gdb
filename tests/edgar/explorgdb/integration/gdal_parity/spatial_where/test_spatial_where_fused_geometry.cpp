@@ -77,7 +77,7 @@ std::unique_ptr<OGRGeometry> make_geometry(
     return nullptr;
 }
 
-std::vector<uint32_t> collect_gdal(
+std::vector<explorgdb::RowSlot> collect_gdal(
     const std::string& path,
     const std::string& layer_name) {
     GDALDataset* dataset = static_cast<GDALDataset*>(GDALOpenEx(
@@ -96,11 +96,12 @@ std::vector<uint32_t> collect_gdal(
         return {};
     }
 
-    std::vector<uint32_t> fids;
+    std::vector<explorgdb::RowSlot> fids;
     layer->ResetReading();
     while (OGRFeature* feature = layer->GetNextFeature()) {
         if (feature->GetFID() > 0)
-            fids.push_back(static_cast<uint32_t>(feature->GetFID() - 1));
+            fids.push_back(static_cast<explorgdb::RowSlot>(
+                feature->GetFID() - 1));
         OGRFeature::DestroyFeature(feature);
     }
     GDALClose(dataset);
@@ -187,7 +188,7 @@ protected:
         EXPECT_EQ(result.combined_metrics.spatial_match_count, 10U);
         EXPECT_EQ(result.combined_metrics.attribute_tested, 10U);
         EXPECT_EQ(result.matched_fids,
-                  (std::vector<uint32_t>{1, 3, 5, 7, 9}));
+                  (std::vector<explorgdb::RowSlot>{1, 3, 5, 7, 9}));
         EXPECT_EQ(result.matched_fids, collect_gdal(path, layer_name));
     }
 };

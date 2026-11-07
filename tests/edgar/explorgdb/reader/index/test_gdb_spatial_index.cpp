@@ -25,6 +25,76 @@ static const std::string kLargeSpx =
     explorgdb_test_paths::test_data_path(
         "test_data/large/large_test.gdb/a00000009.spx").string();
 
+namespace {
+
+void write_u32_le(std::vector<uint8_t>& bytes,
+                  size_t offset,
+                  uint32_t value) {
+    for (size_t index = 0; index < sizeof(value); ++index) {
+        bytes[offset + index] = static_cast<uint8_t>(
+            (value >> (index * 8U)) & 0xffU);
+    }
+}
+
+void write_u64_le(std::vector<uint8_t>& bytes,
+                  size_t offset,
+                  uint64_t value) {
+    for (size_t index = 0; index < sizeof(value); ++index) {
+        bytes[offset + index] = static_cast<uint8_t>(
+            (value >> (index * 8U)) & 0xffU);
+    }
+}
+
+std::string build_v2_high_object_id_spx() {
+    constexpr size_t kPageSize = 65536U;
+    constexpr size_t kTrailerSize = 30U;
+    constexpr size_t kObjectIdSize = 8U;
+    constexpr size_t kNonLeafHeaderSize = 12U;
+    constexpr size_t kLeafHeaderSize = 20U;
+    constexpr size_t kCapacity =
+        (kPageSize - kLeafHeaderSize) / (kObjectIdSize + 8U);
+    constexpr size_t kValuesOffset =
+        kLeafHeaderSize + kCapacity * kObjectIdSize;
+    constexpr uint64_t kHighObjectId = 0x100000005ULL;
+    constexpr uint64_t kCell = 1ULL << 29U;
+    constexpr uint64_t kRawKey = (kCell << 31U) | kCell;
+    const std::string path =
+        (fs::temp_directory_path() / "fast_gdb_spatial_index_v2_high.spx")
+            .string();
+
+    std::vector<uint8_t> root(kPageSize, 0U);
+    write_u32_le(root, kObjectIdSize, 1U);
+    write_u64_le(root, kNonLeafHeaderSize, 2U);
+    write_u64_le(root, kNonLeafHeaderSize + kObjectIdSize, 3U);
+    write_u64_le(root, kValuesOffset, kRawKey);
+
+    std::vector<uint8_t> leaf(kPageSize, 0U);
+    write_u32_le(leaf, kObjectIdSize, 1U);
+    write_u64_le(leaf, kLeafHeaderSize, kHighObjectId);
+    write_u64_le(leaf, kValuesOffset, kRawKey);
+
+    std::vector<uint8_t> empty_leaf(kPageSize, 0U);
+    std::vector<uint8_t> trailer(kTrailerSize, 0U);
+    trailer[0] = 8U;
+    write_u32_le(trailer, 2U, 1U);
+    write_u32_le(trailer, 6U, 2U);
+    write_u64_le(trailer, 10U, 1U);
+    write_u32_le(trailer, 26U, 2U);
+
+    std::ofstream output(path, std::ios::binary | std::ios::trunc);
+    output.write(reinterpret_cast<const char*>(root.data()),
+                 static_cast<std::streamsize>(root.size()));
+    output.write(reinterpret_cast<const char*>(leaf.data()),
+                 static_cast<std::streamsize>(leaf.size()));
+    output.write(reinterpret_cast<const char*>(empty_leaf.data()),
+                 static_cast<std::streamsize>(empty_leaf.size()));
+    output.write(reinterpret_cast<const char*>(trailer.data()),
+                 static_cast<std::streamsize>(trailer.size()));
+    return path;
+}
+
+} // namespace
+
 // ── parse() 测试 ──
 
 /**
@@ -54,6 +124,20 @@ TEST(SpatialIndexTest, ParseValidLarge) {
     EXPECT_EQ(parser.trailer().magic1, 1u);
     EXPECT_EQ(parser.trailer().tree_depth, 3u);
     EXPECT_GT(parser.trailer().total_value_count, 1000000u);
+}
+
+TEST(SpatialIndexTest, VersionTwoQueries64BitObjectIdsThroughBranchPages) {
+    const std::string path = build_v2_high_object_id_spx();
+    GdbSpatialIndexParser parser(path);
+    ASSERT_TRUE(parser.parse());
+    EXPECT_EQ(parser.trailer().version, 2U);
+    EXPECT_EQ(parser.trailer().page_size, 65536U);
+    EXPECT_EQ(parser.trailer().object_id_size, 8U);
+
+    const std::vector<RowSlot> row_slots = parser.query_bbox(
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, {1.0});
+    EXPECT_EQ(row_slots, (std::vector<RowSlot>{0x100000004ULL}));
+    fs::remove(path);
 }
 
 /**
@@ -103,6 +187,7 @@ TEST(SpatialIndexTest, RejectsPageWithTooManyEntries) {
     const uint32_t depth = 1;
     std::memcpy(data.data() + trailer + 2, &magic, sizeof(magic));
     std::memcpy(data.data() + trailer + 6, &depth, sizeof(depth));
+    write_u32_le(data, trailer + 18U, 1U);
     std::ofstream(path, std::ios::binary).write(
         reinterpret_cast<const char*>(data.data()), data.size());
 
@@ -211,6 +296,19 @@ TEST(SpatialIndexTest, RejectsInvalidQueryInputs) {
         0.0, 0.0, 1.0, {1.0}).empty());
     EXPECT_TRUE(parser.query_bbox(
         0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, {0.0}).empty());
+}
+
+TEST(SpatialIndexTest, RejectsLayerExtentsOutsideLevelZeroCellRange) {
+    EXPECT_TRUE(GdbSpatialIndexParser::supports_layer_extent(
+        -100.0, -100.0, 100.0, 100.0, {1.0, 4.0, 16.0}));
+    EXPECT_FALSE(GdbSpatialIndexParser::supports_layer_extent(
+        119.0, 30.0, 121.0, 31.0, {1e-10, 4e-10, 16e-10}));
+    EXPECT_FALSE(GdbSpatialIndexParser::supports_layer_extent(
+        -121.0, 30.0, -119.0, 31.0, {1e-10, 4e-10, 16e-10}));
+    EXPECT_FALSE(GdbSpatialIndexParser::supports_layer_extent(
+        0.0, 0.0, 1.0, 1.0, {0.0}));
+    EXPECT_FALSE(GdbSpatialIndexParser::supports_layer_extent(
+        0.0, 0.0, 1.0, 1.0, {1.0, 0.0}));
 }
 
 // ── 结果排序验证 ──

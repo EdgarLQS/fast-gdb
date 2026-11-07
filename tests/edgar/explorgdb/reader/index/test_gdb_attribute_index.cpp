@@ -38,6 +38,7 @@ static std::string build_numeric_atx() {
 
     // Trailer (22 字节)
     std::vector<uint8_t> trailer(22, 0);
+    trailer[18] = 1;        // index format version = 1
     trailer[0] = 8;        // value_size = 8
     trailer[1] = 0x40;     // flags: is_numeric
     // magic1 = 1
@@ -88,6 +89,7 @@ static std::string build_string_atx() {
 
     // Trailer
     std::vector<uint8_t> trailer(22, 0);
+    trailer[18] = 1;        // index format version = 1
     trailer[0] = value_size;  // value_size = 20
     trailer[1] = 0x20;        // flags: is_string
     trailer[2] = 1;           // magic1 = 1
@@ -337,6 +339,7 @@ static std::string build_int16_atx() {
 
     // Trailer
     std::vector<uint8_t> trailer(22, 0);
+    trailer[18] = 1;        // index format version = 1
     trailer[0] = 2;        // value_size = 2
     trailer[1] = 0x40;     // is_numeric
     trailer[2] = 1;        // magic1 = 1
@@ -367,6 +370,7 @@ static std::string build_int32_atx() {
     std::memcpy(page.data() + values_off, vals, 12);
 
     std::vector<uint8_t> trailer(22, 0);
+    trailer[18] = 1;        // index format version = 1
     trailer[0] = 4;        // value_size = 4
     trailer[1] = 0x40;     // is_numeric
     trailer[2] = 1;        // magic1 = 1
@@ -394,6 +398,7 @@ static std::string build_unknown_size_atx() {
     // (值内容不重要，default 分支会返回 0)
 
     std::vector<uint8_t> trailer(22, 0);
+    trailer[18] = 1;        // index format version = 1
     trailer[0] = 3;        // value_size = 3 (不常见)
     trailer[1] = 0x40;     // is_numeric
     trailer[2] = 1;        // magic1 = 1
@@ -490,6 +495,7 @@ static std::string build_unicode_string_atx() {
     std::memcpy(page.data() + values_off + value_size, val2.data(), value_size);
 
     std::vector<uint8_t> trailer(22, 0);
+    trailer[18] = 1;        // index format version = 1
     trailer[0] = value_size;
     trailer[1] = 0x20;     // is_string
     trailer[2] = 1;        // magic1 = 1
@@ -554,6 +560,7 @@ static std::string build_multilevel_atx() {
 
     // Trailer (22 字节)
     std::vector<uint8_t> trailer(22, 0);
+    trailer[18] = 1;        // index format version = 1
     trailer[0] = 8;        // value_size = 8
     trailer[1] = 0x40;     // is_numeric
     trailer[2] = 1;        // magic1 = 1
@@ -619,6 +626,7 @@ TEST(AttributeIndexTest, ParseBadMagic) {
     std::vector<uint8_t> page(4096, 0);
     // Trailer with bad magic
     std::vector<uint8_t> trailer(22, 0);
+    trailer[18] = 1;        // index format version = 1
     trailer[0] = 8;        // value_size = 8
     trailer[1] = 0x40;     // is_numeric
     trailer[2] = 99;       // magic1 = 99 (错误! 应该是 1)

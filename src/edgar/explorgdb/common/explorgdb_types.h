@@ -15,12 +15,26 @@
 
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <string>
 #include <string_view>
 #include <vector>
 #include <variant>
 
 namespace explorgdb {
+
+// FileGDB table row slots and index ObjectIDs are separate domains. RowSlot is
+// zero-based; ObjectId is the positive, 1-based value stored in v2 indexes.
+using RowSlot = uint64_t;
+using ObjectId = uint64_t;
+
+inline bool object_id_to_row_slot(ObjectId object_id, RowSlot& row_slot) {
+    if (object_id == 0 ||
+        object_id > static_cast<ObjectId>(std::numeric_limits<int64_t>::max()))
+        return false;
+    row_slot = object_id - 1U;
+    return true;
+}
 
 // ────────────────────────────────────────────────
 // 1. 字段类型枚举（17 种）
@@ -123,8 +137,25 @@ using FieldValue = std::variant<std::nullptr_t, int32_t, int64_t, double,
                                 DateTimeOffsetValue, std::string,
                                 std::vector<uint8_t>>;
 
+inline bool row_slot_to_object_id(RowSlot row_slot, ObjectId& object_id) {
+    if (row_slot >= static_cast<RowSlot>(std::numeric_limits<int64_t>::max()))
+        return false;
+    object_id = row_slot + 1U;
+    return true;
+}
+
+inline FieldValue object_id_field_value(RowSlot row_slot) {
+    ObjectId object_id = 0;
+    if (!row_slot_to_object_id(row_slot, object_id)) return nullptr;
+    if (object_id <= static_cast<ObjectId>(
+                         std::numeric_limits<int32_t>::max())) {
+        return static_cast<int32_t>(object_id);
+    }
+    return static_cast<int64_t>(object_id);
+}
+
 struct FeatureRecord {
-    uint32_t fid = 0;                          // 要素 ID（0 起始索引）
+    RowSlot fid = 0;                           // 零基逻辑行槽（非压缩物理块号）
     uint32_t blob_len = 0;                     // 记录 blob 总长度（4 字节前缀）
     std::vector<uint8_t> nullable_flags;       // nullable 位图（1 bit per nullable 字段）
     std::vector<FieldValue> field_values;      // 各字段值（与字段描述符顺序一致）
@@ -166,14 +197,15 @@ struct CatalogEntry {
 };
 
 // ────────────────────────────────────────────────
-// 6. GDB 目录头部 — 8 字节 magic 文件
+// 6. GDB 目录头部 — 4 字节版本号，可选附带 4 字节 magic
 // ────────────────────────────────────────────────
-// .gdb 目录中的 "gdb" 文件，包含：
-//   偏移 0: uint32 version — 目录版本（预期 = 5）
-//   偏移 4: uint32 magic   — 魔数（预期 = 0xDEADBEEF，小端读取为 0xEFBEADDE）
+// .gdb 目录中的 "gdb" 文件至少包含：
+//   偏移 0: uint32 version — 目录版本（常见值 = 5）
+// 部分样本还包含：
+//   偏移 4: uint32 magic   — 魔数（小端读取为 0xEFBEADDE）
 struct GdbDirectoryHeader {
     uint32_t version = 0;    // 目录版本号，预期为 5
-    uint32_t magic = 0;      // 魔数，预期为 0xDEADBEEF
+    uint32_t magic = 0;      // 可选魔数，缺失时为 0
 };
 
 // ────────────────────────────────────────────────
@@ -200,18 +232,17 @@ struct GdbTimestamps {
 //   [24] file_size(8)
 //   [32] field_desc_offset(8) — 字段描述符区的偏移
 //
-// v4 (48 字节头部):
+// v4（GDAL OpenFileGDB 上游读取 40 字节前缀）：
 //   [0]  version(4) = 4
-//   [4]  has_deleted_features(4) — 是否包含已删除要素
+//   [4]  has_deleted_features(4)
 //   [8]  largest_size_record(4)
-//   [12] unknown_role(4) — 始终为 5
-//   [16] padding(4) — 保留/对齐
-//   [20] padding(4) — 保留/对齐
-//   [24] nfeatures_v4(8) — 要素数量（64-bit）
-//   [32] file_size(8)
-//   [40] field_desc_offset(8)
+//   [12] unknown_role(4)
+//   [16] 有效记录数(8) — 上游按 int64 读取
+//   [24] file_size(8)
+//   [32] field_desc_offset(8) — 上游读取字段描述符偏移
+// fast-gdb 已解析表头；端到端仅接受连续、无删除行的无位图 v4 索引。
 struct TableHeader {
-    uint32_t version = 0;         // 3 = FGDB 9.x, 4 = FGDB 10.x/ArcGIS Pro
+    uint32_t version = 0;         // 3 = 32-bit ObjectID, 4 = 64-bit ObjectID
 
     // v3 特有字段
     uint32_t nfeatures_v3 = 0;
@@ -241,12 +272,12 @@ struct TableHeader {
 //   [8]  nfeatures_v3(4) — 要素数量
 //   [12] size_tablx_offsets(4) — 偏移条目宽度（4/5/6）
 //
-// 版本 4（FGDB 10.x，24 字节头部）:
+// 版本 4（GDAL OpenFileGDB 上游读取 16 字节固定头）：
 //   [0]  version(4) = 4
-//   [4]  unknown_v4(4)
-//   [8]  size_tablx_offsets(4)
-//   [12] padding(8) — 保留/对齐
-//   [20] ... (后续变长区)
+//   [4]  物理 1024 要素块数量(8)
+//   [12] size_tablx_offsets(4)
+//   偏移表后为总逻辑记录数(8)、bitmap_section_size(4) 和可选位图区。
+// GDAL 已识别一种固定 v4 位图区布局；其他非零位图区仍须拒绝猜测。
 struct TablxHeader {
     uint32_t version = 0;
 
@@ -255,12 +286,12 @@ struct TablxHeader {
     uint32_t nfeatures_v3 = 0;
 
     // v4 特有
-    uint32_t unknown_v4 = 0;
+    uint64_t n1024blocks_v4 = 0;
 
     // 共有
     uint32_t size_tablx_offsets = 0;  // 偏移条目宽度: 4、5 或 6 字节
-    uint64_t nfeatures_v4 = 0;        // v4 要素数量
-    uint32_t sizeof_varying_section = 0;
+    uint64_t n_total_record_count_v4 = 0; // 逻辑行槽上界
+    uint32_t bitmap_section_size_v4 = 0;  // 可选逻辑块映射区长度
 };
 
 // ────────────────────────────────────────────────
@@ -283,9 +314,9 @@ struct IndexEntry {
 };
 
 // ────────────────────────────────────────────────
-// 11. B+ 树索引 Trailer — .spx/.atx 共享的 22 字节尾部
+// 11. B+ 树索引 Trailer — .spx/.atx 共享的版本化尾部
 // ────────────────────────────────────────────────
-// 文件末尾 22 字节，描述整个 B+ 树的结构。
+// v1 文件末尾 22 字节，v2 文件末尾 30 字节，描述整个 B+ 树的结构。
 // .spx 和 .atx 使用相同的 B+ 树页面格式，区别仅在于索引值的含义。
 struct BPlusTreeTrailer {
     uint8_t  value_size = 0;        // 每个索引值的字节数（.spx 总是 8）
@@ -293,7 +324,10 @@ struct BPlusTreeTrailer {
     bool     is_numeric = false;    // flags & 0x40，数值索引
     uint32_t magic1 = 0;            // 必须为 1
     uint32_t tree_depth = 0;        // B+ 树深度（1=单页，最大 4）
-    uint32_t total_value_count = 0; // 索引中的总条目数
+    uint64_t total_value_count = 0; // 索引中的总条目数
+    uint32_t version = 1;           // 1: 32-bit ObjectID, 2: 64-bit ObjectID
+    uint32_t page_size = 4096;
+    uint8_t object_id_size = 4;
 };
 
 // ────────────────────────────────────────────────
@@ -304,7 +338,7 @@ struct BPlusTreeTrailer {
 //   Bit 61-31: cell_x (格网单元 X 坐标，31 位)
 //   Bit 30-0:  cell_y (格网单元 Y 坐标，31 位)
 struct SpatialIndexEntry {
-    uint32_t fid = 0;            // 要素 ID (1-based)
+    ObjectId fid = 0;            // 索引中的 1-based ObjectID
     uint8_t  grid_level = 0;     // 格网层级
     uint32_t cell_x = 0;         // 格网单元 X
     uint32_t cell_y = 0;         // 格网单元 Y
@@ -319,7 +353,7 @@ struct SpatialIndexEntry {
 //   value_size>8 → STRING (UTF16-LE, 空格填充)
 //   value_size=38 → GUID (ASCII UUID)
 struct AttributeIndexEntry {
-    uint32_t fid = 0;            // 要素 ID (1-based)
+    ObjectId fid = 0;            // 索引中的 1-based ObjectID
     std::string string_value;    // 字符串值（非字符串类型为空）
     double numeric_value = 0;    // 数值（NaN 表示字符串类型）
 };
@@ -339,7 +373,7 @@ struct FieldRef {
     const uint8_t* data = nullptr;  // 指向 mmap 内存中的原始字节
     size_t byte_len = 0;            // 原始字节长度（定长类型=类型宽度，变长=内容长度）
     bool is_null = false;           // 是否为 NULL
-    int32_t implicit_value = 0;     // ObjectId 的隐式值（fid+1）
+    int64_t implicit_value = 0;    // ObjectId 的隐式值（零基行槽 + 1）
 
     // ── 零拷贝解码方法 ──
     // 直接 reinterpret_cast mmap 中的原始字节（小端，与 x86/ARM 一致）

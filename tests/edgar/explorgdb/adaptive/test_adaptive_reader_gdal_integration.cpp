@@ -602,6 +602,8 @@ TEST_F(AdaptiveReaderGdalIntegrationTest,
         EXPECT_EQ(reader.query(scan).matched_fids.size(), 5U);
     }
 
+    // Overlay filesystems may coalesce a rewrite into the previous timestamp quantum.
+    std::this_thread::sleep_for(20ms);
     ASSERT_TRUE(update_layer(
         path,
         [](GDALDataset*, OGRLayer* layer, std::string& error) {
@@ -628,6 +630,24 @@ TEST_F(AdaptiveReaderGdalIntegrationTest,
             return true;
         }, error)) << error;
 
+    const char* allowed_drivers[] = {"OpenFileGDB", nullptr};
+    GdalDatasetHandle gdal_reference(static_cast<GDALDataset*>(GDALOpenEx(
+        path.c_str(), GDAL_OF_VECTOR, allowed_drivers, nullptr, nullptr)));
+    ASSERT_NE(gdal_reference, nullptr);
+    OGRLayer* gdal_layer = gdal_reference->GetLayerByName(kLayerName);
+    ASSERT_NE(gdal_layer, nullptr);
+    ASSERT_EQ(gdal_layer->GetFeatureCount(TRUE), 6);
+    ASSERT_EQ(gdal_layer->SetAttributeFilter("phase = 'created'"), OGRERR_NONE);
+    gdal_layer->ResetReading();
+    GdalFeatureHandle gdal_feature(gdal_layer->GetNextFeature());
+    ASSERT_NE(gdal_feature, nullptr)
+        << "OpenFileGDB must observe the created row before the Fast Reader reopen";
+    EXPECT_EQ(gdal_feature->GetFieldAsInteger(kValueField), 30);
+    ASSERT_GT(gdal_feature->GetFID(), 0);
+    // OpenFileGDB FIDs are one-based; FastGDB query results use zero-based row slots.
+    const RowSlot created_fid =
+        static_cast<RowSlot>(gdal_feature->GetFID() - 1);
+
     FastEngineSession reopened;
     ASSERT_TRUE(reopened.open(path, error)) << error;
     QueryRequest scan;
@@ -635,7 +655,8 @@ TEST_F(AdaptiveReaderGdalIntegrationTest,
     const auto result = reopened.query(scan);
     ASSERT_EQ(result.status, QueryStatus::Ok);
     ASSERT_EQ(result.matched_fids.size(), 6U);
-    EXPECT_NE(std::find(result.matched_fids.begin(), result.matched_fids.end(), 5U),
+    EXPECT_NE(std::find(result.matched_fids.begin(), result.matched_fids.end(),
+                        created_fid),
               result.matched_fids.end());
 }
 
@@ -652,6 +673,8 @@ TEST_F(AdaptiveReaderGdalIntegrationTest,
         FastEngineSession reader;
         ASSERT_TRUE(reader.open(path, error)) << error;
     }
+    // Let the source identity timestamp advance before the same-size GDAL rewrite.
+    std::this_thread::sleep_for(20ms);
     ASSERT_TRUE(update_layer(
         path,
         [](GDALDataset*, OGRLayer* layer, std::string& error) {
@@ -796,9 +819,23 @@ TEST_F(AdaptiveReaderGdalIntegrationTest,
         FastEngineSession reader;
         ASSERT_TRUE(reader.open(path, error)) << error;
     }
+    // Overlay filesystems may coalesce a rewrite into the previous timestamp quantum.
+    std::this_thread::sleep_for(20ms);
     ASSERT_TRUE(update_layer(
         path,
         add_indexed_feature, error)) << error;
+
+    const char* allowed_drivers[] = {"OpenFileGDB", nullptr};
+    GdalDatasetHandle gdal_reference(static_cast<GDALDataset*>(GDALOpenEx(
+        path.c_str(), GDAL_OF_VECTOR, allowed_drivers, nullptr, nullptr)));
+    ASSERT_NE(gdal_reference, nullptr);
+    OGRLayer* gdal_layer = gdal_reference->GetLayerByName(kLayerName);
+    ASSERT_NE(gdal_layer, nullptr);
+    ASSERT_EQ(gdal_layer->SetAttributeFilter("category = 'C'"), OGRERR_NONE);
+    GdalFeatureHandle gdal_feature(gdal_layer->GetNextFeature());
+    ASSERT_NE(gdal_feature, nullptr)
+        << "OpenFileGDB must observe the newly indexed category before the Fast Reader reopen";
+    EXPECT_EQ(gdal_feature->GetFieldAsInteger(kValueField), 35);
 
     FastEngineSession reopened;
     ASSERT_TRUE(reopened.open(path, error)) << error;

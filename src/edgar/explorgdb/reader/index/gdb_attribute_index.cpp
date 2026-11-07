@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <limits>
 #include <stdexcept>
@@ -17,25 +18,43 @@
 namespace explorgdb {
 namespace {
 
-int max_per_page(uint8_t value_size) {
-    return static_cast<int>(
-        (GdbAttributeIndexParser::kPageSize - 12) / (4 + value_size));
+size_t leaf_header_size(uint32_t version) {
+    return version == 1U ? 12U : 20U;
 }
 
-bool page_offset_for(uint32_t page_id,
-                     size_t file_size,
+size_t nonleaf_header_size(uint32_t version) {
+    return version == 1U ? 8U : 12U;
+}
+
+size_t max_per_page(const BPlusTreeTrailer& trailer) {
+    const size_t header_size = leaf_header_size(trailer.version);
+    const size_t object_id_size = trailer.object_id_size;
+    if (trailer.page_size < header_size || object_id_size == 0U ||
+        trailer.value_size == 0U) {
+        return 0U;
+    }
+    return (trailer.page_size - header_size) /
+           (object_id_size + trailer.value_size);
+}
+
+ObjectId read_object_id(BinaryReader& reader, uint8_t object_id_size) {
+    if (object_id_size == sizeof(uint32_t)) return reader.read_u32();
+    if (object_id_size == sizeof(uint64_t)) return reader.read_u64();
+    throw std::out_of_range("unsupported index ObjectID width");
+}
+
+bool page_offset_for(ObjectId page_id,
+                     size_t page_count,
+                     size_t page_size,
                      size_t& page_offset) {
-    if (page_id == 0) return false;
-    const uint64_t raw_offset =
-        static_cast<uint64_t>(page_id - 1U) *
-        static_cast<uint64_t>(GdbAttributeIndexParser::kPageSize);
-    if (raw_offset >
-        static_cast<uint64_t>(std::numeric_limits<size_t>::max())) {
+    if (page_id == 0U || page_id > page_count || page_size == 0U) return false;
+    const ObjectId page_index = page_id - 1U;
+    if (page_index > static_cast<ObjectId>(
+                         std::numeric_limits<size_t>::max() / page_size)) {
         return false;
     }
-    page_offset = static_cast<size_t>(raw_offset);
-    return page_offset <= file_size &&
-           file_size - page_offset >= GdbAttributeIndexParser::kPageSize;
+    page_offset = static_cast<size_t>(page_index) * page_size;
+    return true;
 }
 
 } // namespace
@@ -49,8 +68,10 @@ bool GdbAttributeIndexParser::parse() {
     file_data_.clear();
     all_entries_.clear();
     trailer_ = BPlusTreeTrailer{};
+    page_count_ = 0U;
 
-    std::ifstream input(file_path_, std::ios::binary | std::ios::ate);
+    std::ifstream input(std::filesystem::u8path(file_path_),
+                        std::ios::binary | std::ios::ate);
     if (!input.is_open()) return false;
 
     const std::streamoff end_offset = input.tellg();
@@ -72,10 +93,26 @@ bool GdbAttributeIndexParser::parse() {
         if (!input) return false;
     }
 
-    if (file_data_.size() < kTrailerSize) return false;
-    const size_t page_bytes = file_data_.size() - kTrailerSize;
-    if (page_bytes % kPageSize != 0) return false;
-    const size_t page_count = page_bytes / kPageSize;
+    if (file_data_.size() < sizeof(uint32_t)) return false;
+    BinaryReader version_reader(
+        file_data_.data() + file_data_.size() - sizeof(uint32_t),
+        sizeof(uint32_t));
+    trailer_.version = version_reader.read_u32();
+    if (trailer_.version == 1U) {
+        trailer_.page_size = static_cast<uint32_t>(kPageSize);
+        trailer_.object_id_size = 4U;
+    } else if (trailer_.version == 2U) {
+        trailer_.page_size = static_cast<uint32_t>(kV2PageSize);
+        trailer_.object_id_size = 8U;
+    } else {
+        return false;
+    }
+    const size_t trailer_size = trailer_.version == 1U
+        ? kTrailerSize : kV2TrailerSize;
+    if (file_data_.size() < trailer_size) return false;
+    const size_t page_bytes = file_data_.size() - trailer_size;
+    if (page_bytes % trailer_.page_size != 0U) return false;
+    page_count_ = page_bytes / trailer_.page_size;
 
     try {
         if (!parse_trailer() || trailer_.value_size == 0) return false;
@@ -83,9 +120,10 @@ bool GdbAttributeIndexParser::parse() {
         if (trailer_.tree_depth == 0) {
             return trailer_.total_value_count == 0;
         }
-        if (page_count == 0 || trailer_.tree_depth > page_count) return false;
+        if (page_count_ == 0U || trailer_.tree_depth > 4U ||
+            trailer_.tree_depth > page_count_) return false;
 
-        size_t remaining_page_visits = page_count;
+        size_t remaining_page_visits = page_count_;
         if (!traverse_tree(1, static_cast<int>(trailer_.tree_depth),
                            remaining_page_visits)) {
             all_entries_.clear();
@@ -96,13 +134,16 @@ bool GdbAttributeIndexParser::parse() {
         return false;
     }
 
-    if (all_entries_.size() !=
-        static_cast<size_t>(trailer_.total_value_count)) {
+    if (trailer_.total_value_count >
+            static_cast<uint64_t>(std::numeric_limits<size_t>::max()) ||
+        all_entries_.size() !=
+            static_cast<size_t>(trailer_.total_value_count)) {
         all_entries_.clear();
         return false;
     }
     for (const AttributeIndexEntry& entry : all_entries_) {
-        if (entry.fid == 0) {
+        RowSlot row_slot = 0;
+        if (!object_id_to_row_slot(entry.fid, row_slot)) {
             all_entries_.clear();
             return false;
         }
@@ -112,8 +153,10 @@ bool GdbAttributeIndexParser::parse() {
 
 // 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 bool GdbAttributeIndexParser::parse_trailer() {
-    const size_t trailer_offset = file_data_.size() - kTrailerSize;
-    BinaryReader reader(file_data_.data() + trailer_offset, kTrailerSize);
+    const size_t trailer_size = trailer_.version == 1U
+        ? kTrailerSize : kV2TrailerSize;
+    const size_t trailer_offset = file_data_.size() - trailer_size;
+    BinaryReader reader(file_data_.data() + trailer_offset, trailer_size);
 
     trailer_.value_size = reader.read_u8();
     const uint8_t flags = reader.read_u8();
@@ -121,16 +164,20 @@ bool GdbAttributeIndexParser::parse_trailer() {
     trailer_.is_numeric = (flags & 0x40U) != 0;
     trailer_.magic1 = reader.read_u32();
     trailer_.tree_depth = reader.read_u32();
-    trailer_.total_value_count = reader.read_u32();
+    trailer_.total_value_count = trailer_.version == 1U
+        ? reader.read_u32() : reader.read_u64();
+    const size_t reserved_bytes = trailer_.version == 1U ? 4U : 8U;
+    reader.skip(reserved_bytes);
+    const uint32_t stored_version = reader.read_u32();
 
-    return trailer_.magic1 == 1;
+    return trailer_.magic1 == 1U && stored_version == trailer_.version;
 }
 
 GdbAttributeIndexParser::PageInfo
 GdbAttributeIndexParser::parse_page_info(size_t page_offset) const {
-    BinaryReader reader(file_data_.data() + page_offset, kPageSize);
+    BinaryReader reader(file_data_.data() + page_offset, trailer_.page_size);
     PageInfo info;
-    info.next_page_id = reader.read_u32();
+    info.next_page_id = read_object_id(reader, trailer_.object_id_size);
     info.entry_count = reader.read_u32();
     return info;
 }
@@ -138,24 +185,25 @@ GdbAttributeIndexParser::parse_page_info(size_t page_offset) const {
 void GdbAttributeIndexParser::parse_leaf_page(
     size_t page_offset,
     std::vector<AttributeIndexEntry>& output) {
-    BinaryReader reader(file_data_.data() + page_offset, kPageSize);
+    BinaryReader reader(file_data_.data() + page_offset, trailer_.page_size);
 
-    const uint32_t next_page_id = reader.read_u32();
+    const ObjectId next_page_id = read_object_id(
+        reader, trailer_.object_id_size);
     (void)next_page_id;
     const uint32_t feature_count = reader.read_u32();
-    const uint32_t unknown = reader.read_u32();
-    (void)unknown;
+    const size_t header_size = leaf_header_size(trailer_.version);
+    reader.skip(header_size - reader.tell());
 
-    const int capacity = max_per_page(trailer_.value_size);
-    if (capacity <= 0 || feature_count > static_cast<uint32_t>(capacity))
+    const size_t capacity = max_per_page(trailer_);
+    if (capacity == 0U || feature_count > capacity)
         throw std::out_of_range("attribute index leaf entry count");
 
-    std::vector<uint32_t> fids(feature_count);
+    std::vector<ObjectId> fids(feature_count);
     for (uint32_t index = 0; index < feature_count; ++index)
-        fids[index] = reader.read_u32();
+        fids[index] = read_object_id(reader, trailer_.object_id_size);
 
-    const size_t values_offset =
-        12U + static_cast<size_t>(capacity) * 4U;
+    const size_t values_offset = header_size +
+        capacity * trailer_.object_id_size;
     reader.seek(values_offset);
 
     for (uint32_t index = 0; index < feature_count; ++index) {
@@ -169,24 +217,27 @@ void GdbAttributeIndexParser::parse_leaf_page(
     }
 }
 
-std::vector<uint32_t> GdbAttributeIndexParser::parse_nonleaf_page(
+std::vector<ObjectId> GdbAttributeIndexParser::parse_nonleaf_page(
     size_t page_offset) {
-    BinaryReader reader(file_data_.data() + page_offset, kPageSize);
+    BinaryReader reader(file_data_.data() + page_offset, trailer_.page_size);
 
-    const uint32_t next_page_id = reader.read_u32();
+    const ObjectId next_page_id = read_object_id(
+        reader, trailer_.object_id_size);
     (void)next_page_id;
     const uint32_t subpage_count = reader.read_u32();
+    const size_t header_size = nonleaf_header_size(trailer_.version);
+    reader.skip(header_size - reader.tell());
 
-    const int capacity = max_per_page(trailer_.value_size);
-    if (capacity <= 0 || subpage_count > static_cast<uint32_t>(capacity))
+    const size_t capacity = max_per_page(trailer_);
+    if (capacity == 0U || subpage_count > capacity)
         throw std::out_of_range("attribute index child count");
 
-    std::vector<uint32_t> page_ids(subpage_count);
+    std::vector<ObjectId> page_ids(subpage_count);
     for (uint32_t index = 0; index < subpage_count; ++index)
-        page_ids[index] = reader.read_u32();
+        page_ids[index] = read_object_id(reader, trailer_.object_id_size);
 
-    const size_t values_offset =
-        12U + static_cast<size_t>(capacity) * 4U;
+    const size_t values_offset = leaf_header_size(trailer_.version) +
+        capacity * trailer_.object_id_size;
     reader.seek(values_offset);
     for (uint32_t index = 0; index < subpage_count; ++index) {
         for (uint8_t byte = 0; byte < trailer_.value_size; ++byte)
@@ -197,7 +248,7 @@ std::vector<uint32_t> GdbAttributeIndexParser::parse_nonleaf_page(
 }
 
 bool GdbAttributeIndexParser::traverse_tree(
-    uint32_t page_id,
+    ObjectId page_id,
     int depth_remaining,
     size_t& remaining_page_visits) {
     if (page_id == 0 || depth_remaining <= 0 ||
@@ -207,11 +258,12 @@ bool GdbAttributeIndexParser::traverse_tree(
     --remaining_page_visits;
 
     size_t page_offset = 0;
-    if (!page_offset_for(page_id, file_data_.size(), page_offset))
+    if (!page_offset_for(page_id, page_count_, trailer_.page_size,
+                         page_offset))
         return false;
 
     if (depth_remaining == 1) {
-        uint32_t current = page_id;
+        ObjectId current = page_id;
         bool first_page = true;
         while (current != 0) {
             if (!first_page) {
@@ -221,20 +273,25 @@ bool GdbAttributeIndexParser::traverse_tree(
             first_page = false;
 
             size_t offset = 0;
-            if (!page_offset_for(current, file_data_.size(), offset))
+            if (!page_offset_for(current, page_count_, trailer_.page_size,
+                                 offset))
                 return false;
 
-            BinaryReader reader(file_data_.data() + offset, kPageSize);
-            const uint32_t next_page_id = reader.read_u32();
+            const PageInfo page_info = parse_page_info(offset);
+            const ObjectId next_page_id = page_info.next_page_id;
+            if (next_page_id > page_count_) return false;
             parse_leaf_page(offset, all_entries_);
             current = next_page_id;
         }
         return true;
     }
 
-    const std::vector<uint32_t> child_ids =
+    const std::vector<ObjectId> child_ids =
         parse_nonleaf_page(page_offset);
     if (child_ids.empty()) return false;
+    for (ObjectId child_id : child_ids) {
+        if (child_id == 0U || child_id > page_count_) return false;
+    }
     return traverse_tree(child_ids.front(), depth_remaining - 1,
                          remaining_page_visits);
 }
@@ -243,7 +300,7 @@ AttributeIndexEntry GdbAttributeIndexParser::decode_value(
     const uint8_t* bytes,
     uint8_t value_size,
     bool is_string,
-    uint32_t fid) const {
+    ObjectId fid) const {
     AttributeIndexEntry entry;
     entry.fid = fid;
 
@@ -308,10 +365,10 @@ int GdbAttributeIndexParser::compare_value(
     return 0;
 }
 
-std::vector<uint32_t> GdbAttributeIndexParser::query_double(
+std::vector<RowSlot> GdbAttributeIndexParser::query_double(
     double value,
     AttrOp op) const {
-    std::vector<uint32_t> result;
+    std::vector<RowSlot> result;
     const std::string unused;
 
     for (const AttributeIndexEntry& entry : all_entries_) {
@@ -325,7 +382,7 @@ std::vector<uint32_t> GdbAttributeIndexParser::query_double(
             case AttrOp::Gt: match = comparison > 0; break;
             case AttrOp::Ge: match = comparison >= 0; break;
         }
-        if (match) result.push_back(entry.fid - 1U);
+        if (match) result.push_back(static_cast<RowSlot>(entry.fid - 1U));
     }
 
     std::sort(result.begin(), result.end());
@@ -333,10 +390,10 @@ std::vector<uint32_t> GdbAttributeIndexParser::query_double(
     return result;
 }
 
-std::vector<uint32_t> GdbAttributeIndexParser::query_string(
+std::vector<RowSlot> GdbAttributeIndexParser::query_string(
     const std::string& value,
     AttrOp op) const {
-    std::vector<uint32_t> result;
+    std::vector<RowSlot> result;
 
     for (const AttributeIndexEntry& entry : all_entries_) {
         const int comparison = entry.string_value.compare(value);
@@ -349,7 +406,7 @@ std::vector<uint32_t> GdbAttributeIndexParser::query_string(
             case AttrOp::Gt: match = comparison > 0; break;
             case AttrOp::Ge: match = comparison >= 0; break;
         }
-        if (match) result.push_back(entry.fid - 1U);
+        if (match) result.push_back(static_cast<RowSlot>(entry.fid - 1U));
     }
 
     std::sort(result.begin(), result.end());

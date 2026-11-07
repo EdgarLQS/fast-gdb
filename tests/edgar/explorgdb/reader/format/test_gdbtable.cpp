@@ -6,16 +6,22 @@
 #include "gdb_catalog.h"
 #include "explorgdb_types.h"
 #include "test_paths.h"
+#include <cstdint>
 #include <gtest/gtest.h>
+#include <string>
+#include <vector>
 
 using namespace explorgdb;
 
 static const auto SPX_GDB_PATH =
     explorgdb_test_paths::test_data_path("test_data/gdb/test_spatial_gdb.gdb/test_spatial_gdb.gdb");
+static const auto V4_DENSE_GDB_PATH =
+    explorgdb_test_paths::test_data_path(
+        "test_data/gdb/synthetic_v4_dense_gdal_reference.gdb");
 
 // ── 头部解析测试 ──
 
-// 测试 .gdbtable 头部解析（版本可能是 3 或 4）
+// 当前 ArcGIS 夹具使用 v3；合成 GDAL 参考夹具覆盖密集、无位图 v4 表。
 /**
  * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
  * 输入与前置条件：由测试体构造；无显式方法参数。
@@ -34,13 +40,52 @@ TEST(GdbTableTest, HeaderVersion) {
     GdbTableParser parser(table_path);
     ASSERT_TRUE(parser.parse_header());
 
-    // 版本应该是 3 (FGDB 9.x) 或 4 (FGDB 10.x)
+    // 当前真实夹具应为受支持的版本 3。
     uint32_t ver = parser.header().version;
-    EXPECT_TRUE(ver == 3 || ver == 4);
+    EXPECT_EQ(ver, 3u);
     // 文件大小应大于 0
     EXPECT_GT(parser.header().file_size, 0u);
     // 字段描述符偏移应合理（至少包含头部）
     EXPECT_GE(parser.header().field_desc_offset, 40u);
+}
+
+TEST(GdbTableTest, V4DenseGdalReferenceReadsRows) {
+    const auto table_path = V4_DENSE_GDB_PATH / "a00000009.gdbtable";
+    const auto tablx_path = V4_DENSE_GDB_PATH / "a00000009.gdbtablx";
+    GdbTableParser parser(table_path.string());
+    ASSERT_TRUE(parser.open());
+    EXPECT_EQ(parser.header().version, 4u);
+    EXPECT_EQ(parser.header().nfeatures_v4, 4u);
+    EXPECT_EQ(parser.header().field_desc_offset, 55u);
+    ASSERT_TRUE(parser.load_tablx(tablx_path.string()));
+    EXPECT_EQ(parser.active_feature_count(), 4u);
+    EXPECT_TRUE(parser.active_feature_fids_are_dense());
+    for (size_t index = 0; index < parser.active_feature_count(); ++index)
+        EXPECT_EQ(parser.active_feature_fid_at(index), index);
+    EXPECT_EQ(parser.active_feature_fids(),
+              (std::vector<RowSlot>{0, 1, 2, 3}));
+
+    const auto& fields = parser.fields();
+    const auto find_field = [&fields](const std::string& name) {
+        for (size_t i = 0; i < fields.size(); ++i) {
+            if (fields[i].name == name) return static_cast<int>(i);
+        }
+        return -1;
+    };
+    const int name_index = find_field("name");
+    const int wide_value_index = find_field("wide_value");
+    ASSERT_GE(name_index, 0);
+    ASSERT_GE(wide_value_index, 0);
+
+    for (uint32_t row_slot = 0; row_slot < 4; ++row_slot) {
+        FeatureRecord record;
+        ASSERT_TRUE(parser.read_record_by_fid(row_slot, record));
+        EXPECT_EQ(record.fid, row_slot);
+        EXPECT_EQ(std::get<std::string>(record.field_values[name_index]),
+                  "row-" + std::to_string(row_slot));
+        EXPECT_EQ(std::get<int64_t>(record.field_values[wide_value_index]),
+                  static_cast<int64_t>(1099511627776LL + row_slot));
+    }
 }
 
 // 测试解析不存在文件返回 false

@@ -16,12 +16,12 @@ bool GdbTableParser::parse_records() {
             return false;
         }
     }
-    if (feature_offsets_.empty()) return false;
+    if (active_feature_count() == 0) return false;
 
     records_.clear();
     records_.reserve(active_feature_count());
-    for (uint32_t fid = 0; fid < feature_offsets_.size(); ++fid) {
-        if (feature_offsets_[fid] == 0) continue;
+    for (size_t index = 0; index < active_feature_count(); ++index) {
+        const RowSlot fid = active_feature_fid_at(index);
         FeatureRecord record;
         if (!read_record_by_fid(fid, record)) return false;
         records_.push_back(std::move(record));

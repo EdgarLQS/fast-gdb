@@ -4,11 +4,13 @@
 #include "gdb_geometry.h"
 #include "polygon_topology.h"
 #include "spatial_predicate.h"
+#include "test_fixture_explorgdb.h"
 #include "wkb_writer.h"
 
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <cstring>
 #include <vector>
@@ -333,4 +335,289 @@ TEST(GeometryModelDecoder,
     EXPECT_TRUE(rejected.source_was_curve);
     EXPECT_EQ(rejected.backend, GeometryBackend::Reject);
     EXPECT_EQ(rejected.status, GeometryStatus::UnsupportedCurve);
+}
+
+TEST(GeometryModelDecoder,
+     GeometryReadOptionsPreserveOrExplicitlyLinearizeCurvePayload) {
+    const auto curve = build_general_arc();
+    const auto decoder = make_decoder();
+
+    GeometryReadOptions preserve = GeometryReadOptions::preserve_source();
+    const GeometryValue preserved = decoder.decode_value_with_options(
+        curve.data(), curve.size(), preserve);
+    EXPECT_EQ(preserved.status, GeometryStatus::UnsupportedCurve);
+    EXPECT_TRUE(preserved.source_was_curve);
+    EXPECT_FALSE(preserved.linearized);
+    EXPECT_EQ(preserved.source_payload_state,
+              GeometrySourcePayloadState::Preserved);
+    EXPECT_EQ(preserved.source_payload, curve);
+    EXPECT_TRUE(preserved.wkb.empty());
+
+    GeometryReadOptions linearize;
+    linearize.curve_policy = CurveReadPolicy::Linearize;
+    const GeometryValue linearized = decoder.decode_value_with_options(
+        curve.data(), curve.size(), linearize);
+    ASSERT_TRUE(linearized.valid()) << linearized.diagnostic;
+    EXPECT_TRUE(linearized.source_was_curve);
+    EXPECT_TRUE(linearized.linearized);
+    EXPECT_EQ(linearized.source_payload_state,
+              GeometrySourcePayloadState::Preserved);
+    EXPECT_EQ(linearized.source_payload, curve);
+
+    preserve.max_source_payload_bytes = 1;
+    const GeometryValue limited = decoder.decode_value_with_options(
+        curve.data(), curve.size(), preserve);
+    EXPECT_EQ(limited.status, GeometryStatus::UnsupportedCurve);
+    EXPECT_TRUE(limited.source_payload.empty());
+    EXPECT_EQ(limited.source_payload_state,
+              GeometrySourcePayloadState::LimitExceeded);
+    EXPECT_NE(limited.diagnostic.find("preservation limit"),
+              std::string::npos);
+}
+
+TEST(GeometryModelDecoder,
+     MultipatchPreservesStructureDimensionsAndRawPayload) {
+    const auto multipatch = explorgdb_test::build_geom_multipatch();
+    const auto multipatch_m = explorgdb_test::build_geom_multipatch_m();
+    const auto decoder = make_decoder();
+    const auto options = GeometryReadOptions::preserve_source();
+
+    const GeometryValue value = decoder.decode_value_with_options(
+        multipatch.data(), multipatch.size(), options);
+    EXPECT_EQ(value.status, GeometryStatus::Valid);
+    EXPECT_TRUE(value.has_z);
+    EXPECT_FALSE(value.has_m);
+    EXPECT_EQ(value.geometry_type, 1016U);
+    ASSERT_FALSE(value.wkb.empty());
+    EXPECT_EQ(read_u32_le(value.wkb, 1U), 1016U);
+    ASSERT_TRUE(value.to_wkt().has_value());
+    EXPECT_EQ(*value.to_wkt(), "TIN Z (((0.001 0.001 1.001, "
+                              "1.001 0.001 2.001, "
+                              "1.001 1.001 3.001, "
+                              "0.001 0.001 1.001)))");
+    EXPECT_EQ(value.source_payload_state,
+              GeometrySourcePayloadState::Preserved);
+    EXPECT_EQ(value.source_payload, multipatch);
+    ASSERT_TRUE(value.multipatch);
+    ASSERT_TRUE(value.multipatch->structure_complete);
+    ASSERT_EQ(value.multipatch->parts.size(), 1U);
+    EXPECT_EQ(value.multipatch->parts[0].type,
+              MultiPatchPartType::TriangleStrip);
+    EXPECT_EQ(value.multipatch->parts[0].triangle_count, 1U);
+
+    const GeometryValue value_m = decoder.decode_value_with_options(
+        multipatch_m.data(), multipatch_m.size(), options);
+    EXPECT_EQ(value_m.status, GeometryStatus::Valid);
+    EXPECT_TRUE(value_m.has_z);
+    EXPECT_TRUE(value_m.has_m);
+    EXPECT_EQ(value_m.geometry_type, 3006U);
+    ASSERT_FALSE(value_m.wkb.empty());
+    ASSERT_TRUE(value_m.to_wkt().has_value());
+    EXPECT_NE(value_m.to_wkt()->find("MULTIPOLYGON ZM"),
+              std::string::npos);
+    EXPECT_EQ(value_m.source_payload_state,
+              GeometrySourcePayloadState::Preserved);
+    EXPECT_EQ(value_m.source_payload, multipatch_m);
+    ASSERT_TRUE(value_m.multipatch);
+    ASSERT_TRUE(value_m.multipatch->structure_complete);
+    ASSERT_EQ(value_m.multipatch->parts.size(), 1U);
+    EXPECT_EQ(value_m.multipatch->parts[0].type,
+              MultiPatchPartType::OuterRing);
+}
+
+TEST(GeometryModelDecoder,
+     MultipatchParsesAllPartTypesFacesAndRingGroups) {
+    const auto multipatch = explorgdb_test::build_geom_multipatch_parts(
+        {0, 1, 0x12, 3, 4, 5, 6}, {5, 5, 4, 4, 4, 4, 6});
+    auto decoder = make_decoder();
+    const GeometryModel model = decoder.decode_model(
+        multipatch.data(), multipatch.size());
+
+    EXPECT_EQ(model.status, GeometryStatus::Valid);
+    EXPECT_FALSE(model.is_empty());
+    ASSERT_TRUE(model.multipatch);
+    ASSERT_TRUE(model.multipatch->structure_complete);
+    ASSERT_EQ(model.multipatch->parts.size(), 7U);
+    ASSERT_EQ(model.multipatch->vertices.size(), 32U);
+    EXPECT_EQ(model.multipatch->parts[0].type,
+              MultiPatchPartType::TriangleStrip);
+    EXPECT_EQ(model.multipatch->parts[1].type,
+              MultiPatchPartType::TriangleFan);
+    EXPECT_EQ(model.multipatch->parts[6].type,
+              MultiPatchPartType::Triangles);
+    EXPECT_EQ(model.multipatch->parts[2].type,
+              MultiPatchPartType::OuterRing);
+    EXPECT_EQ(model.multipatch->parts[2].raw_type, 0x12U);
+    EXPECT_EQ(model.multipatch->parts[0].triangle_count, 3U);
+    EXPECT_EQ(model.multipatch->parts[1].triangle_count, 3U);
+    EXPECT_EQ(model.multipatch->parts[6].triangle_count, 2U);
+    EXPECT_DOUBLE_EQ(model.multipatch->vertices[0].x, 0.001);
+    EXPECT_DOUBLE_EQ(model.multipatch->vertices[0].z, 1.001);
+
+    std::array<size_t, 3> triangle{};
+    ASSERT_TRUE(model.multipatch->parts[0].triangle_vertices(1, triangle));
+    EXPECT_EQ(triangle, (std::array<size_t, 3>{2, 1, 3}));
+    ASSERT_TRUE(model.multipatch->parts[1].triangle_vertices(1, triangle));
+    EXPECT_EQ(triangle, (std::array<size_t, 3>{5, 7, 8}));
+    ASSERT_TRUE(model.multipatch->parts[6].triangle_vertices(1, triangle));
+    EXPECT_EQ(triangle, (std::array<size_t, 3>{29, 30, 31}));
+    EXPECT_FALSE(model.multipatch->parts[0].triangle_vertices(3, triangle));
+
+    ASSERT_EQ(model.multipatch->ring_groups.size(), 2U);
+    EXPECT_EQ(model.multipatch->ring_groups[0].encoding,
+              MultiPatchRingEncoding::OuterAndInner);
+    EXPECT_EQ(model.multipatch->ring_groups[0].part_indices,
+              (std::vector<size_t>{2, 3}));
+    EXPECT_EQ(model.multipatch->ring_groups[1].encoding,
+              MultiPatchRingEncoding::FirstAndFollowing);
+    EXPECT_EQ(model.multipatch->ring_groups[1].part_indices,
+              (std::vector<size_t>{4, 5}));
+
+    const GeometryValue value = WkbWriter::write(model);
+    EXPECT_EQ(value.status, GeometryStatus::Valid);
+    EXPECT_EQ(value.geometry_type, 1007U);
+    ASSERT_FALSE(value.wkb.empty());
+    ASSERT_TRUE(value.to_wkt().has_value());
+    EXPECT_EQ(value.to_wkt()->rfind("GEOMETRYCOLLECTION Z (", 0), 0U);
+    EXPECT_NE(value.to_wkt()->find("TIN Z"), std::string::npos);
+    EXPECT_NE(value.to_wkt()->find("MULTIPOLYGON Z"), std::string::npos);
+}
+
+TEST(GeometryModelDecoder,
+     MultipatchMapsRingGroupsAndMixedPartsToStandardWkb) {
+    auto decoder = make_decoder();
+    const auto ring_parts = explorgdb_test::build_geom_multipatch_parts(
+        {2, 3, 4, 5}, {4, 4, 4, 4}, true);
+    const GeometryValue rings = decoder.decode_value(
+        ring_parts.data(), ring_parts.size());
+    ASSERT_EQ(rings.status, GeometryStatus::Valid) << rings.diagnostic;
+    EXPECT_EQ(rings.geometry_type, 3006U);
+    ASSERT_TRUE(rings.to_wkt().has_value());
+    EXPECT_EQ(rings.to_wkt()->rfind("MULTIPOLYGON ZM", 0), 0U);
+    EXPECT_NE(rings.to_wkt()->find(")), (("), std::string::npos);
+
+    const auto mixed_parts = explorgdb_test::build_geom_multipatch_parts(
+        {0, 2}, {4, 4});
+    const GeometryValue mixed = decoder.decode_value(
+        mixed_parts.data(), mixed_parts.size());
+    ASSERT_EQ(mixed.status, GeometryStatus::Valid) << mixed.diagnostic;
+    EXPECT_EQ(mixed.geometry_type, 1007U);
+    ASSERT_TRUE(mixed.to_wkt().has_value());
+    EXPECT_EQ(mixed.to_wkt()->rfind("GEOMETRYCOLLECTION Z", 0), 0U);
+    EXPECT_NE(mixed.to_wkt()->find("TIN Z"), std::string::npos);
+    EXPECT_NE(mixed.to_wkt()->find("MULTIPOLYGON Z"), std::string::npos);
+}
+
+TEST(GeometryModelDecoder,
+     MultipatchConnectedOuterRingsMatchGdalTinHeuristic) {
+    auto decoder = make_decoder();
+    const auto blob =
+        explorgdb_test::build_geom_multipatch_outer_ring_tin();
+    const GeometryValue value = decoder.decode_value(blob.data(), blob.size());
+    ASSERT_EQ(value.status, GeometryStatus::Valid) << value.diagnostic;
+    EXPECT_EQ(value.geometry_type, 1016U);
+    ASSERT_TRUE(value.to_wkt().has_value());
+    EXPECT_EQ(value.to_wkt()->rfind("TIN Z (", 0), 0U);
+    EXPECT_NE(value.to_wkt()->find(")), (("), std::string::npos);
+    EXPECT_EQ(read_u32_le(value.wkb, 5U), 2U);
+}
+
+TEST(GeometryModelDecoder, MultipatchSpatialFilterChecksProjectedSurfaces) {
+    auto decoder = make_decoder();
+    const auto triangle_blob = explorgdb_test::build_geom_multipatch();
+    const GeometryModel triangle = decoder.decode_model(
+        triangle_blob.data(), triangle_blob.size());
+    ASSERT_EQ(triangle.status, GeometryStatus::Valid);
+    EXPECT_TRUE(SpatialPredicate::intersects_bbox(
+        triangle, QueryGridBbox{0.0L, 0.0L, 2000.0L, 2000.0L}));
+    EXPECT_TRUE(SpatialPredicate::intersects_bbox(
+        triangle, QueryGridBbox{800.0L, 100.0L, 900.0L, 200.0L}));
+    EXPECT_FALSE(SpatialPredicate::intersects_bbox(
+        triangle, QueryGridBbox{100.0L, 900.0L, 200.0L, 950.0L}));
+
+    const auto ring_blob = explorgdb_test::build_geom_multipatch_m();
+    const GeometryModel ring = decoder.decode_model(
+        ring_blob.data(), ring_blob.size());
+    ASSERT_EQ(ring.status, GeometryStatus::Valid);
+    EXPECT_TRUE(SpatialPredicate::intersects_bbox(
+        ring, QueryGridBbox{800.0L, 100.0L, 900.0L, 200.0L}));
+    EXPECT_FALSE(SpatialPredicate::intersects_bbox(
+        ring, QueryGridBbox{100.0L, 900.0L, 200.0L, 950.0L}));
+}
+
+TEST(GeometryModelDecoder,
+     MultipatchRetainsUnknownTypesAndRejectsInvalidTriangleGroups) {
+    const auto unknown = explorgdb_test::build_geom_multipatch_parts(
+        {7}, {3});
+    const auto invalid_triangles =
+        explorgdb_test::build_geom_multipatch_parts({6}, {4});
+    auto decoder = make_decoder();
+
+    const GeometryModel unknown_model = decoder.decode_model(
+        unknown.data(), unknown.size());
+    EXPECT_EQ(unknown_model.status, GeometryStatus::UnsupportedType);
+    ASSERT_TRUE(unknown_model.multipatch);
+    ASSERT_TRUE(unknown_model.multipatch->structure_complete);
+    ASSERT_EQ(unknown_model.multipatch->parts.size(), 1U);
+    EXPECT_EQ(unknown_model.multipatch->parts[0].type,
+              MultiPatchPartType::Unknown);
+    EXPECT_EQ(unknown_model.multipatch->parts[0].raw_type, 7U);
+    EXPECT_NE(unknown_model.diagnostic.find("unknown part type"),
+              std::string::npos);
+    const GeometryValue unknown_value = WkbWriter::write(unknown_model);
+    EXPECT_EQ(unknown_value.status, GeometryStatus::UnsupportedType);
+    EXPECT_TRUE(unknown_value.wkb.empty());
+
+    auto opaque_tail = explorgdb_test::build_geom_multipatch();
+    opaque_tail.push_back(0x7fU);
+    const GeometryValue opaque = decoder.decode_value_with_options(
+        opaque_tail.data(), opaque_tail.size(),
+        GeometryReadOptions::preserve_source());
+    EXPECT_EQ(opaque.status, GeometryStatus::UnsupportedType);
+    EXPECT_TRUE(opaque.wkb.empty());
+    EXPECT_EQ(opaque.source_payload, opaque_tail);
+    ASSERT_TRUE(opaque.multipatch);
+    EXPECT_EQ(opaque.multipatch->opaque_tail_bytes, 1U);
+
+    const GeometryValue invalid = decoder.decode_value_with_options(
+        invalid_triangles.data(), invalid_triangles.size(),
+        GeometryReadOptions::preserve_source());
+    EXPECT_EQ(invalid.status, GeometryStatus::InvalidTopology);
+    EXPECT_TRUE(invalid.wkb.empty());
+    ASSERT_TRUE(invalid.multipatch);
+    EXPECT_TRUE(invalid.multipatch->structure_complete);
+    EXPECT_EQ(invalid.source_payload, invalid_triangles);
+    EXPECT_EQ(invalid.source_payload_state,
+              GeometrySourcePayloadState::Preserved);
+}
+
+TEST(GeometryModelDecoder, EmptyMultipatchKeepsEmptyStatusWithoutWkb) {
+    std::vector<uint8_t> empty;
+    explorgdb_test::write_varuint(empty, 32U);
+    explorgdb_test::write_varuint(empty, 0U);
+    auto decoder = make_decoder();
+    const GeometryValue value = decoder.decode_value(
+        empty.data(), empty.size());
+    EXPECT_EQ(value.status, GeometryStatus::Empty);
+    EXPECT_TRUE(value.wkb.empty());
+}
+
+TEST(GeometryModelDecoder, GeneralMultipatchUsesZAndMTypeFlags) {
+    constexpr uint64_t kGeneralZFlag = 0x80000000ULL;
+    constexpr uint64_t kGeneralMFlag = 0x40000000ULL;
+    const auto general = explorgdb_test::build_geom_multipatch_parts(
+        {0}, {3}, true,
+        54ULL | kGeneralZFlag | kGeneralMFlag);
+    auto decoder = make_decoder();
+
+    const GeometryModel model = decoder.decode_model(
+        general.data(), general.size());
+    EXPECT_TRUE(model.has_z);
+    EXPECT_TRUE(model.has_m);
+    EXPECT_EQ(model.status, GeometryStatus::Valid);
+    ASSERT_TRUE(model.multipatch);
+    EXPECT_TRUE(model.multipatch->structure_complete);
+    ASSERT_EQ(model.multipatch->vertices.size(), 3U);
+    EXPECT_DOUBLE_EQ(model.multipatch->vertices[0].z, 1.001);
+    EXPECT_DOUBLE_EQ(model.multipatch->vertices[0].m, 5.001);
 }

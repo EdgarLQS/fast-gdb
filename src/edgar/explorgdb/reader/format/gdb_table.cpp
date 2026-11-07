@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <fcntl.h>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -78,6 +79,21 @@ GdbTableParser::~GdbTableParser() {
 // 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 bool GdbTableParser::open() {
     if (fd_ >= 0 || mapped_data_) close_file();
+    file_data_.clear();
+    row_buffer_.clear();
+    header_ = {};
+    fields_.clear();
+    records_.clear();
+    feature_offsets_.reset();
+    feature_block_bitmap_.clear();
+    block_rank_prefix_.clear();
+    active_feature_fids_.clear();
+    active_feature_fids_dense_ = false;
+    logical_row_count_ = 0;
+    active_feature_count_ = 0;
+    active_feature_count_known_ = false;
+    geometry_field_index_ = -1;
+    geometry_nullable_bit_index_ = -1;
 
 #ifdef _WIN32
     fd_ = fast_gdb_open_utf8(file_path_.c_str(), O_RDONLY);
@@ -92,6 +108,16 @@ bool GdbTableParser::open() {
     struct stat st;
     if (fstat(fd_, &st) < 0) {
         std::cerr << "Failed to stat: " << file_path_ << "\n";
+        close_file();
+        return false;
+    }
+    if (st.st_size < 0 ||
+        static_cast<uintmax_t>(st.st_size) >
+            std::numeric_limits<size_t>::max()) {
+        close_file();
+        return false;
+    }
+    if (!TablxCache::make_key_from_fd(fd_, source_identity_)) {
         close_file();
         return false;
     }
@@ -127,10 +153,19 @@ bool GdbTableParser::open() {
             header_.has_deleted_features = reader.read_u32();
             header_.largest_size_record = reader.read_u32();
             header_.unknown_role = reader.read_u32();
-            reader.skip(4);
             header_.nfeatures_v4 = reader.read_u64();
             header_.file_size = reader.read_u64();
             header_.field_desc_offset = reader.read_u64();
+            if (header_.has_deleted_features > 1 ||
+                header_.nfeatures_v4 > static_cast<uint64_t>(
+                    std::numeric_limits<int64_t>::max()) ||
+                header_.file_size != file_size_ ||
+                header_.field_desc_offset < 40 ||
+                header_.field_desc_offset >= file_size_) {
+                header_ = {};
+                close_file();
+                return false;
+            }
         } else {
             std::cerr << "Unknown .gdbtable version: " << header_.version << "\n";
             close_file();
@@ -142,7 +177,25 @@ bool GdbTableParser::open() {
         return false;
     }
 
-    return ensure_fields_loaded();
+    if (!ensure_fields_loaded() || !source_is_current()) {
+        close_file();
+        return false;
+    }
+    return true;
+}
+
+bool GdbTableParser::source_is_current() const noexcept {
+    try {
+        if (fd_ < 0) return false;
+        TablxCacheKey handle_identity;
+        TablxCacheKey path_identity;
+        return TablxCache::make_key_from_fd(fd_, handle_identity) &&
+               TablxCache::make_key(file_path_, path_identity) &&
+               handle_identity == source_identity_ &&
+               path_identity == source_identity_;
+    } catch (...) {
+        return false;
+    }
 }
 
 // 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
@@ -208,6 +261,7 @@ void GdbTableParser::close_file() {
         fd_ = -1;
     }
     file_size_ = 0;
+    source_identity_ = {};
 }
 
 bool GdbTableParser::read_at(uint64_t offset, void* buffer, size_t size) const {
@@ -223,7 +277,8 @@ bool GdbTableParser::read_at(uint64_t offset, void* buffer, size_t size) const {
 
 // 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 bool GdbTableParser::load_file() {
-    std::ifstream stream(file_path_, std::ios::binary | std::ios::ate);
+    std::ifstream stream(std::filesystem::u8path(file_path_),
+                         std::ios::binary | std::ios::ate);
     if (!stream.is_open()) return false;
     const auto end = stream.tellg();
     if (end < 0) return false;
@@ -234,55 +289,134 @@ bool GdbTableParser::load_file() {
         static_cast<std::streamsize>(file_data_.size())));
 }
 
+bool GdbTableParser::install_tablx_data(
+    std::shared_ptr<const std::vector<uint64_t>> offsets,
+    uint64_t logical_row_count,
+    std::vector<bool> block_bitmap,
+    size_t expected_active_count) {
+    if (!offsets) return false;
+    if (logical_row_count >
+        static_cast<RowSlot>(std::numeric_limits<int64_t>::max()))
+        return false;
+
+    std::vector<uint64_t> rank_prefix;
+    if (!block_bitmap.empty()) {
+        rank_prefix.resize(block_bitmap.size() + 1, 0);
+        for (size_t block = 0; block < block_bitmap.size(); ++block) {
+            rank_prefix[block + 1] = rank_prefix[block] +
+                (block_bitmap[block] ? 1U : 0U);
+        }
+        if (rank_prefix.back() * 1024U != offsets->size()) return false;
+        if (logical_row_count >
+            static_cast<uint64_t>(block_bitmap.size()) * 1024U) {
+            return false;
+        }
+    } else if (logical_row_count > offsets->size()) {
+        return false;
+    }
+
+    const bool dense_active_fids =
+        expected_active_count == logical_row_count;
+    std::vector<RowSlot> active_fids;
+    size_t observed_active_count = 0;
+    const uint64_t logical_block_count =
+        (logical_row_count + 1023U) / 1024U;
+    for (uint64_t block = 0; block < logical_block_count; ++block) {
+        uint64_t physical_block = block;
+        if (!block_bitmap.empty()) {
+            if (block >= block_bitmap.size() || !block_bitmap[block])
+                continue;
+            physical_block = rank_prefix[static_cast<size_t>(block)];
+        }
+        const uint64_t logical_start = block * 1024U;
+        const uint64_t physical_start = physical_block * 1024U;
+        const uint64_t row_count = std::min<uint64_t>(
+            1024U, logical_row_count - logical_start);
+        for (uint64_t local = 0; local < row_count; ++local) {
+            const uint64_t physical_index = physical_start + local;
+            if (physical_index < offsets->size() &&
+                (*offsets)[static_cast<size_t>(physical_index)] != 0) {
+                ++observed_active_count;
+                if (!dense_active_fids) {
+                    active_fids.push_back(logical_start + local);
+                }
+            }
+        }
+    }
+    if (observed_active_count != expected_active_count) return false;
+
+    feature_offsets_ = std::move(offsets);
+    feature_block_bitmap_ = std::move(block_bitmap);
+    block_rank_prefix_ = std::move(rank_prefix);
+    logical_row_count_ = logical_row_count;
+    active_feature_fids_ = std::move(active_fids);
+    active_feature_fids_dense_ = dense_active_fids;
+    active_feature_count_ = expected_active_count;
+    active_feature_count_known_ = true;
+    return true;
+}
+
 // 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 bool GdbTableParser::load_tablx(const std::string& tablx_path) {
-    // 尝试从缓存获取（除非被 FAST_GDB_TABLX_CACHE=0 绕过）
-    if (!TablxCache::is_bypassed()) {
-        TablxCacheKey key;
-        if (TablxCache::make_key(tablx_path, key)) {
-            auto cached = TablxCache::instance().get(key);
-            if (cached) {
-                if (cached->offsets.size() >
-                    static_cast<size_t>(std::numeric_limits<uint32_t>::max())) {
-                    return false;
-                }
-                feature_offsets_ = cached->offsets;
-                active_feature_count_ = cached->feature_count;
-                active_feature_count_known_ = true;
-                return true;
+    feature_offsets_.reset();
+    feature_block_bitmap_.clear();
+    block_rank_prefix_.clear();
+    active_feature_fids_.clear();
+    active_feature_fids_dense_ = false;
+    logical_row_count_ = 0;
+    active_feature_count_ = 0;
+    active_feature_count_known_ = false;
+    if (header_.version == 0 && !parse_header()) return false;
+    if (header_.version != 3 && header_.version != 4) {
+        std::cerr << "Unsupported .gdbtable feature-offset loading for version "
+                  << header_.version << "\n";
+        return false;
+    }
+    GdbTablxParser parser(tablx_path);
+    if (!parser.open_snapshot()) return false;
+    const TablxCacheKey identity = parser.file_identity();
+    const bool cache_enabled =
+        header_.version == 3 && !TablxCache::is_bypassed();
+
+    if (cache_enabled) {
+        auto cached = TablxCache::instance().get(identity);
+        if (cached && parser.source_is_current() &&
+            cached->offsets &&
+            cached->feature_count <= cached->offsets->size()) {
+            std::vector<bool> block_bitmap = cached->block_bitmap;
+            if (!parser.source_is_current()) return false;
+            if (install_tablx_data(cached->offsets,
+                                   cached->logical_row_count,
+                                   std::move(block_bitmap),
+                                   cached->feature_count)) {
+                return parser.source_is_current();
             }
         }
     }
 
-    // 缓存未命中或绕过：完整解析
-    GdbTablxParser parser(tablx_path);
-    if (!parser.parse()) return false;
-    if (parser.header().version == 4 &&
-        parser.header().nfeatures_v4 >
-            static_cast<uint64_t>(std::numeric_limits<uint32_t>::max())) {
+    if (!parser.parse_opened(false) ||
+        parser.header().version != header_.version) return false;
+    if (header_.version == 4 &&
+        (header_.has_deleted_features != 0 ||
+         parser.feature_count() != header_.nfeatures_v4)) {
+        std::cerr << "Unsupported .gdbtable v4 deleted-record ObjectID mapping\n";
         return false;
     }
-    feature_offsets_ = parser.offsets();
-    if (feature_offsets_.size() >
-        static_cast<size_t>(std::numeric_limits<uint32_t>::max())) {
-        feature_offsets_.clear();
-        active_feature_count_ = 0;
-        active_feature_count_known_ = false;
-        return false;
-    }
-    active_feature_count_ = parser.feature_count();
-    active_feature_count_known_ = true;
+    auto offsets = parser.take_offsets();
+    const size_t feature_count = parser.feature_count();
+    if (!parser.source_is_current()) return false;
 
-    // 将解析结果存入缓存
-    if (!TablxCache::is_bypassed()) {
-        TablxCacheKey key;
-        if (TablxCache::make_key(tablx_path, key)) {
-            TablxCache::instance().put(
-                key, feature_offsets_, active_feature_count_);
-        }
+    // 只用解析同一句柄得到的身份键发布缓存，避免把旧内容挂到新文件键上。
+    if (cache_enabled && parser.source_is_current()) {
+        TablxCache::instance().put_shared(
+            identity, offsets, feature_count, parser.logical_row_count(),
+            parser.block_bitmap());
     }
+    if (!parser.source_is_current()) return false;
 
-    return true;
+    return install_tablx_data(std::move(offsets),
+                              parser.logical_row_count(),
+                              parser.block_bitmap(), feature_count);
 }
 
 // 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
@@ -303,10 +437,18 @@ bool GdbTableParser::parse_header() {
             header_.has_deleted_features = reader.read_u32();
             header_.largest_size_record = reader.read_u32();
             header_.unknown_role = reader.read_u32();
-            reader.skip(4);
             header_.nfeatures_v4 = reader.read_u64();
             header_.file_size = reader.read_u64();
             header_.field_desc_offset = reader.read_u64();
+            if (header_.has_deleted_features > 1 ||
+                header_.nfeatures_v4 > static_cast<uint64_t>(
+                    std::numeric_limits<int64_t>::max()) ||
+                header_.file_size != file_data_.size() ||
+                header_.field_desc_offset < 40 ||
+                header_.field_desc_offset >= file_data_.size()) {
+                header_ = {};
+                return false;
+            }
         } else {
             return false;
         }
@@ -488,7 +630,7 @@ GdbGeomDecoder GdbTableParser::make_geom_decoder(const FieldDescriptor& field) c
 
 // 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 uint64_t GdbTableParser::sequential_scan(ScanCallback callback) {
-    if (fields_.empty() || feature_offsets_.empty() || !callback)
+    if (fields_.empty() || active_feature_count() == 0 || !callback)
         return 0;
 
     const int field_count = static_cast<int>(fields_.size());
@@ -497,8 +639,10 @@ uint64_t GdbTableParser::sequential_scan(ScanCallback callback) {
     std::vector<FieldRef> refs(static_cast<size_t>(field_count));
     uint64_t scanned = 0;
 
-    for (uint32_t fid = 0; fid < feature_offsets_.size(); ++fid) {
-        const uint64_t offset = feature_offsets_[fid];
+    for (size_t active_index = 0;
+         active_index < active_feature_count(); ++active_index) {
+        const RowSlot fid = active_feature_fid_at(active_index);
+        const uint64_t offset = feature_offset(fid);
         if (offset == 0 || offset >= file_size_) continue;
 
         // Read blob length (4 bytes at offset)
@@ -530,9 +674,24 @@ uint64_t GdbTableParser::sequential_scan(ScanCallback callback) {
         }
 
         if (blob_length == 0) {
-            for (int i = 0; i < field_count; ++i)
-                refs[static_cast<size_t>(i)] =
-                    FieldRef{fields_[static_cast<size_t>(i)].type, nullptr, 0, true, 0};
+            bool valid_zero_length_row = true;
+            for (int i = 0; i < field_count; ++i) {
+                const FieldDescriptor& field = fields_[static_cast<size_t>(i)];
+                const bool is_object_id = field.type == FieldType::ObjectId;
+                const bool is_nullable = (field.flag & 1U) != 0;
+                if (!is_object_id && field.type != FieldType::Geometry &&
+                    !is_nullable) {
+                    valid_zero_length_row = false;
+                    break;
+                }
+                refs[static_cast<size_t>(i)] = FieldRef{
+                    field.type,
+                    nullptr,
+                    0,
+                    !is_object_id,
+                    static_cast<int64_t>(fid + 1U)};
+            }
+            if (!valid_zero_length_row) break;
             if (!callback(fid, refs.data(), field_count)) break;
             ++scanned;
             continue;
@@ -560,7 +719,7 @@ uint64_t GdbTableParser::sequential_scan(ScanCallback callback) {
                     auto& ref = refs[static_cast<size_t>(i)];
                     ref = FieldRef{};
                     ref.type = field.type;
-                    ref.implicit_value = static_cast<int32_t>(fid + 1);
+                    ref.implicit_value = static_cast<int64_t>(fid + 1U);
 
                     if ((field.flag & 1U) != 0) {
                         const int byte_index = nullable_bit / 8;

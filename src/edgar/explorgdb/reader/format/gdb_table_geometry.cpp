@@ -20,7 +20,7 @@ const FieldDescriptor* GdbTableParser::geometry_field_descriptor() const {
     return nullptr;
 }
 
-bool GdbTableParser::read_geometry_model(uint32_t fid,
+bool GdbTableParser::read_geometry_model(RowSlot fid,
                                          GeometryModel& model) {
     const auto* field = geometry_field_descriptor();
     if (field == nullptr) {
@@ -32,11 +32,19 @@ bool GdbTableParser::read_geometry_model(uint32_t fid,
 
     const uint8_t* blob = nullptr;
     size_t blob_size = 0;
-    if (!peek_geometry_blob(fid, blob, blob_size)) {
+    bool geometry_is_null = false;
+    if (!peek_geometry_blob(fid, blob, blob_size, &geometry_is_null)) {
         model = GeometryModel{};
         model.status = GeometryStatus::InvalidEncoding;
         model.diagnostic = "geometry blob could not be located";
         return false;
+    }
+
+    if (geometry_is_null) {
+        model = GeometryModel{};
+        model.status = GeometryStatus::Null;
+        model.diagnostic = "geometry is null";
+        return true;
     }
 
     auto decoder = make_geom_decoder(*field);
@@ -44,7 +52,7 @@ bool GdbTableParser::read_geometry_model(uint32_t fid,
     return model.valid();
 }
 
-bool GdbTableParser::read_geometry_value(uint32_t fid,
+bool GdbTableParser::read_geometry_value(RowSlot fid,
                                          GeometryValue& value) {
     GeometryModel model;
     const bool valid = read_geometry_model(fid, model);

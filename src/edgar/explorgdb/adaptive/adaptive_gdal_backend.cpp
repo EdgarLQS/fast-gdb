@@ -357,7 +357,7 @@ bool materialize_feature(OGRFeature* feature,
     }
 
     output = QueryFeature{};
-    output.fid = static_cast<uint32_t>(feature->GetFID() - 1);
+    output.fid = static_cast<RowSlot>(feature->GetFID() - 1);
     output.record.fid = output.fid;
 
     size_t nullable_count = 0;
@@ -377,7 +377,7 @@ bool materialize_feature(OGRFeature* feature,
 
         if (field.type == FieldType::ObjectId) {
             output.record.field_values.push_back(
-                static_cast<int32_t>(output.fid + 1U));
+            object_id_field_value(output.fid));
             continue;
         }
         if (field.type == FieldType::Geometry) {
@@ -574,7 +574,7 @@ BackendReadResult read_gdal(const std::string& gdb_path,
                 "OGR feature has an invalid FileGDB FID");
         }
         result.matched_fids.push_back(
-            static_cast<uint32_t>(feature->GetFID() - 1));
+            static_cast<RowSlot>(feature->GetFID() - 1));
         OGRFeature::DestroyFeature(feature);
     }
 

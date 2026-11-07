@@ -121,6 +121,9 @@ install(FILES
 install(FILES
     src/edgar/explorgdb/reader/io/sys/mman.h
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/reader/sys)
+install(FILES
+    src/edgar/explorgdb/reader/geometry/geometry_model.h
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/fast_gdb/reader/geometry)
 
 if(FAST_GDB_WITH_GDAL)
     install(DIRECTORY src/edgar/explorgdb/curve_gdal/

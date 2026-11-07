@@ -47,7 +47,9 @@ enum class GdbGeomType : uint8_t {
 
 struct GdbGeometry {
     GdbGeomType type;
-    std::string wkt;
+    std::string wkt;  ///< Legacy view; MultiPatch WKT follows normalized ISO WKB.
+    /** Structured MultiPatch parts, when decoding a MultiPatch source. */
+    std::shared_ptr<const MultiPatchModel> multipatch;
     bool has_z = false;
     bool has_m = false;
     bool is_empty = false;
@@ -92,6 +94,10 @@ public:
      * @return 解码后的几何模型。
      */
     GeometryModel decode_model(const uint8_t* data, size_t size);
+    /** 按几何读取策略解码为规范模型。 */
+    GeometryModel decode_model_with_options(
+        const uint8_t* data, size_t size,
+        const GeometryReadOptions& options) const;
     /** 解码带字段包装的几何数据为 GeometryModel。
      * @param data 几何字段数据。
      * @param data_size 字段数据长度，单位为字节。
@@ -104,6 +110,19 @@ public:
      * @return 解码后的统一几何值。
      */
     GeometryValue decode_value(const uint8_t* data, size_t size);
+    /** 按调用方策略解码，并在预算内保留原始 geometry payload。
+     * @param data 几何二进制数据。
+     * @param size 数据长度，单位为字节。
+     * @param options 曲线策略、线性化精度和源载荷预算。
+     * @return WKB 或带明确状态的原始几何值。
+     */
+    GeometryValue decode_value_with_options(
+        const uint8_t* data, size_t size,
+        const GeometryReadOptions& options) const;
+    /** 将模型序列化，并按策略附带受限的原始源载荷。 */
+    GeometryValue write_value_with_options(
+        const GeometryModel& model, const uint8_t* data, size_t size,
+        const GeometryReadOptions& options) const;
     /** 解码字段包装中的数据为统一 GeometryValue。
      * @param data 几何字段数据。
      * @param data_size 字段数据长度，单位为字节。
@@ -180,47 +199,20 @@ public:
     bool has_unsupported_curve_geometry(const uint8_t* data, size_t size);
 
 private:
-    struct DecodeState {
-        const uint8_t* ptr;
-        const uint8_t* end;
-        uint64_t geom_type;
-    };
-
-    uint64_t read_varuint(DecodeState& s);
-    int64_t read_varint(DecodeState& s);
     double decode_point_raw_coord(uint64_t raw_val,
                                   double origin, double scale);
     double decode_delta_cumulative_coord(int64_t cumulative,
                                          double origin, double scale);
     double decode_bbox_raw_coord(uint64_t raw_val,
                                  double origin, double scale);
-    std::string format_coord(double x, double y);
-    std::string format_coord_z(double x, double y, double z);
-    std::string format_coord_m(double x, double y, double m);
-    std::string format_coord_zm(double x, double y,
-                                double z, double m);
-
-    GdbGeometry decode_point(DecodeState& s, uint8_t base_type);
-    GdbGeometry decode_multipoint(DecodeState& s, uint8_t base_type,
-                                  bool has_z, bool has_m);
-    GdbGeometry decode_polyline(DecodeState& s, uint8_t base_type,
-                                bool has_z, bool has_m);
-    GdbGeometry decode_polygon(DecodeState& s, uint8_t base_type,
-                               bool has_z, bool has_m);
-    GdbGeometry decode_multipatch(DecodeState& s, uint8_t base_type);
-
-    bool has_z_type(uint8_t base_type) const;
-    bool has_m_type(uint8_t base_type) const;
-    bool has_curve_descriptors(uint8_t base_type,
-                               uint64_t geom_type) const;
-    std::string geom_type_name(uint8_t base_type,
-                               uint64_t geom_type = 0) const;
 
     double xorig_, yorig_, xyscale_;
     double zorig_, zscale_;
     double morig_, mscale_;
     bool layer_has_z_, layer_has_m_;
 
+    // Retained to keep the public decoder class layout stable. GeometryModel
+    // owns coordinate decoding; these cached inverse scales are no longer read.
     double inv_xyscale_ = 0.0;
     double inv_zscale_ = 0.0;
     double inv_mscale_ = 0.0;

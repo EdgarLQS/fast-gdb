@@ -1,0 +1,25 @@
+
+
+=== Spatial density benchmark: 10M_grid_point (steady-state) ===
+features=10000000 layer=features
+case               candidates     ratio path                             fast_ms  gdal_ms   spx_ms  scan_ms  blob_ms  bbox_ms exact_ms
+coverage_01pct        101124     1.01% bbox:model:spx-candidates            8.8     15.7      6.1      0.0      0.0      0.0      0.0
+  funnel: candidate=101124 rejected=1031 contained=100093 exact=0 invalid=0 result=100093 coverage_est=1.00% target=1% spx_bypassed=false geometry_only=false fast/gdal=0.559
+coverage_10pct       1004004    10.04% bbox:model:spx-candidates           47.4    158.7     21.5      0.0      0.0      0.0      0.0
+  funnel: candidate=1004004 rejected=3462 contained=1000542 exact=0 invalid=0 result=1000542 coverage_est=10.00% target=10% spx_bypassed=false geometry_only=false fast/gdal=0.299
+coverage_30pct      10000000   100.00% bbox:model:sequential-planned      168.0    457.5      0.0    168.0      0.0      0.0      0.0
+  funnel: candidate=10000000 rejected=6998249 contained=3001751 exact=0 invalid=0 result=3001751 coverage_est=30.01% target=30% spx_bypassed=true geometry_only=true fast/gdal=0.367
+coverage_80pct      10000000   100.00% bbox:model:sequential-planned      175.3   1212.1      0.0    175.3      0.0      0.0      0.0
+  funnel: candidate=10000000 rejected=1996759 contained=8003241 exact=0 invalid=0 result=8003241 coverage_est=80.04% target=80% spx_bypassed=true geometry_only=true fast/gdal=0.145
+coverage_full       10000000   100.00% bbox:model:sequential-planned      174.1   1203.5      0.0    174.1      0.0      0.0      0.0
+  funnel: candidate=10000000 rejected=0 contained=10000000 exact=0 invalid=0 result=10000000 coverage_est=100.00% target=100% spx_bypassed=true geometry_only=true fast/gdal=0.145
+
+--- steady-state Summary (median of 5) ---
+case                 fast_med   gdal_med   fast_p95   gdal_p95      ratio
+coverage_01pct            8.9       15.7        9.5       16.1      0.565
+coverage_10pct           47.9      152.3       48.3      158.7      0.314
+coverage_30pct          168.2      456.4      169.5      462.6      0.369
+coverage_80pct          173.3     1213.6      175.3     1239.6      0.143
+coverage_full           174.5     1203.5      176.6     1230.8      0.145
+[==========] 1 test from 1 test suite ran. (22139 ms total)
+[  PASSED  ] 1 test.

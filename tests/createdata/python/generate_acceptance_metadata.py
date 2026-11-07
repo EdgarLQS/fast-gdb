@@ -532,11 +532,13 @@ with open(os.path.join(OUT_DIR, "field-values-expected.csv"), "w", encoding="utf
                         val = row[i + 1]
                         is_null = val is None
                         hs = ""
-                        if isinstance(val, bytes):
-                            if len(val) == 0: hs = "(empty)"
-                            elif len(val) < 50: hs = val.hex()
-                            else: hs = val[:50].hex() + "..."
-                        w.writerow([tbl_name, oid, fname, str(val)[:200] if val is not None else "", "Y" if is_null else "N", hs])
+                        expected_value = str(val)[:200] if val is not None else ""
+                        if isinstance(val, (bytes, bytearray, memoryview)):
+                            raw = bytes(val)
+                            summary = raw.hex() if len(raw) < 50 else raw[:50].hex() + "..."
+                            hs = "len={};hex={}".format(len(raw), summary)
+                            expected_value = "<binary {} bytes>".format(len(raw))
+                        w.writerow([tbl_name, oid, fname, expected_value, "Y" if is_null else "N", hs])
         except Exception as e:
             print("  [SKIP] " + tbl_name + ": " + str(e))
 print("  [OK] field-values-expected.csv")

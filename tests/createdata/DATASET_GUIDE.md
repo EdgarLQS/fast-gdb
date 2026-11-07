@@ -127,6 +127,36 @@ $env:FAST_GDB_ARCPY_GDB = "<path-to-acceptance_metadata.gdb>"
 $env:FAST_GDB_ARCPY_OUT_DIR = "<path-to-expected-files>"
 ```
 
+### 3.4 附件关系和 Binary payload 样本
+
+使用 ArcGIS Pro Python 生成独立的 `attachment_semantics.gdb`，避免改写
+`acceptance_metadata.gdb`。生成器创建含 GlobalID 的点要素类，调用 ArcGIS
+附件工具创建 `__ATTACH` 表和一对多关系，并通过 ArcPy 读取实际附件表来核对
+关系 GUID、附件名称、长度和 payload 摘要。
+
+```powershell
+& "D:\path\to\arcgispro-py3\python.exe" -X utf8 `
+    "<repo-root>\tests\createdata\python\generate_attachment_fixture.py" `
+    --out-gdb "<repo-root>\test_data\gdb\attachment_semantics.gdb"
+
+$env:FAST_GDB_ATTACHMENT_DATASET = "<repo-root>\test_data\gdb\attachment_semantics.gdb"
+$env:FAST_GDB_ATTACHMENT_EXPECTED_TSV = "<repo-root>\test_data\gdb\attachment_semantics_expected.tsv"
+& "<repo-root>\build-s4-release\bin\gdb_tutorial_test_runner.exe" `
+    --gtest_filter="ReaderContractTest.ReadsArcGisAttachmentFixtureWhenConfigured"
+```
+
+生成器默认拒绝覆盖已有输出。仅在确认要重建这个独立样本时加 `--overwrite`。
+它会输出 GDB、payload 源文件目录、TSV 逐行对照表和 JSON 环境/结构摘要。
+TSV 中的 `row_slot` 是 Reader 零基读取槽；`object_id` 和 `REL_GLOBALID` 来自
+ArcPy 对 GDB 的实际读取。Reader 测试逐字节比对 Binary payload、字段值和关系
+键；Unified 测试用公开 ObjectID 逐字节比对 payload。两者覆盖多附件、无附件
+父记录、Unicode 名称和 64 KiB 读取上限。未设置两个环境变量时，相关测试会
+报告 `SKIPPED`，不能计为通过。
+
+ArcGIS 的 Enable Attachments 会创建附件表和一对多关系，Add Attachments 从
+匹配表复制文件并保持关联；工具和结构说明见 [Enable attachments](https://pro.arcgis.com/en/pro-app/3.4/help/data/relationships/enable-attachments.htm)
+与 [Add Attachments](https://pro.arcgis.com/en/pro-app/3.6/tool-reference/data-management/add-attachments.htm)。
+
 ---
 
 ## 4. 交付文件清单 (10 个)

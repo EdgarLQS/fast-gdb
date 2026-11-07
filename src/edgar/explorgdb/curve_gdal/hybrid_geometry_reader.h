@@ -54,7 +54,7 @@ public:
      * @param fast_fid fast-gdb 零基 FID。
      * @return 几何值和后端状态。
      */
-    GeometryValue read_geometry(uint32_t fast_fid) const;
+    GeometryValue read_geometry(RowSlot fast_fid) const;
 
     /** 执行指定要素的包围盒相交判断。
      * @param fast_fid fast-gdb 零基 FID。
@@ -64,7 +64,7 @@ public:
      * @param ymax 查询框最大 Y。
      * @return 空间判断结果。
      */
-    GdalSpatialResult intersects_bbox(uint32_t fast_fid,
+    GdalSpatialResult intersects_bbox(RowSlot fast_fid,
                                       double xmin, double ymin,
                                       double xmax, double ymax) const;
 
@@ -74,12 +74,12 @@ public:
      * @param gdal_fid 输出 GDAL FID。
      * @return 映射未溢出且有效时返回 true。
      */
-    static bool map_gdal_fid(uint32_t fast_fid, int64_t offset,
+    static bool map_gdal_fid(RowSlot fast_fid, int64_t offset,
                              int64_t& gdal_fid);
 
 private:
     bool should_fallback(const GeometryModel& model) const;
-    bool make_request(uint32_t fast_fid, bool source_was_curve,
+    bool make_request(RowSlot fast_fid, bool source_was_curve,
                       GdalCurveRequest& request,
                       std::string& diagnostic) const;
 
@@ -97,7 +97,7 @@ private:
  * 三层过滤后的最终 FID 集合。
  */
 struct HybridQueryResult {
-    std::vector<uint32_t> matched_fids;
+    std::vector<RowSlot> matched_fids;
     std::string execution_path;
     std::string diagnostic;
     size_t gdal_fallback_count = 0;

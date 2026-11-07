@@ -366,6 +366,47 @@ bool read_curve_tail(Cursor& cursor,
 
 } // namespace
 
+bool MultiPatchPart::triangle_vertices(
+    size_t triangle_index, std::array<size_t, 3>& indices) const {
+    if (triangle_index >= triangle_count) return false;
+
+    std::array<size_t, 3> local{};
+    switch (type) {
+        case MultiPatchPartType::TriangleStrip:
+            local = triangle_index % 2 == 0
+                ? std::array<size_t, 3>{triangle_index,
+                                        triangle_index + 1,
+                                        triangle_index + 2}
+                : std::array<size_t, 3>{triangle_index + 1,
+                                        triangle_index,
+                                        triangle_index + 2};
+            break;
+        case MultiPatchPartType::TriangleFan:
+            local = {0, triangle_index + 1, triangle_index + 2};
+            break;
+        case MultiPatchPartType::Triangles:
+            if (triangle_index >
+                std::numeric_limits<size_t>::max() / 3)
+                return false;
+            local = {triangle_index * 3,
+                     triangle_index * 3 + 1,
+                     triangle_index * 3 + 2};
+            break;
+        default:
+            return false;
+    }
+
+    for (size_t vertex_index : local) {
+        if (vertex_index >= vertex_count ||
+            vertex_offset > std::numeric_limits<size_t>::max() -
+                                vertex_index)
+            return false;
+    }
+    for (size_t index = 0; index < indices.size(); ++index)
+        indices[index] = vertex_offset + local[index];
+    return true;
+}
+
 GeometryModel GdbGeomDecoder::decode_model(
     const uint8_t* data, size_t size) {
     GeometryModel model;
@@ -578,6 +619,197 @@ GeometryModel GdbGeomDecoder::decode_model(
         return model;
     }
 
+    if (base_type == 31 || base_type == 32 || base_type == 54) {
+        auto multipatch = std::make_shared<MultiPatchModel>();
+        multipatch->present = true;
+        model.multipatch = multipatch;
+        uint64_t point_count = 0;
+        if (!cursor.read_varuint(point_count))
+            return fail(GeometryStatus::InvalidEncoding,
+                        "truncated MultiPatch point count");
+        if (point_count == 0) {
+            multipatch->structure_complete = true;
+            model.status = GeometryStatus::Empty;
+            return model;
+        }
+
+        uint64_t part_count = 0;
+        if (!cursor.read_varuint(multipatch->format_marker) ||
+            !cursor.read_varuint(part_count) || part_count == 0 ||
+            point_count > std::numeric_limits<uint32_t>::max() ||
+            point_count > std::numeric_limits<size_t>::max() ||
+            part_count > std::numeric_limits<size_t>::max())
+            return fail(GeometryStatus::InvalidEncoding,
+                        "invalid MultiPatch header");
+        for (uint64_t& bbox_value : multipatch->bbox_header) {
+            if (!cursor.read_varuint(bbox_value))
+                return fail(GeometryStatus::InvalidEncoding,
+                            "truncated MultiPatch bbox header");
+        }
+
+        std::vector<size_t> part_sizes;
+        if (!read_part_sizes(cursor, point_count, part_count, part_sizes))
+            return fail(GeometryStatus::InvalidEncoding,
+                        "invalid MultiPatch part sizes");
+
+        std::vector<uint64_t> raw_part_types(
+            static_cast<size_t>(part_count));
+        for (uint64_t& raw_type : raw_part_types) {
+            if (!cursor.read_varuint(raw_type))
+                return fail(GeometryStatus::InvalidEncoding,
+                            "truncated MultiPatch part types");
+        }
+
+        const size_t bytes_per_vertex = 2U + (model.has_z ? 1U : 0U) +
+                                        (model.has_m ? 1U : 0U);
+        if (point_count > cursor.remaining() / bytes_per_vertex)
+            return fail(GeometryStatus::InvalidEncoding,
+                        "truncated MultiPatch coordinate arrays");
+
+        multipatch->vertices.reserve(
+            static_cast<size_t>(point_count));
+        int64_t x = 0;
+        int64_t y = 0;
+        for (uint64_t index = 0; index < point_count; ++index) {
+            int64_t dx = 0;
+            int64_t dy = 0;
+            if (!cursor.read_varint(dx) || !cursor.read_varint(dy) ||
+                !add_checked(x, dx) || !add_checked(y, dy))
+                return fail(GeometryStatus::InvalidEncoding,
+                            "invalid MultiPatch XY coordinates");
+            multipatch->vertices.push_back({
+                decode_delta_cumulative_coord(x, xorig_, xyscale_),
+                decode_delta_cumulative_coord(y, yorig_, xyscale_),
+                0.0, 0.0, x, y});
+        }
+
+        if (model.has_z) {
+            int64_t z = 0;
+            for (auto& vertex : multipatch->vertices) {
+                int64_t delta = 0;
+                if (!cursor.read_varint(delta) || !add_checked(z, delta))
+                    return fail(GeometryStatus::InvalidEncoding,
+                                "invalid MultiPatch Z coordinates");
+                vertex.z = decode_delta_cumulative_coord(
+                    z, zorig_, zscale_);
+            }
+        }
+        if (model.has_m) {
+            int64_t m = 0;
+            for (auto& vertex : multipatch->vertices) {
+                int64_t delta = 0;
+                if (!cursor.read_varint(delta) || !add_checked(m, delta))
+                    return fail(GeometryStatus::InvalidEncoding,
+                                "invalid MultiPatch M coordinates");
+                vertex.m = decode_delta_cumulative_coord(
+                    m, morig_, mscale_);
+            }
+        }
+
+        bool invalid_topology = false;
+        bool unknown_part_type = false;
+        size_t offset = 0;
+        size_t active_ring_group = std::numeric_limits<size_t>::max();
+        MultiPatchPartType previous_type = MultiPatchPartType::Unknown;
+        for (size_t index = 0; index < part_sizes.size(); ++index) {
+            const uint64_t raw_type = raw_part_types[index];
+            const uint64_t normalized_type = raw_type & 0x0fU;
+            MultiPatchPartType type = MultiPatchPartType::Unknown;
+            if (normalized_type <= static_cast<uint64_t>(
+                                      MultiPatchPartType::Triangles))
+                type = static_cast<MultiPatchPartType>(normalized_type);
+
+            const size_t vertex_count = part_sizes[index];
+            size_t triangle_count = 0;
+            switch (type) {
+                case MultiPatchPartType::TriangleStrip:
+                case MultiPatchPartType::TriangleFan:
+                    if (vertex_count < 3) invalid_topology = true;
+                    else triangle_count = vertex_count - 2;
+                    break;
+                case MultiPatchPartType::Triangles:
+                    if (vertex_count == 0 || vertex_count % 3 != 0)
+                        invalid_topology = true;
+                    else triangle_count = vertex_count / 3;
+                    break;
+                case MultiPatchPartType::OuterRing:
+                case MultiPatchPartType::InnerRing:
+                case MultiPatchPartType::FirstRing:
+                case MultiPatchPartType::Ring:
+                    if (vertex_count < 3) invalid_topology = true;
+                    break;
+                case MultiPatchPartType::Unknown:
+                    unknown_part_type = true;
+                    break;
+            }
+
+            multipatch->parts.push_back(
+                {type, raw_type, offset, vertex_count, triangle_count});
+            if (type == MultiPatchPartType::OuterRing) {
+                MultiPatchRingGroup group;
+                group.encoding = MultiPatchRingEncoding::OuterAndInner;
+                group.part_indices.push_back(index);
+                multipatch->ring_groups.push_back(std::move(group));
+                active_ring_group =
+                    multipatch->ring_groups.size() - 1;
+            } else if (type == MultiPatchPartType::InnerRing) {
+                const bool follows_outer =
+                    active_ring_group < multipatch->ring_groups.size() &&
+                    multipatch->ring_groups[active_ring_group].encoding ==
+                        MultiPatchRingEncoding::OuterAndInner &&
+                    (previous_type == MultiPatchPartType::OuterRing ||
+                     previous_type == MultiPatchPartType::InnerRing);
+                if (follows_outer)
+                    multipatch->ring_groups[active_ring_group]
+                        .part_indices.push_back(index);
+                else
+                    invalid_topology = true;
+            } else if (type == MultiPatchPartType::FirstRing) {
+                MultiPatchRingGroup group;
+                group.encoding =
+                    MultiPatchRingEncoding::FirstAndFollowing;
+                group.part_indices.push_back(index);
+                multipatch->ring_groups.push_back(std::move(group));
+                active_ring_group =
+                    multipatch->ring_groups.size() - 1;
+            } else if (type == MultiPatchPartType::Ring) {
+                const bool follows_first =
+                    active_ring_group < multipatch->ring_groups.size() &&
+                    multipatch->ring_groups[active_ring_group].encoding ==
+                        MultiPatchRingEncoding::FirstAndFollowing &&
+                    (previous_type == MultiPatchPartType::FirstRing ||
+                     previous_type == MultiPatchPartType::Ring);
+                if (follows_first)
+                    multipatch->ring_groups[active_ring_group]
+                        .part_indices.push_back(index);
+                else
+                    invalid_topology = true;
+            } else {
+                active_ring_group = std::numeric_limits<size_t>::max();
+            }
+            offset += vertex_count;
+            previous_type = type;
+        }
+
+        multipatch->opaque_tail_bytes = cursor.remaining();
+        multipatch->structure_complete = true;
+        if (invalid_topology)
+            return fail(GeometryStatus::InvalidTopology,
+                        "invalid MultiPatch ring or triangle structure");
+        if (unknown_part_type || multipatch->opaque_tail_bytes != 0U) {
+            model.status = GeometryStatus::UnsupportedType;
+            model.diagnostic = unknown_part_type
+                ? "MultiPatch coordinates decoded; unknown part type retained"
+                : "MultiPatch has an opaque tail; normalized WKB is withheld";
+            return model;
+        }
+        model.status = GeometryStatus::Valid;
+        model.diagnostic =
+            "MultiPatch decoded to ISO WKB TIN and/or MultiPolygon; "
+            "real ArcGIS parity remains pending";
+        return model;
+    }
+
     model.status = GeometryStatus::UnsupportedType;
     model.diagnostic =
         "geometry type is not supported by the linear model decoder";
@@ -611,6 +843,75 @@ GeometryModel GdbGeomDecoder::decode_model_from_field(
 GeometryValue GdbGeomDecoder::decode_value(
     const uint8_t* data, size_t size) {
     return WkbWriter::write(decode_model(data, size));
+}
+
+GeometryValue GdbGeomDecoder::decode_value_with_options(
+    const uint8_t* data, size_t size,
+    const GeometryReadOptions& options) const {
+    const GeometryModel model =
+        decode_model_with_options(data, size, options);
+    return write_value_with_options(model, data, size, options);
+}
+
+GeometryModel GdbGeomDecoder::decode_model_with_options(
+    const uint8_t* data, size_t size,
+    const GeometryReadOptions& options) const {
+    GdbGeomDecoder decoder = *this;
+    switch (options.curve_policy) {
+        case CurveReadPolicy::PreserveSource:
+        case CurveReadPolicy::Reject:
+            decoder.set_curve_backend(CurveBackendMode::Reject);
+            break;
+        case CurveReadPolicy::Linearize:
+            decoder.set_curve_backend(CurveBackendMode::Builtin);
+            decoder.set_curve_linearization_options(
+                options.curve_linearization);
+            break;
+        case CurveReadPolicy::LegacyConfigured:
+            break;
+    }
+
+    GeometryModel model = decoder.decode_model(data, size);
+    if (model.linearized) {
+        model.linearization_max_chord_error =
+            options.curve_linearization.max_chord_error;
+        model.linearization_max_angle_step_degrees =
+            options.curve_linearization.max_angle_step_degrees;
+        model.linearization_max_segments_per_curve =
+            options.curve_linearization.max_segments_per_curve;
+    }
+    return model;
+}
+
+GeometryValue GdbGeomDecoder::write_value_with_options(
+    const GeometryModel& model, const uint8_t* data, size_t size,
+    const GeometryReadOptions& options) const {
+    GeometryValue value = WkbWriter::write(model);
+    const bool preserve_payload =
+        options.curve_policy == CurveReadPolicy::PreserveSource ||
+        (options.curve_policy == CurveReadPolicy::Linearize &&
+         options.preserve_source_payload);
+    const bool payload_is_needed =
+        model.source_was_curve || !model.valid() ||
+        model.multipatch != nullptr;
+    if (!preserve_payload || !payload_is_needed || data == nullptr ||
+        size == 0) {
+        return value;
+    }
+
+    if (size > options.max_source_payload_bytes) {
+        value.source_payload_state =
+            GeometrySourcePayloadState::LimitExceeded;
+        if (!value.diagnostic.empty()) value.diagnostic += "; ";
+        value.diagnostic +=
+            "source geometry payload exceeds configured preservation limit";
+        return value;
+    }
+
+    value.source_payload.assign(data, data + size);
+    value.source_payload_state =
+        GeometrySourcePayloadState::Preserved;
+    return value;
 }
 
 GeometryValue GdbGeomDecoder::decode_value_from_field(

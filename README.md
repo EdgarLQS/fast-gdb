@@ -102,6 +102,8 @@ GDAL/OpenFileGDB 独占修改目标 .gdb
 
 [ADR-008](docs/governance/adr/ADR-008-adaptive-reader-write-detection-gdal-fallback.md) 已 Accepted，并已实现为可选的 `fast_gdb::adaptive` target。它覆盖同进程协调、WriterPending 排空、generation/过期和 fresh GDAL 未验证回退；默认仍不启用，三平台、压力、性能和多 GDAL 版本证据尚未闭环：
 
+可编译运行的安装包级读写协调示例见 [Adaptive Reader end-to-end example](examples/adaptive_reader/README.md)。示例中的更新由调用方直接使用官方 GDAL 执行，fast-gdb 仍只负责读取。
+
 ```text
 稳定源
   → fast-gdb 快路径

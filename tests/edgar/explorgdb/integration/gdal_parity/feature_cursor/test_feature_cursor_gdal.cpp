@@ -56,8 +56,8 @@ int fast_field_index(const GdbTableParser* table, const std::string& name) {
     return -1;
 }
 
-std::vector<uint32_t> consume_fids(FeatureCursor& cursor) {
-    std::vector<uint32_t> fids;
+std::vector<RowSlot> consume_fids(FeatureCursor& cursor) {
+    std::vector<RowSlot> fids;
     QueryFeature feature;
     while (cursor.next(feature)) fids.push_back(feature.fid);
     EXPECT_TRUE(cursor.done());
@@ -289,7 +289,7 @@ TEST_F(FeatureCursorGdalTest,
     FeatureCursor reopened = engine.open_cursor(request);
     EXPECT_TRUE(reopened.error().empty());
     EXPECT_EQ(consume_fids(reopened),
-              (std::vector<uint32_t>{0, 1, 3, 4}));
+              (std::vector<RowSlot>{0, 1, 3, 4}));
 }
 
 /**
@@ -517,7 +517,7 @@ TEST_F(FeatureCursorGdalTest,
               "bbox:model:unavailable");
 
     EXPECT_EQ(destination.query(request).execution_path, "query:blocked");
-    EXPECT_EQ(consume_fids(cursor), (std::vector<uint32_t>{0, 1, 3, 4}));
+    EXPECT_EQ(consume_fids(cursor), (std::vector<RowSlot>{0, 1, 3, 4}));
     ASSERT_TRUE(cursor.move_to(0));
     QueryFeature feature;
     ASSERT_TRUE(cursor.next(feature));

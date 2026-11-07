@@ -3,16 +3,36 @@
 
 #include "gdb_tablx_cache.h"
 
+#include <algorithm>
 #include <cstdlib>
+#include <fcntl.h>
+#include <limits>
 #include <mutex>
 
 #ifdef _WIN32
 #include "windows_posix_compat.h"  // NOMINMAX, Windows.h, CreateFileW
 #else
 #include <sys/stat.h>
+#include <unistd.h>
 #endif
 
 namespace explorgdb {
+namespace {
+
+size_t cache_value_bytes(const TablxCacheValue& value) {
+    const size_t offset_count = value.offsets ? value.offsets->size() : 0;
+    if (offset_count > std::numeric_limits<size_t>::max() /
+                           sizeof(uint64_t)) {
+        return std::numeric_limits<size_t>::max();
+    }
+    const size_t offset_bytes = offset_count * sizeof(uint64_t);
+    const size_t bitmap_bytes = (value.block_bitmap.size() + 7U) / 8U;
+    if (bitmap_bytes > std::numeric_limits<size_t>::max() - offset_bytes)
+        return std::numeric_limits<size_t>::max();
+    return offset_bytes + bitmap_bytes;
+}
+
+} // namespace
 
 // ============================================================================
 // TablxCache 单例
@@ -38,65 +58,63 @@ bool TablxCache::is_bypassed() {
 // 缓存键生成
 // ============================================================================
 
-#ifdef _WIN32
-
-static bool make_key_windows(const std::string& file_path, TablxCacheKey& key) {
-    // Convert UTF-8 path to UTF-16 for CreateFileW
-    int wlen = MultiByteToWideChar(CP_UTF8, 0, file_path.c_str(), -1, nullptr, 0);
-    if (wlen <= 0) return false;
-    std::wstring wpath(static_cast<size_t>(wlen), L'\0');
-    if (MultiByteToWideChar(CP_UTF8, 0, file_path.c_str(), -1, &wpath[0], wlen) == 0)
-        return false;
-
-    HANDLE hFile = CreateFileW(wpath.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
-                               OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (hFile == INVALID_HANDLE_VALUE) return false;
-
-    BY_HANDLE_FILE_INFORMATION info;
-    if (!GetFileInformationByHandle(hFile, &info)) {
-        CloseHandle(hFile);
-        return false;
-    }
-    CloseHandle(hFile);
-
-    // dwVolumeSerialNumber — uniquely identifies the volume
-    // nFileIndexHigh/Low — 64-bit unique file identifier on NTFS
-    // ftLastWriteTime — 100-nanosecond intervals since 1601-01-01
-    key.device = info.dwVolumeSerialNumber;
-    key.inode = (static_cast<uint64_t>(info.nFileIndexHigh) << 32) | info.nFileIndexLow;
-    key.file_size = (static_cast<uint64_t>(info.nFileSizeHigh) << 32) | info.nFileSizeLow;
-    // Use the full 100ns FILETIME as mtime — it changes on every write
-    key.mtime = static_cast<int64_t>(
-        (static_cast<uint64_t>(info.ftLastWriteTime.dwHighDateTime) << 32) |
-        info.ftLastWriteTime.dwLowDateTime);
-    key.mtime_nsec = 0; // mtime already has 100ns precision
-    return true;
-}
-
-#endif // _WIN32
-
-// 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
-bool TablxCache::make_key(const std::string& file_path, TablxCacheKey& key) {
-#ifdef _WIN32
-    if (make_key_windows(file_path, key)) return true;
-    // Fallback only if Windows API fails
-#endif
+bool TablxCache::make_key_from_fd(int file_descriptor,
+                                 TablxCacheKey& key) {
     struct stat st;
-    if (stat(file_path.c_str(), &st) != 0) {
+    if (fstat(file_descriptor, &st) != 0) return false;
+#ifdef _WIN32
+    const intptr_t raw_handle = _get_osfhandle(file_descriptor);
+    if (raw_handle == -1) return false;
+    const HANDLE handle = reinterpret_cast<HANDLE>(raw_handle);
+    BY_HANDLE_FILE_INFORMATION info{};
+    FILE_BASIC_INFO basic_info{};
+    if (!GetFileInformationByHandle(handle, &info) ||
+        !GetFileInformationByHandleEx(
+            handle, FileBasicInfo, &basic_info, sizeof(basic_info))) {
         return false;
     }
+    key.device = info.dwVolumeSerialNumber;
+    key.inode = (static_cast<uint64_t>(info.nFileIndexHigh) << 32U) |
+                info.nFileIndexLow;
+    key.file_size = static_cast<uint64_t>(st.st_size);
+    key.mtime = static_cast<int64_t>(
+        (static_cast<uint64_t>(info.ftLastWriteTime.dwHighDateTime) << 32U) |
+        info.ftLastWriteTime.dwLowDateTime);
+    key.mtime_nsec = 0;
+    key.ctime = basic_info.ChangeTime.QuadPart;
+    key.ctime_nsec = 0;
+#else
     key.device = static_cast<uint64_t>(st.st_dev);
     key.inode = static_cast<uint64_t>(st.st_ino);
     key.file_size = static_cast<uint64_t>(st.st_size);
     key.mtime = static_cast<int64_t>(st.st_mtime);
+    key.ctime = static_cast<int64_t>(st.st_ctime);
 #if defined(__APPLE__)
     key.mtime_nsec = static_cast<int64_t>(st.st_mtimespec.tv_nsec);
-#elif defined(_WIN32) || defined(__MINGW32__) || defined(__MINGW64__)
-    key.mtime_nsec = 0;
+    key.ctime_nsec = static_cast<int64_t>(st.st_ctimespec.tv_nsec);
 #else
     key.mtime_nsec = static_cast<int64_t>(st.st_mtim.tv_nsec);
+    key.ctime_nsec = static_cast<int64_t>(st.st_ctim.tv_nsec);
+#endif
 #endif
     return true;
+}
+
+// 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
+bool TablxCache::make_key(const std::string& file_path, TablxCacheKey& key) {
+#ifdef _WIN32
+    const int fd = fast_gdb_open_utf8(file_path.c_str(), O_RDONLY);
+#else
+    const int fd = ::open(file_path.c_str(), O_RDONLY);
+#endif
+    if (fd < 0) return false;
+    const bool success = make_key_from_fd(fd, key);
+#ifdef _WIN32
+    _close(fd);
+#else
+    ::close(fd);
+#endif
+    return success;
 }
 
 // ============================================================================
@@ -105,19 +123,24 @@ bool TablxCache::make_key(const std::string& file_path, TablxCacheKey& key) {
 
 // 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 std::shared_ptr<const TablxCacheValue> TablxCache::get(const TablxCacheKey& key) {
-    // 命中时需要更新 LRU 链表，因此不能使用 shared_lock。
-    std::unique_lock<std::shared_mutex> lock(mutex_);
+    std::shared_lock<std::shared_mutex> lock(mutex_);
 
     auto it = cache_.find(key);
     if (it == cache_.end()) {
         return nullptr;
     }
 
-    // 移动此条目到 LRU 列表前端（最近使用）
-    lru_list_.splice(lru_list_.begin(), lru_list_, it->second.second);
+    CacheEntry& entry = *it->second;
+    const uint64_t access_order =
+        access_sequence_.fetch_add(1, std::memory_order_relaxed) + 1;
+    uint64_t previous = entry.last_access.load(std::memory_order_relaxed);
+    while (previous < access_order &&
+           !entry.last_access.compare_exchange_weak(
+               previous, access_order, std::memory_order_relaxed,
+               std::memory_order_relaxed)) {
+    }
 
-    // 返回缓存的 shared_ptr
-    return it->second.first;
+    return entry.value;
 }
 
 // ============================================================================
@@ -126,47 +149,82 @@ std::shared_ptr<const TablxCacheValue> TablxCache::get(const TablxCacheKey& key)
 
 void TablxCache::put(const TablxCacheKey& key,
                      std::vector<uint64_t> offsets,
-                     size_t feature_count) {
+                     size_t feature_count,
+                     uint64_t logical_row_count,
+                     std::vector<bool> block_bitmap) {
+    auto shared_offsets = std::make_shared<const std::vector<uint64_t>>(
+        std::move(offsets));
+    put_shared(key, std::move(shared_offsets), feature_count,
+               logical_row_count, std::move(block_bitmap));
+}
+
+void TablxCache::put_shared(
+    const TablxCacheKey& key,
+    std::shared_ptr<const std::vector<uint64_t>> offsets,
+    size_t feature_count,
+    uint64_t logical_row_count,
+    std::vector<bool> block_bitmap) {
     std::unique_lock<std::shared_mutex> lock(mutex_);
-    if (offsets.size() > kMaxBytes / sizeof(uint64_t)) return;
-    const size_t value_bytes = offsets.size() * sizeof(uint64_t);
+    if (!offsets) return;
+    if (logical_row_count == 0 && !offsets->empty())
+        logical_row_count = offsets->size();
+    auto value = std::make_shared<TablxCacheValue>();
+    value->offsets = std::move(offsets);
+    value->block_bitmap = std::move(block_bitmap);
+    value->logical_row_count = logical_row_count;
+    value->feature_count = feature_count;
+    const size_t value_bytes = cache_value_bytes(*value);
+    if (value_bytes > kMaxBytes) return;
+
+    const auto evict_oldest = [this]() {
+        const auto oldest = std::min_element(
+            cache_.begin(), cache_.end(), [](const auto& left,
+                                             const auto& right) {
+                return left.second->last_access.load(
+                           std::memory_order_relaxed) <
+                       right.second->last_access.load(
+                           std::memory_order_relaxed);
+            });
+        cached_bytes_ -= cache_value_bytes(*oldest->second->value);
+        cache_.erase(oldest);
+    };
 
     // 如果已存在，更新
     auto it = cache_.find(key);
     if (it != cache_.end()) {
-        cached_bytes_ -= it->second.first->offsets.size() * sizeof(uint64_t);
-        // 更新值
-        it->second.first = std::make_shared<TablxCacheValue>();
-        it->second.first->offsets = std::move(offsets);
-        it->second.first->feature_count = feature_count;
+        cached_bytes_ -= cache_value_bytes(*it->second->value);
+        it->second->value = std::move(value);
+        it->second->last_access.store(
+            access_sequence_.fetch_add(1, std::memory_order_relaxed) + 1,
+            std::memory_order_relaxed);
         cached_bytes_ += value_bytes;
-        // 移动到 LRU 前端
-        lru_list_.splice(lru_list_.begin(), lru_list_, it->second.second);
+        while (!cache_.empty() && cached_bytes_ > kMaxBytes)
+            evict_oldest();
         return;
     }
 
-    // 淘汰：超容量时移除 LRU 末尾
+    // 容量上限较小，写入时扫描访问序号即可找到 LRU 条目。
     while (!cache_.empty() &&
            (cache_.size() >= kMaxEntries ||
             cached_bytes_ > kMaxBytes - value_bytes)) {
-        const TablxCacheKey& oldest = lru_list_.back();
-        auto oldest_it = cache_.find(oldest);
-        if (oldest_it != cache_.end()) {
-            cached_bytes_ -= oldest_it->second.first->offsets.size() *
-                             sizeof(uint64_t);
-            cache_.erase(oldest_it);
-        }
-        lru_list_.pop_back();
+        evict_oldest();
     }
 
-    // 插入新条目
-    auto value = std::make_shared<TablxCacheValue>();
-    value->offsets = std::move(offsets);
-    value->feature_count = feature_count;
-
-    lru_list_.push_front(key);
-    cache_[key] = {std::move(value), lru_list_.begin()};
+    auto entry = std::make_unique<CacheEntry>();
+    entry->value = std::move(value);
+    entry->last_access.store(
+        access_sequence_.fetch_add(1, std::memory_order_relaxed) + 1,
+        std::memory_order_relaxed);
+    cache_.emplace(key, std::move(entry));
     cached_bytes_ += value_bytes;
+}
+
+void TablxCache::invalidate(const TablxCacheKey& key) {
+    std::unique_lock<std::shared_mutex> lock(mutex_);
+    const auto found = cache_.find(key);
+    if (found == cache_.end()) return;
+    cached_bytes_ -= cache_value_bytes(*found->second->value);
+    cache_.erase(found);
 }
 
 // ============================================================================
@@ -177,7 +235,6 @@ void TablxCache::put(const TablxCacheKey& key,
 void TablxCache::clear() {
     std::unique_lock<std::shared_mutex> lock(mutex_);
     cache_.clear();
-    lru_list_.clear();
     cached_bytes_ = 0;
 }
 

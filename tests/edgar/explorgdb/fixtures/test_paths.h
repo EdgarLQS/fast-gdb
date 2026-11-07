@@ -3,7 +3,10 @@
 
 #pragma once
 
+#include <chrono>
 #include <filesystem>
+#include <string>
+#include <system_error>
 
 namespace explorgdb_test_paths {
 /**
@@ -44,5 +47,40 @@ inline std::filesystem::path repo_root() {
 inline std::filesystem::path test_data_path(const std::filesystem::path& rel) {
     return repo_root() / rel;
 }
+
+class Utf8PathGdbFixture {
+public:
+    Utf8PathGdbFixture() {
+        namespace fs = std::filesystem;
+        const auto unique = std::chrono::steady_clock::now()
+                                .time_since_epoch()
+                                .count();
+        root_ = fs::temp_directory_path() /
+            fs::u8path("fast-gdb-中文路径-") / std::to_string(unique);
+        path_ = root_ / fs::u8path("只读样本.gdb");
+
+        fs::create_directories(root_, error_);
+        if (error_) return;
+        fs::copy(test_data_path(
+                     fs::u8path("test_data/gdb/acceptance_metadata.gdb")),
+                 path_, fs::copy_options::recursive, error_);
+    }
+
+    Utf8PathGdbFixture(const Utf8PathGdbFixture&) = delete;
+    Utf8PathGdbFixture& operator=(const Utf8PathGdbFixture&) = delete;
+
+    ~Utf8PathGdbFixture() {
+        std::error_code ignored;
+        std::filesystem::remove_all(root_, ignored);
+    }
+
+    const std::filesystem::path& path() const noexcept { return path_; }
+    const std::error_code& error() const noexcept { return error_; }
+
+private:
+    std::filesystem::path root_;
+    std::filesystem::path path_;
+    std::error_code error_;
+};
 
 } // namespace explorgdb_test_paths

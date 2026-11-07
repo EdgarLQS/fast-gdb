@@ -27,6 +27,20 @@ GoogleTest is distributed under the BSD-3-Clause license:
 
 fast-gdb does not vendor GoogleTest in the source tree.
 
+## pugixml
+
+fast-gdb privately vendors pugixml `1.16` for structured parsing of FileGDB
+metadata XML. Only the upstream source, public headers, and license are
+included under [`third_party/pugixml/src`](third_party/pugixml/src). The
+upstream release archive is
+`https://github.com/zeux/pugixml/releases/download/v1.16/pugixml-1.16.tar.gz`
+with SHA-256
+`4cee1ca4aad395170f4c7a07824f3bdd41f28316c6e1e1090a1425b278ec0b4b4`.
+
+pugixml is distributed under the MIT License; see
+[`third_party/pugixml/src/LICENSE.md`](third_party/pugixml/src/LICENSE.md).
+Project: <https://github.com/zeux/pugixml>.
+
 ## ArcGIS Pro generated acceptance fixture
 
 `test_data/gdb/acceptance_metadata.gdb` and the expected-value files under

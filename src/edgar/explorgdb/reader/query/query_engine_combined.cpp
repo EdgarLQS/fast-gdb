@@ -50,6 +50,7 @@ bool used_spx_path(const std::string& path) {
 bool numeric_atx_supported(FieldType type) {
     switch (type) {
         case FieldType::Int32:
+        case FieldType::Int64:
         case FieldType::Float64:
         case FieldType::DateTime:
         case FieldType::Date:
@@ -58,6 +59,15 @@ bool numeric_atx_supported(FieldType type) {
         default:
             return false;
     }
+}
+
+bool is_exactly_representable_as_double(int64_t value) {
+    const double converted = static_cast<double>(value);
+    constexpr double kInt64Min = -0x1p63;
+    constexpr double kInt64UpperBound = 0x1p63;
+    if (converted < kInt64Min || converted >= kInt64UpperBound)
+        return false;
+    return static_cast<int64_t>(converted) == value;
 }
 
 size_t utf8_sequence_bytes(unsigned char lead) {
@@ -203,7 +213,7 @@ struct AttributeCandidatePlan {
     bool available = false;
     bool used = false;
     std::string atx_path;
-    std::vector<uint32_t> fids;
+    std::vector<RowSlot> fids;
     std::string reason;
     double metadata_ms = 0.0;
     AttributeIndexQueryMetrics index_metrics;
@@ -253,6 +263,21 @@ AttributeCandidatePlan resolve_attribute_index(
     } else if (!numeric_atx_supported(field_type)) {
         return fail(
             "numeric field encoding is not safely indexable; spatial candidates evaluated");
+    } else if (field_type == FieldType::Int64 &&
+               (!predicate.numeric_is_integer ||
+                predicate.numeric_integer_overflow)) {
+        return fail(
+            "INT64 index requires an in-range integer literal; spatial candidates evaluated");
+    } else if ((field_type == FieldType::Float64 ||
+                field_type == FieldType::DateTime ||
+                field_type == FieldType::Date ||
+                field_type == FieldType::Time) &&
+               predicate.numeric_is_integer &&
+               !predicate.numeric_integer_overflow &&
+               !is_exactly_representable_as_double(
+                   predicate.integer_value)) {
+        return fail(
+            "integer literal is not exactly representable by the indexed floating field; spatial candidates evaluated");
     }
 
     if (catalog.find_indexes(table_id) == nullptr) {
@@ -304,13 +329,20 @@ bool query_attribute_candidates(
     const IndexableWherePredicate& predicate) {
     try {
         GdbAttributeIndexParser index(plan.atx_path);
-        const bool ok = predicate.is_string
-            ? index.query_string_direct(
-                  predicate.string_value, predicate.op,
-                  max_fid_count, plan.fids, &plan.index_metrics)
-            : index.query_double_direct(
-                  predicate.numeric_value, predicate.op,
-                  max_fid_count, plan.fids, &plan.index_metrics);
+        bool ok = false;
+        if (predicate.is_string) {
+            ok = index.query_string_direct(
+                predicate.string_value, predicate.op,
+                max_fid_count, plan.fids, &plan.index_metrics);
+        } else if (predicate.field_type == FieldType::Int64) {
+            ok = index.query_int64_direct(
+                predicate.integer_value, predicate.op,
+                max_fid_count, plan.fids, &plan.index_metrics);
+        } else {
+            ok = index.query_double_direct(
+                predicate.numeric_value, predicate.op,
+                max_fid_count, plan.fids, &plan.index_metrics);
+        }
         if (!ok) {
             plan.reason =
                 "attribute index could not be parsed; spatial candidates evaluated";
@@ -366,8 +398,8 @@ QueryResult QueryEngine::query_spatial_where(const QueryRequest& request) {
         return result;
     }
 
-    const CompiledWhere expression = compile_where(
-        request.where_clause, parser_->fields());
+    const CompiledWhere expression = prepare_where(
+        request.where_clause, &result.query_preparation_cache_hit);
     if (!expression.valid()) {
         result.fallback_reason = expression.error();
         result.combined_metrics.total_ms = elapsed_ms(total_start);
@@ -383,7 +415,7 @@ QueryResult QueryEngine::query_spatial_where(const QueryRequest& request) {
     if (predicate.has_value()) {
         const FieldDescriptor* geom_field = geometry_field();
         const size_t feature_count = parser_->active_feature_count();
-        const size_t fid_slot_count = parser_->feature_count();
+        const RowSlot fid_slot_count = parser_->feature_count();
         size_t geometry_field_index = parser_->fields().size();
         for (size_t index = 0; index < parser_->fields().size(); ++index) {
             if (parser_->fields()[index].type == FieldType::Geometry) {
@@ -398,13 +430,18 @@ QueryResult QueryEngine::query_spatial_where(const QueryRequest& request) {
                   *geom_field,
                   request.xmin, request.ymin,
                   request.xmax, request.ymax);
+        const bool spx_extent_supported = geom_field != nullptr &&
+            GdbSpatialIndexParser::supports_layer_extent(
+                geom_field->xmin, geom_field->ymin,
+                geom_field->xmax, geom_field->ymax,
+                geom_field->grid_sizes);
         const bool fused_shape_supported =
             geom_field != nullptr && feature_count != 0 &&
             fid_slot_count != 0 &&
-            fid_slot_count - 1U <=
-                static_cast<size_t>(std::numeric_limits<uint32_t>::max()) &&
             geometry_field_index < parser_->fields().size() &&
-            estimated_coverage <= kFusedCoverageThreshold;
+            estimated_coverage <= kFusedCoverageThreshold &&
+            spx_extent_supported &&
+            resolved_.has_spatial_index != false;
 
         if (fused_shape_supported) {
             AttributeCandidatePlan attribute = resolve_attribute_index(
@@ -414,8 +451,9 @@ QueryResult QueryEngine::query_spatial_where(const QueryRequest& request) {
                 if (!spatial_index_initialized_) {
                     spatial_index_initialized_ = true;
                     const CatalogEntry* spx = catalog_.find_spx(resolved_.id);
-                    spatial_index_present_ = spx != nullptr;
-                    if (spx != nullptr) {
+                    spatial_index_present_ =
+                        spx != nullptr && resolved_.has_spatial_index != false;
+                    if (spatial_index_present_) {
                         auto index = std::make_unique<GdbSpatialIndexParser>(
                             catalog_.path() + "/" + spx->filename);
                         if (index->parse()) {
@@ -433,13 +471,13 @@ QueryResult QueryEngine::query_spatial_where(const QueryRequest& request) {
                     const bool merge_x_ranges =
                         request.ymin <= geom_field->ymin &&
                         request.ymax >= geom_field->ymax;
-                    std::vector<uint32_t> candidates =
+                    std::vector<RowSlot> candidates =
                         spatial_index_->query_bbox(
                             request.xmin, request.ymin,
                             request.xmax, request.ymax,
                             geom_field->xorig, geom_field->yorig,
                             geom_field->xyscale, geom_field->grid_sizes,
-                            static_cast<uint32_t>(fid_slot_count - 1U),
+                            fid_slot_count - 1U,
                             merge_x_ranges);
                     const double candidate_lookup_ms =
                         elapsed_ms(candidate_start);
@@ -492,7 +530,7 @@ QueryResult QueryEngine::query_spatial_where(const QueryRequest& request) {
                         const uint64_t scanned =
                             parser_->scan_field_candidates(
                                 candidates,
-                                [&](uint32_t fid,
+                                [&](RowSlot fid,
                                     const FieldRef* fields,
                                     int field_count) {
                                     if (fields == nullptr ||
@@ -578,7 +616,7 @@ QueryResult QueryEngine::query_spatial_where(const QueryRequest& request) {
         return result;
     }
 
-    std::vector<uint32_t> evaluation_candidates =
+    std::vector<RowSlot> evaluation_candidates =
         std::move(spatial.matched_fids);
     std::sort(evaluation_candidates.begin(), evaluation_candidates.end());
     evaluation_candidates.erase(
@@ -641,7 +679,7 @@ QueryResult QueryEngine::query_spatial_where(const QueryRequest& request) {
     result.matched_fids.reserve(evaluation_candidates.size());
     const uint64_t scanned = parser_->scan_field_candidates(
         evaluation_candidates,
-        [&](uint32_t fid, const FieldRef* fields, int field_count) {
+        [&](RowSlot fid, const FieldRef* fields, int field_count) {
             ++result.combined_metrics.attribute_tested;
             if (evaluate_where(expression, fields, field_count))
                 result.matched_fids.push_back(fid);
@@ -653,7 +691,7 @@ QueryResult QueryEngine::query_spatial_where(const QueryRequest& request) {
         result.combined_metrics.attribute_tested = 0;
         append_reason(result.fallback_reason,
                       "candidate field scan unavailable; canonical row reads used");
-        for (uint32_t fid : evaluation_candidates) {
+        for (RowSlot fid : evaluation_candidates) {
             FeatureRecord record;
             if (!parser_->read_record_by_fid(fid, record)) continue;
             ++result.combined_metrics.attribute_tested;

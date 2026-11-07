@@ -49,8 +49,32 @@ TEST(GdbCatalogTest, MagicValid) {
     GdbCatalog catalog;
     ASSERT_TRUE(catalog.scan(SPX_GDB_PATH.string()));
 
-    EXPECT_TRUE(catalog.magic().version == 0u || catalog.magic().version == 5u);
-    EXPECT_TRUE(catalog.magic().magic == 0u || catalog.magic().magic == 0xEFBEADDEu);
+    EXPECT_EQ(catalog.magic().version, 5u);
+    EXPECT_EQ(catalog.magic().magic, 0u);
+}
+
+TEST(GdbCatalogTest, ReadsVersionAndMagicHeaderVariant) {
+    const auto path = explorgdb_test_paths::test_data_path(
+        "test_data/large/large_test.gdb");
+    GdbCatalog catalog;
+    ASSERT_TRUE(catalog.scan(path.string()));
+
+    EXPECT_EQ(catalog.magic().version, 5u);
+    EXPECT_EQ(catalog.magic().magic, 0xEFBEADDEu);
+}
+
+TEST(GdbCatalogTest, RescanningVersionOnlyHeaderClearsPreviousMagicWord) {
+    GdbCatalog catalog;
+    const auto eight_byte_path = explorgdb_test_paths::test_data_path(
+        "test_data/large/large_test.gdb");
+    const auto four_byte_path = explorgdb_test_paths::test_data_path(
+        "test_data/gdb/test_spatial_gdb.gdb/test_spatial_gdb.gdb");
+
+    ASSERT_TRUE(catalog.scan(eight_byte_path.string()));
+    ASSERT_EQ(catalog.magic().magic, 0xEFBEADDEu);
+    ASSERT_TRUE(catalog.scan(four_byte_path.string()));
+    EXPECT_EQ(catalog.magic().version, 5u);
+    EXPECT_EQ(catalog.magic().magic, 0u);
 }
 
 // ── 文件枚举测试 ──

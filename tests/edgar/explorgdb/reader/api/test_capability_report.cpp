@@ -55,7 +55,7 @@ TEST(CapabilityReportTest, DegradedMultiPatchRemainsReadableWithExplicitBoundary
     report.curve_geometry = {CapabilityState::Supported, "none"};
     report.multipatch = {
         CapabilityState::Degraded,
-        "coordinates exposed; part type and surface topology are not preserved"
+        "raw-source-only; part type and surface topology are not decoded"
     };
     report.raster = {CapabilityState::Supported, "none"};
 

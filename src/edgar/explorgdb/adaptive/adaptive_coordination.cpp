@@ -421,8 +421,8 @@ std::string InProcessGdbCoordinator::normalize_path(
 
     namespace fs = std::filesystem;
     std::error_code error;
-    fs::path normalized_path = fs::absolute(fs::path(gdb_path), error);
-    if (error) normalized_path = fs::path(gdb_path);
+    fs::path normalized_path = fs::absolute(fs::u8path(gdb_path), error);
+    if (error) normalized_path = fs::u8path(gdb_path);
     normalized_path = normalized_path.lexically_normal();
 
     std::error_code canonical_error;
@@ -430,7 +430,7 @@ std::string InProcessGdbCoordinator::normalize_path(
         normalized_path, canonical_error);
     if (!canonical_error) normalized_path = canonical;
 
-    std::string normalized = normalized_path.generic_string();
+    std::string normalized = normalized_path.generic_u8string();
 #ifdef _WIN32
     std::transform(normalized.begin(), normalized.end(), normalized.begin(),
                    [](unsigned char value) {

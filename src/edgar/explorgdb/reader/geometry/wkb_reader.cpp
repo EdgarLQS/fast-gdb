@@ -65,6 +65,16 @@ private:
             case GeometryKind::MultiPolygon:
                 return read_collection(text, type, GeometryKind::Polygon,
                                        "MULTIPOLYGON", little_endian);
+            case GeometryKind::GeometryCollection:
+                return read_geometry_collection(text, type, little_endian);
+            case GeometryKind::PolyhedralSurface:
+                return read_collection(text, type, GeometryKind::Polygon,
+                                       "POLYHEDRALSURFACE", little_endian);
+            case GeometryKind::TIN:
+                return read_collection(text, type, GeometryKind::Triangle,
+                                       "TIN", little_endian);
+            case GeometryKind::Triangle:
+                return read_polygon(text, type, little_endian);
             default:
                 return false;
         }
@@ -130,8 +140,11 @@ private:
         }
 
         std::ostringstream out;
-        out << "POLYGON" << dimension_suffix(type);
+        out << (type.kind == GeometryKind::Triangle
+                    ? "TRIANGLE" : "POLYGON")
+            << dimension_suffix(type);
         if (ring_count == 0) {
+            if (type.kind == GeometryKind::Triangle) return false;
             out << " EMPTY";
             text = out.str();
             return true;
@@ -141,6 +154,8 @@ private:
             uint32_t point_count = 0;
             if (!read_u32(little_endian, point_count) ||
                 point_count < 4 ||
+                (type.kind == GeometryKind::Triangle &&
+                 (ring != 0 || point_count != 4)) ||
                 !count_fits(point_count, coordinate_width(type))) {
                 return false;
             }
@@ -212,6 +227,32 @@ private:
         return true;
     }
 
+    bool read_geometry_collection(std::string& text,
+                                  const WkbType& parent,
+                                  bool little_endian) {
+        uint32_t count = 0;
+        if (!read_u32(little_endian, count) || !count_fits(count, 5U))
+            return false;
+        std::ostringstream out;
+        out << "GEOMETRYCOLLECTION" << dimension_suffix(parent);
+        if (count == 0U) {
+            out << " EMPTY";
+            text = out.str();
+            return true;
+        }
+        out << " (";
+        for (uint32_t index = 0; index < count; ++index) {
+            std::string child_text;
+            WkbType child;
+            if (!read_geometry(child_text, child)) return false;
+            if (index != 0U) out << ", ";
+            out << child_text;
+        }
+        out << ')';
+        text = out.str();
+        return true;
+    }
+
     static bool decode_type(uint32_t raw, WkbType& type) {
         uint32_t base = raw;
         if (raw >= 3000U && raw < 4000U) {
@@ -225,7 +266,8 @@ private:
             type.has_z = true;
             base -= 1000U;
         }
-        if (base < 1U || base > 6U) return false;
+        if (!((base >= 1U && base <= 7U) ||
+              (base >= 15U && base <= 17U))) return false;
         type.kind = static_cast<GeometryKind>(base);
         return true;
     }
@@ -314,6 +356,18 @@ private:
                 break;
             case GeometryKind::Polygon:
                 name = "POLYGON";
+                break;
+            case GeometryKind::Triangle:
+                name = "TRIANGLE";
+                break;
+            case GeometryKind::GeometryCollection:
+                name = "GEOMETRYCOLLECTION";
+                break;
+            case GeometryKind::PolyhedralSurface:
+                name = "POLYHEDRALSURFACE";
+                break;
+            case GeometryKind::TIN:
+                name = "TIN";
                 break;
             default:
                 return {};

@@ -5,9 +5,13 @@
 
 #include "catalog_resolver.h"
 #include "gdb_catalog.h"
+#include "gdb_tablx_cache.h"
 
+#include <algorithm>
+#include <cctype>
 #include <exception>
 #include <filesystem>
+#include <mutex>
 #include <unordered_map>
 #include <utility>
 
@@ -15,65 +19,74 @@ namespace explorgdb {
 namespace detail {
 
 struct ReaderState {
-    struct SourceStamp {
-        uintmax_t size = 0;
-        intmax_t modified = 0;
-    };
-
+    std::string source_path;
     std::shared_ptr<GdbCatalog> catalog;
     std::shared_ptr<CatalogResolver> resolver;
-    std::unordered_map<std::string, SourceStamp> source_snapshot;
+    std::shared_ptr<QueryPreparationCache> query_preparation_cache =
+        make_query_preparation_cache();
+    std::unordered_map<std::string, TablxCacheKey> source_snapshot;
+    std::mutex spatial_index_mutex;
+    std::unordered_map<std::string, std::optional<bool>> spatial_index_flags;
+
+    std::optional<bool> spatial_index_declared(
+            const std::string& layer_name) {
+        {
+            std::lock_guard<std::mutex> lock(spatial_index_mutex);
+            const auto found = spatial_index_flags.find(layer_name);
+            if (found != spatial_index_flags.end()) return found->second;
+        }
+
+        std::optional<bool> declared;
+        if (resolver != nullptr) {
+            MetadataReader metadata(*resolver);
+            const auto layer = metadata.read_layer_metadata(layer_name);
+            if (layer) declared = layer->has_spatial_index;
+        }
+
+        std::lock_guard<std::mutex> lock(spatial_index_mutex);
+        return spatial_index_flags.emplace(layer_name, declared)
+            .first->second;
+    }
 
     bool capture_source_snapshot() {
         source_snapshot.clear();
         std::error_code error;
         std::filesystem::directory_iterator iterator(
-            catalog->path(), error);
+            std::filesystem::u8path(source_path), error);
         if (error) return false;
         for (const auto& entry : iterator) {
             if (!entry.is_regular_file(error)) {
                 if (error) return false;
                 continue;
             }
-            const auto size = entry.file_size(error);
-            if (error) return false;
-            const auto modified = entry.last_write_time(error);
-            if (error) return false;
+            TablxCacheKey identity;
+            if (!TablxCache::make_key(entry.path().u8string(), identity))
+                return false;
             source_snapshot.emplace(
-                entry.path().filename().string(),
-                SourceStamp{size, static_cast<intmax_t>(
-                    modified.time_since_epoch().count())});
+                entry.path().filename().u8string(), identity);
         }
         return true;
     }
 
     bool source_is_current() const noexcept {
         try {
+            std::unordered_map<std::string, TablxCacheKey> current_snapshot;
             std::error_code error;
             std::filesystem::directory_iterator iterator(
-                catalog->path(), error);
+                std::filesystem::u8path(source_path), error);
             if (error) return false;
-            size_t regular_file_count = 0;
             for (const auto& entry : iterator) {
                 if (!entry.is_regular_file(error)) {
                     if (error) return false;
                     continue;
                 }
-                ++regular_file_count;
-                const auto size = entry.file_size(error);
-                if (error) return false;
-                const auto modified = entry.last_write_time(error);
-                if (error) return false;
-                const auto found = source_snapshot.find(
-                    entry.path().filename().string());
-                if (found == source_snapshot.end() ||
-                    found->second.size != size ||
-                    found->second.modified != static_cast<intmax_t>(
-                        modified.time_since_epoch().count())) {
+                TablxCacheKey identity;
+                if (!TablxCache::make_key(entry.path().u8string(), identity))
                     return false;
-                }
+                current_snapshot.emplace(
+                    entry.path().filename().u8string(), identity);
             }
-            return regular_file_count == source_snapshot.size();
+            return current_snapshot == source_snapshot;
         } catch (...) {
             return false;
         }
@@ -150,8 +163,19 @@ MetadataReadResult Layer::read_metadata() const {
         result.snapshot.relationships = metadata_.read_relationship_summaries();
         result.snapshot.relationship_definitions =
             metadata_.read_relationship_class_definitions();
-        result.snapshot.dataset_groups =
-            metadata_.read_dataset_group_summaries();
+        auto relationship_classes = metadata_.read_relationship_classes_result();
+        result.snapshot.relationship_classes =
+            std::move(relationship_classes.relationships);
+        result.snapshot.relationship_classes_xml =
+            std::move(relationship_classes.inspection);
+        result.snapshot.attachments =
+            std::move(relationship_classes.attachments);
+        result.snapshot.attachments_xml =
+            std::move(relationship_classes.attachments_inspection);
+        auto dataset_groups = metadata_.read_dataset_group_summaries_result();
+        result.snapshot.dataset_groups = std::move(dataset_groups.groups);
+        result.snapshot.feature_datasets_xml =
+            std::move(dataset_groups.inspection);
         result.snapshot.system_table_audit = metadata_.audit_system_tables();
         result.snapshot.subtypes = metadata_.read_subtypes(name());
         if (!result.snapshot.layer.has_value()) {
@@ -160,6 +184,18 @@ MetadataReadResult Layer::read_metadata() const {
                       "layer metadata is unavailable; inspect the GDB system tables");
             return result;
         }
+        const auto& layer = *result.snapshot.layer;
+        const std::optional<std::string_view> definition =
+            layer.definition_present
+                ? std::optional<std::string_view>(layer.definition)
+                : std::nullopt;
+        result.snapshot.definition_xml = MetadataReader::inspect_metadata_xml(
+            definition, MetadataXmlKind::LayerDefinition);
+        result.snapshot.field_domains_xml =
+            MetadataReader::inspect_metadata_xml(
+                definition, MetadataXmlKind::FieldDomainBindings);
+        result.snapshot.subtypes_xml = MetadataReader::inspect_metadata_xml(
+            definition, MetadataXmlKind::Subtypes);
     } catch (const std::exception& exception) {
         result.snapshot = {};
         set_error(&result.error, ReaderStatus::MetadataReadFailed,
@@ -183,19 +219,28 @@ LayerMetadataSnapshot Layer::metadata_snapshot() const {
     return read_metadata().snapshot;
 }
 
-bool Layer::read_raw_by_fid(uint32_t fid,
+bool Layer::read_raw_by_fid(RowSlot fid,
                             FeatureRecord& record,
                             std::vector<uint8_t>& raw_record) {
+    record = {};
     raw_record.clear();
     if (!source_is_current() || engine_ == nullptr ||
         engine_->table() == nullptr) {
         return false;
     }
-    if (!engine_->read_by_fid(fid, record)) return false;
-    return engine_->table()->read_raw_record_by_fid(fid, raw_record);
+    FeatureRecord value;
+    std::vector<uint8_t> raw_value;
+    if (!engine_->read_by_fid(fid, value) ||
+        !engine_->table()->read_raw_record_by_fid(fid, raw_value) ||
+        !source_is_current()) {
+        return false;
+    }
+    record = std::move(value);
+    raw_record = std::move(raw_value);
+    return true;
 }
 
-bool Layer::read_raw_by_fid(uint32_t fid,
+bool Layer::read_raw_by_fid(RowSlot fid,
                             std::vector<uint8_t>& raw_record,
                             std::size_t max_bytes,
                             bool* limit_exceeded) {
@@ -205,8 +250,16 @@ bool Layer::read_raw_by_fid(uint32_t fid,
         engine_->table() == nullptr) {
         return false;
     }
-    return engine_->table()->read_raw_record_by_fid(
-        fid, raw_record, max_bytes, limit_exceeded);
+    std::vector<uint8_t> raw_value;
+    bool exceeded = false;
+    const bool read = engine_->table()->read_raw_record_by_fid(
+        fid, raw_value, max_bytes, &exceeded);
+    if (limit_exceeded != nullptr) *limit_exceeded = exceeded;
+    if (!read || !source_is_current()) {
+        return false;
+    }
+    raw_record = std::move(raw_value);
+    return true;
 }
 
 std::size_t Layer::active_feature_count() const noexcept {
@@ -224,7 +277,15 @@ QueryResult Layer::query(const QueryRequest& request) {
         result.fallback_reason = result.error;
         return result;
     }
-    return engine_ != nullptr ? engine_->query(request) : QueryResult{};
+    QueryResult result = engine_ != nullptr ? engine_->query(request) : QueryResult{};
+    if (!source_is_current()) {
+        result.matched_fids.clear();
+        result.record.reset();
+        result.status = QueryStatus::SourceChanged;
+        result.error = "GDB source changed while executing the query; reopen the Reader";
+        result.fallback_reason = result.error;
+    }
+    return result;
 }
 
 // 方法实现：具体用途、参数和返回值契约见对应头文件或本文件声明。
@@ -237,15 +298,107 @@ FeatureCursor Layer::open_cursor(const QueryRequest& request) {
         result.fallback_reason = result.error;
         return FeatureCursor::failed(result, result.error);
     }
-    if (engine_ != nullptr) return engine_->open_cursor(request);
+    if (engine_ != nullptr) {
+        FeatureCursor cursor = engine_->open_cursor(request);
+        if (!source_is_current()) {
+            QueryResult result;
+            result.status = QueryStatus::SourceChanged;
+            result.error = "GDB source changed while opening the cursor; reopen the Reader";
+            result.fallback_reason = result.error;
+            return FeatureCursor::failed(result, result.error);
+        }
+        return cursor;
+    }
     return FeatureCursor{};
 }
 
 // 方法实现：具体用途、参数和返回值契约见对应头文件或本文件声明。
 // 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
-bool Layer::read_by_fid(uint32_t fid, FeatureRecord& record) {
-    return source_is_current() && engine_ != nullptr &&
-        engine_->read_by_fid(fid, record);
+bool Layer::read_by_fid(RowSlot fid, FeatureRecord& record) {
+    if (!source_is_current() || engine_ == nullptr) return false;
+    FeatureRecord value;
+    if (!engine_->read_by_fid(fid, value) || !source_is_current()) return false;
+    record = std::move(value);
+    return true;
+}
+
+BinaryValueReadResult Layer::read_binary_field_by_fid(
+        RowSlot fid,
+        const std::string& field_name,
+        std::size_t max_bytes) {
+    BinaryValueReadResult result;
+    const auto fail = [&result](BinaryValueReadStatus status,
+                                std::string diagnostic) {
+        result.status = status;
+        result.diagnostic = std::move(diagnostic);
+        return result;
+    };
+    if (!source_is_current()) {
+        return fail(BinaryValueReadStatus::SourceChanged,
+                    "GDB source changed before reading the Binary field");
+    }
+    if (engine_ == nullptr || engine_->table() == nullptr) {
+        return fail(BinaryValueReadStatus::ReadFailed,
+                    "layer has no open table parser");
+    }
+
+    const auto equals_ignore_case = [](const std::string& lhs,
+                                       const std::string& rhs) {
+        return lhs.size() == rhs.size() &&
+            std::equal(lhs.begin(), lhs.end(), rhs.begin(),
+                [](unsigned char left, unsigned char right) {
+                    return std::tolower(left) == std::tolower(right);
+                });
+    };
+    const auto& fields = engine_->table()->fields();
+    const auto field = std::find_if(
+        fields.begin(), fields.end(), [&field_name, &equals_ignore_case](
+                const FieldDescriptor& candidate) {
+            return equals_ignore_case(candidate.name, field_name);
+        });
+    if (field == fields.end()) {
+        return fail(BinaryValueReadStatus::FieldNotFound,
+                    "Binary field does not exist: " + field_name);
+    }
+    if (field->type != FieldType::Binary) {
+        return fail(BinaryValueReadStatus::NotBinaryField,
+                    "field is not Binary: " + field->name);
+    }
+    if (!engine_->table()->has_feature(fid)) {
+        return fail(BinaryValueReadStatus::FeatureNotFound,
+                    "feature FID does not exist");
+    }
+    if (!source_is_current()) {
+        return fail(BinaryValueReadStatus::SourceChanged,
+                    "GDB source changed before reading the Binary field");
+    }
+
+    const auto field_index = static_cast<std::size_t>(field - fields.begin());
+    bool is_null = false;
+    bool limit_exceeded = false;
+    if (!engine_->table()->read_binary_field_by_fid(
+            fid, field_index, max_bytes, result.bytes, result.byte_size,
+            is_null, limit_exceeded)) {
+        return fail(BinaryValueReadStatus::ReadFailed,
+                    "feature row could not be decoded");
+    }
+    if (is_null) {
+        result.status = BinaryValueReadStatus::NullValue;
+        result.byte_size = 0;
+    } else if (limit_exceeded) {
+        result.status = BinaryValueReadStatus::LimitExceeded;
+        result.diagnostic =
+            "Binary payload exceeds the configured byte limit";
+    } else {
+        result.status = BinaryValueReadStatus::Available;
+    }
+    if (!source_is_current()) {
+        result.bytes.clear();
+        result.status = BinaryValueReadStatus::SourceChanged;
+        result.diagnostic =
+            "GDB source changed while reading the Binary field";
+    }
+    return result;
 }
 
 bool Layer::source_is_current() const noexcept {
@@ -260,7 +413,7 @@ std::optional<Reader> Reader::open(const std::string& gdb_path,
                   "GDB path must not be empty; provide an existing .gdb directory");
         return std::nullopt;
     }
-    const std::filesystem::path path(gdb_path);
+    const std::filesystem::path path = std::filesystem::u8path(gdb_path);
     if (!std::filesystem::is_directory(path)) {
         set_error(error, ReaderStatus::SourceNotFound,
                   "GDB path is not a directory: " + gdb_path +
@@ -269,6 +422,12 @@ std::optional<Reader> Reader::open(const std::string& gdb_path,
     }
 
     auto state = std::make_shared<detail::ReaderState>();
+    state->source_path = gdb_path;
+    if (!state->capture_source_snapshot()) {
+        set_error(error, ReaderStatus::SourceSnapshotFailed,
+                  "failed to capture the initial GDB source snapshot; verify file access and retry");
+        return std::nullopt;
+    }
     state->catalog = std::make_shared<GdbCatalog>();
     if (!state->catalog->scan(gdb_path)) {
         set_error(error, ReaderStatus::CatalogScanFailed,
@@ -283,9 +442,9 @@ std::optional<Reader> Reader::open(const std::string& gdb_path,
                       "; verify the system catalog files and retry");
         return std::nullopt;
     }
-    if (!state->capture_source_snapshot()) {
-        set_error(error, ReaderStatus::SourceSnapshotFailed,
-                  "failed to capture the GDB source snapshot; verify file access and retry");
+    if (!state->source_is_current()) {
+        set_error(error, ReaderStatus::SourceChanged,
+                  "GDB source changed while opening; retry with a stable source directory");
         return std::nullopt;
     }
 
@@ -302,6 +461,102 @@ std::vector<std::string> Reader::layer_names() const {
     return state_ != nullptr && state_->resolver != nullptr
         ? state_->resolver->table_names()
         : std::vector<std::string>{};
+}
+
+WorkspaceMetadataReadResult Reader::read_workspace_metadata() const {
+    WorkspaceMetadataReadResult result;
+    if (state_ == nullptr || state_->resolver == nullptr) {
+        set_error(&result.error, ReaderStatus::CatalogResolveFailed,
+                  "Reader is not open; call Reader::open with a valid .gdb directory");
+        return result;
+    }
+    if (!source_is_current()) {
+        set_error(&result.error, ReaderStatus::SourceChanged,
+                  "GDB source changed before reading workspace metadata");
+        return result;
+    }
+    try {
+        MetadataReader metadata(*state_->resolver);
+        auto domains = metadata.read_workspace_domains_result();
+        result.snapshot.domains = std::move(domains.domains);
+        result.snapshot.domains_xml = std::move(domains.inspection);
+        result.snapshot.relationships = metadata.read_relationship_summaries();
+        result.snapshot.relationship_definitions =
+            metadata.read_relationship_class_definitions();
+        auto relationship_classes = metadata.read_relationship_classes_result();
+        result.snapshot.relationship_classes =
+            std::move(relationship_classes.relationships);
+        result.snapshot.relationship_classes_xml =
+            std::move(relationship_classes.inspection);
+        result.snapshot.attachments =
+            std::move(relationship_classes.attachments);
+        result.snapshot.attachments_xml =
+            std::move(relationship_classes.attachments_inspection);
+        auto dataset_groups = metadata.read_dataset_group_summaries_result();
+        result.snapshot.dataset_groups = std::move(dataset_groups.groups);
+        result.snapshot.feature_datasets_xml =
+            std::move(dataset_groups.inspection);
+        result.snapshot.system_table_audit = metadata.audit_system_tables();
+        result.snapshot.catalog_objects =
+            metadata.read_catalog_object_inventory();
+    } catch (const std::exception& exception) {
+        set_error(&result.error, ReaderStatus::MetadataReadFailed,
+                  std::string("workspace metadata read failed: ") +
+                      exception.what());
+        return result;
+    } catch (...) {
+        set_error(&result.error, ReaderStatus::MetadataReadFailed,
+                  "workspace metadata read failed with an unknown exception");
+        return result;
+    }
+    if (!source_is_current()) {
+        result.snapshot = {};
+        set_error(&result.error, ReaderStatus::SourceChanged,
+                  "GDB source changed while reading workspace metadata");
+        return result;
+    }
+    set_error(&result.error, ReaderStatus::Ok, {});
+    return result;
+}
+
+CatalogObjectReadResult Reader::read_catalog_object_by_uuid(
+        const std::string& uuid) const {
+    CatalogObjectReadResult result;
+    if (state_ == nullptr || state_->resolver == nullptr) {
+        result.status = CatalogObjectReadStatus::Unavailable;
+        result.diagnostic =
+            "Reader is not open; call Reader::open with a valid .gdb directory";
+        return result;
+    }
+    if (!source_is_current()) {
+        result.status = CatalogObjectReadStatus::Unavailable;
+        result.diagnostic =
+            "GDB source changed before reading the catalog object";
+        return result;
+    }
+    try {
+        MetadataReader metadata(*state_->resolver);
+        result = metadata.read_catalog_object_by_uuid(uuid);
+    } catch (const std::exception& exception) {
+        result.status = CatalogObjectReadStatus::Unavailable;
+        result.object.reset();
+        result.diagnostic = std::string("catalog object read failed: ") +
+            exception.what();
+        return result;
+    } catch (...) {
+        result.status = CatalogObjectReadStatus::Unavailable;
+        result.object.reset();
+        result.diagnostic =
+            "catalog object read failed with an unknown exception";
+        return result;
+    }
+    if (!source_is_current()) {
+        result.status = CatalogObjectReadStatus::Unavailable;
+        result.object.reset();
+        result.diagnostic =
+            "GDB source changed while reading the catalog object";
+    }
+    return result;
 }
 
 bool Reader::source_is_current() const noexcept {
@@ -328,23 +583,33 @@ std::optional<Layer> Reader::open_layer(const std::string& layer_name,
         return std::nullopt;
     }
 
-    auto engine = std::make_unique<QueryEngine>(*state_->catalog, *resolved);
+    ResolvedTable resolved_layer = *resolved;
+    resolved_layer.has_spatial_index =
+        state_->spatial_index_declared(layer_name);
+
+    auto engine = std::make_unique<QueryEngine>(
+        *state_->catalog, resolved_layer, state_->query_preparation_cache);
     if (!engine->open()) {
         set_error(error, ReaderStatus::LayerOpenFailed,
                   "failed to open layer: " + layer_name +
                       "; verify table, tablx and geometry metadata");
         return std::nullopt;
     }
+    if (!source_is_current()) {
+        set_error(error, ReaderStatus::SourceChanged,
+                  "GDB source changed while opening the layer; reopen the Reader");
+        return std::nullopt;
+    }
     if (engine->table() == nullptr ||
         engine->table()->feature_count() > options_.max_fid_slots) {
         set_error(error, ReaderStatus::FidRangeUnsupported,
-                  "layer exceeds the supported uint32_t FID slot range: " +
-                      layer_name + "; use a source with no more than UINT32_MAX slots");
+                  "layer exceeds the configured logical FID slot limit: " +
+                      layer_name);
         return std::nullopt;
     }
 
     set_error(error, ReaderStatus::Ok, {});
-    return Layer(state_, *resolved, std::move(engine));
+    return Layer(state_, std::move(resolved_layer), std::move(engine));
 }
 
 }  // namespace explorgdb

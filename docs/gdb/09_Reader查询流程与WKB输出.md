@@ -6,6 +6,7 @@
 - `QueryEngine::open_cursor()`：WKB-first 完整 Feature 流式迭代；
 - `FeatureCursor::move_to(fid)`：按零基 FID 前后和跳跃定位；
 - `GeometryValue::to_wkt()`：从已读取 ISO WKB 显式转换 WKT。
+- `QueryRequest::field_projection` / `include_geometry`：控制返回字段物化和输出几何解码。
 
 > 状态：Current
 > 适用版本：v0.2.0+
@@ -37,30 +38,47 @@ flowchart TD
     A["校验 bbox"] -->|非法| INVALID["spatial-where:invalid"]
     A --> B["compile_and_bind_where"]
     B -->|失败| INVALID
-    B --> C["query_bbox_unified"]
-    C --> D["精确空间命中 FID"]
-    D -->|空集| EMPTY["直接返回"]
-    D --> E{"单个安全比较?"}
-    E -->|否| FALLBACK["空间命中行完整 WHERE"]
-    E -->|是| META[".gdbindexes -> .atx"]
-    META --> SAFE{"裸字段且编码安全?"}
-    SAFE -->|否| FALLBACK
-    SAFE --> ATX["parse .atx"]
-    ATX -->|缺失/损坏| FALLBACK
-    ATX --> CAND["属性候选 sort + unique"]
-    CAND --> INTERSECT["与精确空间 FID 求交"]
-    INTERSECT --> RECHECK["完整 WHERE 复核"]
-    FALLBACK --> RESULT["最终 FID sort + unique"]
-    RECHECK --> RESULT
+    B --> C{"选择安全候选计划"}
+    C -->|选择性空间候选| SPX["SPX 候选 + 单行扫描"]
+    SPX --> FUSED["每个候选行解析一次；评估空间谓词和 WHERE"]
+    C -->|安全属性索引| ATX["ATX 按键下探并按需读页"]
+    ATX --> IXFIDS["属性候选 FID"]
+    C -->|索引缺失/不安全| FALLBACK["安全顺序扫描"]
+    IXFIDS --> VERIFY["读取行并复核完整谓词"]
+    FALLBACK --> VERIFY
+    FUSED --> RESULT["最终 FID sort + unique"]
+    VERIFY --> RESULT
+    RESULT -->|空集| EMPTY["直接返回"]
 ```
 
 不变量：
 
 ```text
-最终结果 = 精确空间相交 FID ∩ 完整 WHERE 命中 FID
+最终结果 = 精确空间 predicate 命中 ∩ 完整 WHERE 命中
 ```
 
-`.spx/.atx` 只缩小候选，不能替代最终语义判断；损坏索引 fail closed。
+`.spx/.atx` 只缩小候选，不能替代最终语义判断。ATX direct query 按键下探、只读取所需页，
+每次查询使用固定 16 页 LRU；索引缺失或损坏时仅在安全顺序扫描可建立完整结果的计划下回退。
+任何路径都必须复核完整 predicate，不能将不完整索引候选当作最终结果。
+
+## 2.1 字段投影与输出几何开关
+
+未设置 `field_projection` 时返回全部字段；设置后只物化选定字段，未投影字段保留为未物化槽位。
+`include_geometry` 默认是 `true`。设为 `false` 后，返回值把几何标为
+`GeometryStatus::NotRequested`，行内 blob 仍做长度/边界校验但不构造 GeometryModel 或写 WKB。
+空间筛选所需的几何会在查询计划中解码，因此它只省去结果物化阶段的几何输出成本。
+
+```cpp
+fast_gdb::unified::Query query;
+query.projected_fields = {"name"};
+query.attribute_filter = "road_id = 1";
+query.include_geometry = false;
+auto cursor = layer.open_cursor(query);
+```
+
+GDAL 路径只有在无过滤器且驱动报告 `OLCIgnoreFields` 时才请求驱动忽略投影外字段/几何；
+有过滤器时保留潜在过滤输入，并在结果映射时应用投影。详见
+[S4.4 验证记录](../plan/evidence/2026-11-06-S4.4-projection-lazy-geometry.md)。
 
 ## 3. record-only 路径
 
@@ -175,6 +193,14 @@ flowchart TD
 - open generation 防 engine reopen 后旧计划复用；
 - 活动 cursor 期间 engine 的 open/query/read/scan/直接空间读入口拒绝；
 - 不声明同一 QueryEngine 线程安全。
+
+## 8.1 外部修改后的读取
+
+外部 Writer 完成并关闭后，低层 Reader/QueryEngine/Cursor 必须全部销毁，再从新的
+`GdbCatalog::scan()` 建立对象图。Unified API 可调用 `Dataset::refresh()`：成功时返回完整
+新代次并使旧 Dataset/Layer 过期，失败时不发布部分新状态。调用方需要显式 refresh 或重开，
+这不是自动实时刷新。对没有使用协调接口的外部并发 Writer，文件快照检测仍是 best-effort；
+发现源变化后丢弃结果，不应在 Writer 活动期间读取。
 
 ## 9. WHERE 与索引安全
 

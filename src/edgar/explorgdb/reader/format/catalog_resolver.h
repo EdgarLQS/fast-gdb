@@ -22,6 +22,9 @@ struct ResolvedTable {
     // Manual/legacy aggregate construction leaves this unknown, in which case
     // QueryEngine::open() retains the resolver fallback.
     std::optional<bool> has_spatial_refs;
+    // Unknown retains sidecar discovery; an explicit false means any .spx
+    // sidecar is not declared as a usable spatial index for this layer.
+    std::optional<bool> has_spatial_index;
 };
 
 struct SystemCatalogRow {

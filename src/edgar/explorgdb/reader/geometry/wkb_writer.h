@@ -33,7 +33,7 @@ public:
     static GeometryValue write(const GeometryModel& model);
 
     /**
-     * 计算 ISO WKB 类型码：基础类型 1..6，加 1000/2000/3000 表示 Z/M/ZM。
+     * 计算 ISO WKB 类型码：基础类型 1..7、15..17，加 1000/2000/3000 表示 Z/M/ZM。
      */
     /** 计算 ISO WKB 类型码及 Z/M 维度偏移。
      * @param kind 基础几何类型。

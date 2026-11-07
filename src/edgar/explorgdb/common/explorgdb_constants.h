@@ -78,7 +78,9 @@ inline constexpr const char* kErrorMessageSeparator = ": ";
 inline constexpr const char* kDiagnosticNoGeometryField = "table has no geometry field";
 inline constexpr const char* kDiagnosticGeometryNull = "geometry is null";
 inline constexpr const char* kDiagnosticSpxParseFail = ".spx exists but could not be parsed; falling back to sequential model filtering";
+inline constexpr const char* kDiagnosticSpxGridUnsupported = ".spx grid metadata or level-0 coordinates are unsupported; sequential model filtering used";
 inline constexpr const char* kDiagnosticGeometryDecodeErrors = " candidate geometries had explicit decode/topology errors";
+inline constexpr const char* kDiagnosticSpatialIndexNotDeclared = "GDB metadata declares no spatial index; sequential model filtering used";
 inline constexpr const char* kDiagnosticSpatialIndexMissing = "spatial index missing; sequential model filtering used";
 
 // ═══════════════════════════════════════════════

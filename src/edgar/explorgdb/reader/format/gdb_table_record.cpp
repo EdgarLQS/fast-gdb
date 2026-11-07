@@ -35,10 +35,10 @@ bool is_zero_padding(const uint8_t* cursor, const uint8_t* end) {
 
 bool read_fixed_field_value(BinaryReader& reader,
                             FieldType type,
-                            uint32_t implicit_object_id,
+                            RowSlot row_slot,
                             FieldValue& value) {
     if (type == FieldType::ObjectId) {
-        value = static_cast<int32_t>(implicit_object_id);
+        value = object_id_field_value(row_slot);
         return true;
     }
 
@@ -91,7 +91,7 @@ bool read_fixed_field_value(BinaryReader& reader,
 }
 
 bool materialize_zero_length_record(
-    uint32_t fid,
+    RowSlot fid,
     const std::vector<FieldDescriptor>& fields,
     FeatureRecord& record) {
     record = FeatureRecord{};
@@ -111,7 +111,7 @@ bool materialize_zero_length_record(
         if (nullable) ++nullable_bit;
 
         if (field.type == FieldType::ObjectId) {
-            record.field_values.push_back(static_cast<int32_t>(fid + 1U));
+            record.field_values.push_back(object_id_field_value(fid));
             continue;
         }
         if (field.type == FieldType::Geometry) {
@@ -134,7 +134,7 @@ bool materialize_zero_length_record(
 bool parse_record_without_geometry(
     const uint8_t* row_data,
     size_t row_size,
-    uint32_t fid,
+    RowSlot fid,
     const std::vector<FieldDescriptor>& fields,
     int nullable_count,
     FeatureRecord& record) {
@@ -205,7 +205,7 @@ bool parse_record_without_geometry(
                             fixed_physical_width(field.type) != 0) {
                             FieldValue value;
                             if (!read_fixed_field_value(
-                                    reader, field.type, fid + 1U, value)) {
+                                    reader, field.type, fid, value)) {
                                 valid = false;
                                 break;
                             }
@@ -295,13 +295,13 @@ bool parse_record_without_geometry(
 
 } // namespace
 
-bool GdbTableParser::read_record_by_fid(uint32_t fid,
+bool GdbTableParser::read_record_by_fid(RowSlot fid,
                                         FeatureRecord& record) {
     if (fd_ < 0 && file_data_.empty() && !open()) return false;
     if (fields_.empty() && fd_ >= 0 && !ensure_fields_loaded()) return false;
-    if (feature_offsets_.empty() || fid >= feature_offsets_.size()) return false;
+    if (fid >= logical_row_count_) return false;
 
-    const uint64_t raw_offset = feature_offsets_[fid];
+    const uint64_t raw_offset = feature_offset(fid);
     if (raw_offset == 0 ||
         raw_offset > static_cast<uint64_t>(
                          std::numeric_limits<size_t>::max())) {

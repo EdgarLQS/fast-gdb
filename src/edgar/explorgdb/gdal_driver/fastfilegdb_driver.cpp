@@ -8,6 +8,8 @@
 #include <ogrsf_frmts.h>
 
 #include <algorithm>
+#include <cstdio>
+#include <cstdlib>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -74,6 +76,19 @@ void set_temporal(OGRFeature& target, int index,
     target.SetField(index, value.c_str());
 }
 
+std::string append_utc_offset(const unified::DateTimeValue& value) {
+    std::string result = value.iso8601;
+    if (!value.utc_offset_minutes) return result;
+    const int offset = *value.utc_offset_minutes;
+    result.push_back(offset < 0 ? '-' : '+');
+    const int magnitude = std::abs(offset);
+    char buffer[8] = {};
+    std::snprintf(buffer, sizeof(buffer), "%02d:%02d",
+                  magnitude / 60, magnitude % 60);
+    result += buffer;
+    return result;
+}
+
 void set_field(OGRFeature& target, int index,
                const unified::Field& source) {
     if (source.state == unified::ValueState::Unset || !source.value) {
@@ -99,7 +114,11 @@ void set_field(OGRFeature& target, int index,
             target.SetField(index, static_cast<int>(value.size()),
                             value.data());
         } else {
-            set_temporal(target, index, value.iso8601);
+            if constexpr (std::is_same_v<T, unified::DateTimeValue>) {
+                set_temporal(target, index, append_utc_offset(value));
+            } else {
+                set_temporal(target, index, value.iso8601);
+            }
         }
     }, *source.value);
 }

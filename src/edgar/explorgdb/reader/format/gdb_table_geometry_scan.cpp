@@ -238,7 +238,7 @@ struct SlidingMapReset {
 #endif
 
 struct RowRef {
-    uint32_t fid = 0;
+    RowSlot fid = 0;
     uint64_t offset = 0;
 };
 
@@ -336,7 +336,7 @@ void trace_scan(const char* scanner,
 // 方法实现：具体用途、参数和返回值契约见对应头文件或本文件声明。
 // 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 uint64_t GdbTableParser::scan_geometry_blobs(GeometryScanCallback callback) {
-    if (!callback || fields_.empty() || feature_offsets_.empty() ||
+    if (!callback || fields_.empty() || active_feature_count() == 0 ||
         geometry_field_index_ < 0 ||
         geometry_field_index_ >= static_cast<int>(fields_.size())) {
         return 0;
@@ -346,7 +346,7 @@ uint64_t GdbTableParser::scan_geometry_blobs(GeometryScanCallback callback) {
     const int nullable_count = nullable_field_count();
     uint64_t scanned = 0;
 
-    auto emit_row = [&](uint32_t fid,
+    auto emit_row = [&](RowSlot fid,
                         const uint8_t* row_begin,
                         size_t row_size) -> bool {
         if (row_size == 0) {
@@ -369,8 +369,10 @@ uint64_t GdbTableParser::scan_geometry_blobs(GeometryScanCallback callback) {
     };
 
     if (mapped_data_ != nullptr) {
-        for (uint32_t fid = 0; fid < feature_offsets_.size(); ++fid) {
-            const uint64_t offset = feature_offsets_[fid];
+        for (size_t active_index = 0;
+             active_index < active_feature_count(); ++active_index) {
+            const RowSlot fid = active_feature_fid_at(active_index);
+            const uint64_t offset = feature_offset(fid);
             if (offset == 0 || offset >= file_size64) continue;
             if (!has_record_prefix(offset, file_size64)) return 0;
 
@@ -389,8 +391,10 @@ uint64_t GdbTableParser::scan_geometry_blobs(GeometryScanCallback callback) {
         if (sliding_map_.open(fd_)) {
             SlidingMapReset reset(sliding_map_);
             const size_t preferred = dense_batch_bytes();
-            for (uint32_t fid = 0; fid < feature_offsets_.size(); ++fid) {
-                const uint64_t offset = feature_offsets_[fid];
+            for (size_t active_index = 0;
+                 active_index < active_feature_count(); ++active_index) {
+                const RowSlot fid = active_feature_fid_at(active_index);
+                const uint64_t offset = feature_offset(fid);
                 if (offset == 0 || offset >= file_size64) continue;
                 if (!has_record_prefix(offset, file_size64)) return 0;
 
@@ -595,8 +599,10 @@ uint64_t GdbTableParser::scan_geometry_blobs(GeometryScanCallback callback) {
         return submit_batch(std::move(batch));
     };
 
-    for (uint32_t fid = 0; fid < feature_offsets_.size(); ++fid) {
-        const uint64_t offset = feature_offsets_[fid];
+    for (size_t active_index = 0;
+         active_index < active_feature_count(); ++active_index) {
+        const RowSlot fid = active_feature_fid_at(active_index);
+        const uint64_t offset = feature_offset(fid);
         if (offset == 0 || offset >= file_size64) continue;
         if (!has_record_prefix(offset, file_size64)) {
             io_failed = true;
@@ -634,7 +640,7 @@ uint64_t GdbTableParser::scan_geometry_blobs(GeometryScanCallback callback) {
 }
 
 uint64_t GdbTableParser::scan_geometry_candidates(
-    const std::vector<uint32_t>& candidates,
+    const std::vector<RowSlot>& candidates,
     GeometryScanCallback callback) {
     if (!callback || candidates.empty() || mapped_data_ != nullptr || fd_ < 0 ||
         fields_.empty() || geometry_field_index_ < 0 ||
@@ -645,9 +651,8 @@ uint64_t GdbTableParser::scan_geometry_candidates(
     const uint64_t file_size64 = static_cast<uint64_t>(file_size_);
     std::vector<RowRef> physical;
     physical.reserve(candidates.size());
-    for (uint32_t fid : candidates) {
-        if (fid >= feature_offsets_.size()) return 0;
-        const uint64_t offset = feature_offsets_[fid];
+    for (RowSlot fid : candidates) {
+        const uint64_t offset = feature_offset(fid);
         if (offset == 0 || !has_record_prefix(offset, file_size64)) return 0;
         physical.push_back(RowRef{fid, offset});
     }
@@ -660,7 +665,7 @@ uint64_t GdbTableParser::scan_geometry_candidates(
 
     const int nullable_count = nullable_field_count();
     uint64_t scanned = 0;
-    auto emit_candidate = [&](uint32_t fid,
+    auto emit_candidate = [&](RowSlot fid,
                               const uint8_t* row_begin,
                               size_t row_size) -> bool {
         if (row_size == 0) {

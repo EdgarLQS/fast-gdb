@@ -54,15 +54,15 @@ double percentile(std::vector<double> samples, double fraction) {
     return samples[std::min(index, samples.size() - 1U)];
 }
 
-std::vector<uint32_t> collect_gdal(OGRLayer* layer) {
-    std::vector<uint32_t> fids;
+std::vector<RowSlot> collect_gdal(OGRLayer* layer) {
+    std::vector<RowSlot> fids;
     layer->SetSpatialFilterRect(0.0, 0.0, 99.0, 99.0);
     if (layer->SetAttributeFilter("value >= 90") != OGRERR_NONE)
         return fids;
     layer->ResetReading();
     while (OGRFeature* feature = layer->GetNextFeature()) {
         if (feature->GetFID() > 0)
-            fids.push_back(static_cast<uint32_t>(feature->GetFID() - 1));
+            fids.push_back(static_cast<RowSlot>(feature->GetFID() - 1));
         OGRFeature::DestroyFeature(feature);
     }
     layer->SetSpatialFilter(nullptr);
@@ -77,7 +77,7 @@ struct Samples {
     std::vector<double> legacy_ms;
     std::vector<double> gdal_ms;
     CombinedQueryMetrics metrics;
-    std::vector<uint32_t> expected;
+    std::vector<RowSlot> expected;
     std::string execution_path;
     bool correct = false;
 };
@@ -266,11 +266,11 @@ TEST_F(SpatialWhereBenchmarkTest, Point100KSchemaV2Evidence) {
         start = BenchmarkClock::now();
         QueryResult spatial = engine.query_bbox_unified(
             0.0, 0.0, 99.0, 99.0);
-        std::vector<uint32_t> attribute = engine.query_attribute_double(
+        std::vector<RowSlot> attribute = engine.query_attribute_double(
             "value_idx", 90.0, AttrOp::Ge);
         std::sort(spatial.matched_fids.begin(), spatial.matched_fids.end());
         std::sort(attribute.begin(), attribute.end());
-        std::vector<uint32_t> legacy;
+        std::vector<RowSlot> legacy;
         std::set_intersection(
             spatial.matched_fids.begin(), spatial.matched_fids.end(),
             attribute.begin(), attribute.end(),
@@ -280,7 +280,7 @@ TEST_F(SpatialWhereBenchmarkTest, Point100KSchemaV2Evidence) {
                 BenchmarkClock::now() - start).count());
 
         start = BenchmarkClock::now();
-        const std::vector<uint32_t> gdal = collect_gdal(layer);
+        const std::vector<RowSlot> gdal = collect_gdal(layer);
         samples.gdal_ms.push_back(
             std::chrono::duration<double, std::milli>(
                 BenchmarkClock::now() - start).count());

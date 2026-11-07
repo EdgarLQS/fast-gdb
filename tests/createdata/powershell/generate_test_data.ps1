@@ -112,6 +112,7 @@ Write-Host "  [OK] testcurve.gdb 生成完成" -ForegroundColor Green
 Write-Host ""
 
 # ── 步骤 4: 验证输出 ──
+$verificationFailed = $false
 if (-not $SkipVerify) {
     Write-Host "【步骤 4】验证输出" -ForegroundColor Cyan
     $allOk = $true
@@ -142,18 +143,43 @@ if (-not $SkipVerify) {
             $refOk = $false
         }
     }
+    if (-not $refOk) {
+        $allOk = $false
+    }
 
     # 验证 testcurve.gdb
     if (Test-Path $Output2) {
         $size2 = (Get-ChildItem -Recurse $Output2 | Measure-Object -Property Length -Sum).Sum
-        Write-Host "  [OK] testcurve.gdb ($([math]::Round($size2/1MB, 1)) MB)" -ForegroundColor Green
+        $gdbTables = @(Get-ChildItem -LiteralPath $Output2 -File -Filter "*.gdbtable")
+        $gdbTablx = @(Get-ChildItem -LiteralPath $Output2 -File -Filter "*.gdbtablx")
+        $tableIds = @($gdbTables | ForEach-Object { $_.BaseName })
+        $tablxIds = @($gdbTablx | ForEach-Object { $_.BaseName })
+        $missingTablx = @($tableIds | Where-Object { $_ -notin $tablxIds })
+        $missingTable = @($tablxIds | Where-Object { $_ -notin $tableIds })
+        $hasGdbItems = Test-Path -LiteralPath (Join-Path $Output2 "a00000004.gdbtable")
+        if (-not $hasGdbItems) {
+            Write-Host "  [FAIL] testcurve.gdb 缺少核心表 a00000004.gdbtable（GDB_Items）" -ForegroundColor Red
+            $allOk = $false
+        }
+        if ($missingTablx.Count -gt 0) {
+            Write-Host "  [FAIL] 以下 .gdbtable 缺少对应 .gdbtablx: $($missingTablx -join ', ')" -ForegroundColor Red
+            $allOk = $false
+        }
+        if ($missingTable.Count -gt 0) {
+            Write-Host "  [FAIL] 以下 .gdbtablx 缺少对应 .gdbtable: $($missingTable -join ', ')" -ForegroundColor Red
+            $allOk = $false
+        }
+        if ($hasGdbItems -and $missingTablx.Count -eq 0 -and $missingTable.Count -eq 0) {
+            Write-Host "  [OK] testcurve.gdb ($([math]::Round($size2/1MB, 1)) MB; $($gdbTables.Count) 个表及配对索引完整)" -ForegroundColor Green
+        }
     } else {
         Write-Host "  [FAIL] testcurve.gdb 不存在" -ForegroundColor Red
         $allOk = $false
     }
 
     if (-not $allOk) {
-        Write-Host "  [WARN] 部分验证未通过，请检查输出" -ForegroundColor Yellow
+        Write-Host "  [FAIL] 部分验证未通过，请检查输出" -ForegroundColor Red
+        $verificationFailed = $true
     } else {
         Write-Host "  [OK] 全部验证通过" -ForegroundColor Green
     }
@@ -178,7 +204,13 @@ if (-not $SkipCleanup) {
 
 # ── 汇总 ──
 Write-Host ("=" * 60)
-Write-Host "  生成完毕" -ForegroundColor Green
+if ($verificationFailed) {
+    Write-Host "  生成结束，但完整性校验失败" -ForegroundColor Red
+} elseif ($SkipVerify) {
+    Write-Host "  生成结束（已跳过完整性校验）" -ForegroundColor Yellow
+} else {
+    Write-Host "  生成与完整性校验通过" -ForegroundColor Green
+}
 Write-Host "  acceptance_metadata.gdb -> $Output1"
 Write-Host "  testcurve.gdb          -> $Output2"
 Write-Host ""
@@ -187,3 +219,6 @@ Write-Host "  - test_data/gdb/参数化数据_liqs.gdb  (外部提供，无生�
 Write-Host "  - test_data/gdb/test_spatial_gdb.gdb (外部提供，无生成脚本)"
 Write-Host "  - test_data/benchmark/wide_50_gdal.gdb (被测试引用但不存在)"
 Write-Host ("=" * 60)
+if ($verificationFailed) {
+    exit 1
+}

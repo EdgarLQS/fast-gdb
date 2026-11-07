@@ -8,6 +8,8 @@
 #include <ogrsf_frmts.h>
 
 #include <algorithm>
+#include <cstring>
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -53,6 +55,44 @@ TEST(FastFileGdbDriverTest, RegistersAndReadsThroughUnifiedRuntime) {
     std::unique_ptr<OGRFeature> feature(layer->GetNextFeature());
     ASSERT_NE(feature, nullptr) << CPLGetLastErrorMsg();
     EXPECT_GT(feature->GetFID(), 0);
+}
+
+TEST(FastFileGdbDriverTest, PreservesTemporalOffsetAndBinaryPayload) {
+    GDALAllRegister();
+    GDALRegister_FastFileGDB();
+    const auto source = explorgdb_test_paths::test_data_path(
+        "test_data/gdb/acceptance_metadata.gdb").string();
+    const char* allowed[] = {"FastFileGDB", nullptr};
+    DatasetPtr dataset(static_cast<GDALDataset*>(GDALOpenEx(
+        source.c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY,
+        allowed, nullptr, nullptr)), GDALClose);
+    ASSERT_NE(dataset, nullptr) << CPLGetLastErrorMsg();
+    OGRLayer* layer = dataset->GetLayerByName("all_field_types");
+    ASSERT_NE(layer, nullptr);
+    std::unique_ptr<OGRFeature> feature(layer->GetFeature(4));
+    ASSERT_NE(feature, nullptr) << CPLGetLastErrorMsg();
+
+    const int offset_index =
+        layer->GetLayerDefn()->GetFieldIndex("timestampoffset_fld");
+    const int binary_index = layer->GetLayerDefn()->GetFieldIndex("blob_fld");
+    ASSERT_GE(offset_index, 0);
+    ASSERT_GE(binary_index, 0);
+    const OGRField* offset = feature->GetRawFieldRef(offset_index);
+    ASSERT_NE(offset, nullptr);
+    EXPECT_EQ(offset->Date.Year, 2025);
+    EXPECT_EQ(offset->Date.Month, 1);
+    EXPECT_EQ(offset->Date.Day, 1);
+    EXPECT_EQ(offset->Date.Hour, 12);
+    EXPECT_EQ(offset->Date.TZFlag, 100);
+
+    int byte_count = 0;
+    const GByte* bytes = feature->GetFieldAsBinary(binary_index, &byte_count);
+    const std::uint8_t expected[] = {
+        'H', 'e', 'l', 'l', 'o', ' ', 'B', 'i', 'n', 'a', 'r', 'y', ' ',
+        'W', 'o', 'r', 'l', 'd', '!', 0x00, 0xff};
+    ASSERT_EQ(byte_count, static_cast<int>(sizeof(expected)));
+    ASSERT_NE(bytes, nullptr);
+    EXPECT_EQ(std::memcmp(bytes, expected, sizeof(expected)), 0);
 }
 
 /**

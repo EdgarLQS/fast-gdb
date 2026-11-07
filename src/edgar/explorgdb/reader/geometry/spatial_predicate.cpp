@@ -4,6 +4,8 @@
 #include "spatial_predicate.h"
 
 #include <algorithm>
+#include <array>
+#include <utility>
 
 namespace explorgdb {
 namespace {
@@ -147,6 +149,107 @@ PointGeometryLocation locate_xy(const MultiPolygonModel& model,
     return PointGeometryLocation::Outside;
 }
 
+bool multipatch_ring(const MultiPatchModel& multipatch,
+                     const MultiPatchPart& part,
+                     RingModel& ring) {
+    if (part.vertex_count < 3U ||
+        part.vertex_offset > multipatch.vertices.size() ||
+        part.vertex_count >
+            multipatch.vertices.size() - part.vertex_offset)
+        return false;
+    ring.points.reserve(part.vertex_count);
+    for (size_t index = 0; index < part.vertex_count; ++index) {
+        const auto& vertex =
+            multipatch.vertices[part.vertex_offset + index];
+        ring.points.push_back({vertex.grid_x, vertex.grid_y});
+        ring.bbox.expand(ring.points.back());
+    }
+    return true;
+}
+
+bool multipatch_triangle_intersects_bbox(
+    const MultiPatchModel& multipatch, const MultiPatchPart& part,
+    size_t triangle_index, const QueryGridBbox& bbox) {
+    std::array<size_t, 3> indices{};
+    if (!part.triangle_vertices(triangle_index, indices)) return false;
+    RingModel triangle;
+    for (size_t index : indices) {
+        if (index >= multipatch.vertices.size()) return false;
+        const auto& vertex = multipatch.vertices[index];
+        triangle.points.push_back({vertex.grid_x, vertex.grid_y});
+        triangle.bbox.expand(triangle.points.back());
+    }
+    if (line_intersects_bbox(triangle.points, bbox, true)) return true;
+    const std::array<std::pair<long double, long double>, 4> corners{{
+        {bbox.xmin, bbox.ymin}, {bbox.xmin, bbox.ymax},
+        {bbox.xmax, bbox.ymin}, {bbox.xmax, bbox.ymax}}};
+    for (const auto& corner : corners) {
+        if (point_in_ring_xy(corner.first, corner.second, triangle) !=
+            PointRingLocation::Outside)
+            return true;
+    }
+    return false;
+}
+
+bool multipatch_polygon_intersects_bbox(
+    const MultiPatchModel& multipatch,
+    const MultiPatchRingGroup& group,
+    const QueryGridBbox& bbox) {
+    if (group.part_indices.empty()) return false;
+    MultiPolygonModel polygon_model;
+    polygon_model.rings.reserve(group.part_indices.size());
+    for (size_t part_index : group.part_indices) {
+        if (part_index >= multipatch.parts.size()) return false;
+        RingModel ring;
+        if (!multipatch_ring(multipatch,
+                             multipatch.parts[part_index], ring))
+            return false;
+        if (line_intersects_bbox(ring.points, bbox, true)) return true;
+        polygon_model.rings.push_back(std::move(ring));
+    }
+
+    PolygonModel polygon;
+    polygon.exterior_ring = 0U;
+    for (size_t index = 1; index < polygon_model.rings.size(); ++index)
+        polygon.interior_rings.push_back(index);
+    polygon_model.polygons.push_back(std::move(polygon));
+
+    const std::array<std::pair<long double, long double>, 4> corners{{
+        {bbox.xmin, bbox.ymin}, {bbox.xmin, bbox.ymax},
+        {bbox.xmax, bbox.ymin}, {bbox.xmax, bbox.ymax}}};
+    for (const auto& corner : corners) {
+        if (locate_xy(polygon_model, corner.first, corner.second) !=
+            PointGeometryLocation::Outside)
+            return true;
+    }
+    return false;
+}
+
+bool multipatch_intersects_bbox(const MultiPatchModel& multipatch,
+                                const QueryGridBbox& bbox) {
+    if (!multipatch.present || !multipatch.structure_complete ||
+        multipatch.vertices.empty())
+        return false;
+    for (const auto& part : multipatch.parts) {
+        if (part.type == MultiPatchPartType::TriangleStrip ||
+            part.type == MultiPatchPartType::TriangleFan ||
+            part.type == MultiPatchPartType::Triangles) {
+            for (size_t triangle = 0; triangle < part.triangle_count;
+                 ++triangle) {
+                if (multipatch_triangle_intersects_bbox(
+                        multipatch, part, triangle, bbox))
+                    return true;
+            }
+        }
+    }
+    for (const auto& group : multipatch.ring_groups) {
+        if (multipatch_polygon_intersects_bbox(
+                multipatch, group, bbox))
+            return true;
+    }
+    return false;
+}
+
 } // namespace
 
 PointGeometryLocation SpatialPredicate::locate_point(
@@ -161,6 +264,9 @@ bool SpatialPredicate::intersects_bbox(const GeometryModel& geometry,
     if (!geometry.valid() || geometry.is_empty() ||
         bbox.xmin > bbox.xmax || bbox.ymin > bbox.ymax)
         return false;
+
+    if (geometry.kind == GeometryKind::Unknown && geometry.multipatch)
+        return multipatch_intersects_bbox(*geometry.multipatch, bbox);
 
     switch (geometry.kind) {
         case GeometryKind::Point:

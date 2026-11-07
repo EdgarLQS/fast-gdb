@@ -152,6 +152,24 @@ The full Reader runner also includes:
 - `ReaderConcurrencyTest.IndependentReadersReturnIdenticalFeatureDigests`;
 - `CorruptInputConformance.*`.
 
+## Opt-in Reader contention benchmarks
+
+- `TablxCacheBenchmarkTest.SharedHitContentionProfile` measures concurrent cache
+  hit throughput and sampled latency using real `.gdbtablx` file identities and
+  synthetic immutable offset values. Enable it with
+  `FAST_GDB_TABLX_CACHE_BENCHMARK=1`; provide the dataset, CSV output path, and
+  optional iteration count through the matching `FAST_GDB_TABLX_CACHE_BENCHMARK_*`
+  variables.
+- `ReaderConcurrencyBenchmarkTest.SharedLayerOpenAndFidReadProfile` measures
+  concurrent Reader open plus first active FID reads on the three testcurve CRS
+  point layers and checks each field digest against a sequential baseline.
+  Enable it with `FAST_GDB_READER_CONTENTION_BENCHMARK=1`; set
+  `FAST_GDB_CURVE_DATASET`, `FAST_GDB_READER_CONTENTION_OUTPUT`, and optionally
+  `FAST_GDB_READER_CONTENTION_ITERATIONS`.
+
+These benchmarks are opt-in and are skipped by ordinary CTest runs. They do not
+clear the OS file cache or establish cold-start disk I/O performance.
+
 The coordinated gate distinguishes two contracts:
 
 - stable fast reads and post-write rebuilds are correctness gates and must be
@@ -167,6 +185,22 @@ scope and cannot be inferred from these planned tests.
 The local GDAL reopen matrix additionally covers Create/DeleteFeature,
 Create/DeleteField, index creation and extent refresh; index deletion is recorded
 as `SKIPPED` when the selected OpenFileGDB driver does not implement that edit.
+
+## ArcGIS attachment conformance
+
+`ReaderContractTest.ReadsArcGisAttachmentFixtureWhenConfigured` and
+`UnifiedFastFacadeTest.ReadsArcGisAttachmentPayloadsWhenConfigured` read a
+dedicated ArcGIS-authored attachment GDB and compare each `DATA` BLOB byte for
+byte with the source payload listed in the ArcPy oracle TSV. The Reader test
+checks the `GlobalID`/`REL_GLOBALID` relationship, attachment metadata and
+row fields; the Unified test checks reads by public ObjectID. Together they
+cover multiple files on one parent, a parent with no attachments, Unicode
+names, and bounded reads.
+Generate the fixture with
+`tests/createdata/python/generate_attachment_fixture.py` in ArcGIS Pro Python,
+then set `FAST_GDB_ATTACHMENT_DATASET` and
+`FAST_GDB_ATTACHMENT_EXPECTED_TSV`. Without both variables the test is skipped;
+that skip does not satisfy S2.5 acceptance.
 
 ## Product-surface tests
 

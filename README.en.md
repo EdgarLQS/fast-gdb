@@ -109,6 +109,7 @@ unsupported and may expose old, new, mixed, or error states.
   also runs CodeQL and Dependency Review; Dependabot monitors GitHub Actions
   weekly.
 - [中文文档入口](docs/README.md)
+- [Adaptive Reader end-to-end example](examples/adaptive_reader/README.md)
 - [English contribution guide](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
 - [Changelog](CHANGELOG.md)

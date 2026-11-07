@@ -60,7 +60,9 @@ HybridGeometryReader::HybridGeometryReader(
       layer_name_(std::move(layer_name)), options_(options) {}
 
 bool HybridGeometryReader::map_gdal_fid(
-    uint32_t fast_fid, int64_t offset, int64_t& gdal_fid) {
+    RowSlot fast_fid, int64_t offset, int64_t& gdal_fid) {
+    if (fast_fid > static_cast<RowSlot>(std::numeric_limits<int64_t>::max()))
+        return false;
     const int64_t base = static_cast<int64_t>(fast_fid);
     if ((offset > 0 &&
          base > std::numeric_limits<int64_t>::max() - offset) ||
@@ -100,7 +102,7 @@ bool HybridGeometryReader::should_fallback(
 
 /** 构造 GDAL 曲线回退请求，包括 FID 映射。 */
 bool HybridGeometryReader::make_request(
-    uint32_t fast_fid, bool source_was_curve,
+    RowSlot fast_fid, bool source_was_curve,
     GdalCurveRequest& request, std::string& diagnostic) const {
     int64_t mapped_fid = -1;
     if (!map_gdal_fid(fast_fid, options_.gdal_fid_offset,
@@ -127,7 +129,7 @@ bool HybridGeometryReader::make_request(
  * - 不支持的曲线类型（UnsupportedCurve）
  */
 GeometryValue HybridGeometryReader::read_geometry(
-    uint32_t fast_fid) const {
+    RowSlot fast_fid) const {
     GeometryModel model;
     const bool fast_valid = parser_.read_geometry_model(fast_fid, model);
     if (fast_valid && !should_fallback(model))
@@ -165,7 +167,7 @@ GeometryValue HybridGeometryReader::read_geometry(
  * 3. 应回退 → GDAL intersects_bbox
  */
 GdalSpatialResult HybridGeometryReader::intersects_bbox(
-    uint32_t fast_fid, double xmin, double ymin,
+    RowSlot fast_fid, double xmin, double ymin,
     double xmax, double ymax) const {
     GdalSpatialResult result;
     if (!std::isfinite(xmin) || !std::isfinite(ymin) ||
@@ -280,7 +282,7 @@ HybridQueryResult HybridQueryEngine::query_bbox(
     }
 
     // 第一步：.spx 空间索引候选查找（或全表扫描）。
-    std::vector<uint32_t> candidates;
+    std::vector<RowSlot> candidates;
     const auto* spx = catalog_.find_spx(resolved_.id);
     bool spx_ok = false;
     if (spx != nullptr) {
@@ -293,19 +295,14 @@ HybridQueryResult HybridQueryEngine::query_bbox(
                 geometry_field->xorig, geometry_field->yorig,
                 geometry_field->xyscale,
                 geometry_field->grid_sizes,
-                static_cast<uint32_t>(std::min<size_t>(
-                    parser_->feature_count(),
-                    std::numeric_limits<uint32_t>::max())));
+                parser_->feature_count() == 0
+                    ? 0
+                    : parser_->feature_count() - 1U);
         }
     }
 
     if (spx == nullptr || !spx_ok) {
-        const size_t count = std::min<size_t>(
-            parser_->feature_count(),
-            std::numeric_limits<uint32_t>::max());
-        candidates.reserve(count);
-        for (size_t fid = 0; fid < count; ++fid)
-            candidates.push_back(static_cast<uint32_t>(fid));
+        candidates = parser_->active_feature_fids();
         result.execution_path = "bbox:hybrid:sequential";
         result.diagnostic = spx == nullptr
             ? "spatial index missing; sequential hybrid filtering used"
@@ -318,7 +315,7 @@ HybridQueryResult HybridQueryEngine::query_bbox(
     HybridGeometryReader reader(
         *parser_, catalog_.path(), resolved_.name, options_);
     result.matched_fids.reserve(candidates.size());
-    for (uint32_t fid : candidates) {
+    for (RowSlot fid : candidates) {
         const auto spatial = reader.intersects_bbox(
             fid, xmin, ymin, xmax, ymax);
         if (spatial.backend == GeometryBackend::Gdal)

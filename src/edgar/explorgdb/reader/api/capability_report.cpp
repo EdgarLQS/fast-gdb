@@ -53,7 +53,7 @@ CapabilityReport CapabilityReport::inspect(
         case GdbGeomType::GeneralPolygon:
             report.curve_geometry = {
                 CapabilityState::Degraded,
-                "general polyline/polygon may contain curve segments; fast-gdb detects unsupported curve descriptors and does not linearize them"
+                "general polyline/polygon may contain curves; cursor defaults to bounded raw-source preservation, WKB requires explicit linearization or GDAL backend"
             };
             break;
         case GdbGeomType::MultiPatch:
@@ -61,7 +61,7 @@ CapabilityReport CapabilityReport::inspect(
         case GdbGeomType::GeneralMultiPatch:
             report.multipatch = {
                 CapabilityState::Degraded,
-                "MultiPatch coordinates are exposed as GEOMETRYCOLLECTION Z/ZM, but part type and surface topology are not preserved"
+                "Reader/Unified decode structured MultiPatch topology and emit ISO WKB TIN/MultiPolygon/GeometryCollection for complete known parts; unknown parts and opaque tails remain unsupported, and real ArcGIS parity is pending"
             };
             break;
         default:

@@ -191,6 +191,42 @@ TEST(GeometryValueToWkt, ConvertsLinePolygonAndCollections) {
               "(2 2, 2 4, 4 4, 4 2, 2 2)))");
 }
 
+TEST(GeometryValueToWkt, ConvertsIsoSurfaceTypesAndHeterogeneousCollections) {
+    const auto polygon_z = WkbBuilder().header(1003U).u32(1U).u32(4U)
+        .f64(0).f64(0).f64(1)
+        .f64(1).f64(0).f64(2)
+        .f64(1).f64(1).f64(3)
+        .f64(0).f64(0).f64(1).take();
+    const auto surface = value(
+        WkbBuilder().header(1015U).u32(1U).append(polygon_z).take())
+        .to_wkt();
+    ASSERT_TRUE(surface.has_value());
+    EXPECT_EQ(*surface,
+              "POLYHEDRALSURFACE Z (((0 0 1, 1 0 2, 1 1 3, 0 0 1)))");
+
+    const auto triangle = WkbBuilder().header(1017U).u32(1U).u32(4U)
+        .f64(0).f64(0).f64(1)
+        .f64(1).f64(0).f64(2)
+        .f64(1).f64(1).f64(3)
+        .f64(0).f64(0).f64(1).take();
+    const auto tin = value(
+        WkbBuilder().header(1016U).u32(1U).append(triangle).take())
+        .to_wkt();
+    ASSERT_TRUE(tin.has_value());
+    EXPECT_EQ(*tin, "TIN Z (((0 0 1, 1 0 2, 1 1 3, 0 0 1)))");
+
+    const auto collection = value(
+        WkbBuilder().header(1007U).u32(2U)
+            .append(WkbBuilder().header(1016U).u32(1U)
+                .append(triangle).take())
+            .append(WkbBuilder().header(1006U).u32(0U).take())
+            .take()).to_wkt();
+    ASSERT_TRUE(collection.has_value());
+    EXPECT_EQ(*collection,
+              "GEOMETRYCOLLECTION Z (TIN Z (((0 0 1, 1 0 2, 1 1 3, "
+              "0 0 1))), MULTIPOLYGON Z EMPTY)");
+}
+
 /**
  * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
  * 输入与前置条件：由测试体构造；无显式方法参数。

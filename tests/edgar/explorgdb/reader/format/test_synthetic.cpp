@@ -26,6 +26,33 @@ namespace fs = std::filesystem;
 
 using namespace explorgdb;
 
+TEST(SyntheticTest, RowSlotAndObjectIdRemainDistinctAcross32BitBoundary) {
+    const RowSlot row_slot =
+        static_cast<RowSlot>(std::numeric_limits<uint32_t>::max());
+    ObjectId object_id = 0;
+    ASSERT_TRUE(row_slot_to_object_id(row_slot, object_id));
+    EXPECT_EQ(object_id,
+              static_cast<ObjectId>(std::numeric_limits<uint32_t>::max()) + 1U);
+
+    RowSlot decoded_row_slot = 0;
+    ASSERT_TRUE(object_id_to_row_slot(object_id, decoded_row_slot));
+    EXPECT_EQ(decoded_row_slot, row_slot);
+
+    const FieldValue value = object_id_field_value(row_slot);
+    ASSERT_TRUE(std::holds_alternative<int64_t>(value));
+    EXPECT_EQ(std::get<int64_t>(value), static_cast<int64_t>(object_id));
+
+    FieldRef field;
+    field.type = FieldType::ObjectId;
+    field.implicit_value = static_cast<int64_t>(object_id);
+    EXPECT_EQ(field.as_i64(), static_cast<int64_t>(object_id));
+
+    EXPECT_FALSE(object_id_to_row_slot(0, decoded_row_slot));
+    EXPECT_FALSE(object_id_to_row_slot(
+        static_cast<ObjectId>(std::numeric_limits<int64_t>::max()) + 1U,
+        decoded_row_slot));
+}
+
 // ── 目录扫描测试（使用临时目录） ──
 
 // 测试合成的 .gdb 目录能被正确扫描
@@ -366,6 +393,69 @@ TEST(SyntheticTest, EndToEndRecords) {
     // 清理
     fs::remove(tbl_path);
     fs::remove(tablx_path);
+}
+
+TEST(SyntheticTest, SparseBlockMapReadsLogicalRowsFromCompactTableOffsets) {
+    const std::string dir = explorgdb_test::create_synthetic_gdb(
+        "test_sparse_block_read.gdb");
+    const auto table_data = explorgdb_test::build_minimal_table();
+    const std::string table_path = dir + "/a00000001.gdbtable";
+    const std::string tablx_path = dir + "/a00000001.gdbtablx";
+    {
+        std::ofstream stream(table_path, std::ios::binary);
+        stream.write(reinterpret_cast<const char*>(table_data.data.data()),
+                     static_cast<std::streamsize>(table_data.data.size()));
+        ASSERT_TRUE(stream.good());
+    }
+
+    std::vector<uint8_t> tablx_data;
+    explorgdb_test::write_u32(tablx_data, 3);
+    explorgdb_test::write_u32(tablx_data, 2);     // physical blocks
+    explorgdb_test::write_u32(tablx_data, 2049);  // logical row-slot limit
+    explorgdb_test::write_u32(tablx_data, 4);
+    for (size_t physical_index = 0; physical_index < 2048; ++physical_index) {
+        if (physical_index == 0) {
+            explorgdb_test::write_u32(
+                tablx_data, static_cast<uint32_t>(table_data.rec0_offset));
+        } else if (physical_index == 1024) {
+            explorgdb_test::write_u32(
+                tablx_data, static_cast<uint32_t>(table_data.rec1_offset));
+        } else {
+            explorgdb_test::write_u32(tablx_data, 0);
+        }
+    }
+    explorgdb_test::write_u32(tablx_data, 1);  // bitmap word count
+    explorgdb_test::write_u32(tablx_data, 3);  // logical block count
+    explorgdb_test::write_u32(tablx_data, 2);  // active physical blocks
+    explorgdb_test::write_u32(tablx_data, 2);
+    explorgdb_test::write_u8(tablx_data, 0b00000101);  // logical blocks 0, 2
+    {
+        std::ofstream stream(tablx_path, std::ios::binary);
+        stream.write(reinterpret_cast<const char*>(tablx_data.data()),
+                     static_cast<std::streamsize>(tablx_data.size()));
+        ASSERT_TRUE(stream.good());
+    }
+
+    GdbTableParser parser(table_path);
+    ASSERT_TRUE(parser.load_tablx(tablx_path));
+    ASSERT_TRUE(parser.parse_fields());
+    EXPECT_EQ(parser.feature_count(), 2049u);
+    EXPECT_EQ(parser.active_feature_count(), 2u);
+    EXPECT_FALSE(parser.has_feature(1024));
+
+    FeatureRecord first;
+    ASSERT_TRUE(parser.read_record_by_fid(0, first));
+    EXPECT_EQ(first.fid, 0u);
+    ASSERT_TRUE(std::holds_alternative<int32_t>(first.field_values[1]));
+    EXPECT_EQ(std::get<int32_t>(first.field_values[1]), 100);
+
+    FeatureRecord second;
+    ASSERT_TRUE(parser.read_record_by_fid(2048, second));
+    EXPECT_EQ(second.fid, 2048u);
+    ASSERT_TRUE(std::holds_alternative<int32_t>(second.field_values[0]));
+    EXPECT_EQ(std::get<int32_t>(second.field_values[0]), 2049);
+    EXPECT_TRUE(std::holds_alternative<std::nullptr_t>(second.field_values[1]));
+    explorgdb_test::cleanup_synthetic_gdb(dir);
 }
 
 // ── 多表目录测试 ──

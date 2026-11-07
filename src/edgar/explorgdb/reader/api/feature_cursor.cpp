@@ -7,7 +7,6 @@
 
 #include <algorithm>
 #include <functional>
-#include <limits>
 #include <sstream>
 #include <unordered_set>
 #include <utility>
@@ -44,7 +43,7 @@ bool query_result_is_error(const QueryRequest& request,
            !result.fallback_reason.empty();
 }
 
-std::string fid_error(const char* prefix, uint32_t fid) {
+std::string fid_error(const char* prefix, RowSlot fid) {
     std::ostringstream stream;
     stream << prefix << " " << fid;
     return stream.str();
@@ -82,6 +81,14 @@ public:
 
     void set_field_projection(const std::optional<std::vector<size_t>>& projection) {
         field_projection_ = projection;
+    }
+
+    void set_geometry_read_options(const GeometryReadOptions& options) {
+        geometry_read_options_ = options;
+    }
+
+    void set_include_geometry(bool include) noexcept {
+        include_geometry_ = include;
     }
 
     void set_fids_sorted(bool sorted) noexcept { fids_sorted_ = sorted; }
@@ -123,7 +130,7 @@ public:
          EngineValidCallback engine_valid,
          QueryResult query_result,
          bool profile_enabled,
-         size_t feature_limit)
+         RowSlot feature_limit)
         : table_(table),
           generation_(generation),
           acquire_(std::move(acquire)),
@@ -133,7 +140,8 @@ public:
           feature_limit_(feature_limit),
           profile_enabled_(profile_enabled),
           mode_(Mode::Sequential) {
-        if (feature_limit_ == 0) {
+        if (feature_limit_ == 0 ||
+            (table_ != nullptr && table_->active_feature_count() == 0)) {
             state_ = State::Exhausted;
             release_lease();
         }
@@ -153,7 +161,7 @@ public:
             return false;
         }
 
-        uint32_t fid = 0;
+        RowSlot fid = 0;
         if (!next_fid(fid)) {
             if (state_ == State::Ready) exhaust();
             return false;
@@ -172,7 +180,8 @@ public:
             profile_enabled_ ? &metrics : nullptr;
         if (!parser->read_feature_by_fid(
                 fid, candidate.record, candidate.geometry, metrics_ptr,
-                field_projection_.has_value() ? &*field_projection_ : nullptr)) {
+                field_projection_.has_value() ? &*field_projection_ : nullptr,
+                geometry_read_options_, include_geometry_)) {
             std::string message = candidate.geometry.diagnostic.empty()
                 ? fid_error(kErrReadFailed, fid)
                 : fid_error(kErrDecodeFailed, fid) +
@@ -194,7 +203,7 @@ public:
         return true;
     }
 
-    bool move_to(uint32_t fid) {
+    bool move_to(RowSlot fid) {
         if (state_ == State::Failed) return false;
         if (!engine_is_current() || !ensure_lease()) return false;
 
@@ -228,24 +237,22 @@ public:
                 fail(kFallbackTableUnavailable);
                 return false;
             }
-
-            size_t candidate = static_cast<size_t>(fid);
-            while (candidate < feature_limit_) {
-                if (candidate > static_cast<size_t>(
-                                    std::numeric_limits<uint32_t>::max())) {
-                    fail(kFallbackFidExceedsRange);
+            if (parser->active_feature_fids_are_dense()) {
+                if (fid >= feature_limit_) {
+                    exhaust();
                     return false;
                 }
-                if (parser->has_feature(
-                        static_cast<uint32_t>(candidate))) {
-                    break;
+                next_active_fid_index_ = static_cast<size_t>(fid);
+            } else {
+                const auto& fids = parser->active_feature_fids();
+                const auto iterator =
+                    std::lower_bound(fids.begin(), fids.end(), fid);
+                next_active_fid_index_ =
+                    static_cast<size_t>(iterator - fids.begin());
+                if (iterator == fids.end() || *iterator >= feature_limit_) {
+                    exhaust();
+                    return false;
                 }
-                ++candidate;
-            }
-            next_sequential_fid_ = candidate;
-            if (candidate >= feature_limit_) {
-                exhaust();
-                return false;
             }
         }
 
@@ -298,7 +305,7 @@ private:
         return true;
     }
 
-    bool next_fid(uint32_t& fid) {
+    bool next_fid(RowSlot& fid) {
         if (mode_ == Mode::CandidateFids) {
             const auto& fids = query_result_.matched_fids;
             if (fid_index_ >= fids.size()) return false;
@@ -311,18 +318,20 @@ private:
             fail(kFallbackTableUnavailable);
             return false;
         }
-        while (next_sequential_fid_ < feature_limit_) {
-            const size_t candidate = next_sequential_fid_++;
-            if (candidate > static_cast<size_t>(
-                                std::numeric_limits<uint32_t>::max())) {
-                fail(kFallbackFidExceedsRange);
-                return false;
+        if (parser->active_feature_fids_are_dense()) {
+            if (next_active_fid_index_ < feature_limit_) {
+                fid = next_active_fid_index_++;
+                return true;
             }
-            const uint32_t current =
-                static_cast<uint32_t>(candidate);
-            if (!parser->has_feature(current)) continue;
-            fid = current;
-            return true;
+        } else {
+            const size_t active_count = parser->active_feature_count();
+            while (next_active_fid_index_ < active_count) {
+                const RowSlot current =
+                    parser->active_feature_fid_at(next_active_fid_index_++);
+                if (current >= feature_limit_) continue;
+                fid = current;
+                return true;
+            }
         }
         return false;
     }
@@ -357,10 +366,12 @@ private:
     std::string error_;
     std::function<bool()> cancel_requested_;
     std::optional<std::vector<size_t>> field_projection_;
+    GeometryReadOptions geometry_read_options_;
+    bool include_geometry_ = true;
     bool fids_sorted_ = true;
     size_t fid_index_ = 0;
-    size_t next_sequential_fid_ = 0;
-    size_t feature_limit_ = 0;
+    size_t next_active_fid_index_ = 0;
+    RowSlot feature_limit_ = 0;
     bool profile_enabled_ = false;
     Mode mode_ = Mode::CandidateFids;
 };
@@ -384,7 +395,7 @@ bool FeatureCursor::next(QueryFeature& feature) {
 }
 
 // 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
-bool FeatureCursor::move_to(uint32_t fid) {
+bool FeatureCursor::move_to(RowSlot fid) {
     return impl_ != nullptr && impl_->move_to(fid);
 }
 
@@ -441,13 +452,13 @@ FeatureCursor QueryEngine::open_cursor(const QueryRequest& request) {
         static_cast<bool>(request.cancel_requested);
     if (request.kind == QueryKind::SequentialScan && !materialized_options) {
         result.execution_path = kPathCursorSequential;
-        const size_t feature_limit = parser_->feature_count();
+        const RowSlot feature_limit = parser_->feature_count();
         if (parser_->active_feature_count() == 0) {
             return FeatureCursor(std::make_unique<FeatureCursor::Impl>(
                 parser_.get(), 0, std::move(acquire),
                 std::move(release), std::move(engine_valid),
                 std::move(result), request.profile_feature_reads,
-                size_t(0)));
+                RowSlot(0)));
         }
 
         const uint64_t generation =
@@ -460,11 +471,14 @@ FeatureCursor QueryEngine::open_cursor(const QueryRequest& request) {
             return FeatureCursor(std::make_unique<FeatureCursor::Impl>(
                 std::move(result), kFallbackAnotherCursorActive));
         }
-        return FeatureCursor(std::make_unique<FeatureCursor::Impl>(
+        auto cursor = std::make_unique<FeatureCursor::Impl>(
             parser_.get(), generation, std::move(acquire),
             std::move(release), std::move(engine_valid),
             std::move(result), request.profile_feature_reads,
-            feature_limit));
+            feature_limit);
+        cursor->set_geometry_read_options(request.geometry_read_options);
+        cursor->set_include_geometry(request.include_geometry);
+        return FeatureCursor(std::move(cursor));
     }
 
     result = query(request);
@@ -488,10 +502,10 @@ FeatureCursor QueryEngine::open_cursor(const QueryRequest& request) {
                         result.matched_fids.end()),
             result.matched_fids.end());
     } else {
-        std::unordered_set<uint32_t> seen;
+        std::unordered_set<RowSlot> seen;
         auto end = std::remove_if(
             result.matched_fids.begin(), result.matched_fids.end(),
-            [&seen](uint32_t fid) { return !seen.insert(fid).second; });
+            [&seen](RowSlot fid) { return !seen.insert(fid).second; });
         result.matched_fids.erase(end, result.matched_fids.end());
     }
     result.record.reset();
@@ -519,6 +533,8 @@ FeatureCursor QueryEngine::open_cursor(const QueryRequest& request) {
         std::move(result), request.profile_feature_reads);
     cursor->set_cancel_callback(request.cancel_requested);
     cursor->set_field_projection(request.field_projection);
+    cursor->set_geometry_read_options(request.geometry_read_options);
+    cursor->set_include_geometry(request.include_geometry);
     cursor->set_fids_sorted(request.sort_fids);
     return FeatureCursor(std::move(cursor));
 }
@@ -540,7 +556,7 @@ bool QueryEngine::feature_cursor_active() const noexcept {
            cursor_control_->feature_cursor_active();
 }
 
-bool QueryEngine::peek_bbox_source(uint32_t fid,
+bool QueryEngine::peek_bbox_source(RowSlot fid,
                                    const uint8_t*& blob,
                                    size_t& size) {
     if (feature_cursor_active()) return false;
