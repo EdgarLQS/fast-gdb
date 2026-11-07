@@ -152,6 +152,16 @@ The full Reader runner also includes:
 - `ReaderConcurrencyTest.IndependentReadersReturnIdenticalFeatureDigests`;
 - `CorruptInputConformance.*`.
 
+## Optional historical geometry parity
+
+`RealDataReleaseContractTest.HistoricalGdbEveryNonCurveGeometryMatchesGdal`
+uses `FAST_GDB_HISTORICAL_DATASET` to compare every spatial row's NULL/EMPTY
+state and normalized output coordinates, geometry type, and Z/M dimensions
+with GDAL. Nonspatial rows must have no geometry field in either implementation.
+The test skips when no dataset is configured. The original testcurve contract
+retains its separate curve-count and fail-closed topology expectations.
+This comparison does not establish ArcGIS provenance or raw curve preservation.
+
 ## Opt-in Reader contention benchmarks
 
 - `TablxCacheBenchmarkTest.SharedHitContentionProfile` measures concurrent cache

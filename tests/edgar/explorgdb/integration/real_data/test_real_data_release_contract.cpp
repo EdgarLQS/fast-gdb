@@ -1082,13 +1082,8 @@ TEST(RealDataReleaseContractTest,
                    std::to_string(raster_fields_outside_scope));
 }
 
-TEST(RealDataReleaseContractTest,
-     SuppliedGdbEveryNonCurveGeometryMatchesGdal) {
-    const char* dataset_path = required_dataset_from_env("FAST_GDB_CURVE_DATASET");
-    if (dataset_path == nullptr) {
-        GTEST_SKIP() << "Set FAST_GDB_CURVE_DATASET to the supplied testcurve.gdb";
-    }
-
+static void verify_non_curve_geometry_dataset(
+        const char* dataset_path, bool testcurve_contract) {
     GDALAllRegister();
     std::unique_ptr<GDALDataset, decltype(&GDALClose)> dataset(
         static_cast<GDALDataset*>(GDALOpenEx(
@@ -1109,6 +1104,7 @@ TEST(RealDataReleaseContractTest,
     uint64_t total_rows = 0;
     uint64_t compared_geometries = 0;
     uint64_t empty_geometries = 0;
+    uint64_t nonspatial_rows = 0;
     uint64_t curve_rows_delegated_to_curve_contract = 0;
     uint64_t explicit_topology_failures = 0;
     uint64_t mismatches = 0;
@@ -1117,6 +1113,7 @@ TEST(RealDataReleaseContractTest,
     const auto report_mismatch = [&](const std::string& message) {
         ++mismatches;
         if (first_mismatch.empty()) first_mismatch = message;
+        ADD_FAILURE() << message;
     };
 
     for (int layer_index = 0; layer_index < dataset->GetLayerCount();
@@ -1124,8 +1121,9 @@ TEST(RealDataReleaseContractTest,
         OGRLayer* layer = dataset->GetLayer(layer_index);
         ASSERT_NE(layer, nullptr);
         const std::string layer_name = layer->GetName();
-        if (std::find(curve_layers.begin(), curve_layers.end(), layer_name) !=
-            curve_layers.end()) {
+        if (testcurve_contract &&
+            std::find(curve_layers.begin(), curve_layers.end(), layer_name) !=
+                curve_layers.end()) {
             curve_rows_delegated_to_curve_contract +=
                 static_cast<uint64_t>(std::max<GIntBig>(
                     0, layer->GetFeatureCount(TRUE)));
@@ -1158,6 +1156,17 @@ TEST(RealDataReleaseContractTest,
                 continue;
             }
 
+            if (layer->GetLayerDefn()->GetGeomFieldCount() == 0) {
+                EXPECT_EQ(std::count_if(
+                    table.fields().begin(), table.fields().end(),
+                    [](const FieldDescriptor& field) {
+                        return field.type == FieldType::Geometry;
+                    }), 0);
+                EXPECT_EQ(feature->GetGeometryRef(), nullptr);
+                ++nonspatial_rows;
+                continue;
+            }
+
             GeometryValue fast_value;
             const bool fast_read =
                 engine.table()->read_geometry_value(row_slot, fast_value);
@@ -1165,7 +1174,7 @@ TEST(RealDataReleaseContractTest,
             const bool gdal_empty =
                 gdal_geometry == nullptr || gdal_geometry->IsEmpty();
 
-            if (layer_name == "SelfIntersect_Polygon" &&
+            if (testcurve_contract && layer_name == "SelfIntersect_Polygon" &&
                 fast_value.status == GeometryStatus::TouchingRings) {
                 if (fast_read || !fast_value.wkb.empty() ||
                     fast_value.diagnostic.empty()) {
@@ -1181,7 +1190,7 @@ TEST(RealDataReleaseContractTest,
                     fast_value.status == GeometryStatus::Null ||
                     fast_value.status == GeometryStatus::Empty;
                 const bool known_degenerate_ring =
-                    layer_name == "DegenerateRing_Polygon" &&
+                    testcurve_contract && layer_name == "DegenerateRing_Polygon" &&
                     fast_value.status == GeometryStatus::Null;
                 if (!fast_empty || !fast_read || !fast_value.wkb.empty() ||
                     (!known_degenerate_ring && gdal_geometry != nullptr &&
@@ -1238,18 +1247,35 @@ TEST(RealDataReleaseContractTest,
 
     EXPECT_GT(total_rows, 0u);
     EXPECT_GT(compared_geometries, 0u);
-    EXPECT_EQ(curve_rows_delegated_to_curve_contract, 27u)
-        << "curve geometries are verified by the existing curve preservation sweep";
-    EXPECT_EQ(explicit_topology_failures, 1u)
-        << "the self-intersecting sample must remain explicitly fail-closed";
+    if (testcurve_contract) {
+        EXPECT_EQ(curve_rows_delegated_to_curve_contract, 27u)
+            << "curve geometries are verified by the existing curve preservation sweep";
+        EXPECT_EQ(explicit_topology_failures, 1u)
+            << "the self-intersecting sample must remain explicitly fail-closed";
+    }
+    testing::Test::RecordProperty("NonspatialRows", std::to_string(nonspatial_rows));
     EXPECT_EQ(mismatches, 0u) << first_mismatch;
-    RecordProperty("TotalNonCurveRows", std::to_string(total_rows));
-    RecordProperty("ComparedGeometries", std::to_string(compared_geometries));
-    RecordProperty("EmptyGeometries", std::to_string(empty_geometries));
-    RecordProperty("CurveRowsCoveredByCurveContract",
+    testing::Test::RecordProperty("TotalNonCurveRows", std::to_string(total_rows));
+    testing::Test::RecordProperty("ComparedGeometries", std::to_string(compared_geometries));
+    testing::Test::RecordProperty("EmptyGeometries", std::to_string(empty_geometries));
+    testing::Test::RecordProperty("CurveRowsCoveredByCurveContract",
                    std::to_string(curve_rows_delegated_to_curve_contract));
-    RecordProperty("ExplicitTopologyFailures",
+    testing::Test::RecordProperty("ExplicitTopologyFailures",
                    std::to_string(explicit_topology_failures));
+}
+
+TEST(RealDataReleaseContractTest,
+     SuppliedGdbEveryNonCurveGeometryMatchesGdal) {
+    const char* path = required_dataset_from_env("FAST_GDB_CURVE_DATASET");
+    if (path == nullptr) GTEST_SKIP() << "Set FAST_GDB_CURVE_DATASET to testcurve.gdb";
+    verify_non_curve_geometry_dataset(path, true);
+}
+
+TEST(RealDataReleaseContractTest,
+     HistoricalGdbEveryNonCurveGeometryMatchesGdal) {
+    const char* path = required_dataset_from_env("FAST_GDB_HISTORICAL_DATASET");
+    if (path == nullptr) GTEST_SKIP() << "Set FAST_GDB_HISTORICAL_DATASET";
+    verify_non_curve_geometry_dataset(path, false);
 }
 
 TEST(RealDataReleaseContractTest,

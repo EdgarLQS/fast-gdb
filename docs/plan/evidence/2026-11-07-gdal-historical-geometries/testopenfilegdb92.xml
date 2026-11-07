@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites tests="1" failures="0" disabled="0" errors="0" time="0.011" timestamp="2026-11-07T09:24:29.071" name="AllTests">
+  <testsuite name="RealDataReleaseContractTest" tests="1" failures="0" disabled="0" skipped="0" errors="0" time="0.011" timestamp="2026-11-07T09:24:29.071">
+    <testcase name="HistoricalGdbEveryNonCurveGeometryMatchesGdal" file="/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp" line="1274" status="run" result="completed" time="0.011" timestamp="2026-11-07T09:24:29.071" classname="RealDataReleaseContractTest">
+      <properties>
+        <property name="NonspatialRows" value="352"/>
+        <property name="TotalNonCurveRows" value="453"/>
+        <property name="ComparedGeometries" value="74"/>
+        <property name="EmptyGeometries" value="27"/>
+        <property name="CurveRowsCoveredByCurveContract" value="0"/>
+        <property name="ExplicitTopologyFailures" value="0"/>
+      </properties>
+    </testcase>
+  </testsuite>
+</testsuites>
