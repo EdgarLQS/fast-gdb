@@ -33,7 +33,7 @@ GDAL 是重要的独立实现对照，但当 GDAL 文档明确记录格式限制
 | ObjectID | v4 64 位、密集低位 ID | **合成/参考通过** | GDAL dense v4 参考读回 | 四行密集 v4 夹具和 API 读取通过。 |
 | ObjectID | 稀疏/高位/删除记录 v4 | **部分实现，验收待样本** | OpenFileGDB 官方明确称稀疏 64 位 OBJECTID 支持只读且不完整，可能输出不忠实 ID | 当前不得用 GDAL 输出单独确定行槽到 ObjectID 的映射。需 ArcGIS 原始 ID、删除/重排状态及直接读取、索引查询、全表扫描的逐项真值。 |
 | SPX / ATX | v1，4 KiB 页和 32 位 ID | **实现；以 v3 真实语料覆盖为主** | GDAL v1 parser 对照 | 合成树形索引、损坏回退与现有真实索引覆盖已通过；旧版 ArcGIS 独立样本仍未分层。 |
-| 属性索引类型 | 普通数值、字符串、日期与 GUID | **部分参考通过** | 现代库普通数值/字符串 9 个索引、312 次直接查询；INT16/FLOAT32 60 次联合查询；日期 20 次原生联合查询通过 | UUID WHERE 与 GUID 顺序回退已验证，原生 GUID ATX 未实现；v9 `.gdbindexes` 不支持，日期/时区全类型与大型 ArcGIS 索引矩阵仍待验收。见 [类型索引修复](evidence/2026-11-07-typed-atx.md)、[UUID 合同](evidence/2026-11-07-uuid-predicates.md) 与 [日期索引](evidence/2026-11-07-date-index.md)。 |
+| 属性索引类型 | 普通数值、字符串、日期与 GUID | **部分参考通过** | 现代库普通数值/字符串 9 个索引、312 次直接查询；INT16/FLOAT32 60 次联合查询；日期 20 次原生联合查询通过 | UUID WHERE 与 GUID 原生 ATX 已参考验证：现代库直接与联合各 36 次，损坏顺序回退另有合成补充；v9 `.gdbindexes` 不支持，日期/时区全类型与大型 ArcGIS 索引矩阵仍待验收。见 [类型索引修复](evidence/2026-11-07-typed-atx.md)、[UUID 合同](evidence/2026-11-07-uuid-predicates.md) 、[日期索引](evidence/2026-11-07-date-index.md) 和 [GUID 索引](evidence/2026-11-07-guid-native.md)。 |
 | SPX / ATX | v2，64 KiB 页和 64 位 ID | **合成通过** | GDAL v2 页/trailer 定义对照 | 合成测试覆盖 v2 页解析、高位索引键和分支页查询；没有 ArcGIS-authored v2 索引样本，不证明 ArcGIS writer parity。 |
 | 压缩数据 | SDC（Smart Data Compression） | **不支持** | GDAL OpenFileGDB 和 FileGDB SDK 驱动文档均记录限制 | 当前 fast-gdb 没有 SDC 解压器，也没有完整 SDC 样本。应显式 Unsupported，不按普通 v3/v4 表解析。若将来实现，需独立格式依据、ArcGIS 原始样本和解压后字段/几何真值。 |
 | 压缩数据 | CDF（Compressed Data Format） | **不支持** | OpenFileGDB 不支持；GDAL FileGDB SDK 驱动文档要求 SDK 1.4 或更高 | 当前测试构建使用 OpenFileGDB，未配置或验收 proprietary FileGDB SDK fallback。即使外部 SDK 可读，也不能把它当作 fast-gdb 原生支持。 |

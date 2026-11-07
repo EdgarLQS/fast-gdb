@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites tests="1" failures="0" disabled="0" errors="0" time="0.035" timestamp="2026-11-07T11:35:51.801" name="AllTests">
+  <testsuite name="RealDataReleaseContractTest" tests="1" failures="0" disabled="0" skipped="0" errors="0" time="0.035" timestamp="2026-11-07T11:35:51.801">
+    <testcase name="HistoricalUuidPredicatesMatchIndependentRecordScan" file="/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp" line="1603" status="run" result="completed" time="0.035" timestamp="2026-11-07T11:35:51.801" classname="RealDataReleaseContractTest">
+      <properties>
+        <property name="UuidWhereQueries" value="684"/>
+        <property name="UuidNativeIndexQueries" value="36"/>
+        <property name="UuidCombinedQueries" value="540"/>
+        <property name="UuidNativeCombinedQueries" value="36"/>
+      </properties>
+    </testcase>
+  </testsuite>
+</testsuites>

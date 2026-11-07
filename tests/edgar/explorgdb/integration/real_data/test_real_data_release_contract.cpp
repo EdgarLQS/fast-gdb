@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <iterator>
 #include <memory>
 #include <limits>
 #include <sstream>
@@ -1618,7 +1619,7 @@ TEST(RealDataReleaseContractTest, HistoricalUuidPredicatesMatchIndependentRecord
         });
         return value;
     };
-    uint64_t queries = 0, indexed_fallbacks = 0;
+    uint64_t queries = 0, indexed_queries = 0, combined_queries = 0, indexed_combined = 0;
     for (int i = 0; i < reference->GetLayerCount(); ++i) {
         OGRLayer* source = reference->GetLayer(i);
         ASSERT_NE(source, nullptr);
@@ -1635,6 +1636,7 @@ TEST(RealDataReleaseContractTest, HistoricalUuidPredicatesMatchIndependentRecord
             const int source_field = source->GetLayerDefn()->GetFieldIndex(field.name.c_str());
             ASSERT_GE(source_field, 0);
             std::vector<std::pair<RowSlot, std::string>> rows;
+            std::vector<RowSlot> spatial_fids;
             std::vector<std::string> probes = {
                 "00000000-0000-0000-0000-000000000000",
                 "ffffffff-ffff-ffff-ffff-ffffffffffff"};
@@ -1650,9 +1652,15 @@ TEST(RealDataReleaseContractTest, HistoricalUuidPredicatesMatchIndependentRecord
                 ASSERT_EQ(text.size(), 36U);
                 rows.emplace_back(static_cast<RowSlot>(feature->GetFID() - 1), text);
                 probes.push_back(text);
+                const auto* geometry = feature->GetGeometryRef();
+                if (geometry != nullptr && !geometry->IsEmpty())
+                    spatial_fids.push_back(static_cast<RowSlot>(feature->GetFID() - 1));
             }
             std::sort(probes.begin(), probes.end());
             probes.erase(std::unique(probes.begin(), probes.end()), probes.end());
+            std::sort(spatial_fids.begin(), spatial_fids.end());
+            OGREnvelope extent;
+            if (!spatial_fids.empty()) ASSERT_EQ(source->GetExtent(&extent, TRUE), OGRERR_NONE);
             const auto index = std::find_if(indexes.begin(), indexes.end(), [&](const IndexEntry& entry) {
                 return GdbIndexesParser::is_direct_field_expression(entry.column_name) &&
                     GdbIndexesParser::field_name_from_expression(entry.column_name) == field.name &&
@@ -1666,6 +1674,8 @@ TEST(RealDataReleaseContractTest, HistoricalUuidPredicatesMatchIndependentRecord
                 const auto result = engine.query(invalid);
                 EXPECT_EQ(result.status, QueryStatus::InvalidRequest);
                 EXPECT_FALSE(result.error.empty());
+                invalid.kind = QueryKind::AttributeDouble;
+                EXPECT_EQ(engine.query(invalid).status, QueryStatus::InvalidRequest);
             }
             const char* symbols[] = {"=", "!=", "<", "<=", ">", ">="};
             const AttrOp operations[] = {AttrOp::Eq, AttrOp::Ne, AttrOp::Lt,
@@ -1700,13 +1710,34 @@ TEST(RealDataReleaseContractTest, HistoricalUuidPredicatesMatchIndependentRecord
                             request.index_name = index->name;
                             request.string_value = literal;
                             request.attr_op = operations[op];
-                            auto fallback = engine.query(request);
-                            ASSERT_EQ(fallback.status, QueryStatus::Ok) << fallback.error;
-                            EXPECT_EQ(fallback.execution_path, kPathAttributeSequential);
-                            EXPECT_FALSE(fallback.fallback_reason.empty());
-                            std::sort(fallback.matched_fids.begin(), fallback.matched_fids.end());
-                            EXPECT_EQ(fallback.matched_fids, expected) << request.where_clause;
-                            ++indexed_fallbacks;
+                            auto indexed = engine.query(request);
+                            ASSERT_EQ(indexed.status, QueryStatus::Ok) << indexed.error;
+                            EXPECT_EQ(indexed.execution_path, kPathAttributeAtx);
+                            EXPECT_TRUE(indexed.fallback_reason.empty());
+                            std::sort(indexed.matched_fids.begin(), indexed.matched_fids.end());
+                            EXPECT_EQ(indexed.matched_fids, expected) << request.where_clause;
+                            ++indexed_queries;
+                        }
+                        if (!spatial_fids.empty()) {
+                            std::vector<RowSlot> spatial_expected;
+                            std::set_intersection(expected.begin(), expected.end(),
+                                spatial_fids.begin(), spatial_fids.end(),
+                                std::back_inserter(spatial_expected));
+                            request.kind = QueryKind::SpatialWhere;
+                            request.xmin = extent.MinX - 1;
+                            request.ymin = extent.MinY - 1;
+                            request.xmax = extent.MaxX + 1;
+                            request.ymax = extent.MaxY + 1;
+                            auto combined = engine.query(request);
+                            ASSERT_EQ(combined.status, QueryStatus::Ok) << combined.error;
+                            std::sort(combined.matched_fids.begin(), combined.matched_fids.end());
+                            EXPECT_EQ(combined.matched_fids, spatial_expected) << request.where_clause;
+                            if (index != indexes.end()) {
+                                EXPECT_TRUE(combined.combined_metrics.used_attribute_index)
+                                    << combined.fallback_reason;
+                                ++indexed_combined;
+                            }
+                            ++combined_queries;
                         }
                     }
                 }
@@ -1715,7 +1746,9 @@ TEST(RealDataReleaseContractTest, HistoricalUuidPredicatesMatchIndependentRecord
     }
     EXPECT_GT(queries, 0U);
     RecordProperty("UuidWhereQueries", std::to_string(queries));
-    RecordProperty("UuidIndexSequentialFallbacks", std::to_string(indexed_fallbacks));
+    RecordProperty("UuidNativeIndexQueries", std::to_string(indexed_queries));
+    RecordProperty("UuidCombinedQueries", std::to_string(combined_queries));
+    RecordProperty("UuidNativeCombinedQueries", std::to_string(indexed_combined));
 }
 
 TEST(RealDataReleaseContractTest,

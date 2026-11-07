@@ -234,28 +234,28 @@ AttributeCandidatePlan resolve_attribute_index(
     if (predicate.field_index >= fields.size()) {
         return fail("attribute field metadata unavailable");
     }
-    // The current numeric comparator maps NaN to equality, so indexed !=
-    // could exclude a row accepted by the canonical WHERE evaluator. String
-    // != is also unsafe with padded/truncated index keys.
-    if (predicate.op == AttrOp::Ne) {
+    const FieldType field_type = fields[predicate.field_index].type;
+    const bool uuid_field = field_type == FieldType::UUID_1 || field_type == FieldType::UUID_2;
+    // Numeric NaN and padded/truncated string keys make != candidates unsafe.
+    // Fixed canonical GUID keys do not have those ambiguities.
+    if (predicate.op == AttrOp::Ne && !uuid_field) {
         return fail(
             "not-equal is not safely indexable; spatial candidates evaluated");
     }
 
-    const FieldType field_type = fields[predicate.field_index].type;
     if (predicate.is_string) {
-        if (field_type != FieldType::String) {
+        if (field_type != FieldType::String && !uuid_field) {
             return fail(
                 "attribute index type mismatch; spatial candidates evaluated");
         }
         // OpenFileGDB only treats equality and GE string iterators as safe
         // candidate supersets. Padding/truncation means both still require a
         // final expression recheck.
-        if (predicate.op != AttrOp::Eq && predicate.op != AttrOp::Ge) {
+        if (!uuid_field && predicate.op != AttrOp::Eq && predicate.op != AttrOp::Ge) {
             return fail(
                 "string operator is not safely indexable; spatial candidates evaluated");
         }
-        if (!string_index_key_supported(predicate.string_value)) {
+        if (!uuid_field && !string_index_key_supported(predicate.string_value)) {
             return fail(
                 "string key is not safely representable by the current .atx decoder; spatial candidates evaluated");
         }

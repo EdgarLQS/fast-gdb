@@ -1,0 +1,110 @@
+Note: Google Test filter = SpatialWhereUuidTest.*:AttributeIndexSafetyTest.*:OleDateTest.*:QueryWhereInternalTest.*
+[==========] Running 46 tests from 4 test suites.
+[----------] Global test environment set-up.
+[----------] 15 tests from OleDateTest
+[ RUN      ] OleDateTest.Zero
+[       OK ] OleDateTest.Zero (2 ms)
+[ RUN      ] OleDateTest.OneDay
+[       OK ] OleDateTest.OneDay (0 ms)
+[ RUN      ] OleDateTest.Noon
+[       OK ] OleDateTest.Noon (0 ms)
+[ RUN      ] OleDateTest.UnixEpoch
+[       OK ] OleDateTest.UnixEpoch (0 ms)
+[ RUN      ] OleDateTest.KnownDate
+[       OK ] OleDateTest.KnownDate (0 ms)
+[ RUN      ] OleDateTest.TimeOnly
+[       OK ] OleDateTest.TimeOnly (0 ms)
+[ RUN      ] OleDateTest.DateTimeString
+[       OK ] OleDateTest.DateTimeString (0 ms)
+[ RUN      ] OleDateTest.PreservesMillisecondPrecision
+[       OK ] OleDateTest.PreservesMillisecondPrecision (0 ms)
+[ RUN      ] OleDateTest.RoundsMillisecondCarryAcrossDayBoundary
+[       OK ] OleDateTest.RoundsMillisecondCarryAcrossDayBoundary (0 ms)
+[ RUN      ] OleDateTest.DateOnlyString
+[       OK ] OleDateTest.DateOnlyString (0 ms)
+[ RUN      ] OleDateTest.NegativeDate
+[       OK ] OleDateTest.NegativeDate (0 ms)
+[ RUN      ] OleDateTest.NegativeDateWithFraction
+[       OK ] OleDateTest.NegativeDateWithFraction (0 ms)
+[ RUN      ] OleDateTest.NegativeDateTime
+[       OK ] OleDateTest.NegativeDateTime (0 ms)
+[ RUN      ] OleDateTest.FormatsCalendarDatesOutsideNanosecondClockRange
+[       OK ] OleDateTest.FormatsCalendarDatesOutsideNanosecondClockRange (0 ms)
+[ RUN      ] OleDateTest.CheckedMillisecondsRejectNonfiniteAndOverflowWithoutChangingOutput
+[       OK ] OleDateTest.CheckedMillisecondsRejectNonfiniteAndOverflowWithoutChangingOutput (0 ms)
+[----------] 15 tests from OleDateTest (2 ms total)
+
+[----------] 13 tests from AttributeIndexSafetyTest
+[ RUN      ] AttributeIndexSafetyTest.ValidSingleLeafStillParses
+[       OK ] AttributeIndexSafetyTest.ValidSingleLeafStillParses (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.DirectNumericQueryMatchesMaterializedQuery
+[       OK ] AttributeIndexSafetyTest.DirectNumericQueryMatchesMaterializedQuery (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.DirectInt64QueryPreservesAdjacentLargeValues
+[       OK ] AttributeIndexSafetyTest.DirectInt64QueryPreservesAdjacentLargeValues (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.VersionTwoParsesAndQueries64BitObjectIds
+[       OK ] AttributeIndexSafetyTest.VersionTwoParsesAndQueries64BitObjectIds (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.DirectQueryNavigatesAndStopsAtRange
+[       OK ] AttributeIndexSafetyTest.DirectQueryNavigatesAndStopsAtRange (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.InvalidUnselectedBranchFailsClosed
+[       OK ] AttributeIndexSafetyTest.InvalidUnselectedBranchFailsClosed (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.TrailerCountMismatchFailsClosed
+[       OK ] AttributeIndexSafetyTest.TrailerCountMismatchFailsClosed (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.CyclicLeafChainFailsClosed
+[       OK ] AttributeIndexSafetyTest.CyclicLeafChainFailsClosed (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.ZeroFidFailsClosed
+[       OK ] AttributeIndexSafetyTest.ZeroFidFailsClosed (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.SmallIntegerKeysKeepTheirSignedOrder
+[       OK ] AttributeIndexSafetyTest.SmallIntegerKeysKeepTheirSignedOrder (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.Float32SchemaSelectsFloatingPointKeys
+[       OK ] AttributeIndexSafetyTest.Float32SchemaSelectsFloatingPointKeys (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.TemporalMillisecondsKeepEqualKeysAcrossLeafBoundaries
+[       OK ] AttributeIndexSafetyTest.TemporalMillisecondsKeepEqualKeysAcrossLeafBoundaries (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.UuidAsciiKeysUseTypedCanonicalOrderAcrossPages
+[       OK ] AttributeIndexSafetyTest.UuidAsciiKeysUseTypedCanonicalOrderAcrossPages (3 ms)
+[----------] 13 tests from AttributeIndexSafetyTest (8 ms total)
+
+[----------] 16 tests from QueryWhereInternalTest
+[ RUN      ] QueryWhereInternalTest.CompilesAndEvaluatesExistingWhereSubset
+[       OK ] QueryWhereInternalTest.CompilesAndEvaluatesExistingWhereSubset (0 ms)
+[ RUN      ] QueryWhereInternalTest.IdentifiesOnlySingleCompatibleComparisonAsIndexable
+[       OK ] QueryWhereInternalTest.IdentifiesOnlySingleCompatibleComparisonAsIndexable (0 ms)
+[ RUN      ] QueryWhereInternalTest.PreservesNullAndEscapedStringSemantics
+[       OK ] QueryWhereInternalTest.PreservesNullAndEscapedStringSemantics (0 ms)
+[ RUN      ] QueryWhereInternalTest.AppliesSqlNullTruthTablesToCompoundPredicates
+[       OK ] QueryWhereInternalTest.AppliesSqlNullTruthTablesToCompoundPredicates (0 ms)
+[ RUN      ] QueryWhereInternalTest.ParsesTypedTemporalLiteralsAndComparesMillis
+[       OK ] QueryWhereInternalTest.ParsesTypedTemporalLiteralsAndComparesMillis (0 ms)
+[ RUN      ] QueryWhereInternalTest.RejectsTemporalTypeMismatchAndInvalidLiterals
+[       OK ] QueryWhereInternalTest.RejectsTemporalTypeMismatchAndInvalidLiterals (0 ms)
+[ RUN      ] QueryWhereInternalTest.NotEqualTreatsNaNAsDifferent
+[       OK ] QueryWhereInternalTest.NotEqualTreatsNaNAsDifferent (0 ms)
+[ RUN      ] QueryWhereInternalTest.ReportsInvalidRequestsDistinctly
+[       OK ] QueryWhereInternalTest.ReportsInvalidRequestsDistinctly (0 ms)
+[ RUN      ] QueryWhereInternalTest.EvaluatesMaterializedFeatureRecords
+[       OK ] QueryWhereInternalTest.EvaluatesMaterializedFeatureRecords (0 ms)
+[ RUN      ] QueryWhereInternalTest.ComparesInt64LiteralsWithoutDoubleRounding
+[       OK ] QueryWhereInternalTest.ComparesInt64LiteralsWithoutDoubleRounding (0 ms)
+[ RUN      ] QueryWhereInternalTest.ComparesIntegerFieldsAndFloatingLiteralsExactly
+[       OK ] QueryWhereInternalTest.ComparesIntegerFieldsAndFloatingLiteralsExactly (0 ms)
+[ RUN      ] QueryWhereInternalTest.ComparesDoubleFieldsAgainstExactIntegerLiterals
+[       OK ] QueryWhereInternalTest.ComparesDoubleFieldsAgainstExactIntegerLiterals (0 ms)
+[ RUN      ] QueryWhereInternalTest.IntersectsSortedFidsLinearlyAndUniquely
+[       OK ] QueryWhereInternalTest.IntersectsSortedFidsLinearlyAndUniquely (0 ms)
+[ RUN      ] QueryWhereInternalTest.IntersectsSortedFidsAcross32BitBoundary
+[       OK ] QueryWhereInternalTest.IntersectsSortedFidsAcross32BitBoundary (0 ms)
+[ RUN      ] QueryWhereInternalTest.UuidPredicatesCompareValuesAcrossRowRepresentations
+[       OK ] QueryWhereInternalTest.UuidPredicatesCompareValuesAcrossRowRepresentations (0 ms)
+[ RUN      ] QueryWhereInternalTest.TemporalPredicatesKeepWideCalendarOrder
+[       OK ] QueryWhereInternalTest.TemporalPredicatesKeepWideCalendarOrder (0 ms)
+[----------] 16 tests from QueryWhereInternalTest (0 ms total)
+
+[----------] 2 tests from SpatialWhereUuidTest
+[ RUN      ] SpatialWhereUuidTest.SyntheticGuidIndexMatchesGdalRecordScanAcrossPages
+[       OK ] SpatialWhereUuidTest.SyntheticGuidIndexMatchesGdalRecordScanAcrossPages (66 ms)
+[ RUN      ] SpatialWhereUuidTest.DamagedGuidIndexFallsBackToValueScan
+[       OK ] SpatialWhereUuidTest.DamagedGuidIndexFallsBackToValueScan (11 ms)
+[----------] 2 tests from SpatialWhereUuidTest (78 ms total)
+
+[----------] Global test environment tear-down
+[==========] 46 tests from 4 test suites ran. (89 ms total)
+[  PASSED  ] 46 tests.

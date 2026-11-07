@@ -271,3 +271,7 @@ FAST_GDB_CURVE_DATASET="$PWD/test_data/gdb/参数化数据_liqs.gdb" \
 ### 2026-11-07：日期 ATX typed literal 联合查询
 
 接通 DateTime/Date/Time 毫秒谓词与分页 ATX 查询，同毫秒不同 double 键可跨页完整匹配；原始 double API 保留物理值语义，TimestampOffset 继续顺序候选。现代库 456 次 WHERE / 360 次联合查询通过，其中 20 次实际使用日期 ATX；92/93 各 408/312 次完整 FID 一致，未将其旧索引元数据算作支持。最新 Release 594 PASS / 19 SKIP / 0 FAIL，GDAL-free ASan/UBSan/LSan 415 PASS / 5 SKIP / 0 FAIL，macOS 日期/WHERE/ATX 43/43。详见 [提交内容与证据](evidence/2026-11-07-date-index.md)。真实 Date-only/Time-only/Offset 索引、v9 元数据、GUID 原生 ATX 和原计划平台/语料门禁仍未完成。
+
+### 2026-11-07：GUID 原生 ATX 与联合查询
+
+GUID/GlobalID 根据字段类型解析 38 字节规范 ASCII 键，支持物化、分页和六运算符联合查询；损坏时回退顺序值比较。现代参考库 36 次直接、36 次原生联合查询通过，三库 UUID WHERE/联合完整 FID 集合一致；v9 元数据仍未支持。另有 v1/v2 高位 FID 合成页和明确合成索引的 GDAL GUID 表补充，未当作 ArcGIS 索引验收。Release 597 PASS / 19 SKIP / 0 FAIL，GDAL-free ASan/UBSan/LSan 416 PASS / 5 SKIP / 0 FAIL，macOS 专项 46/46。见 [提交、来源、证据和剩余项](evidence/2026-11-07-guid-native.md)。CLI 旧入口类型传递、v9、大型多值 ArcGIS GUID 索引和原计划平台/语料门禁仍待完成。

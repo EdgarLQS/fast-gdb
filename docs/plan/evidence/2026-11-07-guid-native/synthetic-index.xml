@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites tests="2" failures="0" disabled="0" errors="0" time="0.025" timestamp="2026-11-07T11:33:43.353" name="AllTests">
+  <testsuite name="SpatialWhereUuidTest" tests="2" failures="0" disabled="0" skipped="0" errors="0" time="0.025" timestamp="2026-11-07T11:33:43.353">
+    <testcase name="SyntheticGuidIndexMatchesGdalRecordScanAcrossPages" file="/src/tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_uuid.cpp" line="247" status="run" result="completed" time="0.019" timestamp="2026-11-07T11:33:43.353" classname="SpatialWhereUuidTest">
+      <properties>
+        <property name="GuidDirectAndCombinedQueries" value="120"/>
+      </properties>
+    </testcase>
+    <testcase name="DamagedGuidIndexFallsBackToValueScan" file="/src/tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_uuid.cpp" line="251" status="run" result="completed" time="0.006" timestamp="2026-11-07T11:33:43.372" classname="SpatialWhereUuidTest">
+      <properties>
+        <property name="GuidDirectAndCombinedQueries" value="120"/>
+      </properties>
+    </testcase>
+  </testsuite>
+</testsuites>

@@ -1,0 +1,681 @@
+Note: Google Test filter = AttributeIndexSafetyTest.UuidAsciiKeysUseTypedCanonicalOrderAcrossPages:RealDataReleaseContractTest.HistoricalUuidPredicatesMatchIndependentRecordScan
+[==========] Running 2 tests from 2 test suites.
+[----------] Global test environment set-up.
+[----------] 1 test from AttributeIndexSafetyTest
+[ RUN      ] AttributeIndexSafetyTest.UuidAsciiKeysUseTypedCanonicalOrderAcrossPages
+/src/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:616: Failure
+Expected equality of these values:
+  materialized.query_string(literal, item.first)
+    Which is: {}
+  item.second
+    Which is: { 2, 3 }
+
+/src/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:619: Failure
+Value of: direct.query_string_direct(literal, item.first, 6, result, &metrics)
+  Actual: false
+Expected: true
+
+[  FAILED  ] AttributeIndexSafetyTest.UuidAsciiKeysUseTypedCanonicalOrderAcrossPages (0 ms)
+[----------] 1 test from AttributeIndexSafetyTest (0 ms total)
+
+[----------] 1 test from RealDataReleaseContractTest
+[ RUN      ] RealDataReleaseContractTest.HistoricalUuidPredicatesMatchIndependentRecordScan
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1705: Failure
+Expected equality of these values:
+  indexed.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1706: Failure
+Value of: indexed.fallback_reason.empty()
+  Actual: false
+Expected: true
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1705: Failure
+Expected equality of these values:
+  indexed.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1706: Failure
+Value of: indexed.fallback_reason.empty()
+  Actual: false
+Expected: true
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1705: Failure
+Expected equality of these values:
+  indexed.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1706: Failure
+Value of: indexed.fallback_reason.empty()
+  Actual: false
+Expected: true
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1705: Failure
+Expected equality of these values:
+  indexed.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1706: Failure
+Value of: indexed.fallback_reason.empty()
+  Actual: false
+Expected: true
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1705: Failure
+Expected equality of these values:
+  indexed.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1706: Failure
+Value of: indexed.fallback_reason.empty()
+  Actual: false
+Expected: true
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1705: Failure
+Expected equality of these values:
+  indexed.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1706: Failure
+Value of: indexed.fallback_reason.empty()
+  Actual: false
+Expected: true
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1705: Failure
+Expected equality of these values:
+  indexed.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1706: Failure
+Value of: indexed.fallback_reason.empty()
+  Actual: false
+Expected: true
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1705: Failure
+Expected equality of these values:
+  indexed.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1706: Failure
+Value of: indexed.fallback_reason.empty()
+  Actual: false
+Expected: true
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1705: Failure
+Expected equality of these values:
+  indexed.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1706: Failure
+Value of: indexed.fallback_reason.empty()
+  Actual: false
+Expected: true
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1705: Failure
+Expected equality of these values:
+  indexed.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1706: Failure
+Value of: indexed.fallback_reason.empty()
+  Actual: false
+Expected: true
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1705: Failure
+Expected equality of these values:
+  indexed.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1706: Failure
+Value of: indexed.fallback_reason.empty()
+  Actual: false
+Expected: true
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1705: Failure
+Expected equality of these values:
+  indexed.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1706: Failure
+Value of: indexed.fallback_reason.empty()
+  Actual: false
+Expected: true
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1705: Failure
+Expected equality of these values:
+  indexed.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1706: Failure
+Value of: indexed.fallback_reason.empty()
+  Actual: false
+Expected: true
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1705: Failure
+Expected equality of these values:
+  indexed.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1706: Failure
+Value of: indexed.fallback_reason.empty()
+  Actual: false
+Expected: true
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1705: Failure
+Expected equality of these values:
+  indexed.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1706: Failure
+Value of: indexed.fallback_reason.empty()
+  Actual: false
+Expected: true
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1705: Failure
+Expected equality of these values:
+  indexed.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1706: Failure
+Value of: indexed.fallback_reason.empty()
+  Actual: false
+Expected: true
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1705: Failure
+Expected equality of these values:
+  indexed.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1706: Failure
+Value of: indexed.fallback_reason.empty()
+  Actual: false
+Expected: true
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1705: Failure
+Expected equality of these values:
+  indexed.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1706: Failure
+Value of: indexed.fallback_reason.empty()
+  Actual: false
+Expected: true
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1705: Failure
+Expected equality of these values:
+  indexed.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1706: Failure
+Value of: indexed.fallback_reason.empty()
+  Actual: false
+Expected: true
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1705: Failure
+Expected equality of these values:
+  indexed.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1706: Failure
+Value of: indexed.fallback_reason.empty()
+  Actual: false
+Expected: true
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1705: Failure
+Expected equality of these values:
+  indexed.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1706: Failure
+Value of: indexed.fallback_reason.empty()
+  Actual: false
+Expected: true
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1705: Failure
+Expected equality of these values:
+  indexed.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1706: Failure
+Value of: indexed.fallback_reason.empty()
+  Actual: false
+Expected: true
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1705: Failure
+Expected equality of these values:
+  indexed.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1706: Failure
+Value of: indexed.fallback_reason.empty()
+  Actual: false
+Expected: true
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1705: Failure
+Expected equality of these values:
+  indexed.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1706: Failure
+Value of: indexed.fallback_reason.empty()
+  Actual: false
+Expected: true
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1705: Failure
+Expected equality of these values:
+  indexed.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1706: Failure
+Value of: indexed.fallback_reason.empty()
+  Actual: false
+Expected: true
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1705: Failure
+Expected equality of these values:
+  indexed.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1706: Failure
+Value of: indexed.fallback_reason.empty()
+  Actual: false
+Expected: true
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1705: Failure
+Expected equality of these values:
+  indexed.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1706: Failure
+Value of: indexed.fallback_reason.empty()
+  Actual: false
+Expected: true
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1705: Failure
+Expected equality of these values:
+  indexed.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1706: Failure
+Value of: indexed.fallback_reason.empty()
+  Actual: false
+Expected: true
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1705: Failure
+Expected equality of these values:
+  indexed.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1706: Failure
+Value of: indexed.fallback_reason.empty()
+  Actual: false
+Expected: true
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1705: Failure
+Expected equality of these values:
+  indexed.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1706: Failure
+Value of: indexed.fallback_reason.empty()
+  Actual: false
+Expected: true
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1705: Failure
+Expected equality of these values:
+  indexed.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1706: Failure
+Value of: indexed.fallback_reason.empty()
+  Actual: false
+Expected: true
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1705: Failure
+Expected equality of these values:
+  indexed.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1706: Failure
+Value of: indexed.fallback_reason.empty()
+  Actual: false
+Expected: true
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1705: Failure
+Expected equality of these values:
+  indexed.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1706: Failure
+Value of: indexed.fallback_reason.empty()
+  Actual: false
+Expected: true
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1705: Failure
+Expected equality of these values:
+  indexed.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1706: Failure
+Value of: indexed.fallback_reason.empty()
+  Actual: false
+Expected: true
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1705: Failure
+Expected equality of these values:
+  indexed.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1706: Failure
+Value of: indexed.fallback_reason.empty()
+  Actual: false
+Expected: true
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1705: Failure
+Expected equality of these values:
+  indexed.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1706: Failure
+Value of: indexed.fallback_reason.empty()
+  Actual: false
+Expected: true
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1634: guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1625: point
+
+[  FAILED  ] RealDataReleaseContractTest.HistoricalUuidPredicatesMatchIndependentRecordScan (14 ms)
+[----------] 1 test from RealDataReleaseContractTest (14 ms total)
+
+[----------] Global test environment tear-down
+[==========] 2 tests from 2 test suites ran. (14 ms total)
+[  PASSED  ] 0 tests.
+[  FAILED  ] 2 tests, listed below:
+[  FAILED  ] AttributeIndexSafetyTest.UuidAsciiKeysUseTypedCanonicalOrderAcrossPages
+[  FAILED  ] RealDataReleaseContractTest.HistoricalUuidPredicatesMatchIndependentRecordScan
+
+ 2 FAILED TESTS

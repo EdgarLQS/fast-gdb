@@ -563,3 +563,106 @@ TEST(AttributeIndexSafetyTest, TemporalMillisecondsKeepEqualKeysAcrossLeafBounda
         fs::remove(path);
     }
 }
+
+TEST(AttributeIndexSafetyTest, UuidAsciiKeysUseTypedCanonicalOrderAcrossPages) {
+    for (uint32_t version : {1U, 2U}) {
+        SCOPED_TRACE(version);
+        const auto path = safety_path("uuid_ascii_two_leaf_" + std::to_string(version));
+        const size_t page_size = version == 1 ? GdbAttributeIndexParser::kPageSize
+                                              : GdbAttributeIndexParser::kV2PageSize;
+        const size_t trailer_size = version == 1 ? GdbAttributeIndexParser::kTrailerSize
+                                                 : GdbAttributeIndexParser::kV2TrailerSize;
+        const size_t oid_size = version == 1 ? 4 : 8;
+        const size_t leaf_header = version == 1 ? 12 : 20;
+        const size_t branch_header = version == 1 ? 8 : 12;
+        const size_t capacity = (page_size - leaf_header) / (oid_size + 38);
+        const size_t values_offset = leaf_header + capacity * oid_size;
+        const RowSlot fid_base = version == 1 ? 0 : RowSlot{1} << 40;
+        const std::string keys[] = {
+            "{00000000-0000-0000-0000-000000000000}",
+            "{01234567-89AB-CDEF-0123-456789ABCDEF}",
+            "{12345678-9ABC-DEF0-1234-567890ABCDEF}",
+            "{12345678-9ABC-DEF0-1234-567890ABCDEF}",
+            "{ABCDEF01-2345-6789-ABCD-EF0123456789}",
+            "{FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF}"};
+        std::vector<uint8_t> bytes(3 * page_size + trailer_size, 0);
+        const auto write_oid = [&](size_t offset, uint64_t value) {
+            if (version == 1) write_u32_le(bytes, offset, static_cast<uint32_t>(value));
+            else write_u64_le(bytes, offset, value);
+        };
+        write_u32_le(bytes, oid_size, 2);
+        write_oid(branch_header, 2);
+        write_oid(branch_header + oid_size, 3);
+        std::memcpy(bytes.data() + values_offset, keys[2].data(), 38);
+        std::memcpy(bytes.data() + values_offset + 38, keys[5].data(), 38);
+        write_oid(page_size, 3);
+        for (size_t leaf = 0; leaf < 2; ++leaf) {
+            const size_t offset = (leaf + 1) * page_size;
+            write_u32_le(bytes, offset + oid_size, 3);
+            for (size_t i = 0; i < 3; ++i) {
+                write_oid(offset + leaf_header + oid_size * i, fid_base + leaf * 3 + i + 1);
+                std::memcpy(bytes.data() + offset + values_offset + i * 38,
+                            keys[leaf * 3 + i].data(), 38);
+            }
+        }
+        const size_t trailer = 3 * page_size;
+        bytes[trailer] = 38; // GUID keys use ASCII and neither string nor numeric flags.
+        write_u32_le(bytes, trailer + 2, 1);
+        write_u32_le(bytes, trailer + 6, 2);
+        write_oid(trailer + 10, 6);
+        write_u32_le(bytes, trailer + trailer_size - 4, version);
+        const auto save = [&]() {
+            std::ofstream file(path, std::ios::binary | std::ios::trunc);
+            file.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+            return file.good();
+        };
+        ASSERT_TRUE(save());
+        std::vector<std::pair<AttrOp, std::vector<RowSlot>>> expected = {
+            {AttrOp::Eq, {2, 3}}, {AttrOp::Ne, {0, 1, 4, 5}},
+            {AttrOp::Lt, {0, 1}}, {AttrOp::Le, {0, 1, 2, 3}},
+            {AttrOp::Gt, {4, 5}}, {AttrOp::Ge, {2, 3, 4, 5}}};
+        for (auto& comparison : expected)
+            for (auto& fid : comparison.second) fid += fid_base;
+        for (FieldType type : {FieldType::UUID_1, FieldType::UUID_2}) {
+            GdbAttributeIndexParser materialized(path, type), direct(path, type);
+            ASSERT_TRUE(materialized.parse());
+            EXPECT_TRUE(materialized.query_double(0.0, AttrOp::Eq).empty());
+            for (const auto& literal : {keys[2], std::string("12345678-9abc-def0-1234-567890abcdef")}) {
+                for (const auto& item : expected) {
+                    EXPECT_EQ(materialized.query_string(literal, item.first), item.second);
+                    std::vector<RowSlot> result;
+                    AttributeIndexQueryMetrics metrics;
+                    ASSERT_TRUE(direct.query_string_direct(literal, item.first, fid_base + 6, result, &metrics));
+                    EXPECT_EQ(result, item.second);
+                    EXPECT_EQ(metrics.page_count, 3U);
+                }
+            }
+            std::vector<RowSlot> unchanged{99};
+            EXPECT_FALSE(direct.query_string_direct("bad-uuid", AttrOp::Eq, 6, unchanged));
+            EXPECT_EQ(unchanged, (std::vector<RowSlot>{99}));
+        }
+        // An unknown physical representation must not be published as numeric zero.
+        GdbAttributeIndexParser untyped(path);
+        EXPECT_FALSE(untyped.parse());
+        bytes[page_size + values_offset] = '[';
+        ASSERT_TRUE(save());
+        GdbAttributeIndexParser damaged(path, FieldType::UUID_1);
+        EXPECT_FALSE(damaged.parse());
+        std::vector<RowSlot> unchanged{99};
+        EXPECT_FALSE(damaged.query_string_direct(keys[2], AttrOp::Eq, fid_base + 6, unchanged));
+        EXPECT_EQ(unchanged, (std::vector<RowSlot>{99}));
+        bytes.assign(trailer_size, 0);
+        bytes[0] = 38;
+        write_u32_le(bytes, 2, 1);
+        write_u32_le(bytes, trailer_size - 4, version);
+        ASSERT_TRUE(save());
+        GdbAttributeIndexParser empty(path, FieldType::UUID_2);
+        ASSERT_TRUE(empty.parse());
+        ASSERT_TRUE(empty.query_string_direct(keys[2], AttrOp::Eq, 6, unchanged));
+        EXPECT_TRUE(unchanged.empty());
+        unchanged = {99};
+        EXPECT_FALSE(empty.query_string_direct("bad-uuid", AttrOp::Eq, 6, unchanged));
+        EXPECT_EQ(unchanged, (std::vector<RowSlot>{99}));
+        fs::remove(path);
+    }
+}

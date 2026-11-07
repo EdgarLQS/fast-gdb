@@ -179,9 +179,14 @@ See [typed ATX evidence](../docs/plan/evidence/2026-11-07-typed-atx.md).
 
 `HistoricalUuidPredicatesMatchIndependentRecordScan` uses the same environment
 variable and independently scans GDAL UUID fields. It compares six WHERE
-operators with lowercase and uppercase/braced literals, and verifies recognized
-GUID ATX requests use a correct sequential fallback. It does not claim native
-GUID index support. See [UUID evidence](../docs/plan/evidence/2026-11-07-uuid-predicates.md).
+operators with lowercase and uppercase/braced literals. Recognized GUID ATX
+requests and SpatialWhere comparisons now require native index use, with full
+FID parity. Legacy v9 metadata remains unsupported. Historical scope and
+synthetic supplements are distinguished in [GUID native evidence](../docs/plan/evidence/2026-11-07-guid-native.md).
+`AttributeIndexSafetyTest.UuidAsciiKeysUseTypedCanonicalOrderAcrossPages`
+checks v1/v2 layouts and high 64-bit FIDs. `SpatialWhereUuidTest.*` uses GDAL-written
+GUID rows with explicitly synthetic multileaf ATX to verify normal and damaged
+index paths; these are not ArcGIS-authored index acceptance.
 
 `HistoricalDatePredicatesMatchIndependentRecordScan` independently converts GDAL
 DateTime calendar components with CPL date functions, then checks six WHERE and

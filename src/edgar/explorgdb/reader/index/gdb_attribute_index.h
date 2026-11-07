@@ -51,7 +51,7 @@ public:
 
     /** 创建属性索引解析器。
      * @param file_path atx 文件路径。
-     * @param field_type 源字段类型；4 字节键必须据此区分 INT32 与 FLOAT32。
+     * @param field_type 源字段类型；4 字节键据此区分 INT32/FLOAT32，GUID ASCII 键需传 UUID 类型。
      */
     explicit GdbAttributeIndexParser(
         const std::string& file_path,

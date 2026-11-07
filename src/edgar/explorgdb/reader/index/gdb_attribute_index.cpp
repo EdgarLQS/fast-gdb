@@ -6,6 +6,7 @@
 #include "gdb_attribute_index.h"
 #include "binary_reader.h"
 #include "explorgdb_constants.h"
+#include "uuid_value.h"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -170,6 +171,12 @@ bool GdbAttributeIndexParser::parse_trailer() {
     reader.skip(reserved_bytes);
     const uint32_t stored_version = reader.read_u32();
 
+    const bool uuid_field = field_type_ == FieldType::UUID_1 || field_type_ == FieldType::UUID_2;
+    if (uuid_field) {
+        if (trailer_.value_size != 38U || trailer_.is_string || trailer_.is_numeric) return false;
+    } else if (!trailer_.is_string && !trailer_.is_numeric) {
+        return false;
+    }
     return trailer_.magic1 == 1U && stored_version == trailer_.version;
 }
 
@@ -304,7 +311,13 @@ AttributeIndexEntry GdbAttributeIndexParser::decode_value(
     AttributeIndexEntry entry;
     entry.fid = fid;
 
-    if (is_string) {
+    if (field_type_ == FieldType::UUID_1 || field_type_ == FieldType::UUID_2) {
+        const std::string_view key(reinterpret_cast<const char*>(bytes), value_size);
+        if (!is_canonical_uuid_index_key(key))
+            throw std::out_of_range("invalid GUID attribute index key");
+        entry.string_value.assign(key.data(), key.size());
+        entry.numeric_value = std::nan("");
+    } else if (is_string) {
         const int character_count = value_size / 2;
         std::string value;
         for (int index = 0; index < character_count; ++index) {
@@ -379,6 +392,7 @@ std::vector<RowSlot> GdbAttributeIndexParser::query_double(
     double value,
     AttrOp op) const {
     std::vector<RowSlot> result;
+    if (field_type_ == FieldType::UUID_1 || field_type_ == FieldType::UUID_2) return result;
     const std::string unused;
 
     for (const AttributeIndexEntry& entry : all_entries_) {
@@ -404,9 +418,16 @@ std::vector<RowSlot> GdbAttributeIndexParser::query_string(
     const std::string& value,
     AttrOp op) const {
     std::vector<RowSlot> result;
+    std::string effective_value = value;
+    if (field_type_ == FieldType::UUID_1 || field_type_ == FieldType::UUID_2) {
+        std::array<char, 32> hex;
+        if (!canonical_uuid(value, hex)) return result;
+        const auto key = uuid_index_key(hex);
+        effective_value.assign(key.data(), key.size());
+    }
 
     for (const AttributeIndexEntry& entry : all_entries_) {
-        const int comparison = entry.string_value.compare(value);
+        const int comparison = entry.string_value.compare(effective_value);
         bool match = false;
         switch (op) {
             case AttrOp::Eq: match = comparison == 0; break;

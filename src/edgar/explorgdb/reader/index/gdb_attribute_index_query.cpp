@@ -4,6 +4,7 @@
 #include "gdb_attribute_index.h"
 #include "gdb_tablx_cache.h"
 #include "ole_date.h"
+#include "uuid_value.h"
 
 #include <algorithm>
 #include <array>
@@ -324,11 +325,24 @@ bool GdbAttributeIndexParser::query_direct(
         metrics->trailer_ms = elapsed_ms(trailer_start);
     }
 
-    if ((is_string && !trailer_.is_string) ||
+    const bool uuid_field = field_type_ == FieldType::UUID_1 || field_type_ == FieldType::UUID_2;
+    if (uuid_field && (!is_string || trailer_.value_size != 38U ||
+                       trailer_.is_string || trailer_.is_numeric)) return false;
+    if ((is_string && !uuid_field && !trailer_.is_string) ||
         (!is_string && !trailer_.is_numeric) ||
         ((numeric_is_int64 || numeric_is_temporal) && trailer_.value_size != 8U) ||
         (is_string && (trailer_.value_size % 2U) != 0U)) {
         return false;
+    }
+
+    std::string effective_string;
+    if (uuid_field) {
+        std::array<char, 32> hex;
+        if (!canonical_uuid(string_value, hex)) return false;
+        const auto key = uuid_index_key(hex);
+        effective_string.assign(key.data(), key.size());
+    } else if (is_string) {
+        effective_string = truncate_index_string(string_value, trailer_.value_size / 2U);
     }
 
     // 深度为 0 只允许真正的空树；空结果是成功，不是回退信号。
@@ -358,10 +372,6 @@ bool GdbAttributeIndexParser::query_direct(
         return false;
     }
 
-    const std::string effective_string = is_string
-        ? truncate_index_string(
-              string_value, trailer_.value_size / 2U)
-        : std::string{};
 
     // A fixed 16-page LRU bounds temporary memory independently of ATX size.
     struct CachedPage {
@@ -409,6 +419,13 @@ bool GdbAttributeIndexParser::query_direct(
 
     const auto compare_key_to_query = [&](const uint8_t* bytes,
                                           int& comparison) -> bool {
+        if (uuid_field) {
+            const std::string_view key(reinterpret_cast<const char*>(bytes), 38);
+            if (!is_canonical_uuid_index_key(key)) return false;
+            const int order = key.compare(effective_string);
+            comparison = (order > 0) - (order < 0);
+            return true;
+        }
         if (is_string) {
             const AttributeIndexEntry entry = decode_value(
                 bytes, trailer_.value_size, true, 0U);
@@ -437,6 +454,14 @@ bool GdbAttributeIndexParser::query_direct(
     const auto compare_keys = [&](const uint8_t* lhs,
                                   const uint8_t* rhs,
                                   int& comparison) -> bool {
+        if (uuid_field) {
+            const std::string_view left(reinterpret_cast<const char*>(lhs), 38);
+            const std::string_view right(reinterpret_cast<const char*>(rhs), 38);
+            if (!is_canonical_uuid_index_key(left) || !is_canonical_uuid_index_key(right)) return false;
+            const int order = left.compare(right);
+            comparison = (order > 0) - (order < 0);
+            return true;
+        }
         if (is_string) {
             const AttributeIndexEntry left = decode_value(
                 lhs, trailer_.value_size, true, 0U);

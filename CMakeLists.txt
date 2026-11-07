@@ -412,6 +412,7 @@ if(BUILD_TESTING)
         tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_index_fallback.cpp
         tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_integration.cpp
         tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_null.cpp
+        tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_uuid.cpp
         tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_unicode.cpp)
     set(FAST_GDB_ADAPTIVE_READER_TEST_SOURCES
         tests/edgar/explorgdb/adaptive/test_adaptive_gdal_open_failure.cpp

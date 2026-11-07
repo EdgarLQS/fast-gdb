@@ -10,6 +10,7 @@
 #include "query_where_internal.h"
 #include "explorgdb_constants.h"
 #include "ole_date.h"
+#include "uuid_value.h"
 
 #include <algorithm>
 #include <array>
@@ -91,28 +92,6 @@ std::string lower_copy(std::string value) {
                        return static_cast<char>(std::tolower(ch));
                    });
     return value;
-}
-
-// Canonical UUID comparisons use 32 lowercase hex digits. Only the standard
-// hyphenated representation, with optional outer braces, is accepted.
-bool canonical_uuid(std::string_view text, std::array<char, 32>& output) {
-    if (text.size() == 38 && text.front() == '{' && text.back() == '}')
-        text = text.substr(1, 36);
-    if (text.size() != 36) return false;
-    size_t target = 0;
-    for (size_t i = 0; i < text.size(); ++i) {
-        if (i == 8 || i == 13 || i == 18 || i == 23) {
-            if (text[i] != '-') return false;
-            continue;
-        }
-        const char ch = text[i];
-        if (ch >= '0' && ch <= '9') output[target++] = ch;
-        else if (ch >= 'a' && ch <= 'f') output[target++] = ch;
-        else if (ch >= 'A' && ch <= 'F')
-            output[target++] = static_cast<char>(ch - 'A' + 'a');
-        else return false;
-    }
-    return target == output.size();
 }
 
 int64_t days_from_civil(int year, unsigned month, unsigned day) {
@@ -1127,6 +1106,12 @@ CompiledWhere compile_where(
             predicate.op = root->op;
             predicate.is_string = root->literal.is_string;
             predicate.string_value = root->literal.string_value;
+            if (root->literal.is_uuid) {
+                std::array<char, 32> hex;
+                std::copy_n(root->literal.string_value.begin(), hex.size(), hex.begin());
+                const auto key = uuid_index_key(hex);
+                predicate.string_value.assign(key.data(), key.size());
+            }
             predicate.numeric_value = root->literal.numeric_value;
             if (root->literal.is_temporal) {
                 int64_t milliseconds = 0;
