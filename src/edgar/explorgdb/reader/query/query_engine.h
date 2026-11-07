@@ -136,6 +136,9 @@ struct CombinedQueryMetrics {
     bool used_attribute_index = false;
     bool attribute_index_bypassed = false;
     bool fused_spatial_attribute_scan = false;
+    bool attribute_string_directory_hit = false;
+    size_t attribute_string_validation_rows = 0;
+    size_t attribute_string_directory_bytes = 0;
 };
 
 /** 仅在 QueryRequest::profile_feature_reads=true 时累计。 */
@@ -157,6 +160,7 @@ struct QueryResult {
     std::string fallback_reason;
     SpatialQueryMetrics spatial_metrics;
     CombinedQueryMetrics combined_metrics;
+    AttributeIndexQueryMetrics attribute_index_metrics;
     FeatureCursorMetrics feature_cursor_metrics;
     bool query_preparation_cache_hit = false;
 };
@@ -377,6 +381,8 @@ private:
     const GdbCatalog& catalog_;
     ResolvedTable resolved_;
     std::unique_ptr<GdbTableParser> parser_;
+    std::optional<TablxCacheKey> source_tablx_identity_;
+    std::shared_ptr<const detail::AttributeStringQueryContext> make_string_context(size_t field) const;
     std::unique_ptr<GdbSpatialIndexParser> spatial_index_;
     bool opened_ = false;
     bool spatial_index_initialized_ = false;

@@ -1,0 +1,72 @@
+Note: Google Test filter = AttributeStringCacheTest.*:AttributeIndexSafetyTest.*:SpatialWhereUnicodeTest.*
+[==========] Running 28 tests from 3 test suites.
+[----------] Global test environment set-up.
+[----------] 15 tests from AttributeIndexSafetyTest
+[ RUN      ] AttributeIndexSafetyTest.ValidSingleLeafStillParses
+[       OK ] AttributeIndexSafetyTest.ValidSingleLeafStillParses (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.DirectNumericQueryMatchesMaterializedQuery
+[       OK ] AttributeIndexSafetyTest.DirectNumericQueryMatchesMaterializedQuery (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.DirectInt64QueryPreservesAdjacentLargeValues
+[       OK ] AttributeIndexSafetyTest.DirectInt64QueryPreservesAdjacentLargeValues (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.VersionTwoParsesAndQueries64BitObjectIds
+[       OK ] AttributeIndexSafetyTest.VersionTwoParsesAndQueries64BitObjectIds (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.DirectQueryNavigatesAndStopsAtRange
+[       OK ] AttributeIndexSafetyTest.DirectQueryNavigatesAndStopsAtRange (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.InvalidUnselectedBranchFailsClosed
+[       OK ] AttributeIndexSafetyTest.InvalidUnselectedBranchFailsClosed (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.TrailerCountMismatchFailsClosed
+[       OK ] AttributeIndexSafetyTest.TrailerCountMismatchFailsClosed (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.CyclicLeafChainFailsClosed
+[       OK ] AttributeIndexSafetyTest.CyclicLeafChainFailsClosed (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.ZeroFidFailsClosed
+[       OK ] AttributeIndexSafetyTest.ZeroFidFailsClosed (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.SmallIntegerKeysKeepTheirSignedOrder
+[       OK ] AttributeIndexSafetyTest.SmallIntegerKeysKeepTheirSignedOrder (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.Float32SchemaSelectsFloatingPointKeys
+[       OK ] AttributeIndexSafetyTest.Float32SchemaSelectsFloatingPointKeys (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.TemporalMillisecondsKeepEqualKeysAcrossLeafBoundaries
+[       OK ] AttributeIndexSafetyTest.TemporalMillisecondsKeepEqualKeysAcrossLeafBoundaries (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.UuidAsciiKeysUseTypedCanonicalOrderAcrossPages
+[       OK ] AttributeIndexSafetyTest.UuidAsciiKeysUseTypedCanonicalOrderAcrossPages (3 ms)
+[ RUN      ] AttributeIndexSafetyTest.MaterializedInt64KeepsExactValuesForDiagnostics
+[       OK ] AttributeIndexSafetyTest.MaterializedInt64KeepsExactValuesForDiagnostics (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.StringKeysPreserveSpacesSurrogatesAndPhysicalOrder
+[       OK ] AttributeIndexSafetyTest.StringKeysPreserveSpacesSurrogatesAndPhysicalOrder (0 ms)
+[----------] 15 tests from AttributeIndexSafetyTest (8 ms total)
+
+[----------] 8 tests from AttributeStringCacheTest
+[ RUN      ] AttributeStringCacheTest.BoundsNeverExcludeMatchingLeavesIncludingLongPrefixes
+[       OK ] AttributeStringCacheTest.BoundsNeverExcludeMatchingLeavesIncludingLongPrefixes (15 ms)
+[ RUN      ] AttributeStringCacheTest.ColdProofAndWarmDifferentProbesSelectOnlyMatchingRanges
+[       OK ] AttributeStringCacheTest.ColdProofAndWarmDifferentProbesSelectOnlyMatchingRanges (7 ms)
+[ RUN      ] AttributeStringCacheTest.RejectsDuplicateMissingAndMismatchedIndexEntries
+[       OK ] AttributeStringCacheTest.RejectsDuplicateMissingAndMismatchedIndexEntries (1 ms)
+[ RUN      ] AttributeStringCacheTest.EmptyIndexRequiresEmptyNonNullSourceProof
+[       OK ] AttributeStringCacheTest.EmptyIndexRequiresEmptyNonNullSourceProof (0 ms)
+[ RUN      ] AttributeStringCacheTest.ChangedSourceIdentitiesCannotReuseProof
+[       OK ] AttributeStringCacheTest.ChangedSourceIdentitiesCannotReuseProof (1 ms)
+[ RUN      ] AttributeStringCacheTest.ConcurrentBuildersShareOneProof
+[       OK ] AttributeStringCacheTest.ConcurrentBuildersShareOneProof (0 ms)
+[ RUN      ] AttributeStringCacheTest.BudgetAndLruBoundMemoryWithoutPublishingCandidates
+[       OK ] AttributeStringCacheTest.BudgetAndLruBoundMemoryWithoutPublishingCandidates (0 ms)
+[ RUN      ] AttributeStringCacheTest.SourceChangeDuringValidationPublishesNeitherProofNorCandidates
+[       OK ] AttributeStringCacheTest.SourceChangeDuringValidationPublishesNeitherProofNorCandidates (0 ms)
+[----------] 8 tests from AttributeStringCacheTest (28 ms total)
+
+[----------] 5 tests from SpatialWhereUnicodeTest
+[ RUN      ] SpatialWhereUnicodeTest.BmpTextUsesIndexAndRechecks
+[       OK ] SpatialWhereUnicodeTest.BmpTextUsesIndexAndRechecks (61 ms)
+[ RUN      ] SpatialWhereUnicodeTest.NonBmpEqualityUsesIndexWithoutFalseNegative
+[       OK ] SpatialWhereUnicodeTest.NonBmpEqualityUsesIndexWithoutFalseNegative (3 ms)
+[ RUN      ] SpatialWhereUnicodeTest.FullStringPredicatesRecheckPaddingTruncationAndUnicodeOrder
+[       OK ] SpatialWhereUnicodeTest.FullStringPredicatesRecheckPaddingTruncationAndUnicodeOrder (32 ms)
+[ RUN      ] SpatialWhereUnicodeTest.ValidatedDirectoryPrunesMultiPageQueriesAndRefreshesSnapshots
+[string-directory] rows=10000 field_width=256 long_values=1 cold_ms=3.74779 cold_pages=419 cache_bytes=54462 warm_queries=63 warm_pages=67 warm_entries=1600 warm_median_ms=0.132125 warm_p95_ms=0.137584 warm_p99_ms=0.149375 baseline_pages=26397 baseline_entries=630000 baseline_median_ms=2.66721 baseline_p95_ms=2.72958 baseline_p99_ms=3.07187
+[       OK ] SpatialWhereUnicodeTest.ValidatedDirectoryPrunesMultiPageQueriesAndRefreshesSnapshots (227 ms)
+[ RUN      ] SpatialWhereUnicodeTest.ChangedIndexWithWrongKeysFallsBackAndCachesFailedProof
+[       OK ] SpatialWhereUnicodeTest.ChangedIndexWithWrongKeysFallsBackAndCachesFailedProof (4 ms)
+[----------] 5 tests from SpatialWhereUnicodeTest (329 ms total)
+
+[----------] Global test environment tear-down
+[==========] 28 tests from 3 test suites ran. (366 ms total)
+[  PASSED  ] 28 tests.

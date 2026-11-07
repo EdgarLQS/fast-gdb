@@ -21,6 +21,7 @@
 #include <vector>
 
 namespace explorgdb {
+namespace detail { class AttributeStringCache; }
 
 class GdbCatalog {
 public:
@@ -107,7 +108,11 @@ public:
      */
     std::vector<const CatalogEntry*> find_all_atx(uint32_t id) const;
 
+    // Shared only within this catalog snapshot; scan() starts a fresh cache.
+    std::shared_ptr<detail::AttributeStringCache> string_index_cache() const { return string_index_cache_; }
+
 private:
+    std::shared_ptr<detail::AttributeStringCache> string_index_cache_;
     struct IndexMetadataCacheEntry {
         bool parsed = false;
         std::vector<IndexEntry> entries;

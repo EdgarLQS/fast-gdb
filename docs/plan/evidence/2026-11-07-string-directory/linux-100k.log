@@ -1,0 +1,12 @@
+Note: Google Test filter = SpatialWhereUnicodeTest.ValidatedDirectoryPrunesMultiPageQueriesAndRefreshesSnapshots
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from SpatialWhereUnicodeTest
+[ RUN      ] SpatialWhereUnicodeTest.ValidatedDirectoryPrunesMultiPageQueriesAndRefreshesSnapshots
+[string-directory] rows=100000 field_width=256 long_values=1 cold_ms=26.7996 cold_pages=4170 cache_bytes=552206 warm_queries=63 warm_pages=104 warm_entries=2488 warm_median_ms=0.041211 warm_p95_ms=0.057879 warm_p99_ms=0.18051 baseline_pages=262710 baseline_entries=6300000 baseline_median_ms=29.7657 baseline_p95_ms=31.537 baseline_p99_ms=32.3026
+[       OK ] SpatialWhereUnicodeTest.ValidatedDirectoryPrunesMultiPageQueriesAndRefreshesSnapshots (2298 ms)
+[----------] 1 test from SpatialWhereUnicodeTest (2298 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (2298 ms total)
+[  PASSED  ] 1 test.

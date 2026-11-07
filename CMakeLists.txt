@@ -206,6 +206,7 @@ set(FAST_GDB_READER_FORMAT_SOURCES
 set(FAST_GDB_READER_INDEX_SOURCES
     src/edgar/explorgdb/reader/index/gdb_attribute_index.cpp
     src/edgar/explorgdb/reader/index/gdb_attribute_index_query.cpp
+    src/edgar/explorgdb/reader/index/gdb_attribute_string_cache.cpp
     src/edgar/explorgdb/reader/index/gdb_indexes.cpp
     src/edgar/explorgdb/reader/index/gdb_spatial_index.cpp)
 set(FAST_GDB_READER_QUERY_SOURCES
@@ -371,6 +372,7 @@ if(BUILD_TESTING)
     set(FAST_GDB_READER_INDEX_TEST_SOURCES
         tests/edgar/explorgdb/reader/index/test_gdb_attribute_index.cpp
         tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp
+        tests/edgar/explorgdb/reader/index/test_gdb_attribute_string_cache.cpp
         tests/edgar/explorgdb/reader/index/test_gdb_spatial_index.cpp
         tests/edgar/explorgdb/reader/index/test_gdb_spatial_index_merge.cpp
         tests/edgar/explorgdb/reader/index/test_gdbindexes.cpp

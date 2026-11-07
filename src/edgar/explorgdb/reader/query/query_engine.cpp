@@ -8,6 +8,7 @@
 #include "gdb_geometry.h"
 #include "gdb_indexes.h"
 #include "query_where_internal.h"
+#include "gdb_attribute_string_cache.h"
 
 #include <algorithm>
 #include <cctype>
@@ -299,6 +300,7 @@ bool QueryEngine::open() {
     }
     opened_ = false;
     parser_.reset();
+    source_tablx_identity_.reset();
     spatial_index_.reset();
     spatial_index_initialized_ = false;
     spatial_index_present_ = false;
@@ -308,11 +310,15 @@ bool QueryEngine::open() {
         return false;
     }
 
+    TablxCacheKey tablx_before, tablx_after;
+    if (!TablxCache::make_key(resolved_.tablx_path, tablx_before)) return false;
     parser_ = std::make_unique<GdbTableParser>(resolved_.table_path);
-    if (!parser_->open() || !parser_->load_tablx(resolved_.tablx_path)) {
+    if (!parser_->open() || !parser_->load_tablx(resolved_.tablx_path) ||
+        !TablxCache::make_key(resolved_.tablx_path, tablx_after) || !(tablx_before == tablx_after)) {
         parser_.reset();
         return false;
     }
+    source_tablx_identity_ = tablx_after;
 
     // Resolver 已缓存空间参考可用性时直接复用，避免每次 fresh-open 重扫目录。
     if (resolved_.has_spatial_refs.has_value()) {
@@ -357,6 +363,21 @@ QueryResult QueryEngine::query(const QueryRequest& request) {
         result.fallback_reason = kFallbackTableNotOpen;
         return result;
     }
+    const bool check_string_sources = request.kind == QueryKind::AttributeString ||
+                                      request.kind == QueryKind::SpatialWhere;
+    const auto source_current = [&] {
+        TablxCacheKey table, tablx;
+        return source_tablx_identity_ &&
+            TablxCache::make_key(resolved_.table_path, table) && table == parser_->source_identity() &&
+            TablxCache::make_key(resolved_.tablx_path, tablx) && tablx == *source_tablx_identity_;
+    };
+    const auto changed_result = [] {
+        QueryResult result;
+        result.status = QueryStatus::SourceChanged;
+        result.error = "query source changed; reopen the dataset";
+        return result;
+    };
+    if (check_string_sources && !source_current()) return changed_result();
     if (!projection_is_valid(request, parser_.get())) {
         QueryResult result;
         result.status = QueryStatus::InvalidRequest;
@@ -400,6 +421,7 @@ QueryResult QueryEngine::query(const QueryRequest& request) {
             result.fallback_reason = kFallbackInvalidQueryKind;
             break;
     }
+    if (check_string_sources && !source_current()) return changed_result();
     classify_query_status(request, result);
     return apply_request_options(std::move(result), request, parser_.get());
 }
@@ -541,6 +563,45 @@ std::vector<RowSlot> QueryEngine::query_attribute_string(
     return query_attribute(request).matched_fids;
 }
 
+std::shared_ptr<const detail::AttributeStringQueryContext>
+QueryEngine::make_string_context(size_t field) const {
+    if (!parser_ || !source_tablx_identity_ || field >= parser_->fields().size() ||
+        parser_->fields()[field].type != FieldType::String) return {};
+    auto context = std::make_shared<detail::AttributeStringQueryContext>();
+    context->cache = catalog_.string_index_cache();
+    context->table_path = resolved_.table_path;
+    context->tablx_path = resolved_.tablx_path;
+    context->field = field;
+    context->active_rows = parser_->active_feature_count();
+    context->expected_table = parser_->source_identity();
+    context->expected_tablx = *source_tablx_identity_;
+    detail::StringDirectoryKey current;
+    if (!context->key({}, current)) return {};
+    auto* table = parser_.get();
+    context->read_values = [table, field](const std::vector<RowSlot>& fids,
+        const detail::AttributeStringQueryContext::ValueCallback& callback) {
+        bool ok = true;
+        const auto count = table->scan_field_candidates(fids, [&](RowSlot fid, const FieldRef* fields, int size) {
+            if (field >= static_cast<size_t>(size) || fields[field].is_null ||
+                fields[field].type != FieldType::String || !callback(fid, fields[field].as_string_view())) {
+                ok = false;
+                return false;
+            }
+            return true;
+        });
+        return ok && count == fids.size();
+    };
+    context->count_values = [table, field](uint64_t& values) {
+        values = 0;
+        const auto rows = table->sequential_scan([&](RowSlot, const FieldRef* fields, int size) {
+            if (field < static_cast<size_t>(size) && !fields[field].is_null) ++values;
+            return true;
+        });
+        return rows == table->active_feature_count();
+    };
+    return context;
+}
+
 QueryResult QueryEngine::query_attribute(const QueryRequest& request) {
     QueryResult result;
     result.execution_path = kPathAttributeAtx;
@@ -550,6 +611,7 @@ QueryResult QueryEngine::query_attribute(const QueryRequest& request) {
     const bool has_index_metadata =
         catalog_.read_index_metadata(resolved_.id, index_metadata);
     std::optional<FieldType> indexed_field_type;
+    size_t indexed_field_position = 0;
     for (const auto& entry : index_metadata) {
         if (entry.name != request.index_name ||
             !GdbIndexesParser::is_direct_field_expression(entry.column_name)) continue;
@@ -561,6 +623,7 @@ QueryResult QueryEngine::query_attribute(const QueryRequest& request) {
                         return std::tolower(left) == std::tolower(right);
                     })) {
                 indexed_field_type = field.type;
+                indexed_field_position = static_cast<size_t>(&field - parser_->fields().data());
                 break;
             }
         }
@@ -578,6 +641,15 @@ QueryResult QueryEngine::query_attribute(const QueryRequest& request) {
         try {
             GdbAttributeIndexParser index(
                 catalog_.path() + "/" + atx->filename, *indexed_field_type);
+            if (complete_string_query) {
+                auto context = make_string_context(indexed_field_position);
+                if (!context) {
+                    result.status = QueryStatus::SourceChanged;
+                    result.error = "string index source changed; reopen the dataset";
+                    return result;
+                }
+                index.set_string_context(std::move(context));
+            }
             std::vector<RowSlot> indexed_fids;
             const auto max_fid_count = static_cast<size_t>(std::min<RowSlot>(
                 parser_->feature_count(), std::numeric_limits<size_t>::max()));
@@ -587,7 +659,7 @@ QueryResult QueryEngine::query_attribute(const QueryRequest& request) {
                       max_fid_count, indexed_fids)
                 : (complete_string_query
                     ? index.query_string_candidates(request.string_value, request.attr_op,
-                        max_fid_count, indexed_fids)
+                        max_fid_count, indexed_fids, &result.attribute_index_metrics)
                     : index.query_string_direct(request.string_value, request.attr_op,
                         max_fid_count, indexed_fids));
             if (indexed) {

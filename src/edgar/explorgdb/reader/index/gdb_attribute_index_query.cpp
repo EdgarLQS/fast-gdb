@@ -6,6 +6,7 @@
 #include "ole_date.h"
 #include "uuid_value.h"
 #include "gdb_attribute_string_key.h"
+#include "gdb_attribute_string_cache.h"
 
 #include <algorithm>
 #include <array>
@@ -328,6 +329,13 @@ bool GdbAttributeIndexParser::query_direct(
     } else if (is_string) {
         if (!attribute_string::prepare(string_value, trailer_.value_size / 2U, utf16_key) ||
             !attribute_string::prepare_legacy(string_value, trailer_.value_size / 2U, legacy_key)) return false;
+    }
+
+    if (full_string_scan && string_context_) {
+        const bool ok = detail::query_validated_string_directory(file_path_, source_before,
+            trailer_, page_count, max_fid_count, string_context_, string_value, op, result, metrics);
+        if (metrics) metrics->total_ms = elapsed_ms(total_start);
+        return ok;
     }
 
     // 深度为 0 只允许真正的空树；空结果是成功，不是回退信号。

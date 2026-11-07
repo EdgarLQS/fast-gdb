@@ -44,6 +44,8 @@ public:
      * @param file_path gdbtable 文件路径。
      */
     explicit GdbTableParser(const std::string& file_path);
+    const TablxCacheKey& source_identity() const noexcept { return source_identity_; }
+
     ~GdbTableParser();
 
     /** 打开并映射表文件。

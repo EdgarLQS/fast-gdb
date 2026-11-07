@@ -1,0 +1,22 @@
+Note: Google Test filter = SpatialWhereUnicodeTest.ValidatedDirectoryPrunesMultiPageQueriesAndRefreshesSnapshots
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from SpatialWhereUnicodeTest
+[ RUN      ] SpatialWhereUnicodeTest.ValidatedDirectoryPrunesMultiPageQueriesAndRefreshesSnapshots
+ERROR 6: More values in spatial index than can be handled
+ERROR 3: Write error during /tmp/fast_gdb_string_directory_scale_ValidatedDirectoryPrunesMultiPageQueriesAndRefreshesSnapshots.gdb/a00000009.name_idx.atx generation
+/src/tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_unicode.cpp:260: Failure
+Value of: sql(writer.get(), "CREATE INDEX name_idx ON strings(name)")
+  Actual: false
+Expected: true
+
+[  FAILED  ] SpatialWhereUnicodeTest.ValidatedDirectoryPrunesMultiPageQueriesAndRefreshesSnapshots (500 ms)
+[----------] 1 test from SpatialWhereUnicodeTest (500 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (500 ms total)
+[  PASSED  ] 0 tests.
+[  FAILED  ] 1 test, listed below:
+[  FAILED  ] SpatialWhereUnicodeTest.ValidatedDirectoryPrunesMultiPageQueriesAndRefreshesSnapshots
+
+ 1 FAILED TEST

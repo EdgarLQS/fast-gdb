@@ -3,6 +3,7 @@
 
 #include "query_engine.h"
 #include "gdb_indexes.h"
+#include "gdb_attribute_string_cache.h"
 #include "query_where_internal.h"
 #include "spatial_predicate.h"
 #include "explorgdb_constants.h"
@@ -288,9 +289,15 @@ AttributeCandidatePlan resolve_attribute_index(
 bool query_attribute_candidates(
     AttributeCandidatePlan& plan,
     size_t max_fid_count,
-    const IndexableWherePredicate& predicate) {
+    const IndexableWherePredicate& predicate,
+    std::shared_ptr<const detail::AttributeStringQueryContext> string_context) {
+    if (predicate.field_type == FieldType::String && !string_context) {
+        plan.reason = "string source unavailable; spatial candidates evaluated";
+        return false;
+    }
     try {
         GdbAttributeIndexParser index(plan.atx_path, predicate.field_type);
+        index.set_string_context(std::move(string_context));
         bool ok = false;
         if (predicate.temporal_milliseconds.has_value()) {
             ok = index.query_temporal_direct(
@@ -342,6 +349,9 @@ void record_attribute_index_metrics(
     metrics.attribute_index_scan_ms = plan.index_metrics.leaf_scan_ms;
     metrics.attribute_candidate_order_ms =
         plan.index_metrics.candidate_order_ms;
+    metrics.attribute_string_directory_hit = plan.index_metrics.string_directory_hit;
+    metrics.attribute_string_validation_rows = plan.index_metrics.string_validation_rows;
+    metrics.attribute_string_directory_bytes = plan.index_metrics.string_directory_bytes;
 }
 
 } // namespace
@@ -607,7 +617,8 @@ QueryResult QueryEngine::query_spatial_where(const QueryRequest& request) {
             result.combined_metrics.attribute_index_bypassed = true;
         } else {
             (void)query_attribute_candidates(
-                attribute, parser_->feature_count(), *predicate);
+                attribute, parser_->feature_count(), *predicate,
+                predicate->field_type == FieldType::String ? make_string_context(predicate->field_index) : nullptr);
             record_attribute_index_metrics(
                 attribute, result.combined_metrics);
             result.combined_metrics.attribute_ms +=

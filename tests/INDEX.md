@@ -201,9 +201,14 @@ and invalid keys. See [date-index evidence](../docs/plan/evidence/2026-11-07-dat
 `SpatialWhereUnicodeTest.*` checks complete field comparisons after ATX candidate
 selection, including spaces, NULL, Unicode folding collisions and truncated keys.
 `StringKeysPreserveSpacesSurrogatesAndPhysicalOrder` separately verifies physical
-UTF-16 keys; those raw keys are not full field values. Current string queries use
-bounded leaf scans until ordering can be proven and safely cached; numeric/GUID
-navigation remains unchanged. [Evidence and open performance gate](../docs/plan/evidence/2026-11-07-string-index-semantics.md).
+UTF-16 keys; those raw keys are not full field values. QueryEngine validates index completeness and actual field values before caching
+bounded per-leaf ranges within a catalog snapshot; warm queries select overlapping
+ranges and recheck fields. Raw ATX queries retain physical-key semantics.
+`AttributeStringCacheTest.*` covers proof failures, conservative interval bounds,
+concurrency, budgets and invalidation. The multi-page Unicode suite supports
+`FAST_GDB_STRING_BENCHMARK_ROWS` and an explicit short-value scale variant.
+Numeric/GUID navigation remains unchanged. See [semantics](../docs/plan/evidence/2026-11-07-string-index-semantics.md)
+and [directory performance and remaining gates](../docs/plan/evidence/2026-11-08-string-directory.md).
 
 ## CLI typed ATX regression
 
