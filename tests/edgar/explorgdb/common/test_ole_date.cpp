@@ -5,6 +5,8 @@
 #include <gtest/gtest.h>
 #include <cmath>
 #include <ctime>
+#include <limits>
+#include <stdexcept>
 
 using namespace explorgdb;
 
@@ -185,4 +187,36 @@ TEST(OleDateTest, NegativeDateTime) {
     // -1.25 = 1899-12-28 18:00:00 (1.25 days before 1899-12-30)
     std::string s = ole_datetime(-1.25);
     EXPECT_EQ(s.substr(0, 10), "1899-12-28");
+}
+
+TEST(OleDateTest, FormatsCalendarDatesOutsideNanosecondClockRange) {
+    EXPECT_EQ(ole_datetime(-693593.0), "0001-01-01 00:00:00");
+    EXPECT_EQ(ole_datetime(132585.0), "2263-01-01 00:00:00");
+    EXPECT_EQ(ole_datetime(2958465.0 + 86399999.0 / 86400000.0),
+              "9999-12-31 23:59:59.999");
+}
+
+TEST(OleDateTest, CheckedMillisecondsRejectNonfiniteAndOverflowWithoutChangingOutput) {
+    int64_t result = 123;
+    for (double input : {std::numeric_limits<double>::quiet_NaN(),
+                         std::numeric_limits<double>::infinity(),
+                         -std::numeric_limits<double>::infinity(), 1e300, -1e300}) {
+        EXPECT_FALSE(try_ole_to_unix_milliseconds(input, result));
+        EXPECT_EQ(result, 123);
+        EXPECT_THROW(ole_to_timepoint(input), std::out_of_range);
+        EXPECT_THROW(ole_datetime(input), std::out_of_range);
+    }
+    ASSERT_TRUE(try_ole_to_unix_milliseconds(-693593.0, result));
+    EXPECT_EQ(result, -62135596800000LL);
+    ASSERT_TRUE(try_ole_to_unix_milliseconds(2958465.0, result));
+    EXPECT_EQ(result, 253402214400000LL);
+    using Milliseconds = std::chrono::duration<long double, std::milli>;
+    if (static_cast<long double>(result) >
+        Milliseconds(std::chrono::system_clock::duration::max()).count()) {
+        EXPECT_THROW(ole_to_timepoint(2958465.0), std::out_of_range);
+    } else {
+        const auto point = ole_to_timepoint(2958465.0);
+        EXPECT_EQ(std::chrono::duration_cast<std::chrono::milliseconds>(
+            point.time_since_epoch()).count(), result);
+    }
 }

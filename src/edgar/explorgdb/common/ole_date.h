@@ -5,9 +5,16 @@
 #define EXPLORGDB_OLE_DATE_H
 
 #include <chrono>
+#include <cstdint>
 #include <string>
 
 namespace explorgdb {
+
+/** 将 FileGDB 日期转为 Unix 毫秒；非有限值或超出 int64 毫秒范围返回 false。
+ * 输出只在成功时赋值，不受 system_clock 原生 tick 范围限制。
+ */
+bool try_ole_to_unix_milliseconds(double ole_date, int64_t& output) noexcept;
+
 
 /**
  * 将 OLE Automation DATE 转为 system_clock 时间点。
@@ -17,6 +24,8 @@ namespace explorgdb {
  *
  * @param ole_date OLE DATE double 值。
  * @return 对应的 UTC system_clock 时间点。
+ * @throws std::out_of_range 日期无法由本平台 system_clock 表示。
+ * 宽范围日期的格式化和比较应使用毫秒接口。
  */
 /** 将 OLE Automation 日期转换为系统时间点。
  * @param ole_date OLE 日期数值，整数部分表示天数，小数部分表示当天时间。

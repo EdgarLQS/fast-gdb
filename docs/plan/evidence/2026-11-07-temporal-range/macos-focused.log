@@ -1,0 +1,74 @@
+Note: Google Test filter = OleDateTest.*:QueryWhereInternalTest.*
+[==========] Running 31 tests from 2 test suites.
+[----------] Global test environment set-up.
+[----------] 15 tests from OleDateTest
+[ RUN      ] OleDateTest.Zero
+[       OK ] OleDateTest.Zero (0 ms)
+[ RUN      ] OleDateTest.OneDay
+[       OK ] OleDateTest.OneDay (0 ms)
+[ RUN      ] OleDateTest.Noon
+[       OK ] OleDateTest.Noon (0 ms)
+[ RUN      ] OleDateTest.UnixEpoch
+[       OK ] OleDateTest.UnixEpoch (0 ms)
+[ RUN      ] OleDateTest.KnownDate
+[       OK ] OleDateTest.KnownDate (0 ms)
+[ RUN      ] OleDateTest.TimeOnly
+[       OK ] OleDateTest.TimeOnly (0 ms)
+[ RUN      ] OleDateTest.DateTimeString
+[       OK ] OleDateTest.DateTimeString (0 ms)
+[ RUN      ] OleDateTest.PreservesMillisecondPrecision
+[       OK ] OleDateTest.PreservesMillisecondPrecision (0 ms)
+[ RUN      ] OleDateTest.RoundsMillisecondCarryAcrossDayBoundary
+[       OK ] OleDateTest.RoundsMillisecondCarryAcrossDayBoundary (0 ms)
+[ RUN      ] OleDateTest.DateOnlyString
+[       OK ] OleDateTest.DateOnlyString (0 ms)
+[ RUN      ] OleDateTest.NegativeDate
+[       OK ] OleDateTest.NegativeDate (0 ms)
+[ RUN      ] OleDateTest.NegativeDateWithFraction
+[       OK ] OleDateTest.NegativeDateWithFraction (0 ms)
+[ RUN      ] OleDateTest.NegativeDateTime
+[       OK ] OleDateTest.NegativeDateTime (0 ms)
+[ RUN      ] OleDateTest.FormatsCalendarDatesOutsideNanosecondClockRange
+[       OK ] OleDateTest.FormatsCalendarDatesOutsideNanosecondClockRange (0 ms)
+[ RUN      ] OleDateTest.CheckedMillisecondsRejectNonfiniteAndOverflowWithoutChangingOutput
+[       OK ] OleDateTest.CheckedMillisecondsRejectNonfiniteAndOverflowWithoutChangingOutput (0 ms)
+[----------] 15 tests from OleDateTest (0 ms total)
+
+[----------] 16 tests from QueryWhereInternalTest
+[ RUN      ] QueryWhereInternalTest.CompilesAndEvaluatesExistingWhereSubset
+[       OK ] QueryWhereInternalTest.CompilesAndEvaluatesExistingWhereSubset (0 ms)
+[ RUN      ] QueryWhereInternalTest.IdentifiesOnlySingleCompatibleComparisonAsIndexable
+[       OK ] QueryWhereInternalTest.IdentifiesOnlySingleCompatibleComparisonAsIndexable (0 ms)
+[ RUN      ] QueryWhereInternalTest.PreservesNullAndEscapedStringSemantics
+[       OK ] QueryWhereInternalTest.PreservesNullAndEscapedStringSemantics (0 ms)
+[ RUN      ] QueryWhereInternalTest.AppliesSqlNullTruthTablesToCompoundPredicates
+[       OK ] QueryWhereInternalTest.AppliesSqlNullTruthTablesToCompoundPredicates (0 ms)
+[ RUN      ] QueryWhereInternalTest.ParsesTypedTemporalLiteralsAndComparesMillis
+[       OK ] QueryWhereInternalTest.ParsesTypedTemporalLiteralsAndComparesMillis (0 ms)
+[ RUN      ] QueryWhereInternalTest.RejectsTemporalTypeMismatchAndInvalidLiterals
+[       OK ] QueryWhereInternalTest.RejectsTemporalTypeMismatchAndInvalidLiterals (0 ms)
+[ RUN      ] QueryWhereInternalTest.NotEqualTreatsNaNAsDifferent
+[       OK ] QueryWhereInternalTest.NotEqualTreatsNaNAsDifferent (0 ms)
+[ RUN      ] QueryWhereInternalTest.ReportsInvalidRequestsDistinctly
+[       OK ] QueryWhereInternalTest.ReportsInvalidRequestsDistinctly (0 ms)
+[ RUN      ] QueryWhereInternalTest.EvaluatesMaterializedFeatureRecords
+[       OK ] QueryWhereInternalTest.EvaluatesMaterializedFeatureRecords (0 ms)
+[ RUN      ] QueryWhereInternalTest.ComparesInt64LiteralsWithoutDoubleRounding
+[       OK ] QueryWhereInternalTest.ComparesInt64LiteralsWithoutDoubleRounding (0 ms)
+[ RUN      ] QueryWhereInternalTest.ComparesIntegerFieldsAndFloatingLiteralsExactly
+[       OK ] QueryWhereInternalTest.ComparesIntegerFieldsAndFloatingLiteralsExactly (0 ms)
+[ RUN      ] QueryWhereInternalTest.ComparesDoubleFieldsAgainstExactIntegerLiterals
+[       OK ] QueryWhereInternalTest.ComparesDoubleFieldsAgainstExactIntegerLiterals (0 ms)
+[ RUN      ] QueryWhereInternalTest.IntersectsSortedFidsLinearlyAndUniquely
+[       OK ] QueryWhereInternalTest.IntersectsSortedFidsLinearlyAndUniquely (0 ms)
+[ RUN      ] QueryWhereInternalTest.IntersectsSortedFidsAcross32BitBoundary
+[       OK ] QueryWhereInternalTest.IntersectsSortedFidsAcross32BitBoundary (0 ms)
+[ RUN      ] QueryWhereInternalTest.UuidPredicatesCompareValuesAcrossRowRepresentations
+[       OK ] QueryWhereInternalTest.UuidPredicatesCompareValuesAcrossRowRepresentations (0 ms)
+[ RUN      ] QueryWhereInternalTest.TemporalPredicatesKeepWideCalendarOrder
+[       OK ] QueryWhereInternalTest.TemporalPredicatesKeepWideCalendarOrder (0 ms)
+[----------] 16 tests from QueryWhereInternalTest (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 31 tests from 2 test suites ran. (0 ms total)
+[  PASSED  ] 31 tests.

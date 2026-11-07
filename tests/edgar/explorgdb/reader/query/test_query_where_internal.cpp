@@ -450,3 +450,17 @@ TEST(QueryWhereInternalTest, UuidPredicatesCompareValuesAcrossRowRepresentations
     text_record.field_values = {std::string("abc")};
     EXPECT_FALSE(evaluate_where(text, text_record));
 }
+
+TEST(QueryWhereInternalTest, TemporalPredicatesKeepWideCalendarOrder) {
+    const std::vector<FieldDescriptor> descriptors = {field("value", FieldType::DateTime)};
+    const auto expression = compile_where(
+        "value > TIMESTAMP '2000-01-01 00:00:00'", descriptors);
+    ASSERT_TRUE(expression.valid()) << expression.error();
+    double date = 2958465.0;
+    const FieldRef ref{FieldType::DateTime, reinterpret_cast<const uint8_t*>(&date),
+                       sizeof(date), false, 0};
+    FeatureRecord record;
+    record.field_values = {date};
+    EXPECT_TRUE(evaluate_where(expression, &ref, 1));
+    EXPECT_TRUE(evaluate_where(expression, record));
+}

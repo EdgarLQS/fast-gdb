@@ -57,7 +57,7 @@
 
 - [x] S1.1 增加 UTF-16 合法/孤立代理、UTF-8 补充字符往返、非法字节、截断输入及 null/负长度用例；新用例先失败后修复，UTF-16 套件 16/16 通过。Unicode 数据字段和 ATX 真实样本仍要在后续 conformance 验收。
 - [x] S1.2 数值 literal、字段比较和索引键保留整数类型，避免 Int64 经 double 比较；超出 int64 literal 范围时保留有符号方向，INT64 ATX 不安全时回退扫描。
-- [x] S1.3 WHERE 对齐 SQL NULL 三值逻辑；不支持的 Date、Time、DateTime 和 TimestampOffset 比较明确报错，不静默按 double 近似；字段与 literal 类型不匹配时拒绝编译。（本机 GDAL 3.13.0 对 `NULL != 5` 返回 NULL 行，作为已知差异保留，见 [验证记录](evidence/2026-11-06-S1.3-gdal-null-difference.md)。）
+- [x] S1.3 WHERE 对齐 SQL NULL 三值逻辑；Date、Time、DateTime 和 TimestampOffset 使用 typed literal 和毫秒语义，未支持的比较及字段/literal 类型不匹配明确报错（后续 S2.1 已补齐四类时间比较）。（本机 GDAL 3.13.0 对 `NULL != 5` 返回 NULL 行，作为已知差异保留，见 [验证记录](evidence/2026-11-06-S1.3-gdal-null-difference.md)。）
 - [x] S1.4 修复旧字段映射与新 Reader 混用；字段增删会失败关闭为 `SchemaMismatch`，协调 generation 变化会使旧 Dataset/Layer 返回 `SourceChanged`。
 - [x] S1.5 Reader 打开和 tablx 缓存发布执行“读取前验证 → 构建 → 读取后验证”；文件身份由已打开句柄取得，变化时不发布结果和缓存。统一 Dataset 另固定整库文件身份快照，外部修改后旧对象 fail closed。
 - [x] S1.6 增加完整 `Dataset::refresh()`，重新建立目录、分组、Schema、元数据和索引，按源文件身份使该源旧 tablx 缓存失效；不能只依赖 size/mtime 判定刷新是否必要。
@@ -263,3 +263,7 @@ FAST_GDB_CURVE_DATASET="$PWD/test_data/gdb/参数化数据_liqs.gdb" \
 ### 2026-11-07：UUID 值比较与 GUID 查询回退
 
 修复零拷贝 UUID 将 16 字节当文本比较的问题；WHERE/IN 在两种行表示下统一大小写及可选花括号。GUID 索引请求明确顺序回退；非法 UUID 字面量报错。三库 684/612/612 次 WHERE 和现代库 36 次 GUID 回退对照通过，原生 GUID ATX 未计完成。最新 Release 588 PASS / 19 SKIP / 0 FAIL，GDAL-free ASan/UBSan/LSan 411 PASS / 5 SKIP / 0 FAIL，macOS WHERE 15/15。详见 [提交范围与剩余合同](evidence/2026-11-07-uuid-predicates.md)。日期 ATX、v9 元数据、GUID 原生索引和原计划的真实 ArcGIS/Windows 验收仍未完成。
+
+### 2026-11-07：宽范围日期表示修复
+
+修复系统时钟纳秒范围导致公元 1 年、2263 年、9999 年格式及排序错误；内部格式化与 WHERE 直接使用检查过的 Unix 毫秒，兼容时间点接口超出平台范围时抛错。Release 591 PASS / 19 SKIP / 0 FAIL，GDAL-free ASan/UBSan/LSan 414 PASS / 5 SKIP / 0 FAIL，macOS 日期/WHERE 31/31。见 [复现、提交内容及证据](evidence/2026-11-07-temporal-range.md)。日期 ATX 与真实宽年份 ArcGIS/Windows 合同仍待验收。

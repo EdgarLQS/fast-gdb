@@ -11,6 +11,7 @@
 #include <iomanip>
 #include <cmath>
 #include <cstdint>
+#include <stdexcept>
 
 namespace explorgdb {
 
@@ -33,17 +34,12 @@ static void civil_from_days(int64_t z, int& year, unsigned& month,
     year = y;
 }
 
-static std::string format_timepoint(std::chrono::system_clock::time_point tp,
-                                    bool date_only, bool time_only) {
+static std::string format_milliseconds(int64_t total_ms,
+                                       bool date_only, bool time_only) {
     constexpr int64_t milliseconds_per_day = 86400000;
-    const int64_t total_ms =
-        std::chrono::duration_cast<std::chrono::milliseconds>(
-            tp.time_since_epoch()).count();
     // Decompose milliseconds into days + time-of-day, including pre-epoch values.
-    int64_t days = total_ms >= 0
-        ? total_ms / milliseconds_per_day
-        : (total_ms - (milliseconds_per_day - 1)) / milliseconds_per_day;
-    int64_t rem = total_ms - days * milliseconds_per_day;
+    int64_t days = total_ms / milliseconds_per_day;
+    int64_t rem = total_ms % milliseconds_per_day;
     if (rem < 0) { rem += milliseconds_per_day; --days; }
 
     unsigned hour = static_cast<unsigned>(rem / 3600000);
@@ -58,7 +54,7 @@ static std::string format_timepoint(std::chrono::system_clock::time_point tp,
     std::ostringstream oss;
     if (!time_only) {
         oss << std::setfill('0')
-            << year << '-'
+            << std::setw(4) << year << '-'
             << std::setw(2) << month << '-'
             << std::setw(2) << day;
     }
@@ -75,32 +71,41 @@ static std::string format_timepoint(std::chrono::system_clock::time_point tp,
     return oss.str();
 }
 
+bool try_ole_to_unix_milliseconds(double ole_date, int64_t& output) noexcept {
+    if (!std::isfinite(ole_date)) return false;
+    double whole_days = 0;
+    const double fraction = std::modf(ole_date, &whole_days);
+    // Split before scaling so millisecond rounding retains the source fraction
+    // even for wide calendar dates. Use a checked wide intermediate for days.
+    const long double milliseconds =
+        (static_cast<long double>(whole_days) - 25569.0L) * 86400000.0L +
+        std::round(fraction * 86400000.0);
+    constexpr long double upper_bound = 0x1p63L;
+    if (milliseconds < -upper_bound || milliseconds >= upper_bound) return false;
+    output = static_cast<int64_t>(milliseconds);
+    return true;
+}
+
 std::chrono::system_clock::time_point ole_to_timepoint(double ole_date) {
-    // 1899-12-30 到 1970-01-01 = -25569 天
-    constexpr int64_t days_to_unix = -25569;
-
-    double int_part;
-    double frac = std::modf(ole_date, &int_part);
-    // 处理负数: OLE DATE -0.5 = 1899-12-29 12:00:00
-    if (ole_date < 0.0 && frac != 0.0) {
-        int_part += 1.0;
-        frac = ole_date - int_part;
-    }
-
-    int64_t total_days = static_cast<int64_t>(int_part) + days_to_unix;
-    int64_t total_milliseconds = total_days * 86400000;
-    // Preserve FileGDB high-precision Date and TimestampOffset values to 1 ms.
-    const int64_t time_milliseconds = static_cast<int64_t>(
-        std::round(frac * 86400000.0));
-    total_milliseconds += time_milliseconds;
-
+    int64_t milliseconds = 0;
+    if (!try_ole_to_unix_milliseconds(ole_date, milliseconds))
+        throw std::out_of_range("OLE date exceeds the Unix millisecond range");
+    using ClockDuration = std::chrono::system_clock::duration;
+    using FloatingMilliseconds = std::chrono::duration<long double, std::milli>;
+    const long double minimum = FloatingMilliseconds(ClockDuration::min()).count();
+    const long double maximum = FloatingMilliseconds(ClockDuration::max()).count();
+    if (static_cast<long double>(milliseconds) < minimum ||
+        static_cast<long double>(milliseconds) > maximum)
+        throw std::out_of_range("OLE date exceeds this platform's system_clock range");
     return std::chrono::system_clock::time_point(
-        std::chrono::milliseconds(total_milliseconds));
+        std::chrono::duration_cast<ClockDuration>(std::chrono::milliseconds(milliseconds)));
 }
 
 std::string ole_to_string(double ole_date, bool date_only, bool time_only) {
-    auto tp = ole_to_timepoint(ole_date);
-    return format_timepoint(tp, date_only, time_only);
+    int64_t milliseconds = 0;
+    if (!try_ole_to_unix_milliseconds(ole_date, milliseconds))
+        throw std::out_of_range("OLE date exceeds the Unix millisecond range");
+    return format_milliseconds(milliseconds, date_only, time_only);
 }
 
 std::string ole_datetime(double ole_date) {

@@ -1,0 +1,49 @@
+Note: Google Test filter = OleDateTest.FormatsCalendarDatesOutsideNanosecondClockRange:QueryWhereInternalTest.TemporalPredicatesKeepWideCalendarOrder
+[==========] Running 2 tests from 2 test suites.
+[----------] Global test environment set-up.
+[----------] 1 test from OleDateTest
+[ RUN      ] OleDateTest.FormatsCalendarDatesOutsideNanosecondClockRange
+/src/tests/edgar/explorgdb/common/test_ole_date.cpp:191: Failure
+Expected equality of these values:
+  ole_datetime(-693593.0)
+    Which is: "1754-08-30 22:43:41.129"
+  "0001-01-01 00:00:00"
+
+/src/tests/edgar/explorgdb/common/test_ole_date.cpp:192: Failure
+Expected equality of these values:
+  ole_datetime(132585.0)
+    Which is: "1678-06-12 00:25:26.291"
+  "2263-01-01 00:00:00"
+
+/src/tests/edgar/explorgdb/common/test_ole_date.cpp:193: Failure
+Expected equality of these values:
+  ole_datetime(2958465.0 + 86399999.0 / 86400000.0)
+    Which is: "1816-03-30 05:56:08.066"
+  "9999-12-31 23:59:59.999"
+
+[  FAILED  ] OleDateTest.FormatsCalendarDatesOutsideNanosecondClockRange (0 ms)
+[----------] 1 test from OleDateTest (0 ms total)
+
+[----------] 1 test from QueryWhereInternalTest
+[ RUN      ] QueryWhereInternalTest.TemporalPredicatesKeepWideCalendarOrder
+/src/tests/edgar/explorgdb/reader/query/test_query_where_internal.cpp:464: Failure
+Value of: evaluate_where(expression, &ref, 1)
+  Actual: false
+Expected: true
+
+/src/tests/edgar/explorgdb/reader/query/test_query_where_internal.cpp:465: Failure
+Value of: evaluate_where(expression, record)
+  Actual: false
+Expected: true
+
+[  FAILED  ] QueryWhereInternalTest.TemporalPredicatesKeepWideCalendarOrder (0 ms)
+[----------] 1 test from QueryWhereInternalTest (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 2 tests from 2 test suites ran. (0 ms total)
+[  PASSED  ] 0 tests.
+[  FAILED  ] 2 tests, listed below:
+[  FAILED  ] OleDateTest.FormatsCalendarDatesOutsideNanosecondClockRange
+[  FAILED  ] QueryWhereInternalTest.TemporalPredicatesKeepWideCalendarOrder
+
+ 2 FAILED TESTS

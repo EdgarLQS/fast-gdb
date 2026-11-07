@@ -763,14 +763,10 @@ bool compare_string(std::string_view left,
     return false;
 }
 
-int64_t temporal_epoch_milliseconds(double ole_value) {
-    return std::chrono::duration_cast<std::chrono::milliseconds>(
-        ole_to_timepoint(ole_value).time_since_epoch()).count();
-}
-
 bool compare_temporal(int64_t actual_milliseconds,
                       const Literal& literal, AttrOp op) {
-    int64_t expected = temporal_epoch_milliseconds(literal.temporal_value);
+    int64_t expected = 0;
+    if (!try_ole_to_unix_milliseconds(literal.temporal_value, expected)) return false;
     if (literal.temporal_type == FieldType::DateTimeWithOffset) {
         expected -= static_cast<int64_t>(literal.temporal_offset_minutes) *
                     60000;
@@ -895,10 +891,16 @@ TruthValue evaluate_literal(const FieldRef& value,
     }
     if (literal.is_temporal) {
         if (value.type != literal.temporal_type) return TruthValue::False;
-        int64_t actual = temporal_epoch_milliseconds(value.as_f64());
+        int64_t actual = 0;
+        if (!try_ole_to_unix_milliseconds(value.as_f64(), actual))
+            return TruthValue::Unknown;
         if (value.type == FieldType::DateTimeWithOffset) {
-            actual -= static_cast<int64_t>(
+            const int64_t offset = static_cast<int64_t>(
                 value.as_datetime_offset_minutes()) * 60000;
+            if ((offset > 0 && actual < std::numeric_limits<int64_t>::min() + offset) ||
+                (offset < 0 && actual > std::numeric_limits<int64_t>::max() + offset))
+                return TruthValue::Unknown;
+            actual -= offset;
         }
         return truth_from_bool(compare_temporal(actual, literal, op));
     }
@@ -943,9 +945,15 @@ TruthValue evaluate_literal(const FieldValue& value,
             if (current == nullptr) return TruthValue::False;
             actual_ole = *current;
         }
-        int64_t actual = temporal_epoch_milliseconds(actual_ole);
+        int64_t actual = 0;
+        if (!try_ole_to_unix_milliseconds(actual_ole, actual))
+            return TruthValue::Unknown;
         if (literal.temporal_type == FieldType::DateTimeWithOffset) {
-            actual -= static_cast<int64_t>(actual_offset) * 60000;
+            const int64_t offset = static_cast<int64_t>(actual_offset) * 60000;
+            if ((offset > 0 && actual < std::numeric_limits<int64_t>::min() + offset) ||
+                (offset < 0 && actual > std::numeric_limits<int64_t>::max() + offset))
+                return TruthValue::Unknown;
+            actual -= offset;
         }
         return truth_from_bool(compare_temporal(actual, literal, op));
     }
