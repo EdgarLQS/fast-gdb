@@ -1,0 +1,39 @@
+Note: Google Test filter = QueryWhereInternalTest.*
+[==========] Running 15 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 15 tests from QueryWhereInternalTest
+[ RUN      ] QueryWhereInternalTest.CompilesAndEvaluatesExistingWhereSubset
+[       OK ] QueryWhereInternalTest.CompilesAndEvaluatesExistingWhereSubset (0 ms)
+[ RUN      ] QueryWhereInternalTest.IdentifiesOnlySingleCompatibleComparisonAsIndexable
+[       OK ] QueryWhereInternalTest.IdentifiesOnlySingleCompatibleComparisonAsIndexable (0 ms)
+[ RUN      ] QueryWhereInternalTest.PreservesNullAndEscapedStringSemantics
+[       OK ] QueryWhereInternalTest.PreservesNullAndEscapedStringSemantics (0 ms)
+[ RUN      ] QueryWhereInternalTest.AppliesSqlNullTruthTablesToCompoundPredicates
+[       OK ] QueryWhereInternalTest.AppliesSqlNullTruthTablesToCompoundPredicates (0 ms)
+[ RUN      ] QueryWhereInternalTest.ParsesTypedTemporalLiteralsAndComparesMillis
+[       OK ] QueryWhereInternalTest.ParsesTypedTemporalLiteralsAndComparesMillis (0 ms)
+[ RUN      ] QueryWhereInternalTest.RejectsTemporalTypeMismatchAndInvalidLiterals
+[       OK ] QueryWhereInternalTest.RejectsTemporalTypeMismatchAndInvalidLiterals (0 ms)
+[ RUN      ] QueryWhereInternalTest.NotEqualTreatsNaNAsDifferent
+[       OK ] QueryWhereInternalTest.NotEqualTreatsNaNAsDifferent (0 ms)
+[ RUN      ] QueryWhereInternalTest.ReportsInvalidRequestsDistinctly
+[       OK ] QueryWhereInternalTest.ReportsInvalidRequestsDistinctly (0 ms)
+[ RUN      ] QueryWhereInternalTest.EvaluatesMaterializedFeatureRecords
+[       OK ] QueryWhereInternalTest.EvaluatesMaterializedFeatureRecords (0 ms)
+[ RUN      ] QueryWhereInternalTest.ComparesInt64LiteralsWithoutDoubleRounding
+[       OK ] QueryWhereInternalTest.ComparesInt64LiteralsWithoutDoubleRounding (0 ms)
+[ RUN      ] QueryWhereInternalTest.ComparesIntegerFieldsAndFloatingLiteralsExactly
+[       OK ] QueryWhereInternalTest.ComparesIntegerFieldsAndFloatingLiteralsExactly (0 ms)
+[ RUN      ] QueryWhereInternalTest.ComparesDoubleFieldsAgainstExactIntegerLiterals
+[       OK ] QueryWhereInternalTest.ComparesDoubleFieldsAgainstExactIntegerLiterals (0 ms)
+[ RUN      ] QueryWhereInternalTest.IntersectsSortedFidsLinearlyAndUniquely
+[       OK ] QueryWhereInternalTest.IntersectsSortedFidsLinearlyAndUniquely (0 ms)
+[ RUN      ] QueryWhereInternalTest.IntersectsSortedFidsAcross32BitBoundary
+[       OK ] QueryWhereInternalTest.IntersectsSortedFidsAcross32BitBoundary (0 ms)
+[ RUN      ] QueryWhereInternalTest.UuidPredicatesCompareValuesAcrossRowRepresentations
+[       OK ] QueryWhereInternalTest.UuidPredicatesCompareValuesAcrossRowRepresentations (0 ms)
+[----------] 15 tests from QueryWhereInternalTest (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 15 tests from 1 test suite ran. (0 ms total)
+[  PASSED  ] 15 tests.

@@ -571,7 +571,9 @@ QueryResult QueryEngine::query_attribute(const QueryRequest& request) {
         result.fallback_reason = result.error;
         return result;
     }
-    if (atx != nullptr) {
+    const bool uuid_field = indexed_field_type == FieldType::UUID_1 ||
+                            indexed_field_type == FieldType::UUID_2;
+    if (atx != nullptr && !uuid_field) {
         try {
             GdbAttributeIndexParser index(
                 catalog_.path() + "/" + atx->filename, *indexed_field_type);
@@ -598,7 +600,8 @@ QueryResult QueryEngine::query_attribute(const QueryRequest& request) {
     result.execution_path = kPathAttributeSequential;
     result.fallback_reason = atx == nullptr
         ? kFallbackAttributeIndexMissing
-        : "attribute index could not be parsed; sequential scan used";
+        : (uuid_field ? "UUID attribute index requires sequential value comparison"
+                      : "attribute index could not be parsed; sequential scan used");
 
     // An index name is not sufficient to infer a field. Only fall back when
     // the catalog declares a direct-field index that can be compiled safely.
@@ -650,8 +653,10 @@ QueryResult QueryEngine::query_attribute(const QueryRequest& request) {
         metadata->column_name + " " + operation + " " + literal,
         &result.query_preparation_cache_hit);
     if (!expression.valid()) {
+        result.status = QueryStatus::InvalidRequest;
+        result.error = expression.error();
         result.fallback_reason +=
-            "; sequential scan predicate unsupported: " + expression.error();
+            "; sequential scan predicate unsupported: " + result.error;
         return result;
     }
 

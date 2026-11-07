@@ -177,6 +177,12 @@ then verifies that existing ATX files with unparsed metadata return explicit
 `Unsupported`. The modern fixture skips the latter test when no such files exist.
 See [typed ATX evidence](../docs/plan/evidence/2026-11-07-typed-atx.md).
 
+`HistoricalUuidPredicatesMatchIndependentRecordScan` uses the same environment
+variable and independently scans GDAL UUID fields. It compares six WHERE
+operators with lowercase and uppercase/braced literals, and verifies recognized
+GUID ATX requests use a correct sequential fallback. It does not claim native
+GUID index support. See [UUID evidence](../docs/plan/evidence/2026-11-07-uuid-predicates.md).
+
 ## Opt-in Reader contention benchmarks
 
 - `TablxCacheBenchmarkTest.SharedHitContentionProfile` measures concurrent cache

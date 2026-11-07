@@ -1463,6 +1463,125 @@ TEST(RealDataReleaseContractTest,
     RecordProperty("IndexesWithOtherFieldTypes", std::to_string(skipped_types));
 }
 
+TEST(RealDataReleaseContractTest, HistoricalUuidPredicatesMatchIndependentRecordScan) {
+    const char* path = required_dataset_from_env("FAST_GDB_HISTORICAL_DATASET");
+    if (path == nullptr) GTEST_SKIP() << "Set FAST_GDB_HISTORICAL_DATASET";
+    GDALAllRegister();
+    std::unique_ptr<GDALDataset, decltype(&GDALClose)> reference(
+        static_cast<GDALDataset*>(GDALOpenEx(path,
+            GDAL_OF_VECTOR | GDAL_OF_READONLY, nullptr, nullptr, nullptr)), GDALClose);
+    ASSERT_NE(reference, nullptr);
+    GdbCatalog catalog;
+    ASSERT_TRUE(catalog.scan(path));
+    CatalogResolver resolver(catalog);
+    ASSERT_TRUE(resolver.load());
+    const auto canonical = [](std::string value) {
+        if (value.size() == 38) value = value.substr(1, 36);
+        std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
+            return static_cast<char>(std::tolower(ch));
+        });
+        return value;
+    };
+    uint64_t queries = 0, indexed_fallbacks = 0;
+    for (int i = 0; i < reference->GetLayerCount(); ++i) {
+        OGRLayer* source = reference->GetLayer(i);
+        ASSERT_NE(source, nullptr);
+        SCOPED_TRACE(source->GetName());
+        const auto resolved = resolver.resolve(source->GetName());
+        ASSERT_TRUE(resolved.has_value());
+        QueryEngine engine(catalog, *resolved);
+        ASSERT_TRUE(engine.open());
+        std::vector<IndexEntry> indexes;
+        catalog.read_index_metadata(resolved->id, indexes);
+        for (const auto& field : engine.table()->fields()) {
+            if (field.type != FieldType::UUID_1 && field.type != FieldType::UUID_2) continue;
+            SCOPED_TRACE(field.name);
+            const int source_field = source->GetLayerDefn()->GetFieldIndex(field.name.c_str());
+            ASSERT_GE(source_field, 0);
+            std::vector<std::pair<RowSlot, std::string>> rows;
+            std::vector<std::string> probes = {
+                "00000000-0000-0000-0000-000000000000",
+                "ffffffff-ffff-ffff-ffff-ffffffffffff"};
+            source->SetSpatialFilter(nullptr);
+            ASSERT_EQ(source->SetAttributeFilter(nullptr), OGRERR_NONE);
+            source->ResetReading();
+            while (OGRFeature* raw = source->GetNextFeature()) {
+                std::unique_ptr<OGRFeature, decltype(&OGRFeature::DestroyFeature)>
+                    feature(raw, OGRFeature::DestroyFeature);
+                if (!feature->IsFieldSetAndNotNull(source_field)) continue;
+                ASSERT_GT(feature->GetFID(), 0);
+                const auto text = canonical(feature->GetFieldAsString(source_field));
+                ASSERT_EQ(text.size(), 36U);
+                rows.emplace_back(static_cast<RowSlot>(feature->GetFID() - 1), text);
+                probes.push_back(text);
+            }
+            std::sort(probes.begin(), probes.end());
+            probes.erase(std::unique(probes.begin(), probes.end()), probes.end());
+            const auto index = std::find_if(indexes.begin(), indexes.end(), [&](const IndexEntry& entry) {
+                return GdbIndexesParser::is_direct_field_expression(entry.column_name) &&
+                    GdbIndexesParser::field_name_from_expression(entry.column_name) == field.name &&
+                    catalog.find_atx(resolved->id, entry.name) != nullptr;
+            });
+            if (index != indexes.end()) {
+                QueryRequest invalid;
+                invalid.kind = QueryKind::AttributeString;
+                invalid.index_name = index->name;
+                invalid.string_value = "invalid-uuid";
+                const auto result = engine.query(invalid);
+                EXPECT_EQ(result.status, QueryStatus::InvalidRequest);
+                EXPECT_FALSE(result.error.empty());
+            }
+            const char* symbols[] = {"=", "!=", "<", "<=", ">", ">="};
+            const AttrOp operations[] = {AttrOp::Eq, AttrOp::Ne, AttrOp::Lt,
+                                         AttrOp::Le, AttrOp::Gt, AttrOp::Ge};
+            for (const auto& probe : probes) {
+                for (size_t op = 0; op < 6; ++op) {
+                    std::vector<RowSlot> expected;
+                    for (const auto& row : rows) {
+                        const int order = row.second.compare(probe);
+                        const bool matches[] = {order == 0, order != 0, order < 0,
+                                                order <= 0, order > 0, order >= 0};
+                        if (matches[op]) expected.push_back(row.first);
+                    }
+                    std::sort(expected.begin(), expected.end());
+                    for (bool braced : {false, true}) {
+                        std::string literal = probe;
+                        if (braced) {
+                            std::transform(literal.begin(), literal.end(), literal.begin(),
+                                [](unsigned char ch) { return static_cast<char>(std::toupper(ch)); });
+                            literal = "{" + literal + "}";
+                        }
+                        QueryRequest request;
+                        request.kind = QueryKind::WhereClause;
+                        request.where_clause = field.name + " " + symbols[op] + " '" + literal + "'";
+                        auto result = engine.query(request);
+                        ASSERT_EQ(result.status, QueryStatus::Ok) << result.error;
+                        std::sort(result.matched_fids.begin(), result.matched_fids.end());
+                        EXPECT_EQ(result.matched_fids, expected) << request.where_clause;
+                        ++queries;
+                        if (index != indexes.end()) {
+                            request.kind = QueryKind::AttributeString;
+                            request.index_name = index->name;
+                            request.string_value = literal;
+                            request.attr_op = operations[op];
+                            auto fallback = engine.query(request);
+                            ASSERT_EQ(fallback.status, QueryStatus::Ok) << fallback.error;
+                            EXPECT_EQ(fallback.execution_path, kPathAttributeSequential);
+                            EXPECT_FALSE(fallback.fallback_reason.empty());
+                            std::sort(fallback.matched_fids.begin(), fallback.matched_fids.end());
+                            EXPECT_EQ(fallback.matched_fids, expected) << request.where_clause;
+                            ++indexed_fallbacks;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    EXPECT_GT(queries, 0U);
+    RecordProperty("UuidWhereQueries", std::to_string(queries));
+    RecordProperty("UuidIndexSequentialFallbacks", std::to_string(indexed_fallbacks));
+}
+
 TEST(RealDataReleaseContractTest,
      HistoricalUnknownIndexMetadataReturnsUnsupported) {
     const char* path = required_dataset_from_env("FAST_GDB_HISTORICAL_DATASET");

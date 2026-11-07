@@ -1,0 +1,85 @@
+Note: Google Test filter = QueryWhereInternalTest.UuidPredicatesCompareValuesAcrossRowRepresentations
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from QueryWhereInternalTest
+[ RUN      ] QueryWhereInternalTest.UuidPredicatesCompareValuesAcrossRowRepresentations
+/src/tests/edgar/explorgdb/reader/query/test_query_where_internal.cpp:425: Failure
+Value of: evaluate_where(equals, &ref, 1)
+  Actual: false
+Expected: true
+
+/src/tests/edgar/explorgdb/reader/query/test_query_where_internal.cpp:430: Failure
+Value of: evaluate_where(in, &ref, 1)
+  Actual: false
+Expected: true
+
+/src/tests/edgar/explorgdb/reader/query/test_query_where_internal.cpp:425: Failure
+Value of: evaluate_where(equals, &ref, 1)
+  Actual: false
+Expected: true
+
+/src/tests/edgar/explorgdb/reader/query/test_query_where_internal.cpp:426: Failure
+Value of: evaluate_where(equals, record)
+  Actual: false
+Expected: true
+
+/src/tests/edgar/explorgdb/reader/query/test_query_where_internal.cpp:430: Failure
+Value of: evaluate_where(in, &ref, 1)
+  Actual: false
+Expected: true
+
+/src/tests/edgar/explorgdb/reader/query/test_query_where_internal.cpp:431: Failure
+Value of: evaluate_where(in, record)
+  Actual: false
+Expected: true
+
+/src/tests/edgar/explorgdb/reader/query/test_query_where_internal.cpp:436: Failure
+Value of: evaluate_where(smaller, &ref, 1)
+  Actual: false
+Expected: true
+
+/src/tests/edgar/explorgdb/reader/query/test_query_where_internal.cpp:425: Failure
+Value of: evaluate_where(equals, &ref, 1)
+  Actual: false
+Expected: true
+
+/src/tests/edgar/explorgdb/reader/query/test_query_where_internal.cpp:430: Failure
+Value of: evaluate_where(in, &ref, 1)
+  Actual: false
+Expected: true
+
+/src/tests/edgar/explorgdb/reader/query/test_query_where_internal.cpp:425: Failure
+Value of: evaluate_where(equals, &ref, 1)
+  Actual: false
+Expected: true
+
+/src/tests/edgar/explorgdb/reader/query/test_query_where_internal.cpp:426: Failure
+Value of: evaluate_where(equals, record)
+  Actual: false
+Expected: true
+
+/src/tests/edgar/explorgdb/reader/query/test_query_where_internal.cpp:430: Failure
+Value of: evaluate_where(in, &ref, 1)
+  Actual: false
+Expected: true
+
+/src/tests/edgar/explorgdb/reader/query/test_query_where_internal.cpp:431: Failure
+Value of: evaluate_where(in, record)
+  Actual: false
+Expected: true
+
+/src/tests/edgar/explorgdb/reader/query/test_query_where_internal.cpp:436: Failure
+Value of: evaluate_where(smaller, &ref, 1)
+  Actual: false
+Expected: true
+
+[  FAILED  ] QueryWhereInternalTest.UuidPredicatesCompareValuesAcrossRowRepresentations (0 ms)
+[----------] 1 test from QueryWhereInternalTest (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (0 ms total)
+[  PASSED  ] 0 tests.
+[  FAILED  ] 1 test, listed below:
+[  FAILED  ] QueryWhereInternalTest.UuidPredicatesCompareValuesAcrossRowRepresentations
+
+ 1 FAILED TEST

@@ -407,3 +407,46 @@ TEST(QueryWhereInternalTest, IntersectsSortedFidsAcross32BitBoundary) {
                   {boundary, boundary + 1U, boundary + 2U}),
               (std::vector<RowSlot>{boundary, boundary + 2U}));
 }
+
+TEST(QueryWhereInternalTest, UuidPredicatesCompareValuesAcrossRowRepresentations) {
+    // FileGDB stores the first three UUID components in little-endian order.
+    const uint8_t bytes[] = {0x67, 0x45, 0x23, 0x01, 0xab, 0x89, 0xef, 0xcd,
+                             0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef};
+    for (FieldType type : {FieldType::UUID_1, FieldType::UUID_2}) {
+        const std::vector<FieldDescriptor> descriptors = {field("id", type, true)};
+        const FieldRef ref{type, bytes, sizeof(bytes), false, 0};
+        FeatureRecord record;
+        record.field_values = {std::string("01234567-89ab-cdef-0123-456789abcdef")};
+        for (const std::string& literal : {
+                 std::string("01234567-89ab-cdef-0123-456789abcdef"),
+                 std::string("{01234567-89AB-CDEF-0123-456789ABCDEF}")}) {
+            const auto equals = compile_where("id = '" + literal + "'", descriptors);
+            ASSERT_TRUE(equals.valid()) << equals.error();
+            EXPECT_TRUE(evaluate_where(equals, &ref, 1));
+            EXPECT_TRUE(evaluate_where(equals, record));
+            const auto in = compile_where("id IN ('ffffffff-ffff-ffff-ffff-ffffffffffff', '" +
+                                          literal + "')", descriptors);
+            ASSERT_TRUE(in.valid()) << in.error();
+            EXPECT_TRUE(evaluate_where(in, &ref, 1));
+            EXPECT_TRUE(evaluate_where(in, record));
+        }
+        const auto smaller = compile_where(
+            "id < 'ffffffff-ffff-ffff-ffff-ffffffffffff'", descriptors);
+        ASSERT_TRUE(smaller.valid());
+        EXPECT_TRUE(evaluate_where(smaller, &ref, 1));
+        EXPECT_TRUE(evaluate_where(smaller, record));
+        EXPECT_FALSE(compile_where("id = 'invalid-uuid'", descriptors).valid());
+        EXPECT_FALSE(compile_where("id IN ('{}')", descriptors).valid());
+        FieldRef short_ref = ref;
+        short_ref.byte_len = 15;
+        EXPECT_FALSE(evaluate_where(smaller, &short_ref, 1));
+        FieldRef null_ref = ref;
+        null_ref.is_null = true;
+        EXPECT_FALSE(evaluate_where(smaller, &null_ref, 1));
+    }
+    const std::vector<FieldDescriptor> text_schema = {field("id", FieldType::String)};
+    const auto text = compile_where("id = 'ABC'", text_schema);
+    FeatureRecord text_record;
+    text_record.field_values = {std::string("abc")};
+    EXPECT_FALSE(evaluate_where(text, text_record));
+}

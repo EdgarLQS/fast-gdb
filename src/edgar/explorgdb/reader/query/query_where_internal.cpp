@@ -12,6 +12,7 @@
 #include "ole_date.h"
 
 #include <algorithm>
+#include <array>
 #include <cerrno>
 #include <cctype>
 #include <cmath>
@@ -52,6 +53,7 @@ struct Token {
 struct Literal {
     bool is_string = false;
     bool is_temporal = false;
+    bool is_uuid = false;
     std::string string_value;
     FieldType temporal_type = FieldType::DateTime;
     double temporal_value = 0.0;
@@ -89,6 +91,28 @@ std::string lower_copy(std::string value) {
                        return static_cast<char>(std::tolower(ch));
                    });
     return value;
+}
+
+// Canonical UUID comparisons use 32 lowercase hex digits. Only the standard
+// hyphenated representation, with optional outer braces, is accepted.
+bool canonical_uuid(std::string_view text, std::array<char, 32>& output) {
+    if (text.size() == 38 && text.front() == '{' && text.back() == '}')
+        text = text.substr(1, 36);
+    if (text.size() != 36) return false;
+    size_t target = 0;
+    for (size_t i = 0; i < text.size(); ++i) {
+        if (i == 8 || i == 13 || i == 18 || i == 23) {
+            if (text[i] != '-') return false;
+            continue;
+        }
+        const char ch = text[i];
+        if (ch >= '0' && ch <= '9') output[target++] = ch;
+        else if (ch >= 'a' && ch <= 'f') output[target++] = ch;
+        else if (ch >= 'A' && ch <= 'F')
+            output[target++] = static_cast<char>(ch - 'A' + 'a');
+        else return false;
+    }
+    return target == output.size();
 }
 
 int64_t days_from_civil(int year, unsigned month, unsigned day) {
@@ -573,7 +597,7 @@ bool bind_fields(Expr& expression,
     return false;
 }
 
-bool validate_literal_types(const Expr& expression,
+bool validate_literal_types(Expr& expression,
                             const std::vector<FieldDescriptor>& fields,
                             std::string& error) {
     if (expression.kind == ExprKind::And || expression.kind == ExprKind::Or) {
@@ -587,7 +611,15 @@ bool validate_literal_types(const Expr& expression,
     }
 
     const FieldType field_type = fields[expression.field_index].type;
-    auto compatible = [&](const Literal& literal) {
+    auto compatible = [&](Literal& literal) {
+        if (field_type == FieldType::UUID_1 || field_type == FieldType::UUID_2) {
+            std::array<char, 32> uuid;
+            if (!literal.is_string || !canonical_uuid(literal.string_value, uuid))
+                return false;
+            literal.is_uuid = true;
+            literal.string_value.assign(uuid.data(), uuid.size());
+            return true;
+        }
         if (is_temporal_field(field_type)) {
             return literal.is_temporal &&
                    literal.temporal_type == field_type;
@@ -601,7 +633,7 @@ bool validate_literal_types(const Expr& expression,
     if (expression.kind == ExprKind::Comparison) {
         if (compatible(expression.literal)) return true;
     } else {
-        for (const Literal& literal : expression.literals) {
+        for (Literal& literal : expression.literals) {
             if (!compatible(literal)) {
                 error = "incompatible field and literal types in where clause";
                 return false;
@@ -847,6 +879,20 @@ TruthValue evaluate_literal(const FieldRef& value,
                             const Literal& literal,
                             AttrOp op) {
     if (value.is_null) return TruthValue::Unknown;
+    if (literal.is_uuid) {
+        if ((value.type != FieldType::UUID_1 && value.type != FieldType::UUID_2) ||
+            value.data == nullptr || value.byte_len != 16) return TruthValue::False;
+        constexpr uint8_t order[] = {3, 2, 1, 0, 5, 4, 7, 6, 8, 9, 10, 11, 12, 13, 14, 15};
+        constexpr char hex[] = "0123456789abcdef";
+        std::array<char, 32> actual;
+        for (size_t i = 0; i < 16; ++i) {
+            const uint8_t byte = value.data[order[i]];
+            actual[2 * i] = hex[byte >> 4];
+            actual[2 * i + 1] = hex[byte & 15];
+        }
+        return truth_from_bool(compare_string(
+            std::string_view(actual.data(), actual.size()), literal.string_value, op));
+    }
     if (literal.is_temporal) {
         if (value.type != literal.temporal_type) return TruthValue::False;
         int64_t actual = temporal_epoch_milliseconds(value.as_f64());
@@ -876,6 +922,14 @@ TruthValue evaluate_literal(const FieldValue& value,
                             AttrOp op) {
     if (std::holds_alternative<std::nullptr_t>(value))
         return TruthValue::Unknown;
+    if (literal.is_uuid) {
+        std::string_view text;
+        std::array<char, 32> actual;
+        if (!field_value_as_string(value, text) || !canonical_uuid(text, actual))
+            return TruthValue::False;
+        return truth_from_bool(compare_string(
+            std::string_view(actual.data(), actual.size()), literal.string_value, op));
+    }
     if (literal.is_temporal) {
         double actual_ole = 0.0;
         int16_t actual_offset = 0;

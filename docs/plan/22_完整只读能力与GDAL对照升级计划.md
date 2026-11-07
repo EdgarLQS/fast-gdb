@@ -259,3 +259,7 @@ FAST_GDB_CURVE_DATASET="$PWD/test_data/gdb/参数化数据_liqs.gdb" \
 ### 2026-11-07：INT16 / FLOAT32 ATX 修复与提交范围
 
 修复 INT16 有符号解码和 FLOAT32 字段类型传递，统一直接查询与 SpatialWhere 的索引解释；未知直接字段元数据返回 Unsupported。现代历史参考库 9 个索引、312 次直接查询和 60 次联合查询通过；92/93 各 11 次未知元数据请求明确拒绝，原生索引能力未计通过。Release 585 PASS / 19 SKIP / 0 FAIL；GDAL-free ASan/UBSan/LSan 410 PASS / 5 SKIP / 0 FAIL，macOS 两项新安全测试通过。详见 [本次提交内容、证据与剩余项](evidence/2026-11-07-typed-atx.md)。GUID/日期索引、v9 元数据仍待实现或验收，S3.5 保持未完成；真实 ArcGIS 附件/高级对象/MultiPatch/高位稀疏 v4、Windows 及冷 I/O 验收仍按原计划执行。
+
+### 2026-11-07：UUID 值比较与 GUID 查询回退
+
+修复零拷贝 UUID 将 16 字节当文本比较的问题；WHERE/IN 在两种行表示下统一大小写及可选花括号。GUID 索引请求明确顺序回退；非法 UUID 字面量报错。三库 684/612/612 次 WHERE 和现代库 36 次 GUID 回退对照通过，原生 GUID ATX 未计完成。最新 Release 588 PASS / 19 SKIP / 0 FAIL，GDAL-free ASan/UBSan/LSan 411 PASS / 5 SKIP / 0 FAIL，macOS WHERE 15/15。详见 [提交范围与剩余合同](evidence/2026-11-07-uuid-predicates.md)。日期 ATX、v9 元数据、GUID 原生索引和原计划的真实 ArcGIS/Windows 验收仍未完成。
