@@ -20,6 +20,12 @@ struct QueryGridBbox {
     long double ymin = 0.0L;
     long double xmax = 0.0L;
     long double ymax = 0.0L;
+
+    // Preserve continuous sub-grid bounds, while including integer vertices
+    // whose public double coordinate equals an inclusive query boundary.
+    static QueryGridBbox from_world(const CoordinateTransform& transform,
+                                   double xmin, double ymin,
+                                   double xmax, double ymax);
 };
 
 /** 点相对 Polygon/MultiPolygon 的精确位置。 */

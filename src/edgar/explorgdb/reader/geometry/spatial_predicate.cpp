@@ -5,10 +5,76 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
+#include <limits>
 #include <utility>
 
 namespace explorgdb {
 namespace {
+
+long double world_bound_to_grid(double value, double origin,
+                               double scale, bool minimum) {
+    const long double inverse =
+        (static_cast<long double>(value) - origin) * scale;
+    if (!std::isfinite(inverse) || !std::isfinite(scale) || scale <= 0)
+        return inverse;
+    const long double rounded = std::round(inverse);
+    const long double limit = std::ldexp(1.0L, 63);
+    const int64_t nearest = rounded >= limit
+        ? std::numeric_limits<int64_t>::max()
+        : (rounded <= -limit ? std::numeric_limits<int64_t>::min()
+                            : static_cast<int64_t>(rounded));
+    const auto decode = [=](int64_t grid) {
+        return static_cast<double>(grid) / scale + origin;
+    };
+    const double decoded_nearest = decode(nearest);
+    if (decoded_nearest != value) {
+        // Inversion can also land on the wrong side of a vertex for a world
+        // bound immediately adjacent to its rounded output. Preserve that
+        // strict ordering instead of widening the query by an epsilon.
+        const long double vertex = nearest;
+        if (inverse >= vertex && decoded_nearest > value)
+            return std::nextafter(vertex,
+                -std::numeric_limits<long double>::infinity());
+        if (inverse <= vertex && decoded_nearest < value)
+            return std::nextafter(vertex,
+                std::numeric_limits<long double>::infinity());
+        return inverse;
+    }
+
+    // Usually the output double identifies one integer vertex. At large
+    // magnitudes several integers can share the same double; include the
+    // complete plateau at the corresponding inclusive boundary.
+    if (minimum && (nearest == std::numeric_limits<int64_t>::min() ||
+                    decode(nearest - 1) != value)) return nearest;
+    if (!minimum && (nearest == std::numeric_limits<int64_t>::max() ||
+                     decode(nearest + 1) != value)) return nearest;
+    constexpr uint64_t sign = uint64_t{1} << 63;
+    const auto signed_grid = [](uint64_t ordered) {
+        constexpr uint64_t midpoint = uint64_t{1} << 63;
+        return ordered >= midpoint
+            ? static_cast<int64_t>(ordered - midpoint)
+            : std::numeric_limits<int64_t>::min() +
+                  static_cast<int64_t>(ordered);
+    };
+    const uint64_t key = static_cast<uint64_t>(nearest) ^ sign;
+    uint64_t low = minimum ? 0 : key;
+    uint64_t high = minimum ? key : std::numeric_limits<uint64_t>::max();
+    while (low < high) {
+        const uint64_t distance = high - low;
+        const uint64_t middle = low + distance / 2 +
+                                (minimum ? 0 : distance % 2);
+        const double decoded = decode(signed_grid(middle));
+        if (minimum) {
+            if (decoded < value) low = middle + 1;
+            else high = middle;
+        } else {
+            if (decoded > value) high = middle - 1;
+            else low = middle;
+        }
+    }
+    return signed_grid(low);
+}
 
 /** 几何包围盒与查询包围盒是否不相交。 */
 bool bbox_disjoint(const GridBbox& geometry,
@@ -259,6 +325,16 @@ PointGeometryLocation SpatialPredicate::locate_point(
 }
 
 /** 根据几何类型分派包围盒相交判断。 */
+QueryGridBbox QueryGridBbox::from_world(
+        const CoordinateTransform& transform,
+        double xmin, double ymin, double xmax, double ymax) {
+    return {
+        world_bound_to_grid(xmin, transform.x_origin, transform.xy_scale, true),
+        world_bound_to_grid(ymin, transform.y_origin, transform.xy_scale, true),
+        world_bound_to_grid(xmax, transform.x_origin, transform.xy_scale, false),
+        world_bound_to_grid(ymax, transform.y_origin, transform.xy_scale, false)};
+}
+
 bool SpatialPredicate::intersects_bbox(const GeometryModel& geometry,
                                        const QueryGridBbox& bbox) {
     if (!geometry.valid() || geometry.is_empty() ||

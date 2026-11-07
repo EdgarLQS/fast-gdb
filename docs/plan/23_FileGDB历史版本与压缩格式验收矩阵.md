@@ -23,7 +23,7 @@ GDAL 是重要的独立实现对照，但当 GDAL 文档明确记录格式限制
 
 | 维度 | 格式/样本类别 | fast-gdb 当前状态 | GDAL/外部对照 | 证据与未完成条件 |
 |---|---|---|---|---|
-| ArcGIS 产品代际 | ArcGIS 9.x FileGDB | **官方历史参考库字段对照通过，ArcGIS 独立真值待补** | GDAL v3.10.3 的 92/93 命名夹具各 22 层、453 行、2,056 字段值完整对照通过 | 两份完整归档及每文件 SHA-256 已记录；创建产品原始日志及 ArcGIS 导出真值未取得，历史几何输出对照新增通过（各 74 个非空、27 个 NULL/EMPTY 空间几何和 352 非空间行），索引合同未验收。仍需 ArcGIS 原始真值及升级前后对照，见 [字段记录](evidence/2026-11-07-S3.5-gdal-historical-attributes.md) 与 [几何记录](evidence/2026-11-07-S3.5-historical-geometry.md)。 |
+| ArcGIS 产品代际 | ArcGIS 9.x FileGDB | **官方历史参考库字段对照通过，ArcGIS 独立真值待补** | GDAL v3.10.3 的 92/93 命名夹具各 22 层、453 行、2,056 字段值完整对照通过 | 两份完整归档及每文件 SHA-256 已记录；创建产品原始日志及 ArcGIS 导出真值未取得，历史几何输出对照新增通过（各 74 个非空、27 个 NULL/EMPTY 空间几何和 352 非空间行），新增空间查询对照（各 84 窗口，72 窗口走 SPX 候选）通过；属性索引与刷新合同未验收。仍需 ArcGIS 原始真值及升级前后对照，见 [字段记录](evidence/2026-11-07-S3.5-gdal-historical-attributes.md) 与 [几何记录](evidence/2026-11-07-S3.5-historical-geometry.md)。 |
 | ArcGIS 产品代际 | ArcGIS 10+ | **部分验证** | OpenFileGDB 支持 10+ 创建的 GDB | 仓库中的 ArcGIS 真实样本观察到 v3 表；缺少按 ArcGIS/Pro 版本分层的完整语料。GDAL 文档指出 FileGDB 格式版本自 10.1 后未变化，但这不证明所有新字段和新对象语义一致。 |
 | `.gdbtable` / `.gdbtablx` | v3 表及行偏移索引 | **真实样本通过（当前语料范围）** | GDAL v3 读取路径可作为第二实现对照 | 本地历史扫描记录有 301 个 `.gdbtable` 和 304 个 `.gdbtablx`，均为 v3；真实 ArcGIS 主样本、常规读取和 v3 稀疏压缩块映射测试通过。尚不能据此覆盖全部 ArcGIS 10+ 写入配置。 |
 | `.gdbtable` / `.gdbtablx` | v4 密集、无位图布局 | **合成/参考通过** | GDAL 3.13.0 与 3.13.3 均读取参考夹具 | `synthetic_v4_dense_gdal_reference.gdb` 为 GDAL 生成后转换目标表头/索引 trailer 的四行夹具，不是 ArcGIS 写出的 v4 样本。真实 v4 仍待补。 |

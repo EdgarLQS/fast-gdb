@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites tests="1" failures="0" disabled="0" errors="0" time="0.096" timestamp="2026-11-07T09:49:12.529" name="AllTests">
+  <testsuite name="RealDataReleaseContractTest" tests="1" failures="0" disabled="0" skipped="0" errors="0" time="0.096" timestamp="2026-11-07T09:49:12.529">
+    <testcase name="HistoricalSpatialQueriesMatchIndependentGeometryScan" file="/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp" line="1281" status="run" result="completed" time="0.096" timestamp="2026-11-07T09:49:12.529" classname="RealDataReleaseContractTest">
+      <properties>
+        <property name="QueriedSpatialLayers" value="14"/>
+        <property name="ComparedWindows" value="84"/>
+        <property name="SpxCandidateWindows" value="72"/>
+        <property name="MatchedFids" value="330"/>
+      </properties>
+    </testcase>
+  </testsuite>
+</testsuites>

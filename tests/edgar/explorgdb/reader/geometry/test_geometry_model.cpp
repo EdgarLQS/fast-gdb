@@ -12,6 +12,8 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <cmath>
+#include <limits>
 #include <cstring>
 #include <vector>
 
@@ -620,4 +622,68 @@ TEST(GeometryModelDecoder, GeneralMultipatchUsesZAndMTypeFlags) {
     ASSERT_EQ(model.multipatch->vertices.size(), 3U);
     EXPECT_DOUBLE_EQ(model.multipatch->vertices[0].z, 1.001);
     EXPECT_DOUBLE_EQ(model.multipatch->vertices[0].m, 5.001);
+}
+
+TEST(QueryGridBboxTest, IncludesDecodedVertexAtExactWorldBoundary) {
+    GeometryModel model;
+    model.kind = GeometryKind::Point;
+    model.point = {401000000000LL, 402000000000LL};
+    model.transform.x_origin = -400;
+    model.transform.y_origin = -400;
+    model.transform.xy_scale = std::nextafter(1000000000.0, 0.0);
+    const double x = model.transform.decode_x(model.point.x);
+    const double y = model.transform.decode_y(model.point.y);
+    const auto boundary = QueryGridBbox::from_world(model.transform, x, y, x, y);
+    EXPECT_TRUE(SpatialPredicate::intersects_bbox(model, boundary));
+    const auto beyond = QueryGridBbox::from_world(model.transform,
+        std::nextafter(x, std::numeric_limits<double>::infinity()), y,
+        x + 1, y + 1);
+    EXPECT_FALSE(SpatialPredicate::intersects_bbox(model, beyond));
+    const auto before = QueryGridBbox::from_world(model.transform,
+        x - 1, y - 1,
+        std::nextafter(x, -std::numeric_limits<double>::infinity()), y);
+    EXPECT_FALSE(SpatialPredicate::intersects_bbox(model, before));
+}
+
+TEST(QueryGridBboxTest, KeepsSubGridWindowsContinuous) {
+    CoordinateTransform transform;
+    const auto query = QueryGridBbox::from_world(transform, .25, .25, .75, .75);
+    EXPECT_EQ(query.xmin, .25L);
+    EXPECT_EQ(query.xmax, .75L);
+    GeometryModel line;
+    line.kind = GeometryKind::LineString;
+    line.lines = {{{0, 0}, {1, 1}}};
+    EXPECT_TRUE(SpatialPredicate::intersects_bbox(line, query));
+}
+
+TEST(QueryGridBboxTest, IncludesAllIntegersSharingAnOutputDouble) {
+    CoordinateTransform transform;
+    const int64_t grid = int64_t{1} << 54;
+    const double value = transform.decode_x(grid);
+    const auto query = QueryGridBbox::from_world(transform, value, 0, value, 0);
+    EXPECT_LE(query.xmin, static_cast<long double>(grid - 1));
+    EXPECT_GE(query.xmax, static_cast<long double>(grid + 1));
+    const double endpoint = transform.decode_x(std::numeric_limits<int64_t>::max());
+    const auto edge = QueryGridBbox::from_world(transform, endpoint, 0, endpoint, 0);
+    EXPECT_GE(edge.xmax, static_cast<long double>(std::numeric_limits<int64_t>::max()));
+}
+
+TEST(QueryGridBboxTest, RoundTripsDecodedVerticesAcrossCoordinateScales) {
+    for (double origin : {-400.0, 0.0, 1e15, -1e15}) {
+        for (double scale : {1e-9, 1.0, std::nextafter(1e9, 0.0), 1e15}) {
+            for (int64_t grid : {std::numeric_limits<int64_t>::min(),
+                    int64_t{-401000000000LL}, int64_t{-1}, int64_t{0},
+                    int64_t{1}, int64_t{401000000000LL},
+                    std::numeric_limits<int64_t>::max()}) {
+                CoordinateTransform transform;
+                transform.x_origin = origin;
+                transform.xy_scale = scale;
+                const double world = transform.decode_x(grid);
+                SCOPED_TRACE(testing::Message() << origin << '/' << scale << '/' << grid);
+                const auto equal = QueryGridBbox::from_world(transform, world, 0, world, 0);
+                EXPECT_LE(equal.xmin, static_cast<long double>(grid));
+                EXPECT_GE(equal.xmax, static_cast<long double>(grid));
+            }
+        }
+    }
 }

@@ -162,6 +162,12 @@ The test skips when no dataset is configured. The original testcurve contract
 retains its separate curve-count and fail-closed topology expectations.
 This comparison does not establish ArcGIS provenance or raw curve preservation.
 
+`HistoricalSpatialQueriesMatchIndependentGeometryScan` uses the same historical
+dataset variable. It compares public Reader Bbox and SpatialWhere results with
+complete GDAL geometry scans, including quadrant, whole-extent and disjoint
+windows. The oracle does not use GDAL spatial-filter/index candidate selection;
+SPX candidate-path counts are reported separately.
+
 ## Opt-in Reader contention benchmarks
 
 - `TablxCacheBenchmarkTest.SharedHitContentionProfile` measures concurrent cache

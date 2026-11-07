@@ -292,15 +292,8 @@ QueryResult QueryEngine::query_bbox_unified(
             ++result.spatial_metrics.invalid_geometries;
             return;
         }
-        QueryGridBbox query{
-            (static_cast<long double>(xmin) -
-             model.transform.x_origin) * scale,
-            (static_cast<long double>(ymin) -
-             model.transform.y_origin) * scale,
-            (static_cast<long double>(xmax) -
-             model.transform.x_origin) * scale,
-            (static_cast<long double>(ymax) -
-             model.transform.y_origin) * scale};
+        QueryGridBbox query = QueryGridBbox::from_world(
+            model.transform, xmin, ymin, xmax, ymax);
         if (!std::isfinite(static_cast<double>(query.xmin)) ||
             !std::isfinite(static_cast<double>(query.ymin)) ||
             !std::isfinite(static_cast<double>(query.xmax)) ||

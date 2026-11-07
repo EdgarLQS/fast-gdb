@@ -1279,6 +1279,135 @@ TEST(RealDataReleaseContractTest,
 }
 
 TEST(RealDataReleaseContractTest,
+     HistoricalSpatialQueriesMatchIndependentGeometryScan) {
+    const char* path = required_dataset_from_env("FAST_GDB_HISTORICAL_DATASET");
+    if (path == nullptr) GTEST_SKIP() << "Set FAST_GDB_HISTORICAL_DATASET";
+    GDALAllRegister();
+    std::unique_ptr<GDALDataset, decltype(&GDALClose)> reference(
+        static_cast<GDALDataset*>(GDALOpenEx(
+            path, GDAL_OF_VECTOR | GDAL_OF_READONLY,
+            nullptr, nullptr, nullptr)), GDALClose);
+    ASSERT_NE(reference, nullptr);
+    ReaderError error;
+    auto reader = Reader::open(path, {}, &error);
+    ASSERT_TRUE(reader.has_value()) << error.message;
+    uint64_t layers = 0, windows = 0, indexed_windows = 0, hits = 0;
+    for (int index = 0; index < reference->GetLayerCount(); ++index) {
+        OGRLayer* source = reference->GetLayer(index);
+        ASSERT_NE(source, nullptr);
+        if (source->GetLayerDefn()->GetGeomFieldCount() == 0) continue;
+        SCOPED_TRACE(source->GetName());
+        auto layer = reader->open_layer(source->GetName(), &error);
+        ASSERT_TRUE(layer.has_value()) << error.message;
+        const auto object_id = std::find_if(
+            layer->fields().begin(), layer->fields().end(),
+            [](const FieldDescriptor& field) {
+                return field.type == FieldType::ObjectId;
+            });
+        ASSERT_NE(object_id, layer->fields().end());
+        struct Row {
+            RowSlot fid;
+            std::unique_ptr<OGRGeometry> geometry;
+        };
+        std::vector<Row> rows;
+        OGREnvelope extent;
+        source->SetSpatialFilter(nullptr);
+        source->ResetReading();
+        while (OGRFeature* raw = source->GetNextFeature()) {
+            std::unique_ptr<OGRFeature, decltype(&OGRFeature::DestroyFeature)>
+                feature(raw, OGRFeature::DestroyFeature);
+            const OGRGeometry* geometry = feature->GetGeometryRef();
+            if (geometry == nullptr || geometry->IsEmpty()) continue;
+            ASSERT_GT(feature->GetFID(), 0);
+            OGREnvelope envelope;
+            geometry->getEnvelope(&envelope);
+            if (rows.empty()) extent = envelope;
+            else extent.Merge(envelope);
+            rows.push_back({static_cast<RowSlot>(feature->GetFID() - 1),
+                            std::unique_ptr<OGRGeometry>(geometry->clone())});
+        }
+        if (rows.empty()) continue;
+        ++layers;
+        const double mx = extent.MinX + (extent.MaxX - extent.MinX) / 2;
+        const double my = extent.MinY + (extent.MaxY - extent.MinY) / 2;
+        const double gap = std::max({1.0, extent.MaxX - extent.MinX,
+                                     extent.MaxY - extent.MinY});
+        struct Window { double xmin, ymin, xmax, ymax; };
+        const std::vector<Window> boxes = {
+            {extent.MinX, extent.MinY, extent.MaxX, extent.MaxY},
+            {extent.MinX, extent.MinY, mx, my},
+            {mx, extent.MinY, extent.MaxX, my},
+            {extent.MinX, my, mx, extent.MaxY},
+            {mx, my, extent.MaxX, extent.MaxY},
+            {extent.MaxX + gap, extent.MaxY + gap,
+             extent.MaxX + 2 * gap, extent.MaxY + 2 * gap}};
+        for (const auto& box : boxes) {
+            SCOPED_TRACE(testing::Message() << box.xmin << ',' << box.ymin
+                << " to " << box.xmax << ',' << box.ymax);
+            std::unique_ptr<OGRGeometry> filter;
+            if (box.xmin == box.xmax && box.ymin == box.ymax) {
+                filter = std::make_unique<OGRPoint>(box.xmin, box.ymin);
+            } else if (box.xmin == box.xmax || box.ymin == box.ymax) {
+                auto line = std::make_unique<OGRLineString>();
+                line->addPoint(box.xmin, box.ymin);
+                line->addPoint(box.xmax, box.ymax);
+                filter = std::move(line);
+            } else {
+                auto polygon = std::make_unique<OGRPolygon>();
+                OGRLinearRing ring;
+                ring.addPoint(box.xmin, box.ymin);
+                ring.addPoint(box.xmax, box.ymin);
+                ring.addPoint(box.xmax, box.ymax);
+                ring.addPoint(box.xmin, box.ymax);
+                ring.addPoint(box.xmin, box.ymin);
+                polygon->addRing(&ring);
+                filter = std::move(polygon);
+            }
+            std::vector<RowSlot> expected;
+            for (const auto& row : rows) {
+                CPLErrorReset();
+                const bool intersects = row.geometry->Intersects(filter.get());
+                ASSERT_LT(CPLGetLastErrorType(), CE_Failure)
+                    << CPLGetLastErrorMsg();
+                if (intersects) expected.push_back(row.fid);
+            }
+            QueryRequest request;
+            request.kind = QueryKind::SpatialBbox;
+            request.xmin = box.xmin; request.ymin = box.ymin;
+            request.xmax = box.xmax; request.ymax = box.ymax;
+            const auto result = layer->query(request);
+            ASSERT_EQ(result.status, QueryStatus::Ok) << result.error;
+            auto observed = result.matched_fids;
+            std::sort(expected.begin(), expected.end());
+            std::sort(observed.begin(), observed.end());
+            EXPECT_EQ(observed, expected) << result.execution_path
+                << " / " << result.fallback_reason
+                << " candidates=" << result.spatial_metrics.candidate_count
+                << " bbox_rejected=" << result.spatial_metrics.bbox_rejected
+                << " exact=" << result.spatial_metrics.exact_tested;
+            request.kind = QueryKind::SpatialWhere;
+            request.where_clause = object_id->name + " >= 1";
+            const auto combined = layer->query(request);
+            ASSERT_EQ(combined.status, QueryStatus::Ok) << combined.error;
+            auto combined_fids = combined.matched_fids;
+            std::sort(combined_fids.begin(), combined_fids.end());
+            EXPECT_EQ(combined_fids, expected) << combined.execution_path;
+            ++windows;
+            hits += expected.size();
+            if (result.execution_path == kPathBboxModelSpxCandidates ||
+                result.execution_path == kPathBboxModelSpxCandidatesBatched)
+                ++indexed_windows;
+        }
+    }
+    EXPECT_GT(layers, 0U);
+    EXPECT_GT(windows, 0U);
+    RecordProperty("QueriedSpatialLayers", std::to_string(layers));
+    RecordProperty("ComparedWindows", std::to_string(windows));
+    RecordProperty("SpxCandidateWindows", std::to_string(indexed_windows));
+    RecordProperty("MatchedFids", std::to_string(hits));
+}
+
+TEST(RealDataReleaseContractTest,
      SuppliedGdbSpatialWindowsReturnSameFidsAsGdal) {
     const char* dataset_path = required_dataset_from_env("FAST_GDB_CURVE_DATASET");
     if (dataset_path == nullptr) {

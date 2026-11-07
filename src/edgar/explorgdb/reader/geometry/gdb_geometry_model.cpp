@@ -951,12 +951,8 @@ bool GdbGeomDecoder::model_intersects_bbox(
     GeometryModel model = decode_model(data, size);
     if (!model.valid()) return false;
 
-    const long double scale = xyscale_;
-    QueryGridBbox query{
-        (static_cast<long double>(xmin) - xorig_) * scale,
-        (static_cast<long double>(ymin) - yorig_) * scale,
-        (static_cast<long double>(xmax) - xorig_) * scale,
-        (static_cast<long double>(ymax) - yorig_) * scale};
+    QueryGridBbox query = QueryGridBbox::from_world(
+        model.transform, xmin, ymin, xmax, ymax);
     if (!std::isfinite(static_cast<double>(query.xmin)) ||
         !std::isfinite(static_cast<double>(query.ymin)) ||
         !std::isfinite(static_cast<double>(query.xmax)) ||

@@ -251,3 +251,7 @@ FAST_GDB_CURVE_DATASET="$PWD/test_data/gdb/参数化数据_liqs.gdb" \
 ### 2026-11-07：历史参考库几何合同
 
 新增显式配置历史输入的几何对照入口，原 testcurve 专项预期保持独立。现代参考库 96 个非空/28 个空空间几何，92/93 各 74 个非空/27 个空空间几何，三库各 352 个非空间行，均完整对照通过。Linux 全量 592 项中 575 PASS / 17 SKIP / 0 FAIL；仍不代替 ArcGIS 独立真值与索引/刷新合同，见 [验证记录](evidence/2026-11-07-S3.5-historical-geometry.md)。
+
+### 2026-11-07：历史空间查询与坐标边界修复
+
+独立几何扫描发现世界坐标 double 往返整数网格时会将闭区间边界顶点排除。统一 Bbox、SpatialWhere 与 decoder 的边界转换，保留子网格连续性并处理相邻 double 和 int64 重合输出区间。三库 168/84/84 个窗口的公开 Reader Bbox 与 SpatialWhere 完整 FID 一致；Release 全量 581 PASS / 17 SKIP / 0 FAIL，GDAL-free ASan/UBSan/LSan 408 PASS / 5 SKIP / 0 FAIL。详见 [修复记录](evidence/2026-11-07-grid-boundary-spatial-fix.md)。S3.5 仍缺 ArcGIS 独立真值、属性索引、刷新与其他格式语料。

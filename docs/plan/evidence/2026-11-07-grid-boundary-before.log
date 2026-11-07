@@ -1,0 +1,81 @@
+Note: Google Test filter = RealDataReleaseContractTest.HistoricalSpatialQueriesMatchIndependentGeometryScan
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from RealDataReleaseContractTest
+[ RUN      ] RealDataReleaseContractTest.HistoricalSpatialQueriesMatchIndependentGeometryScan
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1377: Failure
+Expected equality of these values:
+  observed
+    Which is: {}
+  expected
+    Which is: { 0, 1, 2, 3, 4 }
+bbox:model:spx-candidates /  candidates=5 bbox_rejected=0 exact=5
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1339: 1.0000000000000568,2.0000000000000568 to 2.0000000000000568,3.0000000000000568
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1299: multipoint
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1377: Failure
+Expected equality of these values:
+  observed
+    Which is: {}
+  expected
+    Which is: { 0, 1, 2, 3, 4 }
+bbox:model:spx-candidates /  candidates=5 bbox_rejected=0 exact=5
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1339: 2.0000000000000568,2.0000000000000568 to 3.0000000000000568,3.0000000000000568
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1299: linestring
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1377: Failure
+Expected equality of these values:
+  observed
+    Which is: {}
+  expected
+    Which is: { 0, 1, 2, 3, 4 }
+bbox:model:spx-candidates /  candidates=5 bbox_rejected=0 exact=5
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1339: 2.0000000000000568,2.0000000000000568 to 3.0000000000000568,3.0000000000000568
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1299: multilinestring
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1377: Failure
+Expected equality of these values:
+  observed
+    Which is: {}
+  expected
+    Which is: { 0, 1, 2, 3, 4 }
+bbox:model:spx-candidates /  candidates=5 bbox_rejected=0 exact=5
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1339: 1.0000000000000568,2.0000000000000568 to 2.0000000000000568,3.0000000000000568
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1299: multipoint25D
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1377: Failure
+Expected equality of these values:
+  observed
+    Which is: {}
+  expected
+    Which is: { 0, 1, 2, 3, 4 }
+bbox:model:spx-candidates /  candidates=5 bbox_rejected=0 exact=5
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1339: 2.0000000000000568,2.0000000000000568 to 3.0000000000000568,3.0000000000000568
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1299: linestring25D
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1377: Failure
+Expected equality of these values:
+  observed
+    Which is: {}
+  expected
+    Which is: { 0, 1, 2, 3, 4 }
+bbox:model:spx-candidates /  candidates=5 bbox_rejected=0 exact=5
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1339: 2.0000000000000568,2.0000000000000568 to 3.0000000000000568,3.0000000000000568
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1299: multilinestring25D
+
+[  FAILED  ] RealDataReleaseContractTest.HistoricalSpatialQueriesMatchIndependentGeometryScan (58 ms)
+[----------] 1 test from RealDataReleaseContractTest (58 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (58 ms total)
+[  PASSED  ] 0 tests.
+[  FAILED  ] 1 test, listed below:
+[  FAILED  ] RealDataReleaseContractTest.HistoricalSpatialQueriesMatchIndependentGeometryScan
+
+ 1 FAILED TEST
