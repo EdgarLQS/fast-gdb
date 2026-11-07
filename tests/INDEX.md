@@ -196,6 +196,15 @@ ATX use is asserted separately; v9 metadata fallback is not counted as native.
 covers submillisecond key groups spanning two leaves, negative epochs, wide dates
 and invalid keys. See [date-index evidence](../docs/plan/evidence/2026-11-07-date-index.md).
 
+## String index semantics
+
+`SpatialWhereUnicodeTest.*` checks complete field comparisons after ATX candidate
+selection, including spaces, NULL, Unicode folding collisions and truncated keys.
+`StringKeysPreserveSpacesSurrogatesAndPhysicalOrder` separately verifies physical
+UTF-16 keys; those raw keys are not full field values. Current string queries use
+bounded leaf scans until ordering can be proven and safely cached; numeric/GUID
+navigation remains unchanged. [Evidence and open performance gate](../docs/plan/evidence/2026-11-07-string-index-semantics.md).
+
 ## CLI typed ATX regression
 
 With full tests and tools enabled, `full.cli.typed-atx` runs the actual CLI through

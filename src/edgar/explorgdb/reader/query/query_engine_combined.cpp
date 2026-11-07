@@ -72,33 +72,6 @@ bool is_exactly_representable_as_double(int64_t value) {
     return static_cast<int64_t>(converted) == value;
 }
 
-size_t utf8_sequence_bytes(unsigned char lead) {
-    if ((lead & 0x80U) == 0) return 1;
-    if ((lead & 0xe0U) == 0xc0U) return 2;
-    if ((lead & 0xf0U) == 0xe0U) return 3;
-    if ((lead & 0xf8U) == 0xf0U) return 4;
-    return 0;
-}
-
-bool string_index_key_supported(const std::string& value) {
-    for (size_t index = 0; index < value.size();) {
-        const size_t bytes = utf8_sequence_bytes(
-            static_cast<unsigned char>(value[index]));
-        // The current .atx UTF-16 decoder handles one code unit at a time and
-        // cannot safely reproduce surrogate pairs. Falling back avoids false
-        // negatives for non-BMP text.
-        if (bytes == 0 || bytes == 4 || index + bytes > value.size())
-            return false;
-        for (size_t continuation = 1; continuation < bytes; ++continuation) {
-            const unsigned char byte = static_cast<unsigned char>(
-                value[index + continuation]);
-            if ((byte & 0xc0U) != 0x80U) return false;
-        }
-        index += bytes;
-    }
-    return true;
-}
-
 bool should_bypass_attribute_index(size_t spatial_matches,
                                    size_t active_features) {
     if (spatial_matches == 0 || active_features == 0) return false;
@@ -248,17 +221,6 @@ AttributeCandidatePlan resolve_attribute_index(
             return fail(
                 "attribute index type mismatch; spatial candidates evaluated");
         }
-        // OpenFileGDB only treats equality and GE string iterators as safe
-        // candidate supersets. Padding/truncation means both still require a
-        // final expression recheck.
-        if (!uuid_field && predicate.op != AttrOp::Eq && predicate.op != AttrOp::Ge) {
-            return fail(
-                "string operator is not safely indexable; spatial candidates evaluated");
-        }
-        if (!uuid_field && !string_index_key_supported(predicate.string_value)) {
-            return fail(
-                "string key is not safely representable by the current .atx decoder; spatial candidates evaluated");
-        }
     } else if (!numeric_atx_supported(field_type)) {
         return fail(
             "numeric field encoding is not safely indexable; spatial candidates evaluated");
@@ -335,9 +297,11 @@ bool query_attribute_candidates(
                 *predicate.temporal_milliseconds, predicate.op,
                 max_fid_count, plan.fids, &plan.index_metrics);
         } else if (predicate.is_string) {
-            ok = index.query_string_direct(
-                predicate.string_value, predicate.op,
-                max_fid_count, plan.fids, &plan.index_metrics);
+            ok = predicate.field_type == FieldType::String
+                ? index.query_string_candidates(predicate.string_value, predicate.op,
+                    max_fid_count, plan.fids, &plan.index_metrics)
+                : index.query_string_direct(predicate.string_value, predicate.op,
+                    max_fid_count, plan.fids, &plan.index_metrics);
         } else if (predicate.field_type == FieldType::Int64) {
             ok = index.query_int64_direct(
                 predicate.integer_value, predicate.op,

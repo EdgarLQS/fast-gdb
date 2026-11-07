@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <utility>
 
 namespace explorgdb {
 namespace {
@@ -78,7 +79,8 @@ std::string utf16le_to_utf8(const uint8_t* data, int char_count) {
     return output;
 }
 
-std::u16string utf8_to_utf16(const std::string& input) {
+static std::u16string convert_utf8(const std::string& input, bool& all_valid) {
+    all_valid = true;
     std::u16string output;
     output.reserve(input.size());
 
@@ -124,6 +126,7 @@ std::u16string utf8_to_utf16(const std::string& input) {
         }
 
         if (!valid) {
+            all_valid = false;
             append_utf16(output, 0xFFFDU);
             ++index;
             continue;
@@ -133,6 +136,19 @@ std::u16string utf8_to_utf16(const std::string& input) {
         index += sequence_length;
     }
     return output;
+}
+
+std::u16string utf8_to_utf16(const std::string& input) {
+    bool valid = true;
+    return convert_utf8(input, valid);
+}
+
+bool try_utf8_to_utf16(const std::string& input, std::u16string& output) {
+    bool valid = true;
+    auto converted = convert_utf8(input, valid);
+    if (!valid) return false;
+    output = std::move(converted);
+    return true;
 }
 
 }  // namespace explorgdb

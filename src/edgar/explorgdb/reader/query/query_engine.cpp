@@ -571,6 +571,9 @@ QueryResult QueryEngine::query_attribute(const QueryRequest& request) {
         result.fallback_reason = result.error;
         return result;
     }
+    std::optional<std::vector<RowSlot>> string_candidates;
+    const bool complete_string_query = request.kind == QueryKind::AttributeString &&
+                                       indexed_field_type == FieldType::String;
     if (atx != nullptr) {
         try {
             GdbAttributeIndexParser index(
@@ -582,12 +585,17 @@ QueryResult QueryEngine::query_attribute(const QueryRequest& request) {
                 ? index.query_double_direct(
                       request.double_value, request.attr_op,
                       max_fid_count, indexed_fids)
-                : index.query_string_direct(
-                      request.string_value, request.attr_op,
-                      max_fid_count, indexed_fids);
+                : (complete_string_query
+                    ? index.query_string_candidates(request.string_value, request.attr_op,
+                        max_fid_count, indexed_fids)
+                    : index.query_string_direct(request.string_value, request.attr_op,
+                        max_fid_count, indexed_fids));
             if (indexed) {
-                result.matched_fids = std::move(indexed_fids);
-                return result;
+                if (complete_string_query) string_candidates = std::move(indexed_fids);
+                else {
+                    result.matched_fids = std::move(indexed_fids);
+                    return result;
+                }
             }
         } catch (...) {
             // A damaged or concurrently replaced ATX uses the same scan
@@ -595,10 +603,12 @@ QueryResult QueryEngine::query_attribute(const QueryRequest& request) {
         }
     }
 
-    result.execution_path = kPathAttributeSequential;
-    result.fallback_reason = atx == nullptr
-        ? kFallbackAttributeIndexMissing
-        : "attribute index could not be parsed; sequential scan used";
+    if (!string_candidates.has_value()) {
+        result.execution_path = kPathAttributeSequential;
+        result.fallback_reason = atx == nullptr
+            ? kFallbackAttributeIndexMissing
+            : "attribute index could not be parsed; sequential scan used";
+    }
 
     // An index name is not sufficient to infer a field. Only fall back when
     // the catalog declares a direct-field index that can be compiled safely.
@@ -655,6 +665,18 @@ QueryResult QueryEngine::query_attribute(const QueryRequest& request) {
         result.fallback_reason +=
             "; sequential scan predicate unsupported: " + result.error;
         return result;
+    }
+
+    if (string_candidates.has_value()) {
+        const auto scanned = parser_->scan_field_candidates(*string_candidates,
+            [&](RowSlot fid, const FieldRef* fields, int field_count) {
+                if (evaluate_where(expression, fields, field_count)) result.matched_fids.push_back(fid);
+                return true;
+            });
+        if (scanned == string_candidates->size()) return result;
+        result.matched_fids.clear();
+        result.execution_path = kPathAttributeSequential;
+        result.fallback_reason = "attribute candidate scan incomplete; sequential scan used";
     }
 
     parser_->sequential_scan(

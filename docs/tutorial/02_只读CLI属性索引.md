@@ -31,6 +31,15 @@ explorgdb_cli query-atx /data/id.atx '=' '{12345678-9ABC-DEF0-1234-567890ABCDEF}
 
 INT64 使用范围内的整数文本，不经过 double。日期/时间类型的此处查询值为物理日数 double；它不是 SQL typed 日期字面量查询。GUID 接受标准连字符形式，可带花括号，字母大小写等价。
 
+## 字符串的两种查询语义
+
+`query-atx` 查询固定宽度的物理键，按 UTF-16 单元比较。键可能被填充或截断，
+多个原值可能共用一个键；dump 也仅显示索引键视图。需要完整字段匹配时使用
+`query <gdb_path> <table_id> attr ...`，它会复核实际字符串值。
+
+字符串当前采用有界叶页扫描，不能将它当作已完成的大索引二分检索优化；
+[当前证据与性能门禁](../plan/evidence/2026-11-07-string-index-semantics.md) 记录了边界。
+
 ## 输出和错误
 
 `dump-atx` 的 FID 是索引存储的 1-based ObjectID；`query-atx` 和 `query` 的 FID 是 Reader 使用的 0-based row slot。INT64 dump 以十进制整数完整输出，FLOAT64 dump 使用 17 位有效数字；FLOAT32/FLOAT64/日期索引的 `0x60` 标志按数值解码。

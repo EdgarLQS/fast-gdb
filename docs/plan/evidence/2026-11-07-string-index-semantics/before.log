@@ -1,0 +1,143 @@
+Note: Google Test filter = SpatialWhereUnicodeTest.FullStringPredicatesRecheckPaddingTruncationAndUnicodeOrder
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from SpatialWhereUnicodeTest
+[ RUN      ] SpatialWhereUnicodeTest.FullStringPredicatesRecheckPaddingTruncationAndUnicodeOrder
+/src/tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_unicode.cpp:202: Failure
+Expected equality of these values:
+  result.matched_fids
+    Which is: { 1 }
+  expected
+    Which is: { 2 }
+direct = a 
+
+/src/tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_unicode.cpp:209: Failure
+Expected equality of these values:
+  combined.matched_fids
+    Which is: {}
+  expected
+    Which is: { 2 }
+combined = a 
+
+/src/tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_unicode.cpp:202: Failure
+Expected equality of these values:
+  result.matched_fids
+    Which is: { 0 }
+  expected
+    Which is: { 0, 1, 6 }
+direct < a 
+
+/src/tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_unicode.cpp:202: Failure
+Expected equality of these values:
+  result.matched_fids
+    Which is: { 0, 1 }
+  expected
+    Which is: { 0, 1, 2, 6 }
+direct <= a 
+
+/src/tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_unicode.cpp:202: Failure
+Expected equality of these values:
+  result.matched_fids
+    Which is: { 1 }
+  expected
+    Which is: { 3 }
+direct = a  
+
+/src/tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_unicode.cpp:209: Failure
+Expected equality of these values:
+  combined.matched_fids
+    Which is: {}
+  expected
+    Which is: { 3 }
+combined = a  
+
+/src/tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_unicode.cpp:202: Failure
+Expected equality of these values:
+  result.matched_fids
+    Which is: { 0 }
+  expected
+    Which is: { 0, 1, 2, 6 }
+direct < a  
+
+/src/tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_unicode.cpp:202: Failure
+Expected equality of these values:
+  result.matched_fids
+    Which is: { 0, 1 }
+  expected
+    Which is: { 0, 1, 2, 3, 6 }
+direct <= a  
+
+/src/tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_unicode.cpp:202: Failure
+Expected equality of these values:
+  result.matched_fids
+    Which is: { 1 }
+  expected
+    Which is: { 4 }
+direct = a b
+
+/src/tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_unicode.cpp:209: Failure
+Expected equality of these values:
+  combined.matched_fids
+    Which is: {}
+  expected
+    Which is: { 4 }
+combined = a b
+
+/src/tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_unicode.cpp:202: Failure
+Expected equality of these values:
+  result.matched_fids
+    Which is: { 0 }
+  expected
+    Which is: { 0, 1, 2, 3, 6 }
+direct < a b
+
+/src/tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_unicode.cpp:202: Failure
+Expected equality of these values:
+  result.matched_fids
+    Which is: { 0, 1 }
+  expected
+    Which is: { 0, 1, 2, 3, 4, 6 }
+direct <= a b
+
+/src/tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_unicode.cpp:202: Failure
+Expected equality of these values:
+  result.matched_fids
+    Which is: { 1 }
+  expected
+    Which is: { 5 }
+direct = a c
+
+/src/tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_unicode.cpp:209: Failure
+Expected equality of these values:
+  combined.matched_fids
+    Which is: {}
+  expected
+    Which is: { 5 }
+combined = a c
+
+/src/tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_unicode.cpp:202: Failure
+Expected equality of these values:
+  result.matched_fids
+    Which is: { 0 }
+  expected
+    Which is: { 0, 1, 2, 3, 4, 6 }
+direct < a c
+
+/src/tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_unicode.cpp:202: Failure
+Expected equality of these values:
+  result.matched_fids
+    Which is: { 0, 1 }
+  expected
+    Which is: { 0, 1, 2, 3, 4, 5, 6 }
+direct <= a c
+
+[  FAILED  ] SpatialWhereUnicodeTest.FullStringPredicatesRecheckPaddingTruncationAndUnicodeOrder (11 ms)
+[----------] 1 test from SpatialWhereUnicodeTest (11 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (11 ms total)
+[  PASSED  ] 0 tests.
+[  FAILED  ] 1 test, listed below:
+[  FAILED  ] SpatialWhereUnicodeTest.FullStringPredicatesRecheckPaddingTruncationAndUnicodeOrder
+
+ 1 FAILED TEST

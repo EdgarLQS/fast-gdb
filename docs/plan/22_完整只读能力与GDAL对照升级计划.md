@@ -100,7 +100,7 @@
 ### S4：百万至千万要素性能
 
 - [x] S4.1 统一入口 FID 读取走直接定位，避免顺序寻找记录；验证稀疏和删除 FID。（实现与稀疏 FID 证据见 [S4.1 验证记录](evidence/2026-11-05-S4.1-direct-fid-read.md)。）
-- [x] S4.2 ATX 改为按页访问、按键下降和范围终止，设置有界缓存；异常索引安全回退扫描，不跳过最终候选复核。（实现、回退和候选复核见 [S4.2 验证记录](evidence/2026-11-06-S4.2-atx-paged-query.md)。）
+- [ ] S4.2 ATX 按页访问、按键下降和范围终止，设置有界缓存；异常索引安全回退，最终复核原值。数值/GUID 路径已实现；扩展验收发现字符串填充与 Unicode 折叠破坏单调性，当前改为保守叶页扫描并复核，排序/编码验证缓存、安全快路径和大索引性能证据待补。见 [原阶段记录](evidence/2026-11-06-S4.2-atx-paged-query.md) 与 [字符串后续记录](evidence/2026-11-07-string-index-semantics.md)。
 - [x] S4.3 复用同一代目录、Schema 和查询准备结果；刷新后不复用旧代缓存。（Dataset 保留 Reader/catalog；图层 Schema 使用最多 64 项的代次内 LRU；WHERE 准备缓存最多 128 项且拒绝缓存超过 64 KiB 的键。刷新重建 Reader 和缓存。定向验证见 [S4.3 验证记录](evidence/2026-11-06-S4.3-generation-cache.md)。）
 - [x] S4.4 优化字段投影、几何按需解码和空间属性融合扫描，减少重复解析与物化。（未投影的定长字段只验证并跳过字节；`Query.include_geometry=false` 返回显式 `NotRequested`，空间谓词仍可解码所需几何；GDAL 无过滤条件时按能力请求忽略投影外字段/几何，带过滤器时不忽略筛选输入并在结果映射时投影。融合单行扫描的路径/候选断言与省略输出几何的空间 WHERE 回归通过；详见 [S4.4 验证记录](evidence/2026-11-06-S4.4-projection-lazy-geometry.md)。）
 - [x] S4.5 记录新/热句柄打开、随机读取、扫描和联合查询的 median/p95/p99、吞吐、峰值 RSS、磁盘读取量及索引访问量。（100K 完成 101 轮；1K/10K/1M/10M 空间矩阵正确。10M 的 1%、10%、30%、80%、全覆盖各跑 5 轮；另以同一 10M 夹具跑 5 轮随机 FID 和全量扫描，Fast/GDAL 的 FID/字段/WKB digest 一致。新增用户提供的 `testcurve.gdb` 曲线逐要素 GDAL 对照，详见 [曲线扫描](evidence/2026-11-07-testcurve-curve-sweep.md)。对基线 `67d4e31` 的历史两轮同机比较显示当时 Fast 全扫中位数约慢 14%、进程级峰值 RSS 约高 27%；本轮再优化后另以独立进程各跑 25 轮，Fast/GDAL 随机读与全扫 digest 一致，Fast RSS 419,463,168 B、GDAL RSS 48,316,416 B，Fast 两项 median 均低于 GDAL。密集 FID 直接由行槽得到，Tablx 偏移改为跨解析器、图层与缓存共享不可变数组。RSS 包含 mmap 文件驻留页；OS 文件缓存未清，冷启动 I/O 与相同优化前基线复测仍待测。分进程结果见 [S4.5 RSS 证据](evidence/2026-11-07-S4.5-backend-isolated-rss.md)，既有规模和基线边界见 [S4.5 基准记录](evidence/2026-11-06-S4.5-scale-benchmarks.md) 与 [基线对照补充](evidence/2026-11-06-S4.5-before-after-comparison.md)。）
@@ -279,3 +279,7 @@ GUID/GlobalID 根据字段类型解析 38 字节规范 ASCII 键，支持物化�
 ### 2026-11-07：CLI 类型贯通与数值物化
 
 CLI 自动绑定源字段类型、独立 ATX 接受显式类型、INT64 精确解析和 dump；错误输入返回非零状态。修复浮点/日期 0x60 标志被物化为字符串的问题，INT64 条目新增无损整数视图。Linux 57 / macOS 54 个真实 CLI 进程检查通过，固定样本 111 文件哈希不变；最新 Release 599 PASS / 19 SKIP / 0 FAIL，GDAL-free ASan/UBSan/LSan 417 PASS / 5 SKIP / 0 FAIL。见 [提交范围、兼容性和证据](evidence/2026-11-07-cli-typed-atx.md) 及 [使用说明](../tutorial/02_只读CLI属性索引.md)。继续核对 Unicode/空格与非法索引值；旧格式、ArcGIS 真实语料和 Windows 等门禁保持未完成。
+
+### 2026-11-07：字符串索引正确性与 S4.2 重开门禁
+
+修复内部空格、代理对、填充/截断碰撞及属性查询未复核原值的问题；同时处理已观察到的 UCS-2 折叠与填充后非单调叶序。直接/联合各 114 次完整值对照通过，Release 602 PASS / 19 SKIP / 0 FAIL，GDAL-free ASan/UBSan/LSan 419 PASS / 5 SKIP / 0 FAIL，macOS 专项 36/36；CLI Linux 68 / macOS 65。当前字符串采用有界索引键扫描，尚未恢复安全快速范围检索，因此 S4.2 按新增证据重开，不能沿用先前窄样本的完成结论。见 [提交、证据及性能限制](evidence/2026-11-07-string-index-semantics.md)。后续优先补字符串排序验证缓存和性能，再核对非法数值键；外部语料/平台门禁保持原范围。

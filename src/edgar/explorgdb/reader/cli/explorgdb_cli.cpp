@@ -6,6 +6,7 @@
 #include "gdb_indexes.h"
 #include "gdb_spatial_index.h"
 #include "gdb_attribute_index.h"
+#include "query_engine.h"
 #include <algorithm>
 #include <chrono>
 #include <charconv>
@@ -788,7 +789,24 @@ static bool cmd_query(const std::string& gdb_path, uint32_t table_id,
             std::cerr << "Indexed field type unavailable; use explicit query-atx for raw files\n";
             return false;
         }
-        if (!query_typed_atx(join_utf8_path(gdb_path, atx_entry->filename), *field_type,
+        if (*field_type == FieldType::String) {
+            const auto op = parse_attr_op(op_str);
+            if (!op) { std::cerr << "Invalid attribute operator\n"; return false; }
+            ResolvedTable resolved;
+            resolved.id = table_id;
+            resolved.table_path = table_path;
+            resolved.tablx_path = tablx_path;
+            QueryEngine engine(catalog, resolved);
+            if (!engine.open()) { std::cerr << "Cannot open attribute query engine\n"; return false; }
+            QueryRequest request;
+            request.kind = QueryKind::AttributeString;
+            request.index_name = index_name;
+            request.string_value = value_str;
+            request.attr_op = *op;
+            auto result = engine.query(request);
+            if (result.status != QueryStatus::Ok) { std::cerr << result.error << '\n'; return false; }
+            result_fids = std::move(result.matched_fids);
+        } else if (!query_typed_atx(join_utf8_path(gdb_path, atx_entry->filename), *field_type,
                              op_str, value_str, result_fids,
                              static_cast<size_t>(std::min<RowSlot>(table_parser.feature_count(),
                                  std::numeric_limits<size_t>::max())))) return false;

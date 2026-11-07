@@ -72,6 +72,13 @@ def main():
         write_atx(integers, [struct.pack('<q', value) for value in exact], 0x40)
         write_atx(double_precision, [struct.pack('<d', value) for value in doubles], 0x60)
         write_atx(uuids, [('{' + value.upper() + '}').encode('ascii') for value in guid_values], 0)
+        strings = folder / '字符串.atx'
+        texts = ['', 'a', 'a ', 'a b', 'emoji 😀', '😀', '\ue000']
+        # Fixed-width UTF-16 comparison, including padding collisions and surrogate order.
+        physical = [(text.encode('utf-16be') + b'\0 ' * (80 - len(text.encode('utf-16le')) // 2), text)
+                    for text in texts]
+        physical.sort()
+        write_atx(strings, [key.decode('utf-16be').encode('utf-16le') for key, _ in physical], 0x20)
         raw_before = snapshot(folder)
         operations = {'=': lambda a, b: a == b, '!=': lambda a, b: a != b,
                       '<': lambda a, b: a < b, '<=': lambda a, b: a <= b,
@@ -83,6 +90,12 @@ def main():
                                                (uuids, guid_values, guid_values[1], 'uuid')]:
                 result = run('query-atx', path, operation, target, kind)
                 expect_fids(result, [i for i, value in enumerate(data) if matches(value, target)])
+        target_key = '😀'.encode('utf-16be') + b'\0 ' * 78
+        for operation, matches in operations.items():
+            expect_fids(run('query-atx', strings, operation, '😀', 'string'),
+                        [i for i, (key, _) in enumerate(physical) if matches(key, target_key)])
+        text_dump = run('dump-atx', strings, 'string')
+        assert 'value="a b"' in text_dump and 'value="emoji 😀"' in text_dump, text_dump
         for i, value in enumerate(exact):
             expect_fids(run('query-atx', integers, '=', value, 'int64'), [i])
         dump = run('dump-atx', integers, 'int64')
@@ -119,6 +132,11 @@ def main():
     run('query', options.gdb, '15', 'attr', 'FDO_Global', '=', target, code=2)
     run('dump-atx', uuid_index, 'int32', code=2)
     run('query', options.gdb, '15junk', 'attr', 'FDO_GlobalID', '=', target, code=2)
+    parcel_index = options.gdb / 'a00000010.idx_parcel_name.atx'
+    assert 'value="Parcel Alpha"' in run('dump-atx', parcel_index)
+    expect_fids(run('query-atx', parcel_index, '=', 'Parcel Alpha'), [0])
+    expect_fids(run('query', options.gdb, '16', 'attr', 'idx_parcel_name', '=', 'Parcel Alpha'), [0])
+    expect_fids(run('query', options.gdb, '16', 'attr', 'idx_parcel_name', '=', 'Parcel'), [])
     overview = run('explore', options.gdb)
     assert '=== .atx attribute index files ===' in overview
     assert 'FDO_GlobalID.atx' in overview and 'type=UUID_2' in overview

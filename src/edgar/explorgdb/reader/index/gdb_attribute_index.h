@@ -77,7 +77,8 @@ public:
     // typed INT64 必须使用 query_int64；此接口不通过 double 查询 INT64。
     std::vector<RowSlot> query_double(double value, AttrOp op) const;
     std::vector<RowSlot> query_int64(int64_t value, AttrOp op) const;
-    /** 查询字符串属性索引。
+    /** 按物理 UTF-16 索引键查询（含填充/截断碰撞），不是完整字段比较。
+     * 完整字符串语义通过 QueryEngine 查询，并对候选复核原值。
      * @param value 比较值。
      * @param op 比较操作。
      * @return 匹配的零基 FID 列表。
@@ -139,6 +140,10 @@ public:
         std::vector<RowSlot>& result,
         AttributeIndexQueryMetrics* metrics = nullptr);
 
+    // Conservative candidates for complete UTF-8 record comparisons; recheck required.
+    bool query_string_candidates(const std::string& value, AttrOp op, size_t max_fid_count,
+        std::vector<RowSlot>& result, AttributeIndexQueryMetrics* metrics = nullptr);
+
 private:
     enum class NumericQueryKind { Floating, Int64, TemporalMilliseconds };
 
@@ -175,11 +180,13 @@ private:
         AttrOp op,
         size_t max_fid_count,
         std::vector<RowSlot>& result,
-        AttributeIndexQueryMetrics* metrics);
+        AttributeIndexQueryMetrics* metrics,
+        bool string_candidates = false);
 
     std::string file_path_;
     FieldType field_type_ = FieldType::Int32;
     std::vector<uint8_t> file_data_;
+    std::vector<size_t> string_value_offsets_;
     BPlusTreeTrailer trailer_;
     size_t page_count_ = 0;
     std::vector<AttributeIndexEntry> all_entries_;

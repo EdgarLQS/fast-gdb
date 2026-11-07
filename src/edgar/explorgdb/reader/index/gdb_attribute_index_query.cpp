@@ -5,6 +5,7 @@
 #include "gdb_tablx_cache.h"
 #include "ole_date.h"
 #include "uuid_value.h"
+#include "gdb_attribute_string_key.h"
 
 #include <algorithm>
 #include <array>
@@ -151,37 +152,6 @@ bool decode_numeric(const uint8_t* bytes,
     }
 }
 
-size_t utf8_sequence_bytes(unsigned char lead) {
-    if ((lead & 0x80U) == 0) return 1;
-    if ((lead & 0xe0U) == 0xc0U) return 2;
-    if ((lead & 0xf0U) == 0xe0U) return 3;
-    if ((lead & 0xf8U) == 0xf0U) return 4;
-    return 0;
-}
-
-/**
- * 按索引可容纳的 UTF-16 单元数截断查询字符串。
- *
- * .atx 字符串尾部以空格填充；遇到空格或损坏 UTF-8 序列即停止。此函数只
- * 准备索引比较键，完整 WHERE 仍由上层对候选记录复核。
- */
-std::string truncate_index_string(const std::string& value,
-                                  size_t max_utf16_units) {
-    std::string result;
-    size_t units = 0;
-    for (size_t index = 0;
-         index < value.size() && units < max_utf16_units;) {
-        if (value[index] == ' ') break;
-        const size_t bytes = utf8_sequence_bytes(
-            static_cast<unsigned char>(value[index]));
-        if (bytes == 0 || index + bytes > value.size()) break;
-        result.append(value, index, bytes);
-        index += bytes;
-        ++units;
-    }
-    return result;
-}
-
 } // namespace
 
 bool GdbAttributeIndexParser::query_double_direct(
@@ -227,6 +197,13 @@ bool GdbAttributeIndexParser::query_string_direct(
                         max_fid_count, result, metrics);
 }
 
+bool GdbAttributeIndexParser::query_string_candidates(
+    const std::string& value, AttrOp op, size_t max_fid_count,
+    std::vector<RowSlot>& result, AttributeIndexQueryMetrics* metrics) {
+    return query_direct(0, 0, NumericQueryKind::Floating, value, true, op,
+                        max_fid_count, result, metrics, true);
+}
+
 bool GdbAttributeIndexParser::query_direct(
     double numeric_value,
     int64_t integer_value,
@@ -236,7 +213,7 @@ bool GdbAttributeIndexParser::query_direct(
     AttrOp op,
     size_t max_fid_count,
     std::vector<RowSlot>& result,
-    AttributeIndexQueryMetrics* metrics) {
+    AttributeIndexQueryMetrics* metrics, bool string_candidates) {
     const bool numeric_is_int64 = numeric_kind == NumericQueryKind::Int64;
     const bool numeric_is_temporal = numeric_kind == NumericQueryKind::TemporalMilliseconds;
     if (metrics != nullptr) *metrics = AttributeIndexQueryMetrics{};
@@ -246,6 +223,7 @@ bool GdbAttributeIndexParser::query_direct(
     // full-materialization API for diagnostics and compatibility.
     std::vector<uint8_t>().swap(file_data_);
     std::vector<AttributeIndexEntry>().swap(all_entries_);
+    std::vector<size_t>().swap(string_value_offsets_);
     trailer_ = BPlusTreeTrailer{};
 
     TablxCacheKey source_before;
@@ -338,13 +316,18 @@ bool GdbAttributeIndexParser::query_direct(
     }
 
     std::string effective_string;
+    std::u16string utf16_key;
+    const bool ordinary_string = is_string && !uuid_field;
+    const bool full_string_scan = string_candidates && ordinary_string;
+    std::u16string legacy_key;
     if (uuid_field) {
         std::array<char, 32> hex;
         if (!canonical_uuid(string_value, hex)) return false;
         const auto key = uuid_index_key(hex);
         effective_string.assign(key.data(), key.size());
     } else if (is_string) {
-        effective_string = truncate_index_string(string_value, trailer_.value_size / 2U);
+        if (!attribute_string::prepare(string_value, trailer_.value_size / 2U, utf16_key) ||
+            !attribute_string::prepare_legacy(string_value, trailer_.value_size / 2U, legacy_key)) return false;
     }
 
     // 深度为 0 只允许真正的空树；空结果是成功，不是回退信号。
@@ -429,10 +412,9 @@ bool GdbAttributeIndexParser::query_direct(
             return true;
         }
         if (is_string) {
-            const AttributeIndexEntry entry = decode_value(
-                bytes, trailer_.value_size, true, 0U);
-            comparison = entry.string_value.compare(effective_string);
-            comparison = (comparison > 0) - (comparison < 0);
+            attribute_string::KeyInfo info;
+            if (!attribute_string::inspect(bytes, trailer_.value_size / 2, info)) return false;
+            comparison = attribute_string::compare(bytes, utf16_key);
             return true;
         }
         double indexed_value = 0.0;
@@ -465,12 +447,10 @@ bool GdbAttributeIndexParser::query_direct(
             return true;
         }
         if (is_string) {
-            const AttributeIndexEntry left = decode_value(
-                lhs, trailer_.value_size, true, 0U);
-            const AttributeIndexEntry right = decode_value(
-                rhs, trailer_.value_size, true, 0U);
-            comparison = left.string_value.compare(right.string_value);
-            comparison = (comparison > 0) - (comparison < 0);
+            attribute_string::KeyInfo left, right;
+            if (!attribute_string::inspect(lhs, trailer_.value_size / 2, left) ||
+                !attribute_string::inspect(rhs, trailer_.value_size / 2, right)) return false;
+            comparison = attribute_string::compare(lhs, rhs, trailer_.value_size / 2);
             return true;
         }
         double left_value = 0.0;
@@ -495,8 +475,10 @@ bool GdbAttributeIndexParser::query_direct(
         return true;
     };
 
+    // Padding and UCS-2 folding can destroy string-key monotonicity even in
+    // GDAL-written indexes. Until ordering is verified, visit linked leaves.
     const bool descend_to_lower_bound =
-        op == AttrOp::Eq || op == AttrOp::Ge || op == AttrOp::Gt;
+        !ordinary_string && (op == AttrOp::Eq || op == AttrOp::Ge || op == AttrOp::Gt);
     bool starts_at_leftmost = true;
     ObjectId leaf_page_id = 1U;
     std::vector<ObjectId> navigation_pages;
@@ -601,12 +583,25 @@ bool GdbAttributeIndexParser::query_direct(
             if (have_previous_key) {
                 int order = 0;
                 if (!compare_keys(previous_key.data(), value_bytes, order) ||
-                    order > 0) {
+                    (!ordinary_string && order > 0)) {
                     return false;
                 }
             }
 
-            if (comparison_matches(comparison, op)) {
+            bool match = comparison_matches(comparison, op);
+            if (full_string_scan) {
+                attribute_string::KeyInfo info;
+                if (!attribute_string::inspect(value_bytes, trailer_.value_size / 2, info)) return false;
+                if (op == AttrOp::Eq) {
+                    match = attribute_string::compare(value_bytes, utf16_key) == 0 ||
+                            attribute_string::compare(value_bytes, legacy_key) == 0;
+                } else {
+                    const auto prefix = utf16le_to_utf8(value_bytes, static_cast<int>(info.prefix_units));
+                    match = attribute_string::may_match(prefix, string_value, op) ||
+                        attribute_string::legacy_may_match(value_bytes, info.text_units, string_value, op);
+                }
+            }
+            if (match) {
                 // .atx 存储 1-based ObjectID，Reader 对外统一发布 0-based FID。
                 RowSlot row_slot = 0U;
                 if (!object_id_to_row_slot(stored_fid, row_slot)) return false;
@@ -617,9 +612,9 @@ bool GdbAttributeIndexParser::query_direct(
             have_previous_key = true;
             ++entries_seen;
 
-            if ((op == AttrOp::Eq && comparison > 0) ||
+            if (!ordinary_string && ((op == AttrOp::Eq && comparison > 0) ||
                 (op == AttrOp::Lt && comparison >= 0) ||
-                (op == AttrOp::Le && comparison > 0)) {
+                (op == AttrOp::Le && comparison > 0))) {
                 stopped_at_range_end = true;
                 break;
             }

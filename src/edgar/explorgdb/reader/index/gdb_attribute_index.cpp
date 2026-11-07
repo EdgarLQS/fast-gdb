@@ -7,6 +7,7 @@
 #include "binary_reader.h"
 #include "explorgdb_constants.h"
 #include "uuid_value.h"
+#include "gdb_attribute_string_key.h"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -68,6 +69,7 @@ GdbAttributeIndexParser::GdbAttributeIndexParser(
 bool GdbAttributeIndexParser::parse() {
     file_data_.clear();
     all_entries_.clear();
+    string_value_offsets_.clear();
     trailer_ = BPlusTreeTrailer{};
     page_count_ = 0U;
 
@@ -215,6 +217,7 @@ void GdbAttributeIndexParser::parse_leaf_page(
     reader.seek(values_offset);
 
     for (uint32_t index = 0; index < feature_count; ++index) {
+        if (trailer_.is_string) string_value_offsets_.push_back(page_offset + reader.tell());
         std::vector<uint8_t> value_bytes(trailer_.value_size);
         for (uint8_t byte = 0; byte < trailer_.value_size; ++byte)
             value_bytes[byte] = reader.read_u8();
@@ -319,26 +322,10 @@ AttributeIndexEntry GdbAttributeIndexParser::decode_value(
         entry.string_value.assign(key.data(), key.size());
         entry.numeric_value = std::nan("");
     } else if (is_string) {
-        const int character_count = value_size / 2;
-        std::string value;
-        for (int index = 0; index < character_count; ++index) {
-            const uint16_t character =
-                bytes[index * 2] |
-                (static_cast<uint16_t>(bytes[index * 2 + 1]) << 8U);
-            if (character == 0x0000 || character == 0x0020) break;
-            if (character < 0x80) {
-                value += static_cast<char>(character);
-            } else if (character < 0x800) {
-                value += static_cast<char>(0xC0 | (character >> 6));
-                value += static_cast<char>(0x80 | (character & 0x3F));
-            } else {
-                value += static_cast<char>(0xE0 | (character >> 12));
-                value += static_cast<char>(
-                    0x80 | ((character >> 6) & 0x3F));
-                value += static_cast<char>(0x80 | (character & 0x3F));
-            }
-        }
-        entry.string_value = std::move(value);
+        attribute_string::KeyInfo info;
+        if ((value_size % 2) != 0 || !attribute_string::inspect(bytes, value_size / 2, info))
+            throw std::out_of_range("invalid UTF-16 attribute index key");
+        entry.string_value = utf16le_to_utf8(bytes, static_cast<int>(info.text_units));
         entry.numeric_value = std::nan("");
     } else {
         switch (value_size) {
@@ -446,15 +433,22 @@ std::vector<RowSlot> GdbAttributeIndexParser::query_string(
     AttrOp op) const {
     std::vector<RowSlot> result;
     std::string effective_value = value;
-    if (field_type_ == FieldType::UUID_1 || field_type_ == FieldType::UUID_2) {
+    const bool uuid_field = field_type_ == FieldType::UUID_1 || field_type_ == FieldType::UUID_2;
+    std::u16string key;
+    if (uuid_field) {
         std::array<char, 32> hex;
         if (!canonical_uuid(value, hex)) return result;
-        const auto key = uuid_index_key(hex);
-        effective_value.assign(key.data(), key.size());
+        const auto encoded = uuid_index_key(hex);
+        effective_value.assign(encoded.data(), encoded.size());
+    } else if (!trailer_.is_string || string_value_offsets_.size() != all_entries_.size() ||
+               !attribute_string::prepare(value, trailer_.value_size / 2, key)) {
+        return result;
     }
 
-    for (const AttributeIndexEntry& entry : all_entries_) {
-        const int comparison = entry.string_value.compare(effective_value);
+    for (size_t i = 0; i < all_entries_.size(); ++i) {
+        const auto& entry = all_entries_[i];
+        const int comparison = uuid_field ? entry.string_value.compare(effective_value) :
+            attribute_string::compare(file_data_.data() + string_value_offsets_[i], key);
         bool match = false;
         switch (op) {
             case AttrOp::Eq: match = comparison == 0; break;

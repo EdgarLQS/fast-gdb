@@ -355,7 +355,7 @@ struct SpatialIndexEntry {
 //   value_size=38 → GUID (ASCII UUID)
 struct AttributeIndexEntry {
     ObjectId fid = 0;            // 索引中的 1-based ObjectID
-    std::string string_value;    // 字符串值（非字符串类型为空）
+    std::string string_value;    // 解码后的索引键视图；移除尾部填充，不代表完整字段原值
     double numeric_value = 0;    // 数值（NaN 表示字符串类型）；INT64 的 double 仅为近似视图
     std::optional<int64_t> integer_value; // typed INT64 的无损值
 };

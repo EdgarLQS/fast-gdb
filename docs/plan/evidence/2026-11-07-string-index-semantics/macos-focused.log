@@ -1,0 +1,90 @@
+Note: Google Test filter = Utf16Test.*:AttributeIndexSafetyTest.*:SpatialWhereUnicodeTest.*:AttributeIndexTest.DecodeStringUnicode
+[==========] Running 36 tests from 4 test suites.
+[----------] Global test environment set-up.
+[----------] 17 tests from Utf16Test
+[ RUN      ] Utf16Test.EmptyInput
+[       OK ] Utf16Test.EmptyInput (0 ms)
+[ RUN      ] Utf16Test.AsciiOnly
+[       OK ] Utf16Test.AsciiOnly (0 ms)
+[ RUN      ] Utf16Test.SingleChar
+[       OK ] Utf16Test.SingleChar (0 ms)
+[ RUN      ] Utf16Test.NullTermination
+[       OK ] Utf16Test.NullTermination (0 ms)
+[ RUN      ] Utf16Test.NullAtStart
+[       OK ] Utf16Test.NullAtStart (0 ms)
+[ RUN      ] Utf16Test.TwoByteUtf8
+[       OK ] Utf16Test.TwoByteUtf8 (0 ms)
+[ RUN      ] Utf16Test.TwoByteBoundary
+[       OK ] Utf16Test.TwoByteBoundary (0 ms)
+[ RUN      ] Utf16Test.ThreeByteUtf8
+[       OK ] Utf16Test.ThreeByteUtf8 (0 ms)
+[ RUN      ] Utf16Test.ThreeByteBoundary
+[       OK ] Utf16Test.ThreeByteBoundary (0 ms)
+[ RUN      ] Utf16Test.MixedContent
+[       OK ] Utf16Test.MixedContent (0 ms)
+[ RUN      ] Utf16Test.MixedWithNull
+[       OK ] Utf16Test.MixedWithNull (0 ms)
+[ RUN      ] Utf16Test.Utf16SurrogatePairEmitsFourByteUtf8
+[       OK ] Utf16Test.Utf16SurrogatePairEmitsFourByteUtf8 (0 ms)
+[ RUN      ] Utf16Test.UnpairedSurrogatesEmitReplacementCharacter
+[       OK ] Utf16Test.UnpairedSurrogatesEmitReplacementCharacter (0 ms)
+[ RUN      ] Utf16Test.SupplementaryUtf8RoundTripsThroughUtf16Pair
+[       OK ] Utf16Test.SupplementaryUtf8RoundTripsThroughUtf16Pair (0 ms)
+[ RUN      ] Utf16Test.InvalidUtf8BytesEmitReplacementCharacters
+[       OK ] Utf16Test.InvalidUtf8BytesEmitReplacementCharacters (0 ms)
+[ RUN      ] Utf16Test.TruncatedUtf8AndNullInputAreHandled
+[       OK ] Utf16Test.TruncatedUtf8AndNullInputAreHandled (0 ms)
+[ RUN      ] Utf16Test.StrictUtf8ConversionPreservesOutputOnInvalidInput
+[       OK ] Utf16Test.StrictUtf8ConversionPreservesOutputOnInvalidInput (0 ms)
+[----------] 17 tests from Utf16Test (0 ms total)
+
+[----------] 1 test from AttributeIndexTest
+[ RUN      ] AttributeIndexTest.DecodeStringUnicode
+[       OK ] AttributeIndexTest.DecodeStringUnicode (0 ms)
+[----------] 1 test from AttributeIndexTest (0 ms total)
+
+[----------] 15 tests from AttributeIndexSafetyTest
+[ RUN      ] AttributeIndexSafetyTest.ValidSingleLeafStillParses
+[       OK ] AttributeIndexSafetyTest.ValidSingleLeafStillParses (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.DirectNumericQueryMatchesMaterializedQuery
+[       OK ] AttributeIndexSafetyTest.DirectNumericQueryMatchesMaterializedQuery (1 ms)
+[ RUN      ] AttributeIndexSafetyTest.DirectInt64QueryPreservesAdjacentLargeValues
+[       OK ] AttributeIndexSafetyTest.DirectInt64QueryPreservesAdjacentLargeValues (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.VersionTwoParsesAndQueries64BitObjectIds
+[       OK ] AttributeIndexSafetyTest.VersionTwoParsesAndQueries64BitObjectIds (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.DirectQueryNavigatesAndStopsAtRange
+[       OK ] AttributeIndexSafetyTest.DirectQueryNavigatesAndStopsAtRange (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.InvalidUnselectedBranchFailsClosed
+[       OK ] AttributeIndexSafetyTest.InvalidUnselectedBranchFailsClosed (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.TrailerCountMismatchFailsClosed
+[       OK ] AttributeIndexSafetyTest.TrailerCountMismatchFailsClosed (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.CyclicLeafChainFailsClosed
+[       OK ] AttributeIndexSafetyTest.CyclicLeafChainFailsClosed (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.ZeroFidFailsClosed
+[       OK ] AttributeIndexSafetyTest.ZeroFidFailsClosed (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.SmallIntegerKeysKeepTheirSignedOrder
+[       OK ] AttributeIndexSafetyTest.SmallIntegerKeysKeepTheirSignedOrder (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.Float32SchemaSelectsFloatingPointKeys
+[       OK ] AttributeIndexSafetyTest.Float32SchemaSelectsFloatingPointKeys (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.TemporalMillisecondsKeepEqualKeysAcrossLeafBoundaries
+[       OK ] AttributeIndexSafetyTest.TemporalMillisecondsKeepEqualKeysAcrossLeafBoundaries (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.UuidAsciiKeysUseTypedCanonicalOrderAcrossPages
+[       OK ] AttributeIndexSafetyTest.UuidAsciiKeysUseTypedCanonicalOrderAcrossPages (3 ms)
+[ RUN      ] AttributeIndexSafetyTest.MaterializedInt64KeepsExactValuesForDiagnostics
+[       OK ] AttributeIndexSafetyTest.MaterializedInt64KeepsExactValuesForDiagnostics (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.StringKeysPreserveSpacesSurrogatesAndPhysicalOrder
+[       OK ] AttributeIndexSafetyTest.StringKeysPreserveSpacesSurrogatesAndPhysicalOrder (0 ms)
+[----------] 15 tests from AttributeIndexSafetyTest (10 ms total)
+
+[----------] 3 tests from SpatialWhereUnicodeTest
+[ RUN      ] SpatialWhereUnicodeTest.BmpTextUsesIndexAndRechecks
+[       OK ] SpatialWhereUnicodeTest.BmpTextUsesIndexAndRechecks (50 ms)
+[ RUN      ] SpatialWhereUnicodeTest.NonBmpEqualityUsesIndexWithoutFalseNegative
+[       OK ] SpatialWhereUnicodeTest.NonBmpEqualityUsesIndexWithoutFalseNegative (4 ms)
+[ RUN      ] SpatialWhereUnicodeTest.FullStringPredicatesRecheckPaddingTruncationAndUnicodeOrder
+[       OK ] SpatialWhereUnicodeTest.FullStringPredicatesRecheckPaddingTruncationAndUnicodeOrder (12 ms)
+[----------] 3 tests from SpatialWhereUnicodeTest (67 ms total)
+
+[----------] Global test environment tear-down
+[==========] 36 tests from 4 test suites ran. (78 ms total)
+[  PASSED  ] 36 tests.

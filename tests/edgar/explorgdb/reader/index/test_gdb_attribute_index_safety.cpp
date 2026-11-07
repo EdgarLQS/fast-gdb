@@ -689,3 +689,57 @@ TEST(AttributeIndexSafetyTest, MaterializedInt64KeepsExactValuesForDiagnostics) 
     EXPECT_TRUE(parser.query_double(9007199254740992.0, AttrOp::Eq).empty());
     fs::remove(path);
 }
+
+TEST(AttributeIndexSafetyTest, StringKeysPreserveSpacesSurrogatesAndPhysicalOrder) {
+    const auto path = safety_path("utf16_key_semantics");
+    constexpr size_t page_size = GdbAttributeIndexParser::kPageSize;
+    constexpr size_t width = 160;
+    constexpr size_t capacity = (page_size - 12) / (4 + width);
+    constexpr size_t values_offset = 12 + capacity * 4;
+    const std::u16string truncated = std::u16string(79, u'x') + char16_t{0xd83d};
+    const std::u16string keys[] = {u"", u"a b", u"emoji \U0001F600", truncated,
+                                  u"\U0001F600", u"\uE000"};
+    std::vector<uint8_t> bytes(page_size + GdbAttributeIndexParser::kTrailerSize, 0);
+    write_u32_le(bytes, 4, 6);
+    for (size_t i = 0; i < 6; ++i) {
+        write_u32_le(bytes, 12 + 4 * i, static_cast<uint32_t>(i + 1));
+        std::u16string padded = keys[i];
+        padded.resize(80, u' ');
+        for (size_t j = 0; j < 80; ++j) {
+            bytes[values_offset + i * width + 2 * j] = static_cast<uint8_t>(padded[j]);
+            bytes[values_offset + i * width + 2 * j + 1] = static_cast<uint8_t>(padded[j] >> 8);
+        }
+    }
+    bytes[page_size] = width;
+    bytes[page_size + 1] = 0x20;
+    write_u32_le(bytes, page_size + 2, 1);
+    write_u32_le(bytes, page_size + 6, 1);
+    write_u32_le(bytes, page_size + 10, 6);
+    write_u32_le(bytes, page_size + 18, 1);
+    {
+        std::ofstream file(path, std::ios::binary);
+        file.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+        ASSERT_TRUE(file.good());
+    }
+    GdbAttributeIndexParser parsed(path, FieldType::String), direct(path, FieldType::String);
+    ASSERT_TRUE(parsed.parse());
+    ASSERT_EQ(parsed.all_entries().size(), 6U);
+    EXPECT_EQ(parsed.all_entries()[1].string_value, "a b");
+    EXPECT_EQ(parsed.all_entries()[2].string_value, "emoji \xF0\x9F\x98\x80");
+    EXPECT_EQ(parsed.all_entries()[3].string_value, std::string(79, 'x') + "\xEF\xBF\xBD");
+    const std::vector<std::pair<std::string, std::vector<RowSlot>>> probes = {
+        {"a b", {1}}, {"\xF0\x9F\x98\x80", {4}},
+        {std::string(79, 'x') + "\xF0\x9F\x98\x80tail", {3}}};
+    for (const auto& probe : probes) {
+        EXPECT_EQ(parsed.query_string(probe.first, AttrOp::Eq), probe.second);
+        std::vector<RowSlot> result;
+        ASSERT_TRUE(direct.query_string_direct(probe.first, AttrOp::Eq, 6, result));
+        EXPECT_EQ(result, probe.second);
+    }
+    EXPECT_EQ(parsed.query_string("\xEE\x80\x80", AttrOp::Lt),
+              (std::vector<RowSlot>{0, 1, 2, 3, 4}));
+    std::vector<RowSlot> unchanged{99};
+    EXPECT_FALSE(direct.query_string_direct("\xC0\xAF", AttrOp::Eq, 6, unchanged));
+    EXPECT_EQ(unchanged, (std::vector<RowSlot>{99}));
+    fs::remove(path);
+}

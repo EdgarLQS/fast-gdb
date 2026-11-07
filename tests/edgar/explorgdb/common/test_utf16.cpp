@@ -222,3 +222,15 @@ TEST(Utf16Test, TruncatedUtf8AndNullInputAreHandled) {
     EXPECT_TRUE(utf16le_to_utf8(nullptr, -1).empty());
     EXPECT_TRUE(utf16le_to_utf8(nullptr, 1).empty());
 }
+
+TEST(Utf16Test, StrictUtf8ConversionPreservesOutputOnInvalidInput) {
+    std::u16string output = u"unchanged";
+    EXPECT_FALSE(try_utf8_to_utf16("\xC0\xAF", output));
+    EXPECT_EQ(output, u"unchanged");
+    EXPECT_FALSE(try_utf8_to_utf16("\xED\xA0\x80", output));
+    EXPECT_EQ(output, u"unchanged");
+    EXPECT_FALSE(try_utf8_to_utf16("\xF0\x9F", output));
+    EXPECT_EQ(output, u"unchanged");
+    ASSERT_TRUE(try_utf8_to_utf16("a b \xF0\x9F\x98\x80", output));
+    EXPECT_EQ(output, u"a b \U0001F600");
+}

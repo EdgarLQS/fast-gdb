@@ -43,6 +43,9 @@ std::string utf16le_to_utf8(const uint8_t* data, int char_count);
  */
 std::u16string utf8_to_utf16(const std::string& str);
 
+// Strict query conversion; malformed UTF-8 returns false without changing output.
+bool try_utf8_to_utf16(const std::string& str, std::u16string& output);
+
 } // namespace explorgdb
 
 #endif // EXPLORGDB_UTF16_H
