@@ -11,6 +11,7 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include <utility>
 
 using namespace explorgdb;
 namespace fs = std::filesystem;
@@ -422,5 +423,92 @@ TEST(AttributeIndexSafetyTest, ZeroFidFailsClosed) {
     EXPECT_FALSE(parser.query_double_direct(
         42.0, AttrOp::Eq, 1U, direct_result));
     EXPECT_EQ(direct_result, (std::vector<RowSlot>{55U}));
+    fs::remove(path);
+}
+
+TEST(AttributeIndexSafetyTest, SmallIntegerKeysKeepTheirSignedOrder) {
+    const std::string path = safety_path("signed_int16");
+    std::vector<uint8_t> bytes(GdbAttributeIndexParser::kPageSize +
+                               GdbAttributeIndexParser::kTrailerSize, 0);
+    constexpr size_t capacity = (GdbAttributeIndexParser::kPageSize - 12) / 6;
+    constexpr size_t values_offset = 12 + capacity * 4;
+    const int16_t keys[] = {-32768, -13, 0, 32767};
+    write_u32_le(bytes, 4, 4);
+    for (size_t i = 0; i < 4; ++i) {
+        write_u32_le(bytes, 12 + 4 * i, static_cast<uint32_t>(i + 1));
+        const uint16_t raw = static_cast<uint16_t>(keys[i]);
+        bytes[values_offset + 2 * i] = static_cast<uint8_t>(raw);
+        bytes[values_offset + 2 * i + 1] = static_cast<uint8_t>(raw >> 8);
+    }
+    const size_t trailer = GdbAttributeIndexParser::kPageSize;
+    bytes[trailer] = 2;
+    bytes[trailer + 1] = 0x40;
+    write_u32_le(bytes, trailer + 2, 1);
+    write_u32_le(bytes, trailer + 6, 1);
+    write_u32_le(bytes, trailer + 10, 4);
+    write_u32_le(bytes, trailer + 18, 1);
+    {
+        std::ofstream output(path, std::ios::binary);
+        output.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+        ASSERT_TRUE(output.good());
+    }
+    GdbAttributeIndexParser parser(path);
+    ASSERT_TRUE(parser.parse());
+    const std::vector<std::pair<AttrOp, std::vector<RowSlot>>> expected = {
+        {AttrOp::Eq, {1}}, {AttrOp::Ne, {0, 2, 3}},
+        {AttrOp::Lt, {0}}, {AttrOp::Le, {0, 1}},
+        {AttrOp::Gt, {2, 3}}, {AttrOp::Ge, {1, 2, 3}}};
+    GdbAttributeIndexParser direct(path);
+    for (const auto& item : expected) {
+        EXPECT_EQ(parser.query_double(-13, item.first), item.second);
+        std::vector<RowSlot> result;
+        ASSERT_TRUE(direct.query_double_direct(-13, item.first, 4, result));
+        EXPECT_EQ(result, item.second);
+    }
+    std::vector<RowSlot> boundary;
+    ASSERT_TRUE(parser.query_double_direct(-32768, AttrOp::Eq, 4, boundary));
+    EXPECT_EQ(boundary, (std::vector<RowSlot>{0}));
+    ASSERT_TRUE(parser.query_double_direct(32767, AttrOp::Eq, 4, boundary));
+    EXPECT_EQ(boundary, (std::vector<RowSlot>{3}));
+    fs::remove(path);
+}
+
+TEST(AttributeIndexSafetyTest, Float32SchemaSelectsFloatingPointKeys) {
+    const std::string path = safety_path("float32_schema");
+    std::vector<uint8_t> bytes(GdbAttributeIndexParser::kPageSize +
+                               GdbAttributeIndexParser::kTrailerSize, 0);
+    constexpr size_t capacity = (GdbAttributeIndexParser::kPageSize - 12) / 8;
+    constexpr size_t values_offset = 12 + capacity * 4;
+    const float keys[] = {-1.5f, 0.125f, 1.5f, 100.25f};
+    write_u32_le(bytes, 4, 4);
+    for (size_t i = 0; i < 4; ++i) {
+        write_u32_le(bytes, 12 + 4 * i, static_cast<uint32_t>(i + 1));
+        std::memcpy(bytes.data() + values_offset + 4 * i, &keys[i], 4);
+    }
+    const size_t trailer = GdbAttributeIndexParser::kPageSize;
+    bytes[trailer] = 4;
+    bytes[trailer + 1] = 0x40;
+    write_u32_le(bytes, trailer + 2, 1);
+    write_u32_le(bytes, trailer + 6, 1);
+    write_u32_le(bytes, trailer + 10, 4);
+    write_u32_le(bytes, trailer + 18, 1);
+    {
+        std::ofstream output(path, std::ios::binary);
+        output.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+        ASSERT_TRUE(output.good());
+    }
+    GdbAttributeIndexParser materialized(path, FieldType::Float32);
+    GdbAttributeIndexParser direct(path, FieldType::Float32);
+    ASSERT_TRUE(materialized.parse());
+    const std::vector<std::pair<AttrOp, std::vector<RowSlot>>> expected = {
+        {AttrOp::Eq, {2}}, {AttrOp::Ne, {0, 1, 3}},
+        {AttrOp::Lt, {0, 1}}, {AttrOp::Le, {0, 1, 2}},
+        {AttrOp::Gt, {3}}, {AttrOp::Ge, {2, 3}}};
+    for (const auto& item : expected) {
+        EXPECT_EQ(materialized.query_double(1.5, item.first), item.second);
+        std::vector<RowSlot> result;
+        ASSERT_TRUE(direct.query_double_direct(1.5, item.first, 4, result));
+        EXPECT_EQ(result, item.second);
+    }
     fs::remove(path);
 }

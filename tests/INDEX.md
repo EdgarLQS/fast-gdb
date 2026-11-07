@@ -168,6 +168,15 @@ complete GDAL geometry scans, including quadrant, whole-extent and disjoint
 windows. The oracle does not use GDAL spatial-filter/index candidate selection;
 SPX candidate-path counts are reported separately.
 
+`HistoricalAttributeIndexesMatchIndependentRecordScan` compares six operators on
+ordinary numeric/string ATX keys with independent GDAL record scans. It also
+requires actual ATX use for INT16/FLOAT32 SpatialWhere queries. Date/GUID indexes
+are reported separately and excluded from its native pass count. Legacy v9 index
+metadata makes this test skip; `HistoricalUnknownIndexMetadataReturnsUnsupported`
+then verifies that existing ATX files with unparsed metadata return explicit
+`Unsupported`. The modern fixture skips the latter test when no such files exist.
+See [typed ATX evidence](../docs/plan/evidence/2026-11-07-typed-atx.md).
+
 ## Opt-in Reader contention benchmarks
 
 - `TablxCacheBenchmarkTest.SharedHitContentionProfile` measures concurrent cache

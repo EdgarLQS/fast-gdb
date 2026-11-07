@@ -255,3 +255,7 @@ FAST_GDB_CURVE_DATASET="$PWD/test_data/gdb/参数化数据_liqs.gdb" \
 ### 2026-11-07：历史空间查询与坐标边界修复
 
 独立几何扫描发现世界坐标 double 往返整数网格时会将闭区间边界顶点排除。统一 Bbox、SpatialWhere 与 decoder 的边界转换，保留子网格连续性并处理相邻 double 和 int64 重合输出区间。三库 168/84/84 个窗口的公开 Reader Bbox 与 SpatialWhere 完整 FID 一致；Release 全量 581 PASS / 17 SKIP / 0 FAIL，GDAL-free ASan/UBSan/LSan 408 PASS / 5 SKIP / 0 FAIL。详见 [修复记录](evidence/2026-11-07-grid-boundary-spatial-fix.md)。S3.5 仍缺 ArcGIS 独立真值、属性索引、刷新与其他格式语料。
+
+### 2026-11-07：INT16 / FLOAT32 ATX 修复与提交范围
+
+修复 INT16 有符号解码和 FLOAT32 字段类型传递，统一直接查询与 SpatialWhere 的索引解释；未知直接字段元数据返回 Unsupported。现代历史参考库 9 个索引、312 次直接查询和 60 次联合查询通过；92/93 各 11 次未知元数据请求明确拒绝，原生索引能力未计通过。Release 585 PASS / 19 SKIP / 0 FAIL；GDAL-free ASan/UBSan/LSan 410 PASS / 5 SKIP / 0 FAIL，macOS 两项新安全测试通过。详见 [本次提交内容、证据与剩余项](evidence/2026-11-07-typed-atx.md)。GUID/日期索引、v9 元数据仍待实现或验收，S3.5 保持未完成；真实 ArcGIS 附件/高级对象/MultiPatch/高位稀疏 v4、Windows 及冷 I/O 验收仍按原计划执行。

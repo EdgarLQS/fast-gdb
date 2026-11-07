@@ -49,6 +49,8 @@ bool used_spx_path(const std::string& path) {
 
 bool numeric_atx_supported(FieldType type) {
     switch (type) {
+        case FieldType::Int16:
+        case FieldType::Float32:
         case FieldType::Int32:
         case FieldType::Int64:
         case FieldType::Float64:
@@ -265,7 +267,8 @@ AttributeCandidatePlan resolve_attribute_index(
                 predicate.numeric_integer_overflow)) {
         return fail(
             "INT64 index requires an in-range integer literal; spatial candidates evaluated");
-    } else if ((field_type == FieldType::Float64 ||
+    } else if ((field_type == FieldType::Float32 ||
+                field_type == FieldType::Float64 ||
                 field_type == FieldType::DateTime ||
                 field_type == FieldType::Date ||
                 field_type == FieldType::Time) &&
@@ -325,7 +328,7 @@ bool query_attribute_candidates(
     size_t max_fid_count,
     const IndexableWherePredicate& predicate) {
     try {
-        GdbAttributeIndexParser index(plan.atx_path);
+        GdbAttributeIndexParser index(plan.atx_path, predicate.field_type);
         bool ok = false;
         if (predicate.is_string) {
             ok = index.query_string_direct(

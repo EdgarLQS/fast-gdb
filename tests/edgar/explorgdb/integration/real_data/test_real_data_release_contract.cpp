@@ -11,6 +11,7 @@
 #include <fstream>
 #include <iomanip>
 #include <memory>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <cctype>
@@ -26,6 +27,7 @@
 #include "explorgdb_constants.h"
 #include "gdb_geometry.h"
 #include "gdb_catalog.h"
+#include "gdb_indexes.h"
 #include "metadata_reader.h"
 #include "ole_date.h"
 #include "query_engine.h"
@@ -1276,6 +1278,233 @@ TEST(RealDataReleaseContractTest,
     const char* path = required_dataset_from_env("FAST_GDB_HISTORICAL_DATASET");
     if (path == nullptr) GTEST_SKIP() << "Set FAST_GDB_HISTORICAL_DATASET";
     verify_non_curve_geometry_dataset(path, false);
+}
+
+TEST(RealDataReleaseContractTest,
+     HistoricalAttributeIndexesMatchIndependentRecordScan) {
+    const char* path = required_dataset_from_env("FAST_GDB_HISTORICAL_DATASET");
+    if (path == nullptr) GTEST_SKIP() << "Set FAST_GDB_HISTORICAL_DATASET";
+    GDALAllRegister();
+    std::unique_ptr<GDALDataset, decltype(&GDALClose)> reference(
+        static_cast<GDALDataset*>(GDALOpenEx(path,
+            GDAL_OF_VECTOR | GDAL_OF_READONLY, nullptr, nullptr, nullptr)), GDALClose);
+    ASSERT_NE(reference, nullptr);
+    GdbCatalog catalog;
+    ASSERT_TRUE(catalog.scan(path));
+    CatalogResolver resolver(catalog);
+    ASSERT_TRUE(resolver.load());
+    uint64_t tested_indexes = 0, queries = 0, skipped_types = 0, combined_queries = 0;
+    const auto matches = [](int order, AttrOp op) {
+        switch (op) {
+            case AttrOp::Eq: return order == 0;
+            case AttrOp::Ne: return order != 0;
+            case AttrOp::Lt: return order < 0;
+            case AttrOp::Le: return order <= 0;
+            case AttrOp::Gt: return order > 0;
+            case AttrOp::Ge: return order >= 0;
+        }
+        return false;
+    };
+    for (int i = 0; i < reference->GetLayerCount(); ++i) {
+        OGRLayer* source = reference->GetLayer(i);
+        ASSERT_NE(source, nullptr);
+        SCOPED_TRACE(source->GetName());
+        const auto resolved = resolver.resolve(source->GetName());
+        ASSERT_TRUE(resolved.has_value());
+        QueryEngine engine(catalog, *resolved);
+        ASSERT_TRUE(engine.open());
+        const auto* metadata_file = catalog.find_indexes(resolved->id);
+        if (metadata_file == nullptr) continue;
+        std::ifstream input(std::filesystem::u8path(catalog.path()) / metadata_file->filename,
+                            std::ios::binary);
+        unsigned char signature[4]{};
+        input.read(reinterpret_cast<char*>(signature), 4);
+        ASSERT_TRUE(input.good());
+        if (signature[0] == 0x13 && signature[1] == 0x98 &&
+            signature[2] == 0x85 && signature[3] == 0x03) {
+            GTEST_SKIP() << "v9 index metadata layout unsupported; native ATX field discovery not verified";
+        }
+        std::vector<IndexEntry> indexes;
+        ASSERT_TRUE(catalog.read_index_metadata(resolved->id, indexes));
+        for (const auto& index : indexes) {
+            if (catalog.find_atx(resolved->id, index.name) == nullptr ||
+                !GdbIndexesParser::is_direct_field_expression(index.column_name))
+                continue;
+            const std::string column =
+                GdbIndexesParser::field_name_from_expression(index.column_name);
+            const int field = source->GetLayerDefn()->GetFieldIndex(column.c_str());
+            if (field < 0) continue; // ObjectID is exposed separately by GDAL.
+            SCOPED_TRACE(index.name + "/" + column);
+            const OGRFieldType type = source->GetLayerDefn()->GetFieldDefn(field)->GetType();
+            const auto native = std::find_if(engine.table()->fields().begin(),
+                engine.table()->fields().end(), [&](const FieldDescriptor& descriptor) {
+                    return descriptor.name == column;
+                });
+            ASSERT_NE(native, engine.table()->fields().end());
+            const bool string_field = native->type == FieldType::String;
+            if ((!string_field && type != OFTInteger && type != OFTReal) ||
+                (type == OFTString && !string_field)) {
+                ++skipped_types;
+                continue;
+            }
+            struct Row { RowSlot fid; double numeric; std::string text; bool spatial; };
+            std::vector<Row> rows;
+            std::vector<double> numeric_probes = {-1.0, 0.0, 1.0};
+            std::vector<std::string> string_probes = {"", "unmatched-index-value"};
+            source->SetSpatialFilter(nullptr);
+            ASSERT_EQ(source->SetAttributeFilter(nullptr), OGRERR_NONE);
+            source->ResetReading();
+            while (OGRFeature* raw = source->GetNextFeature()) {
+                std::unique_ptr<OGRFeature, decltype(&OGRFeature::DestroyFeature)>
+                    feature(raw, OGRFeature::DestroyFeature);
+                if (!feature->IsFieldSetAndNotNull(field)) continue;
+                ASSERT_GT(feature->GetFID(), 0);
+                const auto* geometry = feature->GetGeometryRef();
+                Row row{static_cast<RowSlot>(feature->GetFID() - 1), 0, {},
+                        geometry != nullptr && !geometry->IsEmpty()};
+                if (string_field) {
+                    row.text = feature->GetFieldAsString(field);
+                    string_probes.push_back(row.text);
+                } else {
+                    row.numeric = feature->GetFieldAsDouble(field);
+                    ASSERT_TRUE(std::isfinite(row.numeric));
+                    numeric_probes.push_back(row.numeric);
+                    numeric_probes.push_back(row.numeric - 1);
+                    numeric_probes.push_back(row.numeric + 1);
+                }
+                rows.push_back(std::move(row));
+            }
+            std::sort(numeric_probes.begin(), numeric_probes.end());
+            numeric_probes.erase(std::unique(numeric_probes.begin(), numeric_probes.end()),
+                                 numeric_probes.end());
+            std::sort(string_probes.begin(), string_probes.end());
+            string_probes.erase(std::unique(string_probes.begin(), string_probes.end()),
+                                string_probes.end());
+            const size_t probe_count = string_field ? string_probes.size() : numeric_probes.size();
+            ++tested_indexes;
+            for (size_t probe = 0; probe < probe_count; ++probe) {
+                for (AttrOp op : {AttrOp::Eq, AttrOp::Ne, AttrOp::Lt,
+                                  AttrOp::Le, AttrOp::Gt, AttrOp::Ge}) {
+                    QueryRequest request;
+                    request.kind = string_field ? QueryKind::AttributeString
+                                                : QueryKind::AttributeDouble;
+                    request.index_name = index.name;
+                    request.attr_op = op;
+                    if (string_field) request.string_value = string_probes[probe];
+                    else request.double_value = numeric_probes[probe];
+                    std::vector<RowSlot> expected;
+                    for (const auto& row : rows) {
+                        const int order = string_field
+                            ? row.text.compare(request.string_value)
+                            : (row.numeric < request.double_value ? -1
+                               : (row.numeric > request.double_value ? 1 : 0));
+                        if (matches(order, op)) expected.push_back(row.fid);
+                    }
+                    const auto result = engine.query(request);
+                    ASSERT_EQ(result.status, QueryStatus::Ok) << result.error;
+                    EXPECT_EQ(result.execution_path, kPathAttributeAtx)
+                        << result.fallback_reason;
+                    auto observed = result.matched_fids;
+                    std::sort(expected.begin(), expected.end());
+                    std::sort(observed.begin(), observed.end());
+                    EXPECT_EQ(observed, expected)
+                        << "op=" << static_cast<int>(op)
+                        << " probe=" << request.double_value << '/' << request.string_value;
+                    if ((native->type == FieldType::Int16 ||
+                         native->type == FieldType::Float32) && op != AttrOp::Ne &&
+                        source->GetLayerDefn()->GetGeomFieldCount() > 0) {
+                        OGREnvelope extent;
+                        ASSERT_EQ(source->GetExtent(&extent, TRUE), OGRERR_NONE);
+                        const char* symbol = "=";
+                        switch (op) {
+                            case AttrOp::Eq: break;
+                            case AttrOp::Lt: symbol = "<"; break;
+                            case AttrOp::Le: symbol = "<="; break;
+                            case AttrOp::Gt: symbol = ">"; break;
+                            case AttrOp::Ge: symbol = ">="; break;
+                            case AttrOp::Ne: break;
+                        }
+                        std::ostringstream predicate;
+                        predicate << column << ' ' << symbol << ' '
+                                  << std::setprecision(std::numeric_limits<double>::max_digits10)
+                                  << request.double_value;
+                        QueryRequest combined;
+                        combined.kind = QueryKind::SpatialWhere;
+                        combined.where_clause = predicate.str();
+                        combined.xmin = extent.MinX - 1;
+                        combined.ymin = extent.MinY - 1;
+                        combined.xmax = extent.MaxX + 1;
+                        combined.ymax = extent.MaxY + 1;
+                        std::vector<RowSlot> spatial_expected;
+                        for (const auto& row : rows) {
+                            if (row.spatial && std::binary_search(expected.begin(), expected.end(), row.fid))
+                                spatial_expected.push_back(row.fid);
+                        }
+                        std::sort(spatial_expected.begin(), spatial_expected.end());
+                        const auto fused = engine.query(combined);
+                        ASSERT_EQ(fused.status, QueryStatus::Ok) << fused.error;
+                        EXPECT_TRUE(fused.combined_metrics.used_attribute_index)
+                            << fused.fallback_reason;
+                        auto fused_fids = fused.matched_fids;
+                        std::sort(fused_fids.begin(), fused_fids.end());
+                        EXPECT_EQ(fused_fids, spatial_expected) << predicate.str();
+                        ++combined_queries;
+                    }
+                    ++queries;
+                }
+            }
+        }
+    }
+    EXPECT_GT(tested_indexes, 0U);
+    EXPECT_GT(queries, 0U);
+    RecordProperty("CombinedIndexedQueries", std::to_string(combined_queries));
+    RecordProperty("TestedIndexes", std::to_string(tested_indexes));
+    RecordProperty("ComparedQueries", std::to_string(queries));
+    RecordProperty("IndexesWithOtherFieldTypes", std::to_string(skipped_types));
+}
+
+TEST(RealDataReleaseContractTest,
+     HistoricalUnknownIndexMetadataReturnsUnsupported) {
+    const char* path = required_dataset_from_env("FAST_GDB_HISTORICAL_DATASET");
+    if (path == nullptr) GTEST_SKIP() << "Set FAST_GDB_HISTORICAL_DATASET";
+    GDALAllRegister();
+    std::unique_ptr<GDALDataset, decltype(&GDALClose)> reference(
+        static_cast<GDALDataset*>(GDALOpenEx(path,
+            GDAL_OF_VECTOR | GDAL_OF_READONLY, nullptr, nullptr, nullptr)), GDALClose);
+    ASSERT_NE(reference, nullptr);
+    GdbCatalog catalog;
+    ASSERT_TRUE(catalog.scan(path));
+    CatalogResolver resolver(catalog);
+    ASSERT_TRUE(resolver.load());
+    size_t rejected = 0;
+    // System catalog names may include objects without a physical table.
+    // Exercise each readable layer exposed by the independent GDAL reference.
+    for (int i = 0; i < reference->GetLayerCount(); ++i) {
+        OGRLayer* source = reference->GetLayer(i);
+        ASSERT_NE(source, nullptr);
+        SCOPED_TRACE(source->GetName());
+        const auto resolved = resolver.resolve(source->GetName());
+        ASSERT_TRUE(resolved.has_value());
+        const auto files = catalog.find_all_atx(resolved->id);
+        if (files.empty()) continue;
+        std::vector<IndexEntry> metadata;
+        if (catalog.read_index_metadata(resolved->id, metadata)) continue;
+        QueryEngine engine(catalog, *resolved);
+        ASSERT_TRUE(engine.open());
+        for (const auto* file : files) {
+            ASSERT_GT(file->extension.size(), 5U);
+            QueryRequest request;
+            request.kind = QueryKind::AttributeDouble;
+            request.index_name = file->extension.substr(1, file->extension.size() - 5);
+            const auto result = engine.query(request);
+            EXPECT_EQ(result.status, QueryStatus::Unsupported);
+            EXPECT_FALSE(result.error.empty());
+            EXPECT_TRUE(result.matched_fids.empty());
+            ++rejected;
+        }
+    }
+    if (rejected == 0) GTEST_SKIP() << "dataset has no ATX with unparsed metadata";
+    RecordProperty("RejectedAmbiguousIndexQueries", std::to_string(rejected));
 }
 
 TEST(RealDataReleaseContractTest,

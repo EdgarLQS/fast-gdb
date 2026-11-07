@@ -10,6 +10,7 @@
 #include "query_where_internal.h"
 
 #include <algorithm>
+#include <cctype>
 #include <iomanip>
 #include <limits>
 #include <list>
@@ -519,55 +520,61 @@ QueryResult QueryEngine::query_spatial(const QueryRequest& request) {
 // ────────────────────────────────────────────────
 
 std::vector<RowSlot> QueryEngine::query_attribute_double(
-    const std::string& index_name,
-    double value,
-    AttrOp op) {
+    const std::string& index_name, double value, AttrOp op) {
     if (feature_cursor_active() || !parser_) return {};
-    const auto* atx = catalog_.find_atx(resolved_.id, index_name);
-    if (!atx) return {};
-
-    GdbAttributeIndexParser index(
-        catalog_.path() + "/" + atx->filename);
-    std::vector<RowSlot> indexed;
-    if (!index.query_double_direct(
-            value, op, static_cast<size_t>(std::min<RowSlot>(
-                parser_->feature_count(), std::numeric_limits<size_t>::max())),
-            indexed)) {
-        return {};
-    }
-    return indexed;
+    QueryRequest request;
+    request.kind = QueryKind::AttributeDouble;
+    request.index_name = index_name;
+    request.double_value = value;
+    request.attr_op = op;
+    return query_attribute(request).matched_fids;
 }
 
 std::vector<RowSlot> QueryEngine::query_attribute_string(
-    const std::string& index_name,
-    const std::string& value,
-    AttrOp op) {
+    const std::string& index_name, const std::string& value, AttrOp op) {
     if (feature_cursor_active() || !parser_) return {};
-    const auto* atx = catalog_.find_atx(resolved_.id, index_name);
-    if (!atx) return {};
-
-    GdbAttributeIndexParser index(
-        catalog_.path() + "/" + atx->filename);
-    std::vector<RowSlot> indexed;
-    if (!index.query_string_direct(
-            value, op, static_cast<size_t>(std::min<RowSlot>(
-                parser_->feature_count(), std::numeric_limits<size_t>::max())),
-            indexed)) {
-        return {};
-    }
-    return indexed;
+    QueryRequest request;
+    request.kind = QueryKind::AttributeString;
+    request.index_name = index_name;
+    request.string_value = value;
+    request.attr_op = op;
+    return query_attribute(request).matched_fids;
 }
 
-// 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 QueryResult QueryEngine::query_attribute(const QueryRequest& request) {
     QueryResult result;
     result.execution_path = kPathAttributeAtx;
     const auto* atx =
         catalog_.find_atx(resolved_.id, request.index_name);
+    std::vector<IndexEntry> index_metadata;
+    const bool has_index_metadata =
+        catalog_.read_index_metadata(resolved_.id, index_metadata);
+    std::optional<FieldType> indexed_field_type;
+    for (const auto& entry : index_metadata) {
+        if (entry.name != request.index_name ||
+            !GdbIndexesParser::is_direct_field_expression(entry.column_name)) continue;
+        const auto column = GdbIndexesParser::field_name_from_expression(entry.column_name);
+        for (const auto& field : parser_->fields()) {
+            if (field.name.size() == column.size() &&
+                std::equal(field.name.begin(), field.name.end(), column.begin(),
+                    [](unsigned char left, unsigned char right) {
+                        return std::tolower(left) == std::tolower(right);
+                    })) {
+                indexed_field_type = field.type;
+                break;
+            }
+        }
+    }
+    if (atx != nullptr && !indexed_field_type.has_value()) {
+        result.status = QueryStatus::Unsupported;
+        result.error = "direct indexed-field metadata unavailable; use an explicit WHERE predicate";
+        result.fallback_reason = result.error;
+        return result;
+    }
     if (atx != nullptr) {
         try {
             GdbAttributeIndexParser index(
-                catalog_.path() + "/" + atx->filename);
+                catalog_.path() + "/" + atx->filename, *indexed_field_type);
             std::vector<RowSlot> indexed_fids;
             const auto max_fid_count = static_cast<size_t>(std::min<RowSlot>(
                 parser_->feature_count(), std::numeric_limits<size_t>::max()));
@@ -595,10 +602,7 @@ QueryResult QueryEngine::query_attribute(const QueryRequest& request) {
 
     // An index name is not sufficient to infer a field. Only fall back when
     // the catalog declares a direct-field index that can be compiled safely.
-    std::vector<IndexEntry> index_metadata;
-    if (!catalog_.read_index_metadata(resolved_.id, index_metadata)) {
-        return result;
-    }
+    if (!has_index_metadata) return result;
     const auto metadata = std::find_if(
         index_metadata.begin(), index_metadata.end(),
         [&](const IndexEntry& entry) {

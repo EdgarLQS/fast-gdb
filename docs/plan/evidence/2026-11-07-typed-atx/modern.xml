@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites tests="4" failures="0" disabled="0" errors="0" time="0.016" timestamp="2026-11-07T10:52:56.552" name="AllTests">
+  <testsuite name="AttributeIndexSafetyTest" tests="2" failures="0" disabled="0" skipped="0" errors="0" time="0." timestamp="2026-11-07T10:52:56.552">
+    <testcase name="SmallIntegerKeysKeepTheirSignedOrder" file="/src/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp" line="429" status="run" result="completed" time="0." timestamp="2026-11-07T10:52:56.552" classname="AttributeIndexSafetyTest" />
+    <testcase name="Float32SchemaSelectsFloatingPointKeys" file="/src/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp" line="476" status="run" result="completed" time="0." timestamp="2026-11-07T10:52:56.553" classname="AttributeIndexSafetyTest" />
+  </testsuite>
+  <testsuite name="RealDataReleaseContractTest" tests="2" failures="0" disabled="0" skipped="1" errors="0" time="0.016" timestamp="2026-11-07T10:52:56.553">
+    <testcase name="HistoricalAttributeIndexesMatchIndependentRecordScan" file="/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp" line="1283" status="run" result="completed" time="0.014" timestamp="2026-11-07T10:52:56.553" classname="RealDataReleaseContractTest">
+      <properties>
+        <property name="CombinedIndexedQueries" value="60"/>
+        <property name="TestedIndexes" value="9"/>
+        <property name="ComparedQueries" value="312"/>
+        <property name="IndexesWithOtherFieldTypes" value="2"/>
+      </properties>
+    </testcase>
+    <testcase name="HistoricalUnknownIndexMetadataReturnsUnsupported" file="/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp" line="1466" status="run" result="skipped" time="0.001" timestamp="2026-11-07T10:52:56.567" classname="RealDataReleaseContractTest">
+      <skipped message="/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1506&#x0A;dataset has no ATX with unparsed metadata&#x0A;"><![CDATA[/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1506
+dataset has no ATX with unparsed metadata
+]]></skipped>
+    </testcase>
+  </testsuite>
+</testsuites>

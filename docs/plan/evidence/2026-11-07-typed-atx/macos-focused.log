@@ -1,0 +1,13 @@
+Note: Google Test filter = AttributeIndexSafetyTest.SmallIntegerKeysKeepTheirSignedOrder:AttributeIndexSafetyTest.Float32SchemaSelectsFloatingPointKeys
+[==========] Running 2 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 2 tests from AttributeIndexSafetyTest
+[ RUN      ] AttributeIndexSafetyTest.SmallIntegerKeysKeepTheirSignedOrder
+[       OK ] AttributeIndexSafetyTest.SmallIntegerKeysKeepTheirSignedOrder (2 ms)
+[ RUN      ] AttributeIndexSafetyTest.Float32SchemaSelectsFloatingPointKeys
+[       OK ] AttributeIndexSafetyTest.Float32SchemaSelectsFloatingPointKeys (0 ms)
+[----------] 2 tests from AttributeIndexSafetyTest (2 ms total)
+
+[----------] Global test environment tear-down
+[==========] 2 tests from 1 test suite ran. (4 ms total)
+[  PASSED  ] 2 tests.

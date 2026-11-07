@@ -5,7 +5,7 @@
 // 65536 字节页面和 30 字节 trailer。v2 页面中的 ObjectID 与页号均为 64 位。
 //
 // 索引值编码（取决于 value_size + flags）：
-//   value_size=2  → INT16 (LE uint16)
+//   value_size=2  → INT16 (LE signed int16)
 //   value_size=4  → INT32/FLOAT32 (LE)
 //   value_size=8  → INT64/FLOAT64/DATE (LE double)
 //   value_size>8  → STRING (UTF16-LE, 空格填充, 最大 80 字符)
@@ -51,8 +51,11 @@ public:
 
     /** 创建属性索引解析器。
      * @param file_path atx 文件路径。
+     * @param field_type 源字段类型；4 字节键必须据此区分 INT32 与 FLOAT32。
      */
-    explicit GdbAttributeIndexParser(const std::string& file_path);
+    explicit GdbAttributeIndexParser(
+        const std::string& file_path,
+        FieldType field_type = FieldType::Int32);
 
     // 解析整个文件并物化全部条目。任何页面越界、循环页链、条目计数
     // 不一致或零 FID 都会失败。
@@ -162,6 +165,7 @@ private:
         AttributeIndexQueryMetrics* metrics);
 
     std::string file_path_;
+    FieldType field_type_ = FieldType::Int32;
     std::vector<uint8_t> file_data_;
     BPlusTreeTrailer trailer_;
     size_t page_count_ = 0;

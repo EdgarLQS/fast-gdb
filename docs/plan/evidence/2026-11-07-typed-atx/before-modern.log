@@ -1,0 +1,565 @@
+Note: Google Test filter = RealDataReleaseContractTest.HistoricalAttributeIndexesMatchIndependentRecordScan
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from RealDataReleaseContractTest
+[ RUN      ] RealDataReleaseContractTest.HistoricalAttributeIndexesMatchIndependentRecordScan
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1390: Failure
+Expected equality of these values:
+  observed
+    Which is: {}
+  expected
+    Which is: { 0, 1, 2, 3, 4 }
+op=0 probe=-13/
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_smallint/smallint
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1390: Failure
+Expected equality of these values:
+  observed
+    Which is: { 0, 1, 2, 3, 4 }
+  expected
+    Which is: {}
+op=5 probe=-13/
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_smallint/smallint
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1390: Failure
+Expected equality of these values:
+  observed
+    Which is: {}
+  expected
+    Which is: { 0, 1, 2, 3, 4 }
+op=2 probe=-13/
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_smallint/smallint
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1390: Failure
+Expected equality of these values:
+  observed
+    Which is: { 0, 1, 2, 3, 4 }
+  expected
+    Which is: {}
+op=3 probe=-13/
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_smallint/smallint
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1390: Failure
+Expected equality of these values:
+  observed
+    Which is: {}
+  expected
+    Which is: { 0, 1, 2, 3, 4 }
+op=1 probe=-12/
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_smallint/smallint
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1390: Failure
+Expected equality of these values:
+  observed
+    Which is: {}
+  expected
+    Which is: { 0, 1, 2, 3, 4 }
+op=2 probe=-12/
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_smallint/smallint
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1390: Failure
+Expected equality of these values:
+  observed
+    Which is: { 0, 1, 2, 3, 4 }
+  expected
+    Which is: {}
+op=3 probe=-12/
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_smallint/smallint
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1390: Failure
+Expected equality of these values:
+  observed
+    Which is: { 0, 1, 2, 3, 4 }
+  expected
+    Which is: {}
+op=4 probe=-12/
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_smallint/smallint
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1390: Failure
+Expected equality of these values:
+  observed
+    Which is: {}
+  expected
+    Which is: { 0, 1, 2, 3, 4 }
+op=1 probe=-1/
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_smallint/smallint
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1390: Failure
+Expected equality of these values:
+  observed
+    Which is: {}
+  expected
+    Which is: { 0, 1, 2, 3, 4 }
+op=2 probe=-1/
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_smallint/smallint
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1390: Failure
+Expected equality of these values:
+  observed
+    Which is: { 0, 1, 2, 3, 4 }
+  expected
+    Which is: {}
+op=3 probe=-1/
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_smallint/smallint
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1390: Failure
+Expected equality of these values:
+  observed
+    Which is: { 0, 1, 2, 3, 4 }
+  expected
+    Which is: {}
+op=4 probe=-1/
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_smallint/smallint
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1390: Failure
+Expected equality of these values:
+  observed
+    Which is: {}
+  expected
+    Which is: { 0, 1, 2, 3, 4 }
+op=1 probe=0/
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_smallint/smallint
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1390: Failure
+Expected equality of these values:
+  observed
+    Which is: {}
+  expected
+    Which is: { 0, 1, 2, 3, 4 }
+op=2 probe=0/
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_smallint/smallint
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1390: Failure
+Expected equality of these values:
+  observed
+    Which is: { 0, 1, 2, 3, 4 }
+  expected
+    Which is: {}
+op=3 probe=0/
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_smallint/smallint
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1390: Failure
+Expected equality of these values:
+  observed
+    Which is: { 0, 1, 2, 3, 4 }
+  expected
+    Which is: {}
+op=4 probe=0/
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_smallint/smallint
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1390: Failure
+Expected equality of these values:
+  observed
+    Which is: {}
+  expected
+    Which is: { 0, 1, 2, 3, 4 }
+op=1 probe=1/
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_smallint/smallint
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1390: Failure
+Expected equality of these values:
+  observed
+    Which is: {}
+  expected
+    Which is: { 0, 1, 2, 3, 4 }
+op=2 probe=1/
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_smallint/smallint
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1390: Failure
+Expected equality of these values:
+  observed
+    Which is: { 0, 1, 2, 3, 4 }
+  expected
+    Which is: {}
+op=3 probe=1/
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_smallint/smallint
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1390: Failure
+Expected equality of these values:
+  observed
+    Which is: { 0, 1, 2, 3, 4 }
+  expected
+    Which is: {}
+op=4 probe=1/
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_smallint/smallint
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1390: Failure
+Expected equality of these values:
+  observed
+    Which is: {}
+  expected
+    Which is: { 0, 1, 2, 3, 4 }
+op=0 probe=1.5/
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_float/float
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1390: Failure
+Expected equality of these values:
+  observed
+    Which is: { 0, 1, 2, 3, 4 }
+  expected
+    Which is: {}
+op=5 probe=1.5/
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_float/float
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1390: Failure
+Expected equality of these values:
+  observed
+    Which is: {}
+  expected
+    Which is: { 0, 1, 2, 3, 4 }
+op=2 probe=1.5/
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_float/float
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1390: Failure
+Expected equality of these values:
+  observed
+    Which is: { 0, 1, 2, 3, 4 }
+  expected
+    Which is: {}
+op=3 probe=1.5/
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_float/float
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1390: Failure
+Expected equality of these values:
+  observed
+    Which is: {}
+  expected
+    Which is: { 0, 1, 2, 3, 4 }
+op=1 probe=2.5/
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_float/float
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1390: Failure
+Expected equality of these values:
+  observed
+    Which is: {}
+  expected
+    Which is: { 0, 1, 2, 3, 4 }
+op=2 probe=2.5/
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_float/float
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1390: Failure
+Expected equality of these values:
+  observed
+    Which is: { 0, 1, 2, 3, 4 }
+  expected
+    Which is: {}
+op=3 probe=2.5/
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_float/float
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1390: Failure
+Expected equality of these values:
+  observed
+    Which is: { 0, 1, 2, 3, 4 }
+  expected
+    Which is: {}
+op=4 probe=2.5/
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_float/float
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1385: Failure
+Expected equality of these values:
+  result.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+attribute index could not be parsed; sequential scan used
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_guid/guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1385: Failure
+Expected equality of these values:
+  result.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+attribute index could not be parsed; sequential scan used
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_guid/guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1385: Failure
+Expected equality of these values:
+  result.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+attribute index could not be parsed; sequential scan used
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_guid/guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1385: Failure
+Expected equality of these values:
+  result.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+attribute index could not be parsed; sequential scan used
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_guid/guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1385: Failure
+Expected equality of these values:
+  result.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+attribute index could not be parsed; sequential scan used
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_guid/guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1385: Failure
+Expected equality of these values:
+  result.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+attribute index could not be parsed; sequential scan used
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_guid/guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1385: Failure
+Expected equality of these values:
+  result.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+attribute index could not be parsed; sequential scan used
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_guid/guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1385: Failure
+Expected equality of these values:
+  result.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+attribute index could not be parsed; sequential scan used
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_guid/guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1385: Failure
+Expected equality of these values:
+  result.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+attribute index could not be parsed; sequential scan used
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_guid/guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1385: Failure
+Expected equality of these values:
+  result.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+attribute index could not be parsed; sequential scan used
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_guid/guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1385: Failure
+Expected equality of these values:
+  result.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+attribute index could not be parsed; sequential scan used
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_guid/guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1385: Failure
+Expected equality of these values:
+  result.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+attribute index could not be parsed; sequential scan used
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_guid/guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1385: Failure
+Expected equality of these values:
+  result.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+attribute index could not be parsed; sequential scan used
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_guid/guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1390: Failure
+Expected equality of these values:
+  observed
+    Which is: {}
+  expected
+    Which is: { 0, 1, 2, 3, 4 }
+op=0 probe=0/{12345678-9ABC-DEF0-1234-567890ABCDEF}
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_guid/guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1385: Failure
+Expected equality of these values:
+  result.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+attribute index could not be parsed; sequential scan used
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_guid/guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1390: Failure
+Expected equality of these values:
+  observed
+    Which is: { 0, 1, 2, 3, 4 }
+  expected
+    Which is: {}
+op=5 probe=0/{12345678-9ABC-DEF0-1234-567890ABCDEF}
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_guid/guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1385: Failure
+Expected equality of these values:
+  result.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+attribute index could not be parsed; sequential scan used
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_guid/guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1390: Failure
+Expected equality of these values:
+  observed
+    Which is: { 0, 1, 2, 3, 4 }
+  expected
+    Which is: {}
+op=1 probe=0/{12345678-9ABC-DEF0-1234-567890ABCDEF}
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_guid/guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1385: Failure
+Expected equality of these values:
+  result.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+attribute index could not be parsed; sequential scan used
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_guid/guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1385: Failure
+Expected equality of these values:
+  result.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+attribute index could not be parsed; sequential scan used
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_guid/guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1385: Failure
+Expected equality of these values:
+  result.execution_path
+    Which is: "attribute:sequential"
+  kPathAttributeAtx
+    Which is: "attribute:atx"
+attribute index could not be parsed; sequential scan used
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_guid/guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1390: Failure
+Expected equality of these values:
+  observed
+    Which is: {}
+  expected
+    Which is: { 0, 1, 2, 3, 4 }
+op=4 probe=0/{12345678-9ABC-DEF0-1234-567890ABCDEF}
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1325: idx_guid/guid
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1310: point
+
+[  FAILED  ] RealDataReleaseContractTest.HistoricalAttributeIndexesMatchIndependentRecordScan (16 ms)
+[----------] 1 test from RealDataReleaseContractTest (16 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (16 ms total)
+[  PASSED  ] 0 tests.
+[  FAILED  ] 1 test, listed below:
+[  FAILED  ] RealDataReleaseContractTest.HistoricalAttributeIndexesMatchIndependentRecordScan
+
+ 1 FAILED TEST

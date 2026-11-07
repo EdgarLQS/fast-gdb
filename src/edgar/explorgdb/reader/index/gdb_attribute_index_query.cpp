@@ -101,6 +101,7 @@ bool comparison_matches(int comparison, AttrOp op) {
 bool decode_numeric(const uint8_t* bytes,
                     uint8_t value_size,
                     bool decode_as_int64,
+                    bool decode_as_float32,
                     double& double_value,
                     int64_t& integer_value) {
     switch (value_size) {
@@ -108,14 +109,22 @@ bool decode_numeric(const uint8_t* bytes,
             if (decode_as_int64) return false;
             const uint16_t raw = static_cast<uint16_t>(bytes[0]) |
                 (static_cast<uint16_t>(bytes[1]) << 8U);
-            double_value = static_cast<double>(raw);
+            double_value = raw < 0x8000U
+                ? static_cast<double>(raw)
+                : static_cast<double>(static_cast<int32_t>(raw) - 0x10000);
             return true;
         }
         case 4: {
             if (decode_as_int64) return false;
-            int32_t raw = 0;
-            std::memcpy(&raw, bytes, sizeof(raw));
-            double_value = static_cast<double>(raw);
+            if (decode_as_float32) {
+                float raw = 0;
+                std::memcpy(&raw, bytes, sizeof(raw));
+                double_value = static_cast<double>(raw);
+            } else {
+                int32_t raw = 0;
+                std::memcpy(&raw, bytes, sizeof(raw));
+                double_value = static_cast<double>(raw);
+            }
             return true;
         }
         case 8:
@@ -397,6 +406,7 @@ bool GdbAttributeIndexParser::query_direct(
         double indexed_value = 0.0;
         int64_t indexed_integer = 0;
         if (!decode_numeric(bytes, trailer_.value_size, numeric_is_int64,
+                            field_type_ == FieldType::Float32,
                             indexed_value, indexed_integer)) {
             return false;
         }
@@ -426,8 +436,10 @@ bool GdbAttributeIndexParser::query_direct(
         int64_t left_integer = 0;
         int64_t right_integer = 0;
         if (!decode_numeric(lhs, trailer_.value_size, numeric_is_int64,
+                            field_type_ == FieldType::Float32,
                             left_value, left_integer) ||
             !decode_numeric(rhs, trailer_.value_size, numeric_is_int64,
+                            field_type_ == FieldType::Float32,
                             right_value, right_integer)) {
             return false;
         }

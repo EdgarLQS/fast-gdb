@@ -60,8 +60,8 @@ bool page_offset_for(ObjectId page_id,
 } // namespace
 
 GdbAttributeIndexParser::GdbAttributeIndexParser(
-    const std::string& file_path)
-    : file_path_(file_path) {}
+    const std::string& file_path, FieldType field_type)
+    : file_path_(file_path), field_type_(field_type) {}
 
 // 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 bool GdbAttributeIndexParser::parse() {
@@ -328,14 +328,24 @@ AttributeIndexEntry GdbAttributeIndexParser::decode_value(
         entry.numeric_value = std::nan("");
     } else {
         switch (value_size) {
-            case 2:
-                entry.numeric_value = static_cast<double>(
-                    bytes[0] | (static_cast<uint16_t>(bytes[1]) << 8U));
+            case 2: {
+                const uint16_t raw = static_cast<uint16_t>(bytes[0]) |
+                    (static_cast<uint16_t>(bytes[1]) << 8U);
+                entry.numeric_value = raw < 0x8000U
+                    ? static_cast<double>(raw)
+                    : static_cast<double>(static_cast<int32_t>(raw) - 0x10000);
                 break;
+            }
             case 4: {
-                int32_t value;
-                std::memcpy(&value, bytes, sizeof(value));
-                entry.numeric_value = static_cast<double>(value);
+                if (field_type_ == FieldType::Float32) {
+                    float value;
+                    std::memcpy(&value, bytes, sizeof(value));
+                    entry.numeric_value = static_cast<double>(value);
+                } else {
+                    int32_t value;
+                    std::memcpy(&value, bytes, sizeof(value));
+                    entry.numeric_value = static_cast<double>(value);
+                }
                 break;
             }
             case 8: {
