@@ -113,6 +113,15 @@ public:
         size_t max_fid_count,
         std::vector<RowSlot>& result,
         AttributeIndexQueryMetrics* metrics = nullptr);
+    /** 按 Unix 毫秒语义查询 DateTime/Date/Time 索引。
+     * 原始 double 键先按与 WHERE 相同的规则量化，再导航和比较；不适用于偏移时间。
+     */
+    bool query_temporal_direct(
+        int64_t unix_milliseconds,
+        AttrOp op,
+        size_t max_fid_count,
+        std::vector<RowSlot>& result,
+        AttributeIndexQueryMetrics* metrics = nullptr);
     /** 直接分页查询字符串属性索引并限制结果数量。
      * @param value 比较值。
      * @param op 比较操作。
@@ -129,6 +138,8 @@ public:
         AttributeIndexQueryMetrics* metrics = nullptr);
 
 private:
+    enum class NumericQueryKind { Floating, Int64, TemporalMilliseconds };
+
     bool parse_trailer();
     bool traverse_tree(ObjectId page_id,
                        int depth_remaining,
@@ -156,7 +167,7 @@ private:
     bool query_direct(
         double numeric_value,
         int64_t integer_value,
-        bool numeric_is_int64,
+        NumericQueryKind numeric_kind,
         const std::string& string_value,
         bool is_string,
         AttrOp op,

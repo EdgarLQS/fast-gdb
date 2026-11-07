@@ -187,6 +187,12 @@ TEST(QueryWhereInternalTest, ParsesTypedTemporalLiteralsAndComparesMillis) {
     ASSERT_TRUE(offset.valid()) << offset.error();
     ASSERT_TRUE(offset_only.valid()) << offset_only.error();
     EXPECT_FALSE(offset_only.indexable_predicate().has_value());
+    ASSERT_TRUE(date.indexable_predicate().has_value());
+    EXPECT_EQ(date.indexable_predicate()->temporal_milliseconds, 1705276800000LL);
+    ASSERT_TRUE(time.indexable_predicate().has_value());
+    EXPECT_EQ(time.indexable_predicate()->temporal_milliseconds, -2209118399877LL);
+    ASSERT_TRUE(timestamp.indexable_predicate().has_value());
+    EXPECT_EQ(timestamp.indexable_predicate()->temporal_milliseconds, 1705320000123LL);
 
     constexpr double milliseconds_per_day = 86400000.0;
     const double date_value = 45306.0;

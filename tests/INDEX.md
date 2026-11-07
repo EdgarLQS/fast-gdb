@@ -183,6 +183,14 @@ operators with lowercase and uppercase/braced literals, and verifies recognized
 GUID ATX requests use a correct sequential fallback. It does not claim native
 GUID index support. See [UUID evidence](../docs/plan/evidence/2026-11-07-uuid-predicates.md).
 
+`HistoricalDatePredicatesMatchIndependentRecordScan` independently converts GDAL
+DateTime calendar components with CPL date functions, then checks six WHERE and
+SpatialWhere operators at each value and adjacent milliseconds. Recognized date
+ATX use is asserted separately; v9 metadata fallback is not counted as native.
+`AttributeIndexSafetyTest.TemporalMillisecondsKeepEqualKeysAcrossLeafBoundaries`
+covers submillisecond key groups spanning two leaves, negative epochs, wide dates
+and invalid keys. See [date-index evidence](../docs/plan/evidence/2026-11-07-date-index.md).
+
 ## Opt-in Reader contention benchmarks
 
 - `TablxCacheBenchmarkTest.SharedHitContentionProfile` measures concurrent cache

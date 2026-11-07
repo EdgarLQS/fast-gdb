@@ -9,6 +9,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <string>
 #include <vector>
 #include <utility>
@@ -511,4 +512,54 @@ TEST(AttributeIndexSafetyTest, Float32SchemaSelectsFloatingPointKeys) {
         EXPECT_EQ(result, item.second);
     }
     fs::remove(path);
+}
+
+TEST(AttributeIndexSafetyTest, TemporalMillisecondsKeepEqualKeysAcrossLeafBoundaries) {
+    constexpr size_t page_size = GdbAttributeIndexParser::kPageSize;
+    constexpr size_t capacity = (page_size - 12U) / 12U;
+    constexpr size_t values_offset = 12U + capacity * 4U;
+    for (double base : {45306.0, -0.5}) {
+        const auto path = build_two_leaf_numeric_atx("temporal_millisecond_plateau");
+        const double keys[] = {base + 122.0 / 86400000.0, base + 122.6 / 86400000.0,
+                               base + 123.0 / 86400000.0, base + 123.4 / 86400000.0,
+                               base + 124.0 / 86400000.0, 2958465.0};
+        {
+            std::fstream file(path, std::ios::binary | std::ios::in | std::ios::out);
+            const double separators[] = {keys[2], keys[5]};
+            file.seekp(values_offset);
+            file.write(reinterpret_cast<const char*>(separators), sizeof(separators));
+            file.seekp(page_size + values_offset);
+            file.write(reinterpret_cast<const char*>(keys), 3 * sizeof(double));
+            file.seekp(2 * page_size + values_offset);
+            file.write(reinterpret_cast<const char*>(keys + 3), 3 * sizeof(double));
+            ASSERT_TRUE(file.good());
+        }
+        const int64_t target = base == 45306.0 ? 1705276800123LL : -2209204799877LL;
+        const std::vector<std::pair<AttrOp, std::vector<RowSlot>>> expected = {
+            {AttrOp::Eq, {1, 2, 3}}, {AttrOp::Ne, {0, 4, 5}},
+            {AttrOp::Lt, {0}}, {AttrOp::Le, {0, 1, 2, 3}},
+            {AttrOp::Gt, {4, 5}}, {AttrOp::Ge, {1, 2, 3, 4, 5}}};
+        GdbAttributeIndexParser index(path, FieldType::DateTime);
+        for (const auto& item : expected) {
+            std::vector<RowSlot> result;
+            ASSERT_TRUE(index.query_temporal_direct(target, item.first, 6, result));
+            EXPECT_EQ(result, item.second) << "base=" << base;
+        }
+        std::vector<RowSlot> raw;
+        ASSERT_TRUE(index.query_double_direct(keys[2], AttrOp::Eq, 6, raw));
+        EXPECT_EQ(raw, (std::vector<RowSlot>{2}));
+        {
+            std::fstream file(path, std::ios::binary | std::ios::in | std::ios::out);
+            const double invalid = std::numeric_limits<double>::quiet_NaN();
+            file.seekp(page_size + values_offset);
+            file.write(reinterpret_cast<const char*>(&invalid), sizeof(invalid));
+            ASSERT_TRUE(file.good());
+        }
+        std::vector<RowSlot> unchanged{99};
+        EXPECT_FALSE(index.query_temporal_direct(target, AttrOp::Eq, 6, unchanged));
+        EXPECT_EQ(unchanged, (std::vector<RowSlot>{99}));
+        GdbAttributeIndexParser untyped(path);
+        EXPECT_FALSE(untyped.query_temporal_direct(target, AttrOp::Eq, 6, unchanged));
+        fs::remove(path);
+    }
 }

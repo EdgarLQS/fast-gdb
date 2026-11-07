@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -20,6 +21,7 @@
 #include <vector>
 
 #include "cpl_conv.h"
+#include "cpl_time.h"
 #include "gdal_priv.h"
 #include "ogrsf_frmts.h"
 
@@ -1461,6 +1463,140 @@ TEST(RealDataReleaseContractTest,
     RecordProperty("TestedIndexes", std::to_string(tested_indexes));
     RecordProperty("ComparedQueries", std::to_string(queries));
     RecordProperty("IndexesWithOtherFieldTypes", std::to_string(skipped_types));
+}
+
+TEST(RealDataReleaseContractTest, HistoricalDatePredicatesMatchIndependentRecordScan) {
+    const char* path = required_dataset_from_env("FAST_GDB_HISTORICAL_DATASET");
+    if (path == nullptr) GTEST_SKIP() << "Set FAST_GDB_HISTORICAL_DATASET";
+    GDALAllRegister();
+    std::unique_ptr<GDALDataset, decltype(&GDALClose)> reference(
+        static_cast<GDALDataset*>(GDALOpenEx(path,
+            GDAL_OF_VECTOR | GDAL_OF_READONLY, nullptr, nullptr, nullptr)), GDALClose);
+    ASSERT_NE(reference, nullptr);
+    GdbCatalog catalog;
+    ASSERT_TRUE(catalog.scan(path));
+    CatalogResolver resolver(catalog);
+    ASSERT_TRUE(resolver.load());
+    const auto timestamp_text = [](int64_t milliseconds) {
+        int64_t seconds = milliseconds / 1000;
+        int64_t remainder = milliseconds % 1000;
+        if (remainder < 0) { --seconds; remainder += 1000; }
+        std::tm time{};
+        if (CPLUnixTimeToYMDHMS(seconds, &time) == nullptr) return std::string{};
+        std::ostringstream text;
+        text.imbue(std::locale::classic());
+        text << std::setfill('0') << std::setw(4) << time.tm_year + 1900 << '-'
+             << std::setw(2) << time.tm_mon + 1 << '-' << std::setw(2) << time.tm_mday
+             << ' ' << std::setw(2) << time.tm_hour << ':' << std::setw(2) << time.tm_min
+             << ':' << std::setw(2) << time.tm_sec << '.' << std::setw(3) << remainder;
+        return text.str();
+    };
+    uint64_t where_queries = 0, combined_queries = 0, indexed_queries = 0;
+    for (int i = 0; i < reference->GetLayerCount(); ++i) {
+        OGRLayer* source = reference->GetLayer(i);
+        ASSERT_NE(source, nullptr);
+        SCOPED_TRACE(source->GetName());
+        const auto resolved = resolver.resolve(source->GetName());
+        ASSERT_TRUE(resolved.has_value());
+        QueryEngine engine(catalog, *resolved);
+        ASSERT_TRUE(engine.open());
+        std::vector<IndexEntry> indexes;
+        catalog.read_index_metadata(resolved->id, indexes);
+        for (const auto& field : engine.table()->fields()) {
+            if (field.type != FieldType::DateTime) continue;
+            SCOPED_TRACE(field.name);
+            const int source_field = source->GetLayerDefn()->GetFieldIndex(field.name.c_str());
+            ASSERT_GE(source_field, 0);
+            struct Row { RowSlot fid; int64_t milliseconds; bool spatial; };
+            std::vector<Row> rows;
+            std::vector<int64_t> probes = {0};
+            source->SetSpatialFilter(nullptr);
+            ASSERT_EQ(source->SetAttributeFilter(nullptr), OGRERR_NONE);
+            source->ResetReading();
+            while (OGRFeature* raw = source->GetNextFeature()) {
+                std::unique_ptr<OGRFeature, decltype(&OGRFeature::DestroyFeature)>
+                    feature(raw, OGRFeature::DestroyFeature);
+                if (!feature->IsFieldSetAndNotNull(source_field)) continue;
+                ASSERT_GT(feature->GetFID(), 0);
+                int year = 0, month = 0, day = 0, hour = 0, minute = 0, timezone = 0;
+                float second = 0;
+                ASSERT_TRUE(feature->GetFieldAsDateTime(source_field, &year, &month, &day,
+                    &hour, &minute, &second, &timezone));
+                std::tm time{};
+                time.tm_year = year - 1900;
+                time.tm_mon = month - 1;
+                time.tm_mday = day;
+                time.tm_hour = hour;
+                time.tm_min = minute;
+                const int64_t milliseconds = CPLYMDHMSToUnixTime(&time) * 1000 +
+                    static_cast<int64_t>(std::llround(static_cast<double>(second) * 1000));
+                const auto* geometry = feature->GetGeometryRef();
+                rows.push_back({static_cast<RowSlot>(feature->GetFID() - 1), milliseconds,
+                                geometry != nullptr && !geometry->IsEmpty()});
+                probes.push_back(milliseconds - 1);
+                probes.push_back(milliseconds);
+                probes.push_back(milliseconds + 1);
+            }
+            std::sort(probes.begin(), probes.end());
+            probes.erase(std::unique(probes.begin(), probes.end()), probes.end());
+            const bool indexed = std::any_of(indexes.begin(), indexes.end(), [&](const IndexEntry& index) {
+                return GdbIndexesParser::is_direct_field_expression(index.column_name) &&
+                    GdbIndexesParser::field_name_from_expression(index.column_name) == field.name &&
+                    catalog.find_atx(resolved->id, index.name) != nullptr;
+            });
+            const bool spatial = std::any_of(rows.begin(), rows.end(),
+                [](const Row& row) { return row.spatial; });
+            OGREnvelope extent;
+            if (spatial) ASSERT_EQ(source->GetExtent(&extent, TRUE), OGRERR_NONE);
+            const char* symbols[] = {"=", "!=", "<", "<=", ">", ">="};
+            for (int64_t probe : probes) {
+                for (size_t op = 0; op < 6; ++op) {
+                    std::vector<RowSlot> expected, spatial_expected;
+                    for (const auto& row : rows) {
+                        const int order = (row.milliseconds > probe) - (row.milliseconds < probe);
+                        const bool matches[] = {order == 0, order != 0, order < 0,
+                                                order <= 0, order > 0, order >= 0};
+                        if (matches[op]) {
+                            expected.push_back(row.fid);
+                            if (row.spatial) spatial_expected.push_back(row.fid);
+                        }
+                    }
+                    std::sort(expected.begin(), expected.end());
+                    std::sort(spatial_expected.begin(), spatial_expected.end());
+                    QueryRequest request;
+                    request.kind = QueryKind::WhereClause;
+                    const std::string text = timestamp_text(probe);
+                    ASSERT_FALSE(text.empty());
+                    request.where_clause = field.name + " " + symbols[op] + " TIMESTAMP '" + text + "'";
+                    auto result = engine.query(request);
+                    ASSERT_EQ(result.status, QueryStatus::Ok) << result.error;
+                    std::sort(result.matched_fids.begin(), result.matched_fids.end());
+                    EXPECT_EQ(result.matched_fids, expected) << request.where_clause;
+                    ++where_queries;
+                    if (!spatial) continue;
+                    request.kind = QueryKind::SpatialWhere;
+                    request.xmin = extent.MinX - 1;
+                    request.ymin = extent.MinY - 1;
+                    request.xmax = extent.MaxX + 1;
+                    request.ymax = extent.MaxY + 1;
+                    auto combined = engine.query(request);
+                    ASSERT_EQ(combined.status, QueryStatus::Ok) << combined.error;
+                    std::sort(combined.matched_fids.begin(), combined.matched_fids.end());
+                    EXPECT_EQ(combined.matched_fids, spatial_expected) << request.where_clause;
+                    if (indexed && op != 1) {
+                        EXPECT_TRUE(combined.combined_metrics.used_attribute_index)
+                            << request.where_clause << ": " << combined.fallback_reason;
+                        ++indexed_queries;
+                    }
+                    ++combined_queries;
+                }
+            }
+        }
+    }
+    EXPECT_GT(where_queries, 0U);
+    RecordProperty("DateWhereQueries", std::to_string(where_queries));
+    RecordProperty("DateCombinedQueries", std::to_string(combined_queries));
+    RecordProperty("DateNativeCombinedQueries", std::to_string(indexed_queries));
 }
 
 TEST(RealDataReleaseContractTest, HistoricalUuidPredicatesMatchIndependentRecordScan) {

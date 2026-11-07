@@ -267,3 +267,7 @@ FAST_GDB_CURVE_DATASET="$PWD/test_data/gdb/参数化数据_liqs.gdb" \
 ### 2026-11-07：宽范围日期表示修复
 
 修复系统时钟纳秒范围导致公元 1 年、2263 年、9999 年格式及排序错误；内部格式化与 WHERE 直接使用检查过的 Unix 毫秒，兼容时间点接口超出平台范围时抛错。Release 591 PASS / 19 SKIP / 0 FAIL，GDAL-free ASan/UBSan/LSan 414 PASS / 5 SKIP / 0 FAIL，macOS 日期/WHERE 31/31。见 [复现、提交内容及证据](evidence/2026-11-07-temporal-range.md)。日期 ATX 与真实宽年份 ArcGIS/Windows 合同仍待验收。
+
+### 2026-11-07：日期 ATX typed literal 联合查询
+
+接通 DateTime/Date/Time 毫秒谓词与分页 ATX 查询，同毫秒不同 double 键可跨页完整匹配；原始 double API 保留物理值语义，TimestampOffset 继续顺序候选。现代库 456 次 WHERE / 360 次联合查询通过，其中 20 次实际使用日期 ATX；92/93 各 408/312 次完整 FID 一致，未将其旧索引元数据算作支持。最新 Release 594 PASS / 19 SKIP / 0 FAIL，GDAL-free ASan/UBSan/LSan 415 PASS / 5 SKIP / 0 FAIL，macOS 日期/WHERE/ATX 43/43。详见 [提交内容与证据](evidence/2026-11-07-date-index.md)。真实 Date-only/Time-only/Offset 索引、v9 元数据、GUID 原生 ATX 和原计划平台/语料门禁仍未完成。

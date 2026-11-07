@@ -1118,7 +1118,8 @@ CompiledWhere compile_where(
         root->field_index < fields.size()) {
         const FieldType type = fields[root->field_index].type;
         if ((root->literal.is_string && is_string_field(type)) ||
-            (!root->literal.is_string && is_numeric_field(type))) {
+            (!root->literal.is_string && is_numeric_field(type)) ||
+            (root->literal.is_temporal && type != FieldType::DateTimeWithOffset)) {
             IndexableWherePredicate predicate;
             predicate.field_index = root->field_index;
             predicate.field_name = fields[root->field_index].name;
@@ -1127,6 +1128,11 @@ CompiledWhere compile_where(
             predicate.is_string = root->literal.is_string;
             predicate.string_value = root->literal.string_value;
             predicate.numeric_value = root->literal.numeric_value;
+            if (root->literal.is_temporal) {
+                int64_t milliseconds = 0;
+                if (try_ole_to_unix_milliseconds(root->literal.temporal_value, milliseconds))
+                    predicate.temporal_milliseconds = milliseconds;
+            }
             predicate.numeric_is_integer =
                 root->literal.numeric_is_integer;
             predicate.numeric_integer_overflow =

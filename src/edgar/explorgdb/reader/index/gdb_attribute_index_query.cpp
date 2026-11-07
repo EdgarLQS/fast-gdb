@@ -3,6 +3,7 @@
 
 #include "gdb_attribute_index.h"
 #include "gdb_tablx_cache.h"
+#include "ole_date.h"
 
 #include <algorithm>
 #include <array>
@@ -189,7 +190,7 @@ bool GdbAttributeIndexParser::query_double_direct(
     std::vector<RowSlot>& result,
     AttributeIndexQueryMetrics* metrics) {
     const std::string unused;
-    return query_direct(value, 0, false, unused, false, op,
+    return query_direct(value, 0, NumericQueryKind::Floating, unused, false, op,
                         max_fid_count, result, metrics);
 }
 
@@ -200,8 +201,18 @@ bool GdbAttributeIndexParser::query_int64_direct(
     std::vector<RowSlot>& result,
     AttributeIndexQueryMetrics* metrics) {
     const std::string unused;
-    return query_direct(0.0, value, true, unused, false, op,
+    return query_direct(0.0, value, NumericQueryKind::Int64, unused, false, op,
                         max_fid_count, result, metrics);
+}
+
+bool GdbAttributeIndexParser::query_temporal_direct(
+    int64_t unix_milliseconds, AttrOp op, size_t max_fid_count,
+    std::vector<RowSlot>& result, AttributeIndexQueryMetrics* metrics) {
+    if (field_type_ != FieldType::DateTime && field_type_ != FieldType::Date &&
+        field_type_ != FieldType::Time) return false;
+    const std::string unused;
+    return query_direct(0.0, unix_milliseconds, NumericQueryKind::TemporalMilliseconds,
+                        unused, false, op, max_fid_count, result, metrics);
 }
 
 bool GdbAttributeIndexParser::query_string_direct(
@@ -210,20 +221,22 @@ bool GdbAttributeIndexParser::query_string_direct(
     size_t max_fid_count,
     std::vector<RowSlot>& result,
     AttributeIndexQueryMetrics* metrics) {
-    return query_direct(0.0, 0, false, value, true, op,
+    return query_direct(0.0, 0, NumericQueryKind::Floating, value, true, op,
                         max_fid_count, result, metrics);
 }
 
 bool GdbAttributeIndexParser::query_direct(
     double numeric_value,
     int64_t integer_value,
-    bool numeric_is_int64,
+    NumericQueryKind numeric_kind,
     const std::string& string_value,
     bool is_string,
     AttrOp op,
     size_t max_fid_count,
     std::vector<RowSlot>& result,
     AttributeIndexQueryMetrics* metrics) {
+    const bool numeric_is_int64 = numeric_kind == NumericQueryKind::Int64;
+    const bool numeric_is_temporal = numeric_kind == NumericQueryKind::TemporalMilliseconds;
     if (metrics != nullptr) *metrics = AttributeIndexQueryMetrics{};
     const auto total_start = metric_start(metrics);
 
@@ -313,7 +326,7 @@ bool GdbAttributeIndexParser::query_direct(
 
     if ((is_string && !trailer_.is_string) ||
         (!is_string && !trailer_.is_numeric) ||
-        (numeric_is_int64 && trailer_.value_size != 8U) ||
+        ((numeric_is_int64 || numeric_is_temporal) && trailer_.value_size != 8U) ||
         (is_string && (trailer_.value_size % 2U) != 0U)) {
         return false;
     }
@@ -410,7 +423,9 @@ bool GdbAttributeIndexParser::query_direct(
                             indexed_value, indexed_integer)) {
             return false;
         }
-        if (numeric_is_int64) {
+        if (numeric_is_temporal &&
+            !try_ole_to_unix_milliseconds(indexed_value, indexed_integer)) return false;
+        if (numeric_is_int64 || numeric_is_temporal) {
             comparison = (indexed_integer > integer_value) -
                          (indexed_integer < integer_value);
         } else {

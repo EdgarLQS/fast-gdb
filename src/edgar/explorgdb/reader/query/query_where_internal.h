@@ -25,6 +25,7 @@ struct IndexableWherePredicate {
     bool is_string = false;
     std::string string_value;
     double numeric_value = 0.0;
+    std::optional<int64_t> temporal_milliseconds;
     bool numeric_is_integer = false;
     bool numeric_integer_overflow = false;
     int64_t integer_value = 0;

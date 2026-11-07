@@ -330,7 +330,11 @@ bool query_attribute_candidates(
     try {
         GdbAttributeIndexParser index(plan.atx_path, predicate.field_type);
         bool ok = false;
-        if (predicate.is_string) {
+        if (predicate.temporal_milliseconds.has_value()) {
+            ok = index.query_temporal_direct(
+                *predicate.temporal_milliseconds, predicate.op,
+                max_fid_count, plan.fids, &plan.index_metrics);
+        } else if (predicate.is_string) {
             ok = index.query_string_direct(
                 predicate.string_value, predicate.op,
                 max_fid_count, plan.fids, &plan.index_metrics);

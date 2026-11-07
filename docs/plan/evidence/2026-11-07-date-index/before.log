@@ -1,0 +1,195 @@
+Note: Google Test filter = RealDataReleaseContractTest.HistoricalDatePredicatesMatchIndependentRecordScan
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from RealDataReleaseContractTest
+[ RUN      ] RealDataReleaseContractTest.HistoricalDatePredicatesMatchIndependentRecordScan
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1586: Failure
+Value of: combined.combined_metrics.used_attribute_index
+  Actual: false
+Expected: true
+adate = TIMESTAMP '1970-01-01 00:00:00.000': .spx grid metadata or level-0 coordinates are unsupported; sequential model filtering used
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1506: adate
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1497: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1586: Failure
+Value of: combined.combined_metrics.used_attribute_index
+  Actual: false
+Expected: true
+adate < TIMESTAMP '1970-01-01 00:00:00.000': .spx grid metadata or level-0 coordinates are unsupported; sequential model filtering used
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1506: adate
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1497: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1586: Failure
+Value of: combined.combined_metrics.used_attribute_index
+  Actual: false
+Expected: true
+adate <= TIMESTAMP '1970-01-01 00:00:00.000': .spx grid metadata or level-0 coordinates are unsupported; sequential model filtering used
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1506: adate
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1497: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1586: Failure
+Value of: combined.combined_metrics.used_attribute_index
+  Actual: false
+Expected: true
+adate > TIMESTAMP '1970-01-01 00:00:00.000': .spx grid metadata or level-0 coordinates are unsupported; sequential model filtering used
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1506: adate
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1497: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1586: Failure
+Value of: combined.combined_metrics.used_attribute_index
+  Actual: false
+Expected: true
+adate >= TIMESTAMP '1970-01-01 00:00:00.000': .spx grid metadata or level-0 coordinates are unsupported; sequential model filtering used
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1506: adate
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1497: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1586: Failure
+Value of: combined.combined_metrics.used_attribute_index
+  Actual: false
+Expected: true
+adate = TIMESTAMP '2013-12-26 12:34:55.999': .spx grid metadata or level-0 coordinates are unsupported; sequential model filtering used
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1506: adate
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1497: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1586: Failure
+Value of: combined.combined_metrics.used_attribute_index
+  Actual: false
+Expected: true
+adate < TIMESTAMP '2013-12-26 12:34:55.999': .spx grid metadata or level-0 coordinates are unsupported; sequential model filtering used
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1506: adate
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1497: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1586: Failure
+Value of: combined.combined_metrics.used_attribute_index
+  Actual: false
+Expected: true
+adate <= TIMESTAMP '2013-12-26 12:34:55.999': .spx grid metadata or level-0 coordinates are unsupported; sequential model filtering used
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1506: adate
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1497: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1586: Failure
+Value of: combined.combined_metrics.used_attribute_index
+  Actual: false
+Expected: true
+adate > TIMESTAMP '2013-12-26 12:34:55.999': .spx grid metadata or level-0 coordinates are unsupported; sequential model filtering used
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1506: adate
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1497: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1586: Failure
+Value of: combined.combined_metrics.used_attribute_index
+  Actual: false
+Expected: true
+adate >= TIMESTAMP '2013-12-26 12:34:55.999': .spx grid metadata or level-0 coordinates are unsupported; sequential model filtering used
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1506: adate
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1497: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1586: Failure
+Value of: combined.combined_metrics.used_attribute_index
+  Actual: false
+Expected: true
+adate = TIMESTAMP '2013-12-26 12:34:56.000': .spx grid metadata or level-0 coordinates are unsupported; sequential model filtering used
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1506: adate
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1497: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1586: Failure
+Value of: combined.combined_metrics.used_attribute_index
+  Actual: false
+Expected: true
+adate < TIMESTAMP '2013-12-26 12:34:56.000': .spx grid metadata or level-0 coordinates are unsupported; sequential model filtering used
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1506: adate
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1497: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1586: Failure
+Value of: combined.combined_metrics.used_attribute_index
+  Actual: false
+Expected: true
+adate <= TIMESTAMP '2013-12-26 12:34:56.000': .spx grid metadata or level-0 coordinates are unsupported; sequential model filtering used
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1506: adate
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1497: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1586: Failure
+Value of: combined.combined_metrics.used_attribute_index
+  Actual: false
+Expected: true
+adate > TIMESTAMP '2013-12-26 12:34:56.000': .spx grid metadata or level-0 coordinates are unsupported; sequential model filtering used
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1506: adate
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1497: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1586: Failure
+Value of: combined.combined_metrics.used_attribute_index
+  Actual: false
+Expected: true
+adate >= TIMESTAMP '2013-12-26 12:34:56.000': .spx grid metadata or level-0 coordinates are unsupported; sequential model filtering used
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1506: adate
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1497: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1586: Failure
+Value of: combined.combined_metrics.used_attribute_index
+  Actual: false
+Expected: true
+adate = TIMESTAMP '2013-12-26 12:34:56.001': .spx grid metadata or level-0 coordinates are unsupported; sequential model filtering used
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1506: adate
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1497: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1586: Failure
+Value of: combined.combined_metrics.used_attribute_index
+  Actual: false
+Expected: true
+adate < TIMESTAMP '2013-12-26 12:34:56.001': .spx grid metadata or level-0 coordinates are unsupported; sequential model filtering used
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1506: adate
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1497: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1586: Failure
+Value of: combined.combined_metrics.used_attribute_index
+  Actual: false
+Expected: true
+adate <= TIMESTAMP '2013-12-26 12:34:56.001': .spx grid metadata or level-0 coordinates are unsupported; sequential model filtering used
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1506: adate
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1497: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1586: Failure
+Value of: combined.combined_metrics.used_attribute_index
+  Actual: false
+Expected: true
+adate > TIMESTAMP '2013-12-26 12:34:56.001': .spx grid metadata or level-0 coordinates are unsupported; sequential model filtering used
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1506: adate
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1497: point
+
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1586: Failure
+Value of: combined.combined_metrics.used_attribute_index
+  Actual: false
+Expected: true
+adate >= TIMESTAMP '2013-12-26 12:34:56.001': .spx grid metadata or level-0 coordinates are unsupported; sequential model filtering used
+Google Test trace:
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1506: adate
+/src/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1497: point
+
+[  FAILED  ] RealDataReleaseContractTest.HistoricalDatePredicatesMatchIndependentRecordScan (15 ms)
+[----------] 1 test from RealDataReleaseContractTest (15 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (15 ms total)
+[  PASSED  ] 0 tests.
+[  FAILED  ] 1 test, listed below:
+[  FAILED  ] RealDataReleaseContractTest.HistoricalDatePredicatesMatchIndependentRecordScan
+
+ 1 FAILED TEST
