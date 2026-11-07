@@ -243,3 +243,7 @@ FAST_GDB_CURVE_DATASET="$PWD/test_data/gdb/参数化数据_liqs.gdb" \
 ### 2026-11-07：Linux sanitizer 补充
 
 基于 `0facd48` 的 Linux ARM64 / GCC 14.2 GDAL-free Debug 完整 ASan/UBSan/LeakSanitizer 复验：404 PASS / 5 SKIP / 0 FAIL。Linux TSan 无竞态探针因 runtime 地址映射冲突退出，尚不具备项目 TSan 验收结果；Windows 平台仍待补。详见 [验证记录](evidence/2026-11-07-S5.3-linux-sanitizers.md)。
+
+### 2026-11-07：S3.5 官方历史参考语料
+
+固定 GDAL v3.10.3 三份完整 GDB 归档及逐文件 SHA-256；现代参考库 37 层/476 行/2,101 字段值、92 与 93 命名样本各 22 层/453 行/2,056 字段值，完整 schema/FID/字段对照均通过。历史样本的 ArcGIS 创建来源、独立真值、几何及索引查询未验收，S3.5 保持未完成。见 [验证记录](evidence/2026-11-07-S3.5-gdal-historical-attributes.md)。

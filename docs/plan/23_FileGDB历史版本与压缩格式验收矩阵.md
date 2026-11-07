@@ -1,6 +1,6 @@
 > 状态：Active / Partial evidence
 > 适用范围：S3.5 历史版本与压缩格式
-> 更新日期：2026-11-06
+> 更新日期：2026-11-07
 > 权威执行入口：[完整只读能力与 GDAL 对照升级计划](22_完整只读能力与GDAL对照升级计划.md)
 
 # FileGDB 历史版本与压缩格式验收矩阵
@@ -23,7 +23,7 @@ GDAL 是重要的独立实现对照，但当 GDAL 文档明确记录格式限制
 
 | 维度 | 格式/样本类别 | fast-gdb 当前状态 | GDAL/外部对照 | 证据与未完成条件 |
 |---|---|---|---|---|
-| ArcGIS 产品代际 | ArcGIS 9.x FileGDB | **待样本** | OpenFileGDB 文档声明只读支持 9.x；FileGDB SDK 驱动面向 ArcGIS 10+ | 当前没有完整 9.x GDB。不能把本项目对 `.gdbtable` v3 的读取外推为 9.x 兼容。需 ArcGIS 9.3.1 原始样本及升级前后对照。 |
+| ArcGIS 产品代际 | ArcGIS 9.x FileGDB | **官方历史参考库字段对照通过，ArcGIS 独立真值待补** | GDAL v3.10.3 的 92/93 命名夹具各 22 层、453 行、2,056 字段值完整对照通过 | 两份完整归档及每文件 SHA-256 已记录；创建产品原始日志及 ArcGIS 导出真值未取得，几何和索引合同未验收。仍需 ArcGIS 9.3.1 原始样本及升级前后对照，见 [历史参考库记录](evidence/2026-11-07-S3.5-gdal-historical-attributes.md)。 |
 | ArcGIS 产品代际 | ArcGIS 10+ | **部分验证** | OpenFileGDB 支持 10+ 创建的 GDB | 仓库中的 ArcGIS 真实样本观察到 v3 表；缺少按 ArcGIS/Pro 版本分层的完整语料。GDAL 文档指出 FileGDB 格式版本自 10.1 后未变化，但这不证明所有新字段和新对象语义一致。 |
 | `.gdbtable` / `.gdbtablx` | v3 表及行偏移索引 | **真实样本通过（当前语料范围）** | GDAL v3 读取路径可作为第二实现对照 | 本地历史扫描记录有 301 个 `.gdbtable` 和 304 个 `.gdbtablx`，均为 v3；真实 ArcGIS 主样本、常规读取和 v3 稀疏压缩块映射测试通过。尚不能据此覆盖全部 ArcGIS 10+ 写入配置。 |
 | `.gdbtable` / `.gdbtablx` | v4 密集、无位图布局 | **合成/参考通过** | GDAL 3.13.0 与 3.13.3 均读取参考夹具 | `synthetic_v4_dense_gdal_reference.gdb` 为 GDAL 生成后转换目标表头/索引 trailer 的四行夹具，不是 ArcGIS 写出的 v4 样本。真实 v4 仍待补。 |
