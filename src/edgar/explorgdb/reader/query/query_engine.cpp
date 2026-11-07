@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <iomanip>
 #include <limits>
 #include <list>
@@ -604,6 +605,11 @@ QueryEngine::make_string_context(size_t field) const {
 
 QueryResult QueryEngine::query_attribute(const QueryRequest& request) {
     QueryResult result;
+    if (request.kind == QueryKind::AttributeDouble && !std::isfinite(request.double_value)) {
+        result.status = QueryStatus::InvalidRequest;
+        result.error = "attribute query requires a finite numeric value";
+        return result;
+    }
     result.execution_path = kPathAttributeAtx;
     const auto* atx =
         catalog_.find_atx(resolved_.id, request.index_name);

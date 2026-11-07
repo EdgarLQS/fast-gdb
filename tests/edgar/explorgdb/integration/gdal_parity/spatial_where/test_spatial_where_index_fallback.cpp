@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <limits>
 #include <string>
 #include <vector>
 #include "cpl_error.h"
@@ -103,7 +104,7 @@ void expect_safe_attribute_fallback(const QueryResult& result) {
 
 class SpatialWhereIndexFallbackTest : public GdbTutorialFixture {
 protected:
-    std::string createFixture() {
+    std::string createFixture(bool floating = false) {
         const std::string path =
             spatial_where_test_utils::fixture_path(
                 "fast_gdb_spatial_where_index_fallback").string();
@@ -113,7 +114,7 @@ protected:
         OGRLayer* layer = ds->CreateLayer(kLayer, nullptr, wkbPoint, nullptr);
         EXPECT_NE(layer, nullptr);
         if (!layer) { GDALClose(ds); return {}; }
-        OGRFieldDefn value("value", OFTInteger);
+        OGRFieldDefn value("value", floating ? OFTReal : OFTInteger);
         EXPECT_EQ(layer->CreateField(&value), OGRERR_NONE);
         const int values[] = {5, 10, 15};
         for (int i = 0; i < 3; ++i) {
@@ -395,4 +396,73 @@ TEST_F(SpatialWhereIndexFallbackTest, MissingBothIndexesStillMatches) {
     EXPECT_FALSE(result.combined_metrics.used_attribute_index);
     EXPECT_EQ(result.matched_fids,
               (std::vector<explorgdb::RowSlot>{1, 2}));
+}
+
+TEST_F(SpatialWhereIndexFallbackTest, NaNFloatKeyFallsBackToActualFieldsForEveryOperator) {
+    const auto path = createFixture(true);
+    GdbCatalog catalog;
+    ResolvedTable table;
+    ASSERT_TRUE(resolve(path, catalog, table));
+    const auto* atx = catalog.find_atx(table.id, "value_idx");
+    ASSERT_NE(atx, nullptr);
+    {
+        std::fstream file(entry_path(path, atx), std::ios::binary | std::ios::in | std::ios::out);
+        ASSERT_TRUE(file.good());
+        constexpr size_t offset = 12 + ((GdbAttributeIndexParser::kPageSize - 12) / 12) * 4;
+        const double nan = std::numeric_limits<double>::quiet_NaN();
+        file.seekp(offset);
+        file.write(reinterpret_cast<const char*>(&nan), sizeof(nan));
+        ASSERT_TRUE(file.good());
+    }
+    QueryEngine engine(catalog, table);
+    ASSERT_TRUE(engine.open());
+    const AttrOp ops[] = {AttrOp::Eq, AttrOp::Ne, AttrOp::Lt, AttrOp::Le, AttrOp::Gt, AttrOp::Ge};
+    const char* symbols[] = {"=", "!=", "<", "<=", ">", ">="};
+    const std::vector<std::vector<RowSlot>> expected = {{1}, {0, 2}, {0}, {0, 1}, {2}, {1, 2}};
+    for (size_t i = 0; i < 6; ++i) {
+        QueryRequest request;
+        request.kind = QueryKind::AttributeDouble;
+        request.index_name = "value_idx";
+        request.double_value = 10;
+        request.attr_op = ops[i];
+        auto result = engine.query(request);
+        EXPECT_EQ(result.status, QueryStatus::Ok) << result.error;
+        EXPECT_EQ(result.execution_path, "attribute:sequential");
+        EXPECT_EQ(result.matched_fids, expected[i]);
+        request.kind = QueryKind::SpatialWhere;
+        request.xmin = 0; request.ymin = 0; request.xmax = 10; request.ymax = 10;
+        request.where_clause = std::string("value ") + symbols[i] + " 10";
+        auto combined = engine.query(request);
+        EXPECT_EQ(combined.status, QueryStatus::Ok) << combined.error;
+        EXPECT_FALSE(combined.combined_metrics.used_attribute_index);
+        EXPECT_EQ(combined.matched_fids, expected[i]);
+    }
+}
+
+TEST_F(SpatialWhereIndexFallbackTest, NonFinitePublicAttributeProbesAreExplicitErrors) {
+    const auto path = createFixture(true);
+    GdbCatalog catalog;
+    ResolvedTable table;
+    ASSERT_TRUE(resolve(path, catalog, table));
+    const auto* atx = catalog.find_atx(table.id, "value_idx");
+    ASSERT_NE(atx, nullptr);
+    const auto index_path = entry_path(path, atx);
+    for (bool missing : {false, true}) {
+        if (missing) std::filesystem::remove(index_path);
+        GdbCatalog snapshot;
+        ASSERT_TRUE(snapshot.scan(path));
+        QueryEngine engine(snapshot, table);
+        ASSERT_TRUE(engine.open());
+        for (double probe : {std::numeric_limits<double>::quiet_NaN(),
+             std::numeric_limits<double>::infinity(), -std::numeric_limits<double>::infinity()}) {
+            QueryRequest request;
+            request.kind = QueryKind::AttributeDouble;
+            request.index_name = "value_idx";
+            request.double_value = probe;
+            auto result = engine.query(request);
+            EXPECT_EQ(result.status, QueryStatus::InvalidRequest);
+            EXPECT_FALSE(result.error.empty());
+            EXPECT_TRUE(result.matched_fids.empty());
+        }
+    }
 }

@@ -1,0 +1,722 @@
+Note: Google Test filter = AttributeIndexSafetyTest.NaN*:AttributeIndexSafetyTest.Infinities*
+[==========] Running 3 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 3 tests from AttributeIndexSafetyTest
+[ RUN      ] AttributeIndexSafetyTest.NaNKeysCannotCompareEqualOrPublishPartialResults
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:778: Failure
+Value of: parser.parse()
+  Actual: true
+Expected: false
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:779: Failure
+Value of: parser.all_entries().empty()
+  Actual: false
+Expected: true
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:782: Failure
+Value of: parser.query_double_direct(0, op, 1, result)
+  Actual: true
+Expected: false
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:783: Failure
+Expected equality of these values:
+  result
+    Which is: { 0 }
+  (std::vector<RowSlot>{999})
+    Which is: { 999 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:782: Failure
+Value of: parser.query_double_direct(0, op, 1, result)
+  Actual: true
+Expected: false
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:783: Failure
+Expected equality of these values:
+  result
+    Which is: {}
+  (std::vector<RowSlot>{999})
+    Which is: { 999 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:782: Failure
+Value of: parser.query_double_direct(0, op, 1, result)
+  Actual: true
+Expected: false
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:783: Failure
+Expected equality of these values:
+  result
+    Which is: {}
+  (std::vector<RowSlot>{999})
+    Which is: { 999 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:782: Failure
+Value of: parser.query_double_direct(0, op, 1, result)
+  Actual: true
+Expected: false
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:783: Failure
+Expected equality of these values:
+  result
+    Which is: { 0 }
+  (std::vector<RowSlot>{999})
+    Which is: { 999 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:782: Failure
+Value of: parser.query_double_direct(0, op, 1, result)
+  Actual: true
+Expected: false
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:783: Failure
+Expected equality of these values:
+  result
+    Which is: {}
+  (std::vector<RowSlot>{999})
+    Which is: { 999 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:782: Failure
+Value of: parser.query_double_direct(0, op, 1, result)
+  Actual: true
+Expected: false
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:783: Failure
+Expected equality of these values:
+  result
+    Which is: { 0 }
+  (std::vector<RowSlot>{999})
+    Which is: { 999 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:778: Failure
+Value of: parser.parse()
+  Actual: true
+Expected: false
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:779: Failure
+Value of: parser.all_entries().empty()
+  Actual: false
+Expected: true
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:782: Failure
+Value of: parser.query_double_direct(0, op, 1, result)
+  Actual: true
+Expected: false
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:783: Failure
+Expected equality of these values:
+  result
+    Which is: { 0 }
+  (std::vector<RowSlot>{999})
+    Which is: { 999 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:782: Failure
+Value of: parser.query_double_direct(0, op, 1, result)
+  Actual: true
+Expected: false
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:783: Failure
+Expected equality of these values:
+  result
+    Which is: {}
+  (std::vector<RowSlot>{999})
+    Which is: { 999 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:782: Failure
+Value of: parser.query_double_direct(0, op, 1, result)
+  Actual: true
+Expected: false
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:783: Failure
+Expected equality of these values:
+  result
+    Which is: {}
+  (std::vector<RowSlot>{999})
+    Which is: { 999 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:782: Failure
+Value of: parser.query_double_direct(0, op, 1, result)
+  Actual: true
+Expected: false
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:783: Failure
+Expected equality of these values:
+  result
+    Which is: { 0 }
+  (std::vector<RowSlot>{999})
+    Which is: { 999 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:782: Failure
+Value of: parser.query_double_direct(0, op, 1, result)
+  Actual: true
+Expected: false
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:783: Failure
+Expected equality of these values:
+  result
+    Which is: {}
+  (std::vector<RowSlot>{999})
+    Which is: { 999 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:782: Failure
+Value of: parser.query_double_direct(0, op, 1, result)
+  Actual: true
+Expected: false
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:783: Failure
+Expected equality of these values:
+  result
+    Which is: { 0 }
+  (std::vector<RowSlot>{999})
+    Which is: { 999 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:797: Failure
+Value of: parser.query_double_direct(4, AttrOp::Eq, 6, result)
+  Actual: true
+Expected: false
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:798: Failure
+Expected equality of these values:
+  result
+    Which is: { 3 }
+  (std::vector<RowSlot>{999})
+    Which is: { 999 }
+
+[  FAILED  ] AttributeIndexSafetyTest.NaNKeysCannotCompareEqualOrPublishPartialResults (2 ms)
+[ RUN      ] AttributeIndexSafetyTest.NaNProbeIsRejectedForFiniteNumericIndexes
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:808: Failure
+Value of: parser.query_double(nan, op).empty()
+  Actual: false
+Expected: true
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:810: Failure
+Value of: parser.query_double_direct(nan, op, 1, result)
+  Actual: true
+Expected: false
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:811: Failure
+Expected equality of these values:
+  result
+    Which is: { 0 }
+  (std::vector<RowSlot>{999})
+    Which is: { 999 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:810: Failure
+Value of: parser.query_double_direct(nan, op, 1, result)
+  Actual: true
+Expected: false
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:811: Failure
+Expected equality of these values:
+  result
+    Which is: {}
+  (std::vector<RowSlot>{999})
+    Which is: { 999 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:810: Failure
+Value of: parser.query_double_direct(nan, op, 1, result)
+  Actual: true
+Expected: false
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:811: Failure
+Expected equality of these values:
+  result
+    Which is: {}
+  (std::vector<RowSlot>{999})
+    Which is: { 999 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:810: Failure
+Value of: parser.query_double_direct(nan, op, 1, result)
+  Actual: true
+Expected: false
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:811: Failure
+Expected equality of these values:
+  result
+    Which is: { 0 }
+  (std::vector<RowSlot>{999})
+    Which is: { 999 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:810: Failure
+Value of: parser.query_double_direct(nan, op, 1, result)
+  Actual: true
+Expected: false
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:811: Failure
+Expected equality of these values:
+  result
+    Which is: {}
+  (std::vector<RowSlot>{999})
+    Which is: { 999 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:810: Failure
+Value of: parser.query_double_direct(nan, op, 1, result)
+  Actual: true
+Expected: false
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:811: Failure
+Expected equality of these values:
+  result
+    Which is: { 0 }
+  (std::vector<RowSlot>{999})
+    Which is: { 999 }
+
+[  FAILED  ] AttributeIndexSafetyTest.NaNProbeIsRejectedForFiniteNumericIndexes (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.InfinitiesAndSignedZeroRetainOrderedIeeeComparisons
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 0 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 1, 2, 3 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 0 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 1, 2, 3 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 0, 1, 2, 3 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 0, 1, 2, 3 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 0 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 0 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 1, 2, 3 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 1, 2, 3 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 1, 2 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 0, 3 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 0 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 0, 1, 2 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 3 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 1, 2, 3 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 1, 2 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 0, 3 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 0 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 0, 1, 2 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 3 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 1, 2, 3 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 0, 1, 2, 3 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 0, 1, 2 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 0, 1, 2 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 3 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 3 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 3 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 0, 1, 2 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 0, 1, 2 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 0, 1, 2, 3 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 3 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 0 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 1, 2, 3 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 0 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 1, 2, 3 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 0, 1, 2, 3 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 0, 1, 2, 3 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 0 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 0 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 1, 2, 3 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 1, 2, 3 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 1, 2 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 0, 3 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 0 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 0, 1, 2 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 3 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 1, 2, 3 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 1, 2 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 0, 3 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 0 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 0, 1, 2 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 3 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 1, 2, 3 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 0, 1, 2, 3 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 0, 1, 2 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 0, 1, 2 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 3 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 3 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 3 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 0, 1, 2 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 0, 1, 2 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 0, 1, 2, 3 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:836: Failure
+Expected equality of these values:
+  parser.query_double(probe, op)
+    Which is: {}
+  expected
+    Which is: { 3 }
+
+[  FAILED  ] AttributeIndexSafetyTest.InfinitiesAndSignedZeroRetainOrderedIeeeComparisons (3 ms)
+[----------] 3 tests from AttributeIndexSafetyTest (5 ms total)
+
+[----------] Global test environment tear-down
+[==========] 3 tests from 1 test suite ran. (5 ms total)
+[  PASSED  ] 0 tests.
+[  FAILED  ] 3 tests, listed below:
+[  FAILED  ] AttributeIndexSafetyTest.NaNKeysCannotCompareEqualOrPublishPartialResults
+[  FAILED  ] AttributeIndexSafetyTest.NaNProbeIsRejectedForFiniteNumericIndexes
+[  FAILED  ] AttributeIndexSafetyTest.InfinitiesAndSignedZeroRetainOrderedIeeeComparisons
+
+ 3 FAILED TESTS

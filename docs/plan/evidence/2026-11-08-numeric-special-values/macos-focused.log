@@ -1,0 +1,70 @@
+Note: Google Test filter = AttributeIndexSafetyTest.*:SpatialWhereIndexFallbackTest.*
+[==========] Running 29 tests from 2 test suites.
+[----------] Global test environment set-up.
+[----------] 18 tests from AttributeIndexSafetyTest
+[ RUN      ] AttributeIndexSafetyTest.ValidSingleLeafStillParses
+[       OK ] AttributeIndexSafetyTest.ValidSingleLeafStillParses (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.DirectNumericQueryMatchesMaterializedQuery
+[       OK ] AttributeIndexSafetyTest.DirectNumericQueryMatchesMaterializedQuery (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.DirectInt64QueryPreservesAdjacentLargeValues
+[       OK ] AttributeIndexSafetyTest.DirectInt64QueryPreservesAdjacentLargeValues (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.VersionTwoParsesAndQueries64BitObjectIds
+[       OK ] AttributeIndexSafetyTest.VersionTwoParsesAndQueries64BitObjectIds (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.DirectQueryNavigatesAndStopsAtRange
+[       OK ] AttributeIndexSafetyTest.DirectQueryNavigatesAndStopsAtRange (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.InvalidUnselectedBranchFailsClosed
+[       OK ] AttributeIndexSafetyTest.InvalidUnselectedBranchFailsClosed (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.TrailerCountMismatchFailsClosed
+[       OK ] AttributeIndexSafetyTest.TrailerCountMismatchFailsClosed (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.CyclicLeafChainFailsClosed
+[       OK ] AttributeIndexSafetyTest.CyclicLeafChainFailsClosed (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.ZeroFidFailsClosed
+[       OK ] AttributeIndexSafetyTest.ZeroFidFailsClosed (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.SmallIntegerKeysKeepTheirSignedOrder
+[       OK ] AttributeIndexSafetyTest.SmallIntegerKeysKeepTheirSignedOrder (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.Float32SchemaSelectsFloatingPointKeys
+[       OK ] AttributeIndexSafetyTest.Float32SchemaSelectsFloatingPointKeys (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.TemporalMillisecondsKeepEqualKeysAcrossLeafBoundaries
+[       OK ] AttributeIndexSafetyTest.TemporalMillisecondsKeepEqualKeysAcrossLeafBoundaries (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.UuidAsciiKeysUseTypedCanonicalOrderAcrossPages
+[       OK ] AttributeIndexSafetyTest.UuidAsciiKeysUseTypedCanonicalOrderAcrossPages (3 ms)
+[ RUN      ] AttributeIndexSafetyTest.MaterializedInt64KeepsExactValuesForDiagnostics
+[       OK ] AttributeIndexSafetyTest.MaterializedInt64KeepsExactValuesForDiagnostics (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.StringKeysPreserveSpacesSurrogatesAndPhysicalOrder
+[       OK ] AttributeIndexSafetyTest.StringKeysPreserveSpacesSurrogatesAndPhysicalOrder (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.NaNKeysCannotCompareEqualOrPublishPartialResults
+[       OK ] AttributeIndexSafetyTest.NaNKeysCannotCompareEqualOrPublishPartialResults (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.NaNProbeIsRejectedForFiniteNumericIndexes
+[       OK ] AttributeIndexSafetyTest.NaNProbeIsRejectedForFiniteNumericIndexes (0 ms)
+[ RUN      ] AttributeIndexSafetyTest.InfinitiesAndSignedZeroRetainOrderedIeeeComparisons
+[       OK ] AttributeIndexSafetyTest.InfinitiesAndSignedZeroRetainOrderedIeeeComparisons (2 ms)
+[----------] 18 tests from AttributeIndexSafetyTest (10 ms total)
+
+[----------] 11 tests from SpatialWhereIndexFallbackTest
+[ RUN      ] SpatialWhereIndexFallbackTest.MissingAtxKeepsCorrectResults
+[       OK ] SpatialWhereIndexFallbackTest.MissingAtxKeepsCorrectResults (57 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.DamagedAtxKeepsCorrectResults
+[       OK ] SpatialWhereIndexFallbackTest.DamagedAtxKeepsCorrectResults (3 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.DamagedAtxAttributeQueryFallsBackToSequentialScan
+[       OK ] SpatialWhereIndexFallbackTest.DamagedAtxAttributeQueryFallsBackToSequentialScan (3 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.MissingAtxAttributeQueryFallsBackToSequentialScan
+[       OK ] SpatialWhereIndexFallbackTest.MissingAtxAttributeQueryFallsBackToSequentialScan (11 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.InconsistentAtxTrailerCountKeepsCorrectResults
+[       OK ] SpatialWhereIndexFallbackTest.InconsistentAtxTrailerCountKeepsCorrectResults (3 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.CyclicAtxLeafChainKeepsCorrectResults
+[       OK ] SpatialWhereIndexFallbackTest.CyclicAtxLeafChainKeepsCorrectResults (3 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.MissingSpxStillUsesAtxCandidates
+[       OK ] SpatialWhereIndexFallbackTest.MissingSpxStillUsesAtxCandidates (3 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.OfficialSetFeatureRebuildsMissingSpxForFreshFastReader
+[       OK ] SpatialWhereIndexFallbackTest.OfficialSetFeatureRebuildsMissingSpxForFreshFastReader (5 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.MissingBothIndexesStillMatches
+[       OK ] SpatialWhereIndexFallbackTest.MissingBothIndexesStillMatches (4 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.NaNFloatKeyFallsBackToActualFieldsForEveryOperator
+[       OK ] SpatialWhereIndexFallbackTest.NaNFloatKeyFallsBackToActualFieldsForEveryOperator (3 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.NonFinitePublicAttributeProbesAreExplicitErrors
+[       OK ] SpatialWhereIndexFallbackTest.NonFinitePublicAttributeProbesAreExplicitErrors (4 ms)
+[----------] 11 tests from SpatialWhereIndexFallbackTest (103 ms total)
+
+[----------] Global test environment tear-down
+[==========] 29 tests from 2 test suites ran. (113 ms total)
+[  PASSED  ] 29 tests.

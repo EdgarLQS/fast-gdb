@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -124,6 +125,7 @@ bool decode_numeric(const uint8_t* bytes,
                 float raw = 0;
                 std::memcpy(&raw, bytes, sizeof(raw));
                 double_value = static_cast<double>(raw);
+                if (std::isnan(double_value)) return false;
             } else {
                 int32_t raw = 0;
                 std::memcpy(&raw, bytes, sizeof(raw));
@@ -146,6 +148,7 @@ bool decode_numeric(const uint8_t* bytes,
                 }
             } else {
                 std::memcpy(&double_value, bytes, sizeof(double_value));
+                if (std::isnan(double_value)) return false;
             }
             return true;
         default:
@@ -218,6 +221,8 @@ bool GdbAttributeIndexParser::query_direct(
     const bool numeric_is_int64 = numeric_kind == NumericQueryKind::Int64;
     const bool numeric_is_temporal = numeric_kind == NumericQueryKind::TemporalMilliseconds;
     if (metrics != nullptr) *metrics = AttributeIndexQueryMetrics{};
+    if (!is_string && !numeric_is_int64 && !numeric_is_temporal && std::isnan(numeric_value))
+        return false;
     const auto total_start = metric_start(metrics);
 
     // Direct queries use bounded page reads; parse() remains the explicit

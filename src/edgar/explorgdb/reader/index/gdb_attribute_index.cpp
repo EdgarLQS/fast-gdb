@@ -368,6 +368,8 @@ AttributeIndexEntry GdbAttributeIndexParser::decode_value(
                 entry.numeric_value = 0;
                 break;
         }
+        if (std::isnan(entry.numeric_value))
+            throw std::out_of_range("unordered NaN attribute index key");
     }
 
     return entry;
@@ -390,7 +392,7 @@ std::vector<RowSlot> GdbAttributeIndexParser::query_double(
     AttrOp op) const {
     std::vector<RowSlot> result;
     if (field_type_ == FieldType::UUID_1 || field_type_ == FieldType::UUID_2 ||
-        field_type_ == FieldType::Int64) return result;
+        field_type_ == FieldType::Int64 || std::isnan(value)) return result;
     const std::string unused;
 
     for (const AttributeIndexEntry& entry : all_entries_) {

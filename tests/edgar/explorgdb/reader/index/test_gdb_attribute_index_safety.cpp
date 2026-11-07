@@ -743,3 +743,100 @@ TEST(AttributeIndexSafetyTest, StringKeysPreserveSpacesSurrogatesAndPhysicalOrde
     EXPECT_EQ(unchanged, (std::vector<RowSlot>{99}));
     fs::remove(path);
 }
+
+namespace {
+std::string floating_atx(const std::string& suffix, FieldType type, const std::vector<double>& values) {
+    const size_t width = type == FieldType::Float32 ? 4 : 8;
+    constexpr size_t page_size = GdbAttributeIndexParser::kPageSize;
+    const size_t offset = 12 + ((page_size - 12) / (4 + width)) * 4;
+    std::vector<uint8_t> bytes(page_size + GdbAttributeIndexParser::kTrailerSize, 0);
+    write_u32_le(bytes, 4, static_cast<uint32_t>(values.size()));
+    for (size_t i = 0; i < values.size(); ++i) {
+        write_u32_le(bytes, 12 + 4 * i, static_cast<uint32_t>(i + 1));
+        if (width == 4) {
+            const float value = static_cast<float>(values[i]);
+            std::memcpy(bytes.data() + offset + i * width, &value, width);
+        } else std::memcpy(bytes.data() + offset + i * width, &values[i], width);
+    }
+    bytes[page_size] = static_cast<uint8_t>(width);
+    bytes[page_size + 1] = 0x60;
+    write_u32_le(bytes, page_size + 2, 1);
+    write_u32_le(bytes, page_size + 6, 1);
+    write_u32_le(bytes, page_size + 10, static_cast<uint32_t>(values.size()));
+    write_u32_le(bytes, page_size + 18, 1);
+    const auto path = safety_path(suffix);
+    std::ofstream file(path, std::ios::binary);
+    file.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+    return path;
+}
+}
+
+TEST(AttributeIndexSafetyTest, NaNKeysCannotCompareEqualOrPublishPartialResults) {
+    for (auto type : {FieldType::Float32, FieldType::Float64}) {
+        const auto path = floating_atx("nan_key", type, {std::numeric_limits<double>::quiet_NaN()});
+        GdbAttributeIndexParser parser(path, type);
+        EXPECT_FALSE(parser.parse());
+        EXPECT_TRUE(parser.all_entries().empty());
+        for (auto op : {AttrOp::Eq, AttrOp::Ne, AttrOp::Lt, AttrOp::Le, AttrOp::Gt, AttrOp::Ge}) {
+            std::vector<RowSlot> result{999};
+            EXPECT_FALSE(parser.query_double_direct(0, op, 1, result));
+            EXPECT_EQ(result, (std::vector<RowSlot>{999}));
+        }
+        fs::remove(path);
+    }
+    const auto path = build_two_leaf_numeric_atx("nan_separator");
+    constexpr size_t offset = 12 + ((GdbAttributeIndexParser::kPageSize - 12) / 12) * 4;
+    {
+        std::fstream file(path, std::ios::in | std::ios::out | std::ios::binary);
+        const double nan = std::numeric_limits<double>::quiet_NaN();
+        file.seekp(offset);
+        file.write(reinterpret_cast<const char*>(&nan), sizeof(nan));
+    }
+    GdbAttributeIndexParser parser(path);
+    std::vector<RowSlot> result{999};
+    EXPECT_FALSE(parser.query_double_direct(4, AttrOp::Eq, 6, result));
+    EXPECT_EQ(result, (std::vector<RowSlot>{999}));
+    fs::remove(path);
+}
+
+TEST(AttributeIndexSafetyTest, NaNProbeIsRejectedForFiniteNumericIndexes) {
+    const auto path = floating_atx("nan_probe", FieldType::Float64, {42});
+    GdbAttributeIndexParser parser(path, FieldType::Float64), direct(path, FieldType::Float64);
+    ASSERT_TRUE(parser.parse());
+    const auto nan = std::numeric_limits<double>::quiet_NaN();
+    for (auto op : {AttrOp::Eq, AttrOp::Ne, AttrOp::Lt, AttrOp::Le, AttrOp::Gt, AttrOp::Ge}) {
+        EXPECT_TRUE(parser.query_double(nan, op).empty());
+        std::vector<RowSlot> result{999};
+        EXPECT_FALSE(direct.query_double_direct(nan, op, 1, result));
+        EXPECT_EQ(result, (std::vector<RowSlot>{999}));
+    }
+    fs::remove(path);
+}
+
+TEST(AttributeIndexSafetyTest, InfinitiesAndSignedZeroRetainOrderedIeeeComparisons) {
+    const double inf = std::numeric_limits<double>::infinity();
+    const std::vector<double> values = {-inf, -0.0, 0.0, inf};
+    for (auto type : {FieldType::Float32, FieldType::Float64}) {
+        const auto path = floating_atx("infinite_keys", type, values);
+        GdbAttributeIndexParser parser(path, type), direct(path, type);
+        ASSERT_TRUE(parser.parse());
+        for (double probe : {-inf, -1.0, -0.0, 0.0, 1.0, inf}) {
+            size_t position = 0;
+            for (auto op : {AttrOp::Eq, AttrOp::Ne, AttrOp::Lt, AttrOp::Le, AttrOp::Gt, AttrOp::Ge}) {
+                std::vector<RowSlot> expected;
+                for (size_t i = 0; i < values.size(); ++i) {
+                    const double value = values[i];
+                    const bool matches[] = {value == probe, value != probe, value < probe,
+                                            value <= probe, value > probe, value >= probe};
+                    if (matches[position]) expected.push_back(i);
+                }
+                std::vector<RowSlot> result;
+                ASSERT_TRUE(direct.query_double_direct(probe, op, values.size(), result));
+                EXPECT_EQ(result, expected);
+                EXPECT_EQ(parser.query_double(probe, op), expected);
+                ++position;
+            }
+        }
+        fs::remove(path);
+    }
+}

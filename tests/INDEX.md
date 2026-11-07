@@ -334,3 +334,11 @@ Evidence archive: `release-evidence/2026-07-31-win-acceptance/`
 | `fast_gdb_gdal_read_write_boundary_test_runner` | 2 | 2 | 0 | 0 |  |
 | `fast_gdb_hybrid_test_runner` | 11 | 4 | 7 | 0 | All overlap with tutorial runner |
 | **Unique total** | **479** | **465** | **13** | **1** | **0 product code defects** |
+
+## Numeric NaN and infinity boundaries
+
+`AttributeIndexSafetyTest.NaN*` rejects unordered NaN leaf/separator keys and
+NaN probes without publishing candidates. `InfinitiesAndSignedZeroRetainOrderedIeeeComparisons`
+compares both FLOAT32/FLOAT64 layouts with IEEE expectations. The NaN tests in
+`SpatialWhereIndexFallbackTest` verify real-field scan fallback and explicit
+non-finite public-request errors. See [evidence and remaining integrity checks](../docs/plan/evidence/2026-11-08-numeric-special-values.md).
