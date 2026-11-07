@@ -6,7 +6,9 @@
 #include "adaptive_reader.h"
 #include "catalog_resolver.h"
 #include "gdb_catalog.h"
+#include "gdb_tablx_cache.h"
 #include "query_engine.h"
+#include "reader.h"
 
 #include "cpl_error.h"
 #include "gdal_priv.h"
@@ -592,18 +594,42 @@ TEST_F(AdaptiveReaderGdalIntegrationTest,
  */
 TEST_F(AdaptiveReaderGdalIntegrationTest,
        OfficialCreateFeatureIsVisibleOnlyAfterCompleteReopen) {
+    if (TablxCache::is_bypassed()) {
+        GTEST_SKIP() << "requires the process TablxCache to be enabled";
+    }
     const std::string path = gdb_path_.string();
+    ReaderError reader_error;
     std::string error;
     {
-        FastEngineSession reader;
-        ASSERT_TRUE(reader.open(path, error)) << error;
+        auto reader = Reader::open(path, {}, &reader_error);
+        ASSERT_TRUE(reader.has_value()) << reader_error.message;
+        auto layer = reader->open_layer(kLayerName, &reader_error);
+        ASSERT_TRUE(layer.has_value()) << reader_error.message;
         QueryRequest scan;
         scan.kind = QueryKind::SequentialScan;
-        EXPECT_EQ(reader.query(scan).matched_fids.size(), 5U);
+        EXPECT_EQ(layer->query(scan).matched_fids.size(), 5U);
     }
 
-    // Overlay filesystems may coalesce a rewrite into the previous timestamp quantum.
-    std::this_thread::sleep_for(20ms);
+    std::string tablx_path;
+    std::shared_ptr<const TablxCacheValue> stale_cache;
+    {
+        GdbCatalog before_catalog;
+        ASSERT_TRUE(before_catalog.scan(path));
+        CatalogResolver before_resolver(before_catalog);
+        ASSERT_TRUE(before_resolver.load());
+        const auto before_layer = before_resolver.resolve(kLayerName);
+        ASSERT_TRUE(before_layer.has_value());
+        GdbTableParser before_table(before_layer->table_path);
+        ASSERT_TRUE(before_table.open());
+        ASSERT_TRUE(before_table.load_tablx(before_layer->tablx_path));
+        TablxCacheKey before_key;
+        ASSERT_TRUE(TablxCache::make_key(before_layer->tablx_path, before_key));
+        stale_cache = TablxCache::instance().get(before_key);
+        ASSERT_NE(stale_cache, nullptr);
+        ASSERT_EQ(stale_cache->feature_count, 5U);
+        tablx_path = before_layer->tablx_path;
+    }
+
     ASSERT_TRUE(update_layer(
         path,
         [](GDALDataset*, OGRLayer* layer, std::string& error) {
@@ -648,11 +674,21 @@ TEST_F(AdaptiveReaderGdalIntegrationTest,
     const RowSlot created_fid =
         static_cast<RowSlot>(gdal_feature->GetFID() - 1);
 
-    FastEngineSession reopened;
-    ASSERT_TRUE(reopened.open(path, error)) << error;
+    TablxCacheKey current_key;
+    ASSERT_TRUE(TablxCache::make_key(tablx_path, current_key));
+    // Simulate an in-place rewrite whose filesystem metadata is unchanged.
+    TablxCache::instance().put_shared(
+        current_key, stale_cache->offsets, stale_cache->feature_count,
+        stale_cache->logical_row_count, stale_cache->block_bitmap);
+    ASSERT_NE(TablxCache::instance().get(current_key), nullptr);
+
+    auto reopened = Reader::open(path, {}, &reader_error);
+    ASSERT_TRUE(reopened.has_value()) << reader_error.message;
+    auto reopened_layer = reopened->open_layer(kLayerName, &reader_error);
+    ASSERT_TRUE(reopened_layer.has_value()) << reader_error.message;
     QueryRequest scan;
     scan.kind = QueryKind::SequentialScan;
-    const auto result = reopened.query(scan);
+    const auto result = reopened_layer->query(scan);
     ASSERT_EQ(result.status, QueryStatus::Ok);
     ASSERT_EQ(result.matched_fids.size(), 6U);
     EXPECT_NE(std::find(result.matched_fids.begin(), result.matched_fids.end(),
@@ -673,8 +709,6 @@ TEST_F(AdaptiveReaderGdalIntegrationTest,
         FastEngineSession reader;
         ASSERT_TRUE(reader.open(path, error)) << error;
     }
-    // Let the source identity timestamp advance before the same-size GDAL rewrite.
-    std::this_thread::sleep_for(20ms);
     ASSERT_TRUE(update_layer(
         path,
         [](GDALDataset*, OGRLayer* layer, std::string& error) {
@@ -819,8 +853,6 @@ TEST_F(AdaptiveReaderGdalIntegrationTest,
         FastEngineSession reader;
         ASSERT_TRUE(reader.open(path, error)) << error;
     }
-    // Overlay filesystems may coalesce a rewrite into the previous timestamp quantum.
-    std::this_thread::sleep_for(20ms);
     ASSERT_TRUE(update_layer(
         path,
         add_indexed_feature, error)) << error;

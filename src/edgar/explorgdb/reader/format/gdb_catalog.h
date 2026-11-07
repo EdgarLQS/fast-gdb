@@ -24,7 +24,8 @@ namespace explorgdb {
 
 class GdbCatalog {
 public:
-    /** 扫描 .gdb 目录并填充文件条目。
+    /** 扫描 .gdb 目录并建立新目录快照，使当前源的 tablx 解析缓存失效。
+     * 完整重开需要重新解析偏移；同一快照内的 Parser 可继续共享缓存。
      * @param gdb_path FileGDB 目录路径。
      * @return 目录存在且至少找到一个匹配文件时返回 true。
      */

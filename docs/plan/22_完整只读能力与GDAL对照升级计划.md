@@ -110,7 +110,7 @@
 ### S5：发布与文档收口
 
 - [ ] S5.1 Windows 上完成真实 ArcGIS 数据、外部写后重开、中文路径及文件替换验收。
-- [x] S5.2 完成 Linux/macOS 构建、安装消费者和对应数据回归；区分各平台已取得与缺失证据。（macOS 27 / GDAL 3.13.0 已完成 GDAL ON/OFF 构建、全套测试及 3 类安装 consumer；Linux ARM64 / GDAL 3.10.3 Release 构建、全 CTest 590 项（573 通过、17 跳过、0 失败）、testcurve/acceptance 数据回归和 4 类安装 consumer 均通过。Linux overlayfs 同时间戳内改写的缓存可见性边界仍单独列为待处理，不等同于普通更新时间已推进的写后刷新合同。详见 [macOS 验证记录](evidence/2026-11-06-S5.2-macos-install-consumer.md) 与 [Linux ARM64 验证记录](evidence/2026-11-07-S5.2-linux-arm64.md)。）
+- [x] S5.2 完成 Linux/macOS 构建、安装消费者和对应数据回归；区分各平台已取得与缺失证据。（macOS 27 / GDAL 3.13.0 已完成 GDAL ON/OFF 构建、全套测试及 3 类安装 consumer；Linux ARM64 / GDAL 3.10.3 Release 构建、全 CTest 590 项（573 通过、17 跳过、0 失败）、testcurve/acceptance 数据回归和 4 类安装 consumer 均通过。后续已通过新目录快照强制失效当前源 tablx 键，修复 metadata 不变时直接重开命中旧缓存的问题，见 [重开缓存修复](evidence/2026-11-07-reopen-cache-invalidation.md)。详见 [macOS 验证记录](evidence/2026-11-06-S5.2-macos-install-consumer.md) 与 [Linux ARM64 验证记录](evidence/2026-11-07-S5.2-linux-arm64.md)。）
 - [x] S5.3 完成损坏输入、资源释放、ASan/UBSan 及适用环境的 TSan 检查，保持独立 Reader 并发合同。（共享 Tablx 存储前次复验 GDAL-free ASan/UBSan 360 项中 359 通过、1 个性能基准跳过；本轮共享锁优化后 ASan/UBSan 定向 17/17、独立 Reader/缓存/LRU TSan 3/3。macOS LeakSanitizer 选项不支持，未宣称完成 leak 检测；Windows 映射实现仍待平台验证。详见[本次复验](evidence/2026-11-07-S5.3-shared-tablx-storage-sanitizers.md)与[原 S5.3 记录](evidence/2026-11-06-S5.3-sanitizers.md)。）
 - [x] S5.4 同步能力矩阵、未完成清单、专题计划、API 示例、第三方声明和发布说明。（能力矩阵、任务清单、矢量专题计划、Reader README、查询流程、构建/平台矩阵与 v0.2.0 开发说明已同步；第三方声明已核对，本轮无新增依赖。详见 [S5.4 文档同步记录](evidence/2026-11-06-S5.4-documentation-sync.md)。）
 
@@ -235,3 +235,7 @@ FAST_GDB_CURVE_DATASET="$PWD/test_data/gdb/参数化数据_liqs.gdb" \
 - [pugixml v1.16 发布页](https://github.com/zeux/pugixml/releases/tag/v1.16) 与 [1.16 手册](https://pugixml.org/docs/manual.html)：源码归档、SHA-256 和 MIT 许可证已固定于第三方声明。
 
 外部 stable 页面会变化；实施时将实际对照版本与对应测试证据一起固定。
+
+### 2026-11-07：直接重开缓存一致性补充
+
+`GdbCatalog::scan()` 现在为新快照失效当前源的 tablx 缓存键；公开 Reader 的同身份旧缓存回归先失败后通过。创建、删除、索引/extent 更新移除等待后各 30 轮通过，Linux 完整 CTest 573 PASS / 17 SKIP / 0 FAIL。跨 Reader 新目录扫描不再承诺复用旧偏移表；性能和剩余平台范围见 [验证记录](evidence/2026-11-07-reopen-cache-invalidation.md)。

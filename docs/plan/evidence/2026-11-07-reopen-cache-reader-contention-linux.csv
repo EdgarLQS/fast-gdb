@@ -1,0 +1,9 @@
+target_mode,threads,iterations_per_thread,throughput_open_read_ops_per_second,latency_samples,p50_ms,p95_ms,p99_ms,min_ms,max_ms,failures
+one_hot_layer,1,25,9.010,25,121.130,125.055,145.948,81.999,145.948,0
+one_hot_layer,2,25,12.788,50,164.541,172.772,174.536,129.095,174.536,0
+one_hot_layer,4,25,20.308,100,199.658,208.851,268.333,138.454,268.880,0
+one_hot_layer,8,25,31.820,200,256.184,263.066,295.360,155.496,298.619,0
+shared_three_layer_set,1,25,8.324,25,119.903,123.242,123.389,117.285,123.389,0
+shared_three_layer_set,2,25,12.795,50,157.422,168.945,174.852,128.612,174.852,0
+shared_three_layer_set,4,25,20.796,100,198.539,202.901,203.834,127.065,207.179,0
+shared_three_layer_set,8,25,32.297,200,255.548,262.442,266.970,158.861,269.995,0

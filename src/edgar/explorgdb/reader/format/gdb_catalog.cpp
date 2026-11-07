@@ -4,6 +4,7 @@
 #include "gdb_catalog.h"
 #include "binary_reader.h"
 #include "gdb_indexes.h"
+#include "gdb_tablx_cache.h"
 #include <algorithm>
 #include <cstring>
 #include <filesystem>
@@ -65,6 +66,19 @@ bool GdbCatalog::scan(const std::string& gdb_path) {
               [](const CatalogEntry& lhs, const CatalogEntry& rhs) {
                   return lhs.numeric_id < rhs.numeric_id;
               });
+
+    // A catalog scan starts a new read snapshot. Metadata identity can remain
+    // unchanged for an in-place rewrite inside the filesystem clock quantum,
+    // so do not reuse cached offsets across this boundary. Eviction does not
+    // mutate immutable offset arrays already held by existing parsers.
+    auto& tablx_cache = TablxCache::instance();
+    for (const auto& entry : entries_) {
+        if (entry.extension != ".gdbtablx") continue;
+        TablxCacheKey identity;
+        const auto tablx_path = (directory / entry.filename).u8string();
+        if (TablxCache::make_key(tablx_path, identity))
+            tablx_cache.invalidate(identity);
+    }
     return true;
 }
 

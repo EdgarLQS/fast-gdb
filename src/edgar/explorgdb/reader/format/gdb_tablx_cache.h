@@ -1,11 +1,13 @@
 // src/edgar/explorgdb/reader/format/gdb_tablx_cache.h
-// .gdbtablx 跨 open 元数据缓存 — 进程内共享已解析的偏移表，避免重复文件 I/O 和解析
+// .gdbtablx 进程内偏移表缓存；新 GdbCatalog 快照会失效当前源的键。
 //
 // 使用方式:
 //   1. GdbTableParser::load_tablx() 在解析前检查 TablxCache::get()
 //   2. 缓存命中时共享不可变 offset 向量，命中后直接返回
 //   3. 缓存未命中时解析并填充 TablxCache::put()
 //   4. 设置 FAST_GDB_TABLX_CACHE=0 绕过缓存，获得真正的冷打开基线
+//   5. GdbCatalog::scan() 开始新源快照时失效该目录当前的 .gdbtablx 键，
+//      避免同一文件系统时间戳量子内的外部原地改写命中旧偏移表
 //
 // 线程安全：使用 std::shared_mutex 支持并发读，写入时独占
 // LRU 淘汰：容量上限 16 个条目，精确记录单调访问序号
