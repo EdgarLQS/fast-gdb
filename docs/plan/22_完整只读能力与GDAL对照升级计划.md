@@ -239,3 +239,7 @@ FAST_GDB_CURVE_DATASET="$PWD/test_data/gdb/参数化数据_liqs.gdb" \
 ### 2026-11-07：直接重开缓存一致性补充
 
 `GdbCatalog::scan()` 现在为新快照失效当前源的 tablx 缓存键；公开 Reader 的同身份旧缓存回归先失败后通过。创建、删除、索引/extent 更新移除等待后各 30 轮通过，Linux 完整 CTest 573 PASS / 17 SKIP / 0 FAIL。跨 Reader 新目录扫描不再承诺复用旧偏移表；性能和剩余平台范围见 [验证记录](evidence/2026-11-07-reopen-cache-invalidation.md)。
+
+### 2026-11-07：Linux sanitizer 补充
+
+基于 `0facd48` 的 Linux ARM64 / GCC 14.2 GDAL-free Debug 完整 ASan/UBSan/LeakSanitizer 复验：404 PASS / 5 SKIP / 0 FAIL。Linux TSan 无竞态探针因 runtime 地址映射冲突退出，尚不具备项目 TSan 验收结果；Windows 平台仍待补。详见 [验证记录](evidence/2026-11-07-S5.3-linux-sanitizers.md)。
