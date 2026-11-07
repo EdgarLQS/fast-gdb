@@ -161,8 +161,9 @@ bool GdbAttributeIndexParser::parse_trailer() {
 
     trailer_.value_size = reader.read_u8();
     const uint8_t flags = reader.read_u8();
-    trailer_.is_string = (flags & 0x20U) != 0;
     trailer_.is_numeric = (flags & 0x40U) != 0;
+    // Floating/date keys use 0x60; their 0x20 bit does not imply UTF-16.
+    trailer_.is_string = !trailer_.is_numeric && (flags & 0x20U) != 0;
     trailer_.magic1 = reader.read_u32();
     trailer_.tree_depth = reader.read_u32();
     trailer_.total_value_count = trailer_.version == 1U
@@ -362,9 +363,18 @@ AttributeIndexEntry GdbAttributeIndexParser::decode_value(
                 break;
             }
             case 8: {
-                double value;
-                std::memcpy(&value, bytes, sizeof(value));
-                entry.numeric_value = value;
+                if (field_type_ == FieldType::Int64) {
+                    uint64_t raw = 0;
+                    for (size_t i = 0; i < 8; ++i) raw |= static_cast<uint64_t>(bytes[i]) << (8 * i);
+                    const int64_t value = raw <= static_cast<uint64_t>(std::numeric_limits<int64_t>::max())
+                        ? static_cast<int64_t>(raw) : -1 - static_cast<int64_t>(~raw);
+                    entry.integer_value = value;
+                    entry.numeric_value = static_cast<double>(value);
+                } else {
+                    double value;
+                    std::memcpy(&value, bytes, sizeof(value));
+                    entry.numeric_value = value;
+                }
                 break;
             }
             default:
@@ -392,7 +402,8 @@ std::vector<RowSlot> GdbAttributeIndexParser::query_double(
     double value,
     AttrOp op) const {
     std::vector<RowSlot> result;
-    if (field_type_ == FieldType::UUID_1 || field_type_ == FieldType::UUID_2) return result;
+    if (field_type_ == FieldType::UUID_1 || field_type_ == FieldType::UUID_2 ||
+        field_type_ == FieldType::Int64) return result;
     const std::string unused;
 
     for (const AttributeIndexEntry& entry : all_entries_) {
@@ -409,6 +420,22 @@ std::vector<RowSlot> GdbAttributeIndexParser::query_double(
         if (match) result.push_back(static_cast<RowSlot>(entry.fid - 1U));
     }
 
+    std::sort(result.begin(), result.end());
+    result.erase(std::unique(result.begin(), result.end()), result.end());
+    return result;
+}
+
+std::vector<RowSlot> GdbAttributeIndexParser::query_int64(int64_t value, AttrOp op) const {
+    std::vector<RowSlot> result;
+    if (field_type_ != FieldType::Int64) return result;
+    for (const auto& entry : all_entries_) {
+        if (!entry.integer_value.has_value()) continue;
+        const int order = (*entry.integer_value > value) - (*entry.integer_value < value);
+        const bool matches = op == AttrOp::Eq ? order == 0 : op == AttrOp::Ne ? order != 0 :
+            op == AttrOp::Lt ? order < 0 : op == AttrOp::Le ? order <= 0 :
+            op == AttrOp::Gt ? order > 0 : order >= 0;
+        if (matches) result.push_back(entry.fid - 1);
+    }
     std::sort(result.begin(), result.end());
     result.erase(std::unique(result.begin(), result.end()), result.end());
     return result;

@@ -8,6 +8,11 @@
 #include "gdb_attribute_index.h"
 #include <algorithm>
 #include <chrono>
+#include <charconv>
+#include <cctype>
+#include <limits>
+#include <optional>
+#include <utility>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -27,6 +32,125 @@ static uint64_t table_feature_count(const explorgdb::TableHeader& header) {
     return header.version == 4 ? header.nfeatures_v4 : header.nfeatures_v3;
 }
 
+static std::optional<explorgdb::FieldType> parse_atx_type(const std::string& name) {
+    using explorgdb::FieldType;
+    const std::pair<const char*, FieldType> types[] = {
+        {"int16", FieldType::Int16}, {"int32", FieldType::Int32}, {"int64", FieldType::Int64},
+        {"float32", FieldType::Float32}, {"float64", FieldType::Float64},
+        {"string", FieldType::String}, {"uuid", FieldType::UUID_1}, {"globalid", FieldType::UUID_2},
+        {"datetime", FieldType::DateTime}, {"date", FieldType::Date}, {"time", FieldType::Time}};
+    for (const auto& type : types) if (name == type.first) return type.second;
+    return std::nullopt;
+}
+
+static std::optional<explorgdb::FieldType> indexed_field_type(
+    const explorgdb::GdbCatalog& catalog, const explorgdb::CatalogEntry& atx) {
+    using namespace explorgdb;
+    std::vector<IndexEntry> metadata;
+    if (!catalog.read_index_metadata(atx.numeric_id, metadata)) return std::nullopt;
+    const auto* table = catalog.find_table(atx.numeric_id);
+    if (table == nullptr) return std::nullopt;
+    GdbTableParser parser(join_utf8_path(catalog.path(), table->filename));
+    if (!parser.open()) return std::nullopt;
+    for (const auto& index : metadata) {
+        const auto* declared = catalog.find_atx(atx.numeric_id, index.name);
+        if (declared == nullptr || declared->filename != atx.filename ||
+            !GdbIndexesParser::is_direct_field_expression(index.column_name)) continue;
+        const auto column = GdbIndexesParser::field_name_from_expression(index.column_name);
+        for (const auto& field : parser.fields()) {
+            if (column.size() == field.name.size() &&
+                std::equal(column.begin(), column.end(), field.name.begin(),
+                    [](unsigned char left, unsigned char right) {
+                        return std::tolower(left) == std::tolower(right);
+                    })) return field.type;
+        }
+    }
+    return std::nullopt;
+}
+
+static std::optional<explorgdb::FieldType> resolve_atx_type(
+    const std::string& path, const std::string& hint) {
+    std::optional<explorgdb::FieldType> explicit_type;
+    if (!hint.empty()) {
+        explicit_type = parse_atx_type(hint);
+        if (!explicit_type) {
+            std::cerr << "Unknown ATX field type: " << hint << "\n";
+            return std::nullopt;
+        }
+    }
+    const auto file = fs::u8path(path);
+    const auto directory = file.has_parent_path() ? file.parent_path() : fs::path(".");
+    explorgdb::GdbCatalog catalog;
+    std::optional<explorgdb::FieldType> declared_type;
+    if (catalog.scan(directory.u8string())) {
+        for (const auto& atx : catalog.entries()) {
+            if (atx.filename == file.filename().u8string()) {
+                declared_type = indexed_field_type(catalog, atx);
+                break;
+            }
+        }
+    }
+    if (explicit_type && declared_type && explicit_type != declared_type) {
+        std::cerr << "ATX field type conflicts with source schema\n";
+        return std::nullopt;
+    }
+    const auto result = declared_type ? declared_type : explicit_type;
+    if (!result) std::cerr << "ATX field type unavailable; supply an explicit field_type\n";
+    return result;
+}
+
+static std::optional<explorgdb::AttrOp> parse_attr_op(const std::string& text) {
+    using explorgdb::AttrOp;
+    if (text == "=") return AttrOp::Eq;
+    if (text == "!=") return AttrOp::Ne;
+    if (text == "<") return AttrOp::Lt;
+    if (text == "<=") return AttrOp::Le;
+    if (text == ">") return AttrOp::Gt;
+    if (text == ">=") return AttrOp::Ge;
+    return std::nullopt;
+}
+
+static bool query_typed_atx(const std::string& path, explorgdb::FieldType type,
+                            const std::string& operation, const std::string& value,
+                            std::vector<explorgdb::RowSlot>& result, size_t max_fids = 0) {
+    using namespace explorgdb;
+    const auto op = parse_attr_op(operation);
+    if (!op) { std::cerr << "Invalid attribute operator: " << operation << "\n"; return false; }
+    GdbAttributeIndexParser parser(path, type);
+    bool ok = false;
+    if (type == FieldType::String || type == FieldType::UUID_1 || type == FieldType::UUID_2) {
+        ok = parser.query_string_direct(value, *op, max_fids, result);
+    } else if (type == FieldType::Int64) {
+        int64_t integer = 0;
+        const char* begin = value.data();
+        const char* end = begin + value.size();
+        const bool leading_plus = begin != end && *begin == '+';
+        if (leading_plus) ++begin;
+        const auto parsed = std::from_chars(begin, end, integer);
+        if (parsed.ec != std::errc{} || parsed.ptr != end ||
+            (leading_plus && begin != end && *begin == '-')) {
+            std::cerr << "INT64 requires an in-range integer literal\n";
+            return false;
+        }
+        ok = parser.query_int64_direct(integer, *op, max_fids, result);
+    } else if (type == FieldType::Int16 || type == FieldType::Int32 || type == FieldType::Float32 ||
+               type == FieldType::Float64 || type == FieldType::DateTime ||
+               type == FieldType::Date || type == FieldType::Time) {
+        size_t consumed = 0;
+        const double number = std::stod(value, &consumed);
+        if (consumed != value.size() || !std::isfinite(number)) {
+            std::cerr << "Numeric ATX value must be finite and fully parsed\n";
+            return false;
+        }
+        ok = parser.query_double_direct(number, *op, max_fids, result);
+    } else {
+        std::cerr << "Unsupported ATX field type: " << field_type_name(type) << "\n";
+        return false;
+    }
+    if (!ok) std::cerr << "ATX query failed: invalid index layout or query value\n";
+    return ok;
+}
+
 static void print_usage(const char* prog) {
     printf("Usage: %s <command> [args]\n\n", prog);
     printf("Commands:\n");
@@ -36,15 +160,18 @@ static void print_usage(const char* prog) {
     printf("  dump-indexes <gdbindexes_path>  Parse .gdbindexes metadata\n");
     printf("  dump-records <gdbtable_path>    Parse .gdbtable header + fields + records (needs .gdbtablx)\n");
     printf("  dump-spx <spx_path>             Parse .spx spatial index\n");
-    printf("  dump-atx <atx_path>             Parse .atx attribute index\n");
+    printf("  dump-atx <atx_path> [field_type] Parse .atx attribute index\n");
     printf("  query-spx <spx_path> <xmin> <ymin> <xmax> <ymax> <grid_step_x> <grid_step_y>\n");
     printf("                                   Query .spx with bbox (FID list)\n");
-    printf("  query-atx <atx_path> <op> <value>\n");
+    printf("  query-atx <atx_path> <op> <value> [field_type]\n");
     printf("                                   Query .atx with operator (=,<,>,<=,>=,!=)\n");
     printf("  query <gdb_path> <table_id> <spatial|attr> <args...>\n");
     printf("      spatial: <xmin> <ymin> <xmax> <ymax> <grid_step_x> <grid_step_y>\n");
     printf("      attr: <index_name> <op> <value>\n");
     printf("  bench-spatial <gdb_path> <table_id>   Run spatial query benchmark\n");
+    printf("  ATX field_type: int16/int32/int64/float32/float64/string/uuid/globalid/datetime/date/time\n");
+    printf("  Types are resolved from GDB metadata; standalone ATX files require field_type.\n");
+    printf("  Date/time ATX values are physical day numbers; INT64 values remain exact.\n");
 }
 
 static void cmd_explore(const std::string& gdb_path) {
@@ -207,15 +334,23 @@ static void cmd_explore(const std::string& gdb_path) {
         }
     }
 
-    auto atx_files = catalog.find_by_extension(".atx");
+    std::vector<const explorgdb::CatalogEntry*> atx_files;
+    for (const auto& entry : catalog.entries()) {
+        if (fs::u8path(entry.filename).extension() == ".atx") atx_files.push_back(&entry);
+    }
     if (!atx_files.empty()) {
         printf("\n=== .atx attribute index files ===\n");
         for (const auto* ae : atx_files) {
             std::string atx_path = join_utf8_path(gdb_path, ae->filename);
-            explorgdb::GdbAttributeIndexParser parser(atx_path);
+            const auto field_type = indexed_field_type(catalog, *ae);
+            if (!field_type) {
+                printf("  %s [indexed field type unavailable]\n", ae->filename.c_str());
+                continue;
+            }
+            explorgdb::GdbAttributeIndexParser parser(atx_path, *field_type);
             if (parser.parse()) {
                 const auto& tr = parser.trailer();
-                const char* type_str = tr.is_string ? "string" : "numeric";
+                const char* type_str = explorgdb::field_type_name(*field_type);
                 printf("  %s (id=%u, %llu bytes) type=%s depth=%u entries=%llu value_size=%u\n",
                        ae->filename.c_str(), ae->numeric_id,
                        static_cast<unsigned long long>(ae->file_size),
@@ -430,15 +565,17 @@ static void cmd_dump_spx(const std::string& path) {
     printf("(B+ tree on-demand mode — entries not pre-loaded. Use 'query-spx' to retrieve FIDs.)\n");
 }
 
-static void cmd_dump_atx(const std::string& path) {
-    explorgdb::GdbAttributeIndexParser parser(path);
+static bool cmd_dump_atx(const std::string& path, const std::string& hint) {
+    const auto field_type = resolve_atx_type(path, hint);
+    if (!field_type) return false;
+    explorgdb::GdbAttributeIndexParser parser(path, *field_type);
     if (!parser.parse()) {
         std::cerr << "Failed to parse: " << path << "\n";
-        return;
+        return false;
     }
 
     const auto& tr = parser.trailer();
-    const char* type_str = tr.is_string ? "string" : "numeric";
+    const char* type_str = explorgdb::field_type_name(*field_type);
     printf("=== .atx: %s ===\n", path.c_str());
     printf("Trailer: value_size=%u, type=%s, depth=%u, total_entries=%llu\n",
            tr.value_size, type_str, tr.tree_depth,
@@ -450,16 +587,19 @@ static void cmd_dump_atx(const std::string& path) {
     for (size_t i = 0; i < limit; ++i) {
         const auto& e = parser.all_entries()[i];
         printf("  FID=%llu  ", static_cast<unsigned long long>(e.fid));
-        if (std::isnan(e.numeric_value)) {
+        if (e.integer_value.has_value()) {
+            printf("value=%lld", static_cast<long long>(*e.integer_value));
+        } else if (std::isnan(e.numeric_value)) {
             printf("value=\"%s\"", e.string_value.c_str());
         } else {
-            printf("value=%.15g", e.numeric_value);
+            printf("value=%.17g", e.numeric_value);
         }
         printf("\n");
     }
     if (parser.all_entries().size() > limit) {
         printf("  ... and %zu more\n", parser.all_entries().size() - limit);
     }
+    return true;
 }
 
 static void cmd_query_spx(const std::string& path, double xmin, double ymin,
@@ -500,41 +640,12 @@ static void cmd_query_spx(const std::string& path, double xmin, double ymin,
     }
 }
 
-static void cmd_query_atx(const std::string& path, const std::string& op_str,
-                          const std::string& value_str) {
-    explorgdb::GdbAttributeIndexParser parser(path);
-    if (!parser.parse()) {
-        std::cerr << "Failed to parse: " << path << "\n";
-        return;
-    }
-
-    const auto& tr = parser.trailer();
+static bool cmd_query_atx(const std::string& path, const std::string& op_str,
+                           const std::string& value_str, const std::string& hint) {
+    const auto field_type = resolve_atx_type(path, hint);
+    if (!field_type) return false;
     std::vector<explorgdb::RowSlot> result_fids;
-
-    if (tr.is_string) {
-        auto op_map = [&](const std::string& s) {
-            if (s == "=") return explorgdb::AttrOp::Eq;
-            if (s == "!=") return explorgdb::AttrOp::Ne;
-            if (s == "<") return explorgdb::AttrOp::Lt;
-            if (s == "<=") return explorgdb::AttrOp::Le;
-            if (s == ">") return explorgdb::AttrOp::Gt;
-            if (s == ">=") return explorgdb::AttrOp::Ge;
-            return explorgdb::AttrOp::Eq;
-        };
-        result_fids = parser.query_string(value_str, op_map(op_str));
-    } else {
-        double value = std::stod(value_str);
-        auto op_map = [&](const std::string& s) {
-            if (s == "=") return explorgdb::AttrOp::Eq;
-            if (s == "!=") return explorgdb::AttrOp::Ne;
-            if (s == "<") return explorgdb::AttrOp::Lt;
-            if (s == "<=") return explorgdb::AttrOp::Le;
-            if (s == ">") return explorgdb::AttrOp::Gt;
-            if (s == ">=") return explorgdb::AttrOp::Ge;
-            return explorgdb::AttrOp::Eq;
-        };
-        result_fids = parser.query_double(value, op_map(op_str));
-    }
+    if (!query_typed_atx(path, *field_type, op_str, value_str, result_fids)) return false;
 
     printf("=== Attribute Query: %s ===\n", path.c_str());
     printf("Operator: %s, Value: %s\n", op_str.c_str(), value_str.c_str());
@@ -547,9 +658,10 @@ static void cmd_query_atx(const std::string& path, const std::string& op_str,
     if (result_fids.size() > 20) {
         printf("  ... and %zu more\n", result_fids.size() - 20);
     }
+    return true;
 }
 
-// 辅助：打印单条记录
+// 辅助：打印单条记录。
 static void print_record(const explorgdb::FeatureRecord& rec,
                          const std::vector<explorgdb::FieldDescriptor>& fields) {
     printf("FID %llu (blob_len=%u):\n",
@@ -583,7 +695,7 @@ static void print_record(const explorgdb::FeatureRecord& rec,
     }
 }
 
-static void cmd_query(const std::string& gdb_path, uint32_t table_id,
+static bool cmd_query(const std::string& gdb_path, uint32_t table_id,
                       const std::string& query_type,
                       const std::vector<std::string>& args) {
     namespace fs = std::filesystem;
@@ -593,32 +705,32 @@ static void cmd_query(const std::string& gdb_path, uint32_t table_id,
     GdbCatalog catalog;
     if (!catalog.scan(gdb_path)) {
         std::cerr << "Failed to scan: " << gdb_path << "\n";
-        return;
+        return false;
     }
 
     // 2. 加载 .gdbtable
     const auto* table_entry = catalog.find_table(table_id);
     if (!table_entry) {
         std::cerr << "Table id=" << table_id << " not found\n";
-        return;
+        return false;
     }
     std::string table_path = join_utf8_path(gdb_path, table_entry->filename);
     GdbTableParser table_parser(table_path);
     if (!table_parser.load_file() || !table_parser.parse_header() || !table_parser.parse_fields()) {
         std::cerr << "Failed to parse table: " << table_path << "\n";
-        return;
+        return false;
     }
 
     // 3. 加载 .gdbtablx
     const auto* tablx_entry = catalog.find_tablx(table_id);
     if (!tablx_entry) {
         std::cerr << "No .gdbtablx for table id=" << table_id << "\n";
-        return;
+        return false;
     }
     std::string tablx_path = join_utf8_path(gdb_path, tablx_entry->filename);
     if (!table_parser.load_tablx(tablx_path)) {
         std::cerr << "Failed to load .gdbtablx: " << tablx_path << "\n";
-        return;
+        return false;
     }
     (void)table_parser.nullable_field_count();  // suppress unused warning
 
@@ -628,7 +740,7 @@ static void cmd_query(const std::string& gdb_path, uint32_t table_id,
     if (query_type == "spatial") {
         if (args.size() < 6) {
             std::cerr << "Need 6 args: xmin ymin xmax ymax grid_step_x grid_step_y\n";
-            return;
+            return false;
         }
         double xmin = std::stod(args[0]);
         double ymin = std::stod(args[1]);
@@ -638,19 +750,19 @@ static void cmd_query(const std::string& gdb_path, uint32_t table_id,
         double gsy = std::stod(args[5]);
         if (!std::isfinite(gsx) || !std::isfinite(gsy) || gsx != gsy) {
             std::cerr << "The .spx query path requires a uniform XY grid step\n";
-            return;
+            return false;
         }
 
         const auto* spx_entry = catalog.find_spx(table_id);
         if (!spx_entry) {
             std::cerr << "No .spx for table id=" << table_id << "\n";
-            return;
+            return false;
         }
         std::string spx_file = join_utf8_path(gdb_path, spx_entry->filename);
         GdbSpatialIndexParser spx_parser(spx_file);
         if (!spx_parser.parse()) {
             std::cerr << "Failed to parse .spx: " << spx_file << "\n";
-            return;
+            return false;
         }
 
         // Use query_bbox instead of iterating all_entries
@@ -660,59 +772,29 @@ static void cmd_query(const std::string& gdb_path, uint32_t table_id,
     } else if (query_type == "attr") {
         if (args.size() < 3) {
             std::cerr << "Need 3 args: index_name op value\n";
-            return;
+            return false;
         }
         std::string index_name = args[0];
         std::string op_str = args[1];
         std::string value_str = args[2];
 
-        auto op_map = [&](const std::string& s) {
-            if (s == "=") return AttrOp::Eq;
-            if (s == "!=") return AttrOp::Ne;
-            if (s == "<") return AttrOp::Lt;
-            if (s == "<=") return AttrOp::Le;
-            if (s == ">") return AttrOp::Gt;
-            if (s == ">=") return AttrOp::Ge;
-            return AttrOp::Eq;
-        };
-
-        // 先尝试按 table_id + index_name 查找
         const auto* atx_entry = catalog.find_atx(table_id, index_name);
-        // 如果找不到，尝试 find_all_atx 中匹配名称的
         if (!atx_entry) {
-            for (const auto* ae : catalog.find_all_atx(table_id)) {
-                std::string fn = ae->filename;
-                // 检查文件名是否包含 index_name
-                if (fn.find(index_name) != std::string::npos &&
-                    fn.size() > 4 && fn.substr(fn.size() - 4) == ".atx") {
-                    atx_entry = ae;
-                    break;
-                }
-            }
+            std::cerr << "No .atx for table id=" << table_id << " index=" << index_name << "\n";
+            return false;
         }
-        if (!atx_entry) {
-            std::cerr << "No .atx for table id=" << table_id
-                      << " index=" << index_name << "\n";
-            return;
+        const auto field_type = indexed_field_type(catalog, *atx_entry);
+        if (!field_type) {
+            std::cerr << "Indexed field type unavailable; use explicit query-atx for raw files\n";
+            return false;
         }
-
-        std::string atx_file = join_utf8_path(gdb_path, atx_entry->filename);
-        GdbAttributeIndexParser atx_parser(atx_file);
-        if (!atx_parser.parse()) {
-            std::cerr << "Failed to parse .atx: " << atx_file << "\n";
-            return;
-        }
-
-        const auto& tr = atx_parser.trailer();
-        if (tr.is_string) {
-            result_fids = atx_parser.query_string(value_str, op_map(op_str));
-        } else {
-            double value = std::stod(value_str);
-            result_fids = atx_parser.query_double(value, op_map(op_str));
-        }
+        if (!query_typed_atx(join_utf8_path(gdb_path, atx_entry->filename), *field_type,
+                             op_str, value_str, result_fids,
+                             static_cast<size_t>(std::min<RowSlot>(table_parser.feature_count(),
+                                 std::numeric_limits<size_t>::max())))) return false;
     } else {
         std::cerr << "Unknown query type: " << query_type << "\n";
-        return;
+        return false;
     }
 
     // 5. 打印结果
@@ -729,6 +811,7 @@ static void cmd_query(const std::string& gdb_path, uint32_t table_id,
                    static_cast<unsigned long long>(fid));
         }
     }
+    return true;
 }
 
 // ── bench-spatial: 空间查询性能基准测试 ──
@@ -832,7 +915,7 @@ static void cmd_bench_spatial(const std::string& gdb_path, uint32_t table_id) {
     printf("    Query(ms) = 纯索引查询时间（含 lower_bound + 范围内扫描）\n");
 }
 
-int main(int argc, char* argv[]) {
+static int run_cli(int argc, char* argv[]) {
     if (argc < 2) {
         print_usage(argv[0]);
         return 1;
@@ -864,16 +947,23 @@ int main(int argc, char* argv[]) {
                       std::stod(argv[5]), std::stod(argv[6]),
                       std::stod(argv[7]), std::stod(argv[8]));
     } else if (cmd == "query-atx") {
-        if (argc < 5) { std::cerr << "Usage: query-atx <atx_path> <op> <value>\n"; return 1; }
-        cmd_query_atx(argv[2], argv[3], argv[4]);
+        if (argc < 5 || argc > 6) { std::cerr << "Usage: query-atx <atx_path> <op> <value> [field_type]\n"; return 1; }
+        return cmd_query_atx(argv[2], argv[3], argv[4], argc > 5 ? argv[5] : "") ? 0 : 2;
     } else if (cmd == "query") {
         if (argc < 5) { std::cerr << "Usage: query <gdb_path> <table_id> <spatial|attr> <args...>\n"; return 1; }
         std::vector<std::string> args;
         for (int i = 5; i < argc; ++i) args.push_back(argv[i]);
-        cmd_query(argv[2], static_cast<uint32_t>(std::stoul(argv[3])), argv[4], args);
+        uint32_t table_id = 0;
+        const std::string id_text = argv[3];
+        const auto id = std::from_chars(id_text.data(), id_text.data() + id_text.size(), table_id);
+        if (id.ec != std::errc{} || id.ptr != id_text.data() + id_text.size()) {
+            std::cerr << "table_id must be an unsigned 32-bit integer\n";
+            return 2;
+        }
+        return cmd_query(argv[2], table_id, argv[4], args) ? 0 : 2;
     } else if (cmd == "dump-atx") {
-        if (argc < 3) { std::cerr << "Usage: dump-atx <atx_path>\n"; return 1; }
-        cmd_dump_atx(argv[2]);
+        if (argc < 3 || argc > 4) { std::cerr << "Usage: dump-atx <atx_path> [field_type]\n"; return 1; }
+        return cmd_dump_atx(argv[2], argc > 3 ? argv[3] : "") ? 0 : 2;
     } else if (cmd == "bench-spatial") {
         if (argc < 4) { std::cerr << "Usage: bench-spatial <gdb_path> <table_id>\n"; return 1; }
         cmd_bench_spatial(argv[2], static_cast<uint32_t>(std::stoul(argv[3])));
@@ -884,4 +974,13 @@ int main(int argc, char* argv[]) {
     }
 
     return 0;
+}
+
+int main(int argc, char* argv[]) {
+    try {
+        return run_cli(argc, argv);
+    } catch (const std::exception& error) {
+        std::cerr << "Command failed: " << error.what() << "\n";
+        return 2;
+    }
 }

@@ -190,6 +190,7 @@ bool GdbAttributeIndexParser::query_double_direct(
     size_t max_fid_count,
     std::vector<RowSlot>& result,
     AttributeIndexQueryMetrics* metrics) {
+    if (field_type_ == FieldType::Int64) return false;
     const std::string unused;
     return query_direct(value, 0, NumericQueryKind::Floating, unused, false, op,
                         max_fid_count, result, metrics);
@@ -309,8 +310,9 @@ bool GdbAttributeIndexParser::query_direct(
     if (!input) return false;
     trailer_.value_size = trailer_bytes[0];
     const uint8_t flags = trailer_bytes[1];
-    trailer_.is_string = (flags & 0x20U) != 0;
     trailer_.is_numeric = (flags & 0x40U) != 0;
+    // Floating/date keys use 0x60; their 0x20 bit does not imply UTF-16.
+    trailer_.is_string = !trailer_.is_numeric && (flags & 0x20U) != 0;
     trailer_.magic1 = read_u32(trailer_bytes + 2U);
     trailer_.tree_depth = read_u32(trailer_bytes + 6U);
     trailer_.total_value_count = version == 1U

@@ -196,6 +196,16 @@ ATX use is asserted separately; v9 metadata fallback is not counted as native.
 covers submillisecond key groups spanning two leaves, negative epochs, wide dates
 and invalid keys. See [date-index evidence](../docs/plan/evidence/2026-11-07-date-index.md).
 
+## CLI typed ATX regression
+
+With full tests and tools enabled, `full.cli.typed-atx` runs the actual CLI through
+`tools/ci/verify_typed_atx_cli.py`. It verifies automatic schema binding, explicit
+standalone types, exact INT64 boundaries, FLOAT32 overlapping flags, GUIDs,
+Unicode paths, nonzero error exits and unchanged input hashes. The fixed GDB
+manifest is a prerequisite. Modern historical Float32 commands run only when that
+fixture is configured; [evidence](../docs/plan/evidence/2026-11-07-cli-typed-atx.md)
+distinguishes those optional commands.
+
 ## Opt-in Reader contention benchmarks
 
 - `TablxCacheBenchmarkTest.SharedHitContentionProfile` measures concurrent cache

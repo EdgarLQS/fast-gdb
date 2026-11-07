@@ -71,7 +71,7 @@ std::string build_single_value_atx(const std::string& suffix,
 
     std::vector<uint8_t> trailer(GdbAttributeIndexParser::kTrailerSize, 0);
     trailer[0] = 8U;
-    trailer[1] = 0x40U;
+    trailer[1] = 0x60U;
     write_u32_le(trailer, 18U, 1U);
     write_u32_le(trailer, 2, 1U);
     write_u32_le(trailer, 6, 1U);
@@ -488,7 +488,7 @@ TEST(AttributeIndexSafetyTest, Float32SchemaSelectsFloatingPointKeys) {
     }
     const size_t trailer = GdbAttributeIndexParser::kPageSize;
     bytes[trailer] = 4;
-    bytes[trailer + 1] = 0x40;
+    bytes[trailer + 1] = 0x60;
     write_u32_le(bytes, trailer + 2, 1);
     write_u32_le(bytes, trailer + 6, 1);
     write_u32_le(bytes, trailer + 10, 4);
@@ -665,4 +665,27 @@ TEST(AttributeIndexSafetyTest, UuidAsciiKeysUseTypedCanonicalOrderAcrossPages) {
         EXPECT_EQ(unchanged, (std::vector<RowSlot>{99}));
         fs::remove(path);
     }
+}
+
+TEST(AttributeIndexSafetyTest, MaterializedInt64KeepsExactValuesForDiagnostics) {
+    const auto path = build_int64_values_atx("materialized_int64_exact");
+    GdbAttributeIndexParser parser(path, FieldType::Int64);
+    ASSERT_TRUE(parser.parse());
+    const int64_t values[] = {-9007199254740993LL, -9007199254740992LL,
+                              9007199254740992LL, 9007199254740993LL};
+    ASSERT_EQ(parser.all_entries().size(), 4U);
+    for (size_t i = 0; i < 4; ++i) {
+        EXPECT_EQ(parser.all_entries()[i].integer_value, values[i]);
+        EXPECT_EQ(parser.query_int64(values[i], AttrOp::Eq), (std::vector<RowSlot>{i}));
+    }
+    EXPECT_EQ(parser.query_int64(values[2], AttrOp::Lt), (std::vector<RowSlot>{0, 1}));
+    EXPECT_EQ(parser.query_int64(values[2], AttrOp::Le), (std::vector<RowSlot>{0, 1, 2}));
+    EXPECT_EQ(parser.query_int64(values[2], AttrOp::Gt), (std::vector<RowSlot>{3}));
+    EXPECT_EQ(parser.query_int64(values[2], AttrOp::Ge), (std::vector<RowSlot>{2, 3}));
+    EXPECT_EQ(parser.query_int64(values[2], AttrOp::Ne), (std::vector<RowSlot>{0, 1, 3}));
+    std::vector<RowSlot> unchanged{99};
+    EXPECT_FALSE(parser.query_double_direct(9007199254740992.0, AttrOp::Eq, 4, unchanged));
+    EXPECT_EQ(unchanged, (std::vector<RowSlot>{99}));
+    EXPECT_TRUE(parser.query_double(9007199254740992.0, AttrOp::Eq).empty());
+    fs::remove(path);
 }

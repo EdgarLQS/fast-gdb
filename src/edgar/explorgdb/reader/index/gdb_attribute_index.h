@@ -74,7 +74,9 @@ public:
      * @param op 比较操作。
      * @return 匹配的零基 FID 列表。
      */
+    // typed INT64 必须使用 query_int64；此接口不通过 double 查询 INT64。
     std::vector<RowSlot> query_double(double value, AttrOp op) const;
+    std::vector<RowSlot> query_int64(int64_t value, AttrOp op) const;
     /** 查询字符串属性索引。
      * @param value 比较值。
      * @param op 比较操作。

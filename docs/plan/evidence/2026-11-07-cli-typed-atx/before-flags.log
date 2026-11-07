@@ -1,0 +1,7 @@
+Traceback (most recent call last):
+  File "/src/tools/ci/verify_typed_atx_cli.py", line 134, in <module>
+    main()
+  File "/src/tools/ci/verify_typed_atx_cli.py", line 87, in main
+    assert 'value=1.5\n' in run('dump-atx', floating, 'float32')
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError

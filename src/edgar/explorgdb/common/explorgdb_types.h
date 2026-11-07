@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -355,7 +356,8 @@ struct SpatialIndexEntry {
 struct AttributeIndexEntry {
     ObjectId fid = 0;            // 索引中的 1-based ObjectID
     std::string string_value;    // 字符串值（非字符串类型为空）
-    double numeric_value = 0;    // 数值（NaN 表示字符串类型）
+    double numeric_value = 0;    // 数值（NaN 表示字符串类型）；INT64 的 double 仅为近似视图
+    std::optional<int64_t> integer_value; // typed INT64 的无损值
 };
 
 // ────────────────────────────────────────────────

@@ -626,6 +626,15 @@ if(BUILD_TESTING)
         set_tests_properties(
             full.fixture-manifest.acceptance-metadata
             PROPERTIES FIXTURES_SETUP fast_gdb_fixture_manifest)
+        if(FAST_GDB_BUILD_TOOLS)
+            add_test(NAME full.cli.typed-atx
+                COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/ci/verify_typed_atx_cli.py
+                    --cli $<TARGET_FILE:explorgdb_cli>
+                    --gdb ${CMAKE_CURRENT_SOURCE_DIR}/test_data/gdb/acceptance_metadata.gdb)
+            set_tests_properties(full.cli.typed-atx PROPERTIES
+                FIXTURES_REQUIRED fast_gdb_fixture_manifest)
+        endif()
     endif()
 endif()
 

@@ -1548,7 +1548,9 @@ TEST(RealDataReleaseContractTest, HistoricalDatePredicatesMatchIndependentRecord
             const bool spatial = std::any_of(rows.begin(), rows.end(),
                 [](const Row& row) { return row.spatial; });
             OGREnvelope extent;
-            if (spatial) ASSERT_EQ(source->GetExtent(&extent, TRUE), OGRERR_NONE);
+            if (spatial) {
+                ASSERT_EQ(source->GetExtent(&extent, TRUE), OGRERR_NONE);
+            }
             const char* symbols[] = {"=", "!=", "<", "<=", ">", ">="};
             for (int64_t probe : probes) {
                 for (size_t op = 0; op < 6; ++op) {
@@ -1660,7 +1662,9 @@ TEST(RealDataReleaseContractTest, HistoricalUuidPredicatesMatchIndependentRecord
             probes.erase(std::unique(probes.begin(), probes.end()), probes.end());
             std::sort(spatial_fids.begin(), spatial_fids.end());
             OGREnvelope extent;
-            if (!spatial_fids.empty()) ASSERT_EQ(source->GetExtent(&extent, TRUE), OGRERR_NONE);
+            if (!spatial_fids.empty()) {
+                ASSERT_EQ(source->GetExtent(&extent, TRUE), OGRERR_NONE);
+            }
             const auto index = std::find_if(indexes.begin(), indexes.end(), [&](const IndexEntry& entry) {
                 return GdbIndexesParser::is_direct_field_expression(entry.column_name) &&
                     GdbIndexesParser::field_name_from_expression(entry.column_name) == field.name &&

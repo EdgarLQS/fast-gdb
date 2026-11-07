@@ -275,3 +275,7 @@ FAST_GDB_CURVE_DATASET="$PWD/test_data/gdb/参数化数据_liqs.gdb" \
 ### 2026-11-07：GUID 原生 ATX 与联合查询
 
 GUID/GlobalID 根据字段类型解析 38 字节规范 ASCII 键，支持物化、分页和六运算符联合查询；损坏时回退顺序值比较。现代参考库 36 次直接、36 次原生联合查询通过，三库 UUID WHERE/联合完整 FID 集合一致；v9 元数据仍未支持。另有 v1/v2 高位 FID 合成页和明确合成索引的 GDAL GUID 表补充，未当作 ArcGIS 索引验收。Release 597 PASS / 19 SKIP / 0 FAIL，GDAL-free ASan/UBSan/LSan 416 PASS / 5 SKIP / 0 FAIL，macOS 专项 46/46。见 [提交、来源、证据和剩余项](evidence/2026-11-07-guid-native.md)。CLI 旧入口类型传递、v9、大型多值 ArcGIS GUID 索引和原计划平台/语料门禁仍待完成。
+
+### 2026-11-07：CLI 类型贯通与数值物化
+
+CLI 自动绑定源字段类型、独立 ATX 接受显式类型、INT64 精确解析和 dump；错误输入返回非零状态。修复浮点/日期 0x60 标志被物化为字符串的问题，INT64 条目新增无损整数视图。Linux 57 / macOS 54 个真实 CLI 进程检查通过，固定样本 111 文件哈希不变；最新 Release 599 PASS / 19 SKIP / 0 FAIL，GDAL-free ASan/UBSan/LSan 417 PASS / 5 SKIP / 0 FAIL。见 [提交范围、兼容性和证据](evidence/2026-11-07-cli-typed-atx.md) 及 [使用说明](../tutorial/02_只读CLI属性索引.md)。继续核对 Unicode/空格与非法索引值；旧格式、ArcGIS 真实语料和 Windows 等门禁保持未完成。

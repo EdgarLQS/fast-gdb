@@ -1,0 +1,4 @@
+=== Attribute Query: /tmp/gdal-historical/testopenfilegdb.gdb/a0000000a.idx_float.atx ===
+Operator: =, Value: 1.5
+Matched FIDs: 0
+Failed to parse: /tmp/gdal-historical/testopenfilegdb.gdb/a0000000a.idx_guid.atx
