@@ -345,6 +345,12 @@ non-finite public-request errors. See [evidence and remaining integrity checks](
 
 ## Bound attribute integrity and incomplete source rows
 
+`SpatialSourceIndexTest` verifies pinned-handle v1/v2 leaf I/O, wrong physical
+keys, missing/duplicate FIDs, callback failure, snapshot changes and candidate
+budget rejection without publishing partial output. Source bounds are synthetic
+callbacks; actual GDB/QueryEngine integration remains pending.
+See [I/O adapter scope](../docs/plan/evidence/2026-11-08-spx-source-index-io.md).
+
 `SpatialSourceDirectoryTest` exercises the bounded source-bounds directory core:
 random-window candidate coverage, sparse/deleted slots, duplicate versus missing
 FIDs, NULL/Empty, resource rejection and immutable publication. It is not yet a

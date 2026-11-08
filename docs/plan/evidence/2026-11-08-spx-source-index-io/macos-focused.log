@@ -1,0 +1,38 @@
+Note: Google Test filter = SpatialSourceIndexTest.*:SpatialSourceDirectoryTest.*
+[==========] Running 13 tests from 2 test suites.
+[----------] Global test environment set-up.
+[----------] 8 tests from SpatialSourceDirectoryTest
+[ RUN      ] SpatialSourceDirectoryTest.EveryIntersectingSourceIsCoveredByASelectedLeaf
+[       OK ] SpatialSourceDirectoryTest.EveryIntersectingSourceIsCoveredByASelectedLeaf (0 ms)
+[ RUN      ] SpatialSourceDirectoryTest.DuplicateFidsCannotHideMissingNonemptySource
+[       OK ] SpatialSourceDirectoryTest.DuplicateFidsCannotHideMissingNonemptySource (0 ms)
+[ RUN      ] SpatialSourceDirectoryTest.OverlappingXIntervalsKeepEarlierWideLeafAndPruneOthers
+[       OK ] SpatialSourceDirectoryTest.OverlappingXIntervalsKeepEarlierWideLeafAndPruneOthers (0 ms)
+[ RUN      ] SpatialSourceDirectoryTest.NullEntriesCannotProveCoverageForNonemptySource
+[       OK ] SpatialSourceDirectoryTest.NullEntriesCannotProveCoverageForNonemptySource (0 ms)
+[ RUN      ] SpatialSourceDirectoryTest.NullEmptyAndDuplicateGridEntriesRetainValidCoverage
+[       OK ] SpatialSourceDirectoryTest.NullEmptyAndDuplicateGridEntriesRetainValidCoverage (0 ms)
+[ RUN      ] SpatialSourceDirectoryTest.DeletedSlotsShortScansAndWrongTotalsNeverPublish
+[       OK ] SpatialSourceDirectoryTest.DeletedSlotsShortScansAndWrongTotalsNeverPublish (0 ms)
+[ RUN      ] SpatialSourceDirectoryTest.InvalidReferencesAndNonfiniteBoundsFailClosed
+[       OK ] SpatialSourceDirectoryTest.InvalidReferencesAndNonfiniteBoundsFailClosed (0 ms)
+[ RUN      ] SpatialSourceDirectoryTest.ResourceLimitsRejectBeforeLargeAllocations
+[       OK ] SpatialSourceDirectoryTest.ResourceLimitsRejectBeforeLargeAllocations (0 ms)
+[----------] 8 tests from SpatialSourceDirectoryTest (0 ms total)
+
+[----------] 5 tests from SpatialSourceIndexTest
+[ RUN      ] SpatialSourceIndexTest.SourceBoundsRecoverCandidatesDespiteWrongGridKeysAndSeparators
+[       OK ] SpatialSourceIndexTest.SourceBoundsRecoverCandidatesDespiteWrongGridKeysAndSeparators (0 ms)
+[ RUN      ] SpatialSourceIndexTest.MissingDuplicateOutOfRangeAndCyclicEntriesNeverPublish
+[       OK ] SpatialSourceIndexTest.MissingDuplicateOutOfRangeAndCyclicEntriesNeverPublish (2 ms)
+[ RUN      ] SpatialSourceIndexTest.CallbackMismatchFailureAndSourceChangeNeverPublish
+[       OK ] SpatialSourceIndexTest.CallbackMismatchFailureAndSourceChangeNeverPublish (0 ms)
+[ RUN      ] SpatialSourceIndexTest.CandidateBudgetAndChangedSourcePreserveCallerOutput
+[       OK ] SpatialSourceIndexTest.CandidateBudgetAndChangedSourcePreserveCallerOutput (0 ms)
+[ RUN      ] SpatialSourceIndexTest.IndexChangeDuringSourceReadRejectsProof
+[       OK ] SpatialSourceIndexTest.IndexChangeDuringSourceReadRejectsProof (0 ms)
+[----------] 5 tests from SpatialSourceIndexTest (5 ms total)
+
+[----------] Global test environment tear-down
+[==========] 13 tests from 2 test suites ran. (5 ms total)
+[  PASSED  ] 13 tests.

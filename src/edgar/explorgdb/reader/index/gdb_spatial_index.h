@@ -24,6 +24,7 @@
 #include <vector>
 
 namespace explorgdb {
+namespace detail { class SpatialSourceIndex; }
 
 class GdbSpatialIndexParser {
 public:
@@ -86,6 +87,7 @@ public:
         bool* query_succeeded = nullptr) const;
 
 private:
+    friend class detail::SpatialSourceIndex;
     // 解析版本相关的 trailer
     bool parse_trailer();
 
