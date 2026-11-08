@@ -270,8 +270,16 @@ std::vector<ObjectId> GdbAttributeIndexParser::parse_nonleaf_page(
     if (capacity == 0U || subpage_count > capacity)
         throw std::out_of_range("attribute index child count");
 
-    std::vector<ObjectId> page_ids(subpage_count);
-    for (uint32_t index = 0; index < subpage_count; ++index)
+    const ObjectId last_child = [&] {
+        BinaryReader tail(file_data_.data() + page_offset + header_size +
+            static_cast<size_t>(subpage_count) * trailer_.object_id_size, trailer_.object_id_size);
+        return read_object_id(tail, trailer_.object_id_size);
+    }();
+    if (subpage_count > 1 && last_child == 0)
+        throw std::out_of_range("missing final attribute index child");
+    const size_t child_count = subpage_count + (last_child != 0 ? 1U : 0U);
+    std::vector<ObjectId> page_ids(child_count);
+    for (uint32_t index = 0; index < child_count; ++index)
         page_ids[index] = read_object_id(reader, trailer_.object_id_size);
 
     const size_t values_offset = leaf_header_size(trailer_.version) +

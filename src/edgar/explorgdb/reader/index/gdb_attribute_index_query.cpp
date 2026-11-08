@@ -529,9 +529,13 @@ bool GdbAttributeIndexParser::query_direct(
             return false;
         }
 
+        const ObjectId last_child = read_object_id(page + nonleaf_header +
+            static_cast<size_t>(entry_count) * trailer_.object_id_size, trailer_.object_id_size);
+        if (entry_count > 1 && last_child == 0) return false;
+        const uint32_t child_count = entry_count + (last_child != 0 ? 1U : 0U);
         uint32_t child_index = 0U;
         if (descend_to_lower_bound) {
-            child_index = entry_count - 1U;
+            child_index = child_count - 1U;
             for (uint32_t index = 0U; index < entry_count; ++index) {
                 const uint8_t* separator = page + values_offset +
                     static_cast<size_t>(index) * trailer_.value_size;
@@ -555,7 +559,7 @@ bool GdbAttributeIndexParser::query_direct(
             }
         }
         if (child_index != 0U) starts_at_leftmost = false;
-        for (uint32_t index = 0U; index < entry_count; ++index) {
+        for (uint32_t index = 0U; index < child_count; ++index) {
             const ObjectId child = read_object_id(
                 page + nonleaf_header +
                     static_cast<size_t>(index) * trailer_.object_id_size,

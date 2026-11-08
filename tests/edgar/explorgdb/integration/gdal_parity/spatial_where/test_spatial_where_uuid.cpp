@@ -120,7 +120,7 @@ protected:
                 [](unsigned char ch) { return static_cast<char>(std::toupper(ch)); });
             std::memcpy(bytes.data() + offset, key.data(), 38);
         };
-        u32(4, static_cast<uint32_t>(leaf_count));
+        u32(4, static_cast<uint32_t>(leaf_count == 1 ? 1 : leaf_count - 1));
         for (size_t leaf = 0; leaf < leaf_count; ++leaf) {
             const size_t begin = leaf * capacity;
             const size_t count = std::min(capacity, ordered.size() - begin);

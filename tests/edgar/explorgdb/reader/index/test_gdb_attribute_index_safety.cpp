@@ -127,7 +127,7 @@ std::string build_two_leaf_numeric_atx(const std::string& suffix,
     constexpr size_t kValuesOffset = 12U + kNumericCapacity * 4U;
 
     std::vector<uint8_t> root(kPageSize, 0U);
-    write_u32_le(root, 4U, 2U);
+    write_u32_le(root, 4U, 1U);
     write_u32_le(root, 8U, 2U);
     write_u32_le(root, 12U, corrupt_child ? 99U : 3U);
     const double separators[] = {3.0, 6.0};
@@ -590,11 +590,10 @@ TEST(AttributeIndexSafetyTest, UuidAsciiKeysUseTypedCanonicalOrderAcrossPages) {
             if (version == 1) write_u32_le(bytes, offset, static_cast<uint32_t>(value));
             else write_u64_le(bytes, offset, value);
         };
-        write_u32_le(bytes, oid_size, 2);
+        write_u32_le(bytes, oid_size, 1);
         write_oid(branch_header, 2);
         write_oid(branch_header + oid_size, 3);
         std::memcpy(bytes.data() + values_offset, keys[2].data(), 38);
-        std::memcpy(bytes.data() + values_offset + 38, keys[5].data(), 38);
         write_oid(page_size, 3);
         for (size_t leaf = 0; leaf < 2; ++leaf) {
             const size_t offset = (leaf + 1) * page_size;

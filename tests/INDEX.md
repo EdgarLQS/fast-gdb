@@ -345,6 +345,10 @@ non-finite public-request errors. See [evidence and remaining integrity checks](
 
 ## Bound attribute integrity and incomplete source rows
 
+The native GDAL numeric directory scale fixture checks maximum-key raw ATX
+queries (`=`, `>=`, `>`) visit at most one page per tree level, including the final
+child beyond all separators. See [last-child layout evidence](../docs/plan/evidence/2026-11-08-atx-last-child.md).
+
 `GeometryLengthConformance.OverflowingVaruintCannotWrapIntoEmptyGeometry` rejects
 tenth-byte overflow in mapped field and geometry scans, consistent with canonical
 record reads. See [scan length boundaries](../docs/plan/evidence/2026-11-08-scan-varuint.md).

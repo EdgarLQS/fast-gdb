@@ -390,7 +390,10 @@ bool query_validated_attribute_directory(const std::string& path, const TablxCac
                 const auto count = integer(page.data() + oid_size, 4);
                 if (!count || count > capacity) return false;
                 const size_t nonleaf_header = trailer.version == 1 ? 8 : 12;
-                for (size_t i = 0; i < count; ++i) {
+                const auto last_child = integer(page.data() + nonleaf_header + count * oid_size, oid_size);
+                if (count > 1 && last_child == 0) return false;
+                const size_t children = count + (last_child != 0 ? 1U : 0U);
+                for (size_t i = 0; i < children; ++i) {
                     const auto child = integer(page.data() + nonleaf_header + i * oid_size, oid_size);
                     if (!child || child > page_count) return false;
                 }

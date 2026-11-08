@@ -657,6 +657,15 @@ TEST_F(SpatialWhereIndexFallbackTest, ValidatedNumericDirectoryReportsColdProofA
     const auto* atx = catalog.find_atx(table->id, "value_idx");
     ASSERT_NE(atx, nullptr);
     GdbAttributeIndexParser baseline_index(path + "/" + atx->filename, FieldType::Float64);
+    const auto maximum = *std::max_element(oracle.begin(), oracle.end(),
+        [](const auto& a, const auto& b) { return a.second < b.second; });
+    for (auto op : {AttrOp::Eq, AttrOp::Ge, AttrOp::Gt}) {
+        std::vector<RowSlot> last_rows;
+        AttributeIndexQueryMetrics last_metrics;
+        ASSERT_TRUE(baseline_index.query_double_direct(maximum.second, op, rows, last_rows, &last_metrics));
+        EXPECT_EQ(last_rows, op == AttrOp::Gt ? std::vector<RowSlot>{} : std::vector<RowSlot>{maximum.first});
+        EXPECT_LE(last_metrics.pages_visited, baseline_index.trailer().tree_depth);
+    }
     GdbTableParser baseline_table(table->table_path);
     ASSERT_TRUE(baseline_table.open());
     ASSERT_TRUE(baseline_table.load_tablx(table->tablx_path));

@@ -1,0 +1,25 @@
+Note: Google Test filter = SpatialWhereIndexFallbackTest.ValidatedNumericDirectoryReportsColdProofAndWarmQueries
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from SpatialWhereIndexFallbackTest
+[ RUN      ] SpatialWhereIndexFallbackTest.ValidatedNumericDirectoryReportsColdProofAndWarmQueries
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_index_fallback.cpp:667: Failure
+Expected: (last_metrics.pages_visited) <= (baseline_index.trailer().tree_depth), actual: 3 vs 2
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_index_fallback.cpp:667: Failure
+Expected: (last_metrics.pages_visited) <= (baseline_index.trailer().tree_depth), actual: 3 vs 2
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_index_fallback.cpp:667: Failure
+Expected: (last_metrics.pages_visited) <= (baseline_index.trailer().tree_depth), actual: 3 vs 2
+
+[numeric-directory] rows=10000 nonnull=9896 cold_ms=1.22329 validation_ms=1.11233 validation_rows=19896 cold_pages=31 cache_bytes=3904 warm_queries=63 warm_pages=63 warm_keys=1133 warm_median_ms=0.1275 warm_p95_ms=0.137667 warm_p99_ms=0.146459 baseline_pages=126 baseline_keys=11007 baseline_median_ms=0.035625 baseline_p95_ms=0.040458 baseline_p99_ms=0.067084
+[  FAILED  ] SpatialWhereIndexFallbackTest.ValidatedNumericDirectoryReportsColdProofAndWarmQueries (67 ms)
+[----------] 1 test from SpatialWhereIndexFallbackTest (67 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (67 ms total)
+[  PASSED  ] 0 tests.
+[  FAILED  ] 1 test, listed below:
+[  FAILED  ] SpatialWhereIndexFallbackTest.ValidatedNumericDirectoryReportsColdProofAndWarmQueries
+
+ 1 FAILED TEST
