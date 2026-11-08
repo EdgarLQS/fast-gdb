@@ -1,0 +1,36 @@
+Note: Google Test filter = GdbIndexesTest.*:GdbIndexesExpressionTest.*:CatalogIndexMetadataCacheTest.*
+[==========] Running 12 tests from 2 test suites.
+[----------] Global test environment set-up.
+[----------] 8 tests from GdbIndexesTest
+[ RUN      ] GdbIndexesTest.SystemCatalogIndexes
+[       OK ] GdbIndexesTest.SystemCatalogIndexes (0 ms)
+[ RUN      ] GdbIndexesTest.InvalidFile
+[       OK ] GdbIndexesTest.InvalidFile (0 ms)
+[ RUN      ] GdbIndexesTest.IndexCount
+[       OK ] GdbIndexesTest.IndexCount (0 ms)
+[ RUN      ] GdbIndexesTest.IndexNamesNotEmpty
+[       OK ] GdbIndexesTest.IndexNamesNotEmpty (0 ms)
+[ RUN      ] GdbIndexesTest.KnownMagicTuples
+[       OK ] GdbIndexesTest.KnownMagicTuples (0 ms)
+[ RUN      ] GdbIndexesTest.Magic5Present
+[       OK ] GdbIndexesTest.Magic5Present (0 ms)
+[ RUN      ] GdbIndexesTest.SomeColumnNamesPresent
+[       OK ] GdbIndexesTest.SomeColumnNamesPresent (0 ms)
+[ RUN      ] GdbIndexesTest.AllIndexesParseWithoutCrash
+[       OK ] GdbIndexesTest.AllIndexesParseWithoutCrash (0 ms)
+[----------] 8 tests from GdbIndexesTest (2 ms total)
+
+[----------] 4 tests from GdbIndexesExpressionTest
+[ RUN      ] GdbIndexesExpressionTest.DirectFieldRemainsDirect
+[       OK ] GdbIndexesExpressionTest.DirectFieldRemainsDirect (0 ms)
+[ RUN      ] GdbIndexesExpressionTest.LowerExpressionMapsFieldButIsNotDirect
+[       OK ] GdbIndexesExpressionTest.LowerExpressionMapsFieldButIsNotDirect (0 ms)
+[ RUN      ] GdbIndexesExpressionTest.UnknownFunctionsAreNotDirect
+[       OK ] GdbIndexesExpressionTest.UnknownFunctionsAreNotDirect (0 ms)
+[ RUN      ] GdbIndexesExpressionTest.FailedReadCannotExposeStaleOrPartialMetadata
+[       OK ] GdbIndexesExpressionTest.FailedReadCannotExposeStaleOrPartialMetadata (0 ms)
+[----------] 4 tests from GdbIndexesExpressionTest (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 12 tests from 2 test suites ran. (3 ms total)
+[  PASSED  ] 12 tests.

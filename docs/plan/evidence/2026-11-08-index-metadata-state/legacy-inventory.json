@@ -1,0 +1,380 @@
+[
+  {
+    "dataset": "testopenfilegdb92.gdb",
+    "file": "a00000001.gdbindexes",
+    "size": 191,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "5a86ce91c9c9d77feddcbe4ba87eb09c605a6080cccfd5617b86c878854800b4"
+  },
+  {
+    "dataset": "testopenfilegdb92.gdb",
+    "file": "a00000003.gdbindexes",
+    "size": 191,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "5a86ce91c9c9d77feddcbe4ba87eb09c605a6080cccfd5617b86c878854800b4"
+  },
+  {
+    "dataset": "testopenfilegdb92.gdb",
+    "file": "a00000005.gdbindexes",
+    "size": 191,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "5a86ce91c9c9d77feddcbe4ba87eb09c605a6080cccfd5617b86c878854800b4"
+  },
+  {
+    "dataset": "testopenfilegdb92.gdb",
+    "file": "a00000006.gdbindexes",
+    "size": 191,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "5a86ce91c9c9d77feddcbe4ba87eb09c605a6080cccfd5617b86c878854800b4"
+  },
+  {
+    "dataset": "testopenfilegdb92.gdb",
+    "file": "a0000001c.gdbindexes",
+    "size": 191,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "5a86ce91c9c9d77feddcbe4ba87eb09c605a6080cccfd5617b86c878854800b4"
+  },
+  {
+    "dataset": "testopenfilegdb92.gdb",
+    "file": "a00000025.gdbindexes",
+    "size": 432,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "ff15662a11b2c7a9948ac649d55a4b96816afc28f75e51c3cb7b451d066d8c9a"
+  },
+  {
+    "dataset": "testopenfilegdb92.gdb",
+    "file": "a00000026.gdbindexes",
+    "size": 444,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "f634409f6d1c80f50d113ce86142105002baccaaa64ce0e1fc44b64f12c1db96"
+  },
+  {
+    "dataset": "testopenfilegdb92.gdb",
+    "file": "a00000027.gdbindexes",
+    "size": 251,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "00a5a480322d4686ec58160ce75fb37737e8893593a0a08ead53fc5e5022671a"
+  },
+  {
+    "dataset": "testopenfilegdb92.gdb",
+    "file": "a00000028.gdbindexes",
+    "size": 2531,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "bf547760d3c2e6de1668d4881e60faf55da6ab4fbf0d21a3e73b82e43c65244f"
+  },
+  {
+    "dataset": "testopenfilegdb92.gdb",
+    "file": "a00000029.gdbindexes",
+    "size": 764,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "d94344a62997c73b414f94bc49a55ee3ef9de6fd0972772d7034c927f3c7e13b"
+  },
+  {
+    "dataset": "testopenfilegdb92.gdb",
+    "file": "a0000002a.gdbindexes",
+    "size": 764,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "97bc4d21fc940a81973aa0d06d2e3b0a6ec4993b8687e77b40cb933fc009bbd4"
+  },
+  {
+    "dataset": "testopenfilegdb92.gdb",
+    "file": "a0000002b.gdbindexes",
+    "size": 764,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "97bc4d21fc940a81973aa0d06d2e3b0a6ec4993b8687e77b40cb933fc009bbd4"
+  },
+  {
+    "dataset": "testopenfilegdb92.gdb",
+    "file": "a0000002c.gdbindexes",
+    "size": 764,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "96bae0d1159521d33359304d2544425c260ae47554a674ecf15d0e2337360560"
+  },
+  {
+    "dataset": "testopenfilegdb92.gdb",
+    "file": "a0000002d.gdbindexes",
+    "size": 764,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "85ca8a1ddd4ca2e6c8d52cdf94aa844d8324ed6ce8fa8e5742527d45e15e4d92"
+  },
+  {
+    "dataset": "testopenfilegdb92.gdb",
+    "file": "a0000002e.gdbindexes",
+    "size": 764,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "dcc1dc663fe9346e170e0517db50c0e246a8396a85a0487528ff909758272269"
+  },
+  {
+    "dataset": "testopenfilegdb92.gdb",
+    "file": "a0000002f.gdbindexes",
+    "size": 764,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "4817b87574edc73390da5e18ac5395d99edcb6c78810dfcbb42677ccaaef3bde"
+  },
+  {
+    "dataset": "testopenfilegdb92.gdb",
+    "file": "a00000030.gdbindexes",
+    "size": 764,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "0a12a09b0a96bd05c5ef3e2a0f938d67a20c1bcfa56845b918e84aff4771f27e"
+  },
+  {
+    "dataset": "testopenfilegdb92.gdb",
+    "file": "a00000031.gdbindexes",
+    "size": 764,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "0a12a09b0a96bd05c5ef3e2a0f938d67a20c1bcfa56845b918e84aff4771f27e"
+  },
+  {
+    "dataset": "testopenfilegdb92.gdb",
+    "file": "a00000032.gdbindexes",
+    "size": 764,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "ba21c6e19cbe4c78cd51d6fad99613a8fe5b0a95957881b04ff3934d40690ced"
+  },
+  {
+    "dataset": "testopenfilegdb92.gdb",
+    "file": "a00000033.gdbindexes",
+    "size": 764,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "ba21c6e19cbe4c78cd51d6fad99613a8fe5b0a95957881b04ff3934d40690ced"
+  },
+  {
+    "dataset": "testopenfilegdb92.gdb",
+    "file": "a00000034.gdbindexes",
+    "size": 764,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "11ab631020cfd6ffd5d3d3045fc46f4c181825313bac561199a79bb4099bdb7e"
+  },
+  {
+    "dataset": "testopenfilegdb92.gdb",
+    "file": "a00000035.gdbindexes",
+    "size": 764,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "b22d76b6047c4d8bba8490342da3f7cf60920d681a670a3d1cf82b53f1c4d4e1"
+  },
+  {
+    "dataset": "testopenfilegdb92.gdb",
+    "file": "a00000036.gdbindexes",
+    "size": 764,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "b22d76b6047c4d8bba8490342da3f7cf60920d681a670a3d1cf82b53f1c4d4e1"
+  },
+  {
+    "dataset": "testopenfilegdb92.gdb",
+    "file": "a00000037.gdbindexes",
+    "size": 764,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "d8592c0c00be3ac9793acc68c412e9e4a60c186be4a09a3b7e3bb652b2111db8"
+  },
+  {
+    "dataset": "testopenfilegdb92.gdb",
+    "file": "a00000038.gdbindexes",
+    "size": 620,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "351b9cab77bd76e322c56ccfd5388afee5918b2353351ec96c69bbfca7e7c92e"
+  },
+  {
+    "dataset": "testopenfilegdb92.gdb",
+    "file": "a00000039.gdbindexes",
+    "size": 620,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "14b9f366129e59733b0232ac5e594a7499c62e535e02ad7c8d371223a3345d7a"
+  },
+  {
+    "dataset": "testopenfilegdb92.gdb",
+    "file": "a0000003a.gdbindexes",
+    "size": 620,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "505eab3ad6b727f3208a0f05b48be095141dc66218a565e7e2b60d7687652ad1"
+  },
+  {
+    "dataset": "testopenfilegdb93.gdb",
+    "file": "a00000001.gdbindexes",
+    "size": 191,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "5a86ce91c9c9d77feddcbe4ba87eb09c605a6080cccfd5617b86c878854800b4"
+  },
+  {
+    "dataset": "testopenfilegdb93.gdb",
+    "file": "a00000003.gdbindexes",
+    "size": 191,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "5a86ce91c9c9d77feddcbe4ba87eb09c605a6080cccfd5617b86c878854800b4"
+  },
+  {
+    "dataset": "testopenfilegdb93.gdb",
+    "file": "a00000005.gdbindexes",
+    "size": 191,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "5a86ce91c9c9d77feddcbe4ba87eb09c605a6080cccfd5617b86c878854800b4"
+  },
+  {
+    "dataset": "testopenfilegdb93.gdb",
+    "file": "a00000006.gdbindexes",
+    "size": 191,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "5a86ce91c9c9d77feddcbe4ba87eb09c605a6080cccfd5617b86c878854800b4"
+  },
+  {
+    "dataset": "testopenfilegdb93.gdb",
+    "file": "a0000001c.gdbindexes",
+    "size": 191,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "5a86ce91c9c9d77feddcbe4ba87eb09c605a6080cccfd5617b86c878854800b4"
+  },
+  {
+    "dataset": "testopenfilegdb93.gdb",
+    "file": "a00000026.gdbindexes",
+    "size": 432,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "ff15662a11b2c7a9948ac649d55a4b96816afc28f75e51c3cb7b451d066d8c9a"
+  },
+  {
+    "dataset": "testopenfilegdb93.gdb",
+    "file": "a00000027.gdbindexes",
+    "size": 444,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "f634409f6d1c80f50d113ce86142105002baccaaa64ce0e1fc44b64f12c1db96"
+  },
+  {
+    "dataset": "testopenfilegdb93.gdb",
+    "file": "a00000028.gdbindexes",
+    "size": 251,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "00a5a480322d4686ec58160ce75fb37737e8893593a0a08ead53fc5e5022671a"
+  },
+  {
+    "dataset": "testopenfilegdb93.gdb",
+    "file": "a00000029.gdbindexes",
+    "size": 2531,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "bf547760d3c2e6de1668d4881e60faf55da6ab4fbf0d21a3e73b82e43c65244f"
+  },
+  {
+    "dataset": "testopenfilegdb93.gdb",
+    "file": "a0000002a.gdbindexes",
+    "size": 764,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "d94344a62997c73b414f94bc49a55ee3ef9de6fd0972772d7034c927f3c7e13b"
+  },
+  {
+    "dataset": "testopenfilegdb93.gdb",
+    "file": "a0000002b.gdbindexes",
+    "size": 764,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "97bc4d21fc940a81973aa0d06d2e3b0a6ec4993b8687e77b40cb933fc009bbd4"
+  },
+  {
+    "dataset": "testopenfilegdb93.gdb",
+    "file": "a0000002c.gdbindexes",
+    "size": 764,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "97bc4d21fc940a81973aa0d06d2e3b0a6ec4993b8687e77b40cb933fc009bbd4"
+  },
+  {
+    "dataset": "testopenfilegdb93.gdb",
+    "file": "a0000002d.gdbindexes",
+    "size": 764,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "96bae0d1159521d33359304d2544425c260ae47554a674ecf15d0e2337360560"
+  },
+  {
+    "dataset": "testopenfilegdb93.gdb",
+    "file": "a0000002e.gdbindexes",
+    "size": 764,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "85ca8a1ddd4ca2e6c8d52cdf94aa844d8324ed6ce8fa8e5742527d45e15e4d92"
+  },
+  {
+    "dataset": "testopenfilegdb93.gdb",
+    "file": "a0000002f.gdbindexes",
+    "size": 764,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "dcc1dc663fe9346e170e0517db50c0e246a8396a85a0487528ff909758272269"
+  },
+  {
+    "dataset": "testopenfilegdb93.gdb",
+    "file": "a00000030.gdbindexes",
+    "size": 764,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "4817b87574edc73390da5e18ac5395d99edcb6c78810dfcbb42677ccaaef3bde"
+  },
+  {
+    "dataset": "testopenfilegdb93.gdb",
+    "file": "a00000031.gdbindexes",
+    "size": 764,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "0a12a09b0a96bd05c5ef3e2a0f938d67a20c1bcfa56845b918e84aff4771f27e"
+  },
+  {
+    "dataset": "testopenfilegdb93.gdb",
+    "file": "a00000032.gdbindexes",
+    "size": 764,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "0a12a09b0a96bd05c5ef3e2a0f938d67a20c1bcfa56845b918e84aff4771f27e"
+  },
+  {
+    "dataset": "testopenfilegdb93.gdb",
+    "file": "a00000033.gdbindexes",
+    "size": 764,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "ba21c6e19cbe4c78cd51d6fad99613a8fe5b0a95957881b04ff3934d40690ced"
+  },
+  {
+    "dataset": "testopenfilegdb93.gdb",
+    "file": "a00000034.gdbindexes",
+    "size": 764,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "ba21c6e19cbe4c78cd51d6fad99613a8fe5b0a95957881b04ff3934d40690ced"
+  },
+  {
+    "dataset": "testopenfilegdb93.gdb",
+    "file": "a00000035.gdbindexes",
+    "size": 764,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "11ab631020cfd6ffd5d3d3045fc46f4c181825313bac561199a79bb4099bdb7e"
+  },
+  {
+    "dataset": "testopenfilegdb93.gdb",
+    "file": "a00000036.gdbindexes",
+    "size": 764,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "b22d76b6047c4d8bba8490342da3f7cf60920d681a670a3d1cf82b53f1c4d4e1"
+  },
+  {
+    "dataset": "testopenfilegdb93.gdb",
+    "file": "a00000037.gdbindexes",
+    "size": 764,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "b22d76b6047c4d8bba8490342da3f7cf60920d681a670a3d1cf82b53f1c4d4e1"
+  },
+  {
+    "dataset": "testopenfilegdb93.gdb",
+    "file": "a00000038.gdbindexes",
+    "size": 764,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "d8592c0c00be3ac9793acc68c412e9e4a60c186be4a09a3b7e3bb652b2111db8"
+  },
+  {
+    "dataset": "testopenfilegdb93.gdb",
+    "file": "a00000039.gdbindexes",
+    "size": 620,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "351b9cab77bd76e322c56ccfd5388afee5918b2353351ec96c69bbfca7e7c92e"
+  },
+  {
+    "dataset": "testopenfilegdb93.gdb",
+    "file": "a0000003a.gdbindexes",
+    "size": 620,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "14b9f366129e59733b0232ac5e594a7499c62e535e02ad7c8d371223a3345d7a"
+  },
+  {
+    "dataset": "testopenfilegdb93.gdb",
+    "file": "a0000003b.gdbindexes",
+    "size": 620,
+    "first16": "13988503a54dd11188240000f877762d",
+    "sha256": "505eab3ad6b727f3208a0f05b48be095141dc66218a565e7e2b60d7687652ad1"
+  }
+]

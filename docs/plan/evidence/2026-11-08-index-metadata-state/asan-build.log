@@ -1,0 +1,7 @@
+[1/7] Building CXX object CMakeFiles/explorgdb_reader_lib.dir/src/edgar/explorgdb/reader/index/gdb_indexes.cpp.o
+[2/7] Linking CXX static library libexplorgdb_reader_lib.a
+[3/7] Linking CXX shared library libfast_gdb_runtime.so.0.2.0
+[4/7] Creating library symlink libfast_gdb_runtime.so.0 libfast_gdb_runtime.so
+[5/7] Building CXX object CMakeFiles/gdb_tutorial_test_runner.dir/tests/edgar/explorgdb/reader/index/test_gdbindexes_expression.cpp.o
+[6/7] Linking CXX executable bin/fast_gdb_unified_test_runner
+[7/7] Linking CXX executable bin/gdb_tutorial_test_runner

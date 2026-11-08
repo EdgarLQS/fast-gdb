@@ -345,6 +345,10 @@ non-finite public-request errors. See [evidence and remaining integrity checks](
 
 ## Bound attribute integrity and incomplete source rows
 
+`GdbIndexesExpressionTest.FailedReadCannotExposeStaleOrPartialMetadata` covers
+reusing a successful parser after file removal, a later negative name length,
+and a truncated later string. See [metadata publication evidence](../docs/plan/evidence/2026-11-08-index-metadata-state.md).
+
 Current GDAL-free ASan/UBSan/LSan verification through `becba74`: 436 PASS,
 5 SKIP, no failures. The native GDAL fixture tests are outside this configuration.
 See [current sanitizer evidence](../docs/plan/evidence/2026-11-08-current-sanitizers.md).

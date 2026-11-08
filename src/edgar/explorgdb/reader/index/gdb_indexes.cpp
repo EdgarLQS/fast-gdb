@@ -59,6 +59,8 @@ bool GdbIndexesParser::is_direct_field_expression(
 
 // 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 bool GdbIndexesParser::parse() {
+    entries_.clear();
+    file_data_.clear();
     std::ifstream input(std::filesystem::u8path(file_path_),
                         std::ios::binary | std::ios::ate);
     if (!input.is_open()) return false;
@@ -79,7 +81,7 @@ bool GdbIndexesParser::parse() {
                static_cast<std::streamsize>(byte_count));
     if (!input) return false;
 
-    entries_.clear();
+    std::vector<IndexEntry> parsed_entries;
     try {
         BinaryReader reader(file_data_);
         const int32_t index_count = reader.read_i32();
@@ -108,13 +110,14 @@ bool GdbIndexesParser::parse() {
             if (expression_length < 0) return false;
             entry.column_name = reader.read_utf16(expression_length);
             entry.magic5 = reader.read_u16();
-            entries_.push_back(std::move(entry));
+            parsed_entries.push_back(std::move(entry));
         }
     } catch (...) {
         entries_.clear();
         return false;
     }
 
+    entries_ = std::move(parsed_entries);
     return true;
 }
 
