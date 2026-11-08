@@ -4,6 +4,7 @@
 #include "query_engine.h"
 #include "explorgdb_constants.h"
 #include "spatial_predicate.h"
+#include "gdb_spatial_source_table.h"
 
 #include <algorithm>
 #include <chrono>
@@ -72,8 +73,19 @@ double query_coverage_ratio(const FieldDescriptor& field,
     const double width = field.xmax - field.xmin;
     const double height = field.ymax - field.ymin;
     if (!std::isfinite(width) || !std::isfinite(height) ||
-        width <= 0.0 || height <= 0.0) {
+        width < 0.0 || height < 0.0) {
         return 0.0;
+    }
+    // A horizontal/vertical layer still has one-dimensional selectivity;
+    // treating every flat extent as zero would fuse even whole-layer queries.
+    if (width == 0.0 || height == 0.0) {
+        if (xmax < field.xmin || xmin > field.xmax ||
+            ymax < field.ymin || ymin > field.ymax) return 0.0;
+        const double x = width == 0.0 ? 1.0 :
+            std::max(0.0, std::min(xmax, field.xmax) - std::max(xmin, field.xmin)) / width;
+        const double y = height == 0.0 ? 1.0 :
+            std::max(0.0, std::min(ymax, field.ymax) - std::max(ymin, field.ymin)) / height;
+        return std::clamp(x * y, 0.0, 1.0);
     }
 
     const double overlap_xmin = std::max(xmin, field.xmin);
@@ -95,10 +107,44 @@ double query_coverage_ratio(const FieldDescriptor& field,
 
 } // namespace
 
+bool QueryEngine::spatial_candidates(const GdbBbox& box, std::vector<RowSlot>& output,
+    std::string& reason, SpatialQueryMetrics& metrics) {
+    const auto fail = [&](std::string message) {
+        reason = std::move(message);
+        capabilities_.spatial_index = {CapabilityState::Degraded, reason};
+        return false;
+    };
+    if (resolved_.has_spatial_index == false) return fail(kDiagnosticSpatialIndexNotDeclared);
+    const auto* spx = catalog_.find_spx(resolved_.id);
+    if (!spx) return fail(kDiagnosticSpatialIndexMissing);
+    if (!source_current()) return fail("spatial source changed; reopen the dataset");
+    const auto path = catalog_.path() + "/" + spx->filename;
+    TablxCacheKey index_identity;
+    if (!TablxCache::make_key(path, index_identity)) return fail(kDiagnosticSpxParseFail);
+    const auto key = detail::make_table_spatial_source_key(*parser_, *source_tablx_identity_, index_identity);
+    const auto cache = catalog_.spatial_source_cache();
+    if (!key || !cache) return fail("spatial source proof unavailable; sequential scan used");
+    const auto stable = [this] { return source_current(); };
+    const auto input = detail::make_table_spatial_source_input(*parser_, stable);
+    const auto built = cache->get_or_build(path, *key, input, &metrics.source_directory_hit);
+    if (!built.index) return fail("spatial source proof failed: " + built.reason + "; sequential scan used");
+    metrics.source_directory_bytes = built.index->bytes();
+    if (!built.index->query(box, stable, output))
+        return fail("spatial source candidate read, identity or budget check failed; sequential scan used");
+    capabilities_.spatial_index = {CapabilityState::Supported, "source geometry coverage validated"};
+    return true;
+}
+
 QueryResult QueryEngine::query_bbox_unified(
     double xmin, double ymin, double xmax, double ymax) {
+    return query_bbox_prepared(xmin, ymin, xmax, ymax, nullptr);
+}
+
+QueryResult QueryEngine::query_bbox_prepared(double xmin, double ymin, double xmax, double ymax,
+    SpatialCandidatePlan* prepared) {
     QueryResult result;
     const auto total_start = SpatialClock::now();
+    const double preparation_ms = prepared ? prepared->metrics.candidate_lookup_ms : 0.0;
     const bool profile_stages =
         env_flag_enabled("FAST_GDB_SPATIAL_PROFILE");
     if (feature_cursor_active()) {
@@ -109,6 +155,11 @@ QueryResult QueryEngine::query_bbox_unified(
     if (!parser_) {
         result.execution_path = kPathBboxModelUnavailable;
         result.fallback_reason = kFallbackTableNotOpen;
+        return result;
+    }
+    if (!source_current()) {
+        result.status = QueryStatus::SourceChanged;
+        result.error = "query source changed; reopen the dataset";
         return result;
     }
     if (!std::isfinite(xmin) || !std::isfinite(ymin) ||
@@ -130,7 +181,7 @@ QueryResult QueryEngine::query_bbox_unified(
     result.spatial_metrics.feature_count = feature_count;
     if (feature_count == 0) {
         result.execution_path = kPathBboxModelEmpty;
-        result.spatial_metrics.total_ms = elapsed_ms(total_start);
+        result.spatial_metrics.total_ms = elapsed_ms(total_start) + preparation_ms;
         return result;
     }
 
@@ -153,54 +204,25 @@ QueryResult QueryEngine::query_bbox_unified(
     std::vector<RowSlot> candidates;
     const auto candidate_start = SpatialClock::now();
 
+    std::string index_reason;
+    bool spx_query_ok = false;
     if (!planner_direct_scan) {
-        if (!spatial_index_initialized_) {
-            spatial_index_initialized_ = true;
-            const auto* spx = catalog_.find_spx(resolved_.id);
-            const bool metadata_declares_no_index =
-                resolved_.has_spatial_index == false;
-            spatial_index_present_ =
-                spx != nullptr && !metadata_declares_no_index;
-            if (spatial_index_present_) {
-                auto index = std::make_unique<GdbSpatialIndexParser>(
-                    catalog_.path() + "/" + spx->filename);
-                if (index->parse()) {
-                    spatial_index_ = std::move(index);
-                } else {
-                    capabilities_.spatial_index = {
-                        CapabilityState::Degraded,
-
-                        kDiagnosticSpxParseFail};
-                }
-            }
+        if (prepared) {
+            spx_query_ok = prepared->succeeded;
+            candidates = std::move(prepared->fids);
+            index_reason = std::move(prepared->reason);
+            result.spatial_metrics.source_directory_hit = prepared->metrics.source_directory_hit;
+            result.spatial_metrics.source_directory_bytes = prepared->metrics.source_directory_bytes;
+        } else {
+            spx_query_ok = spatial_candidates({xmin, ymin, xmax, ymax},
+                candidates, index_reason, result.spatial_metrics);
         }
     }
-
-    const bool spx_parse_ok = spatial_index_ != nullptr;
-    const bool spx_extent_supported = spx_parse_ok &&
-        GdbSpatialIndexParser::supports_layer_extent(
-            geom_field->xmin, geom_field->ymin,
-            geom_field->xmax, geom_field->ymax,
-            geom_field->grid_sizes);
-    if (spx_parse_ok && !spx_extent_supported) {
-        capabilities_.spatial_index = {
-            CapabilityState::Degraded,
-            kDiagnosticSpxGridUnsupported};
-    }
-    bool sequential_fallback =
-        !planner_direct_scan &&
-        (!spatial_index_present_ || !spx_extent_supported);
-    if (!planner_direct_scan && spx_extent_supported) {
-        bool succeeded = false;
-        candidates = spatial_index_->query_bbox(
-            xmin, ymin, xmax, ymax,
-            geom_field->xorig, geom_field->yorig,
-            geom_field->xyscale, geom_field->grid_sizes,
-            parser_->feature_count() == 0 ? 0 : parser_->feature_count() - 1U, false, &succeeded);
-        if (!succeeded) {
-            sequential_fallback = true;
-            capabilities_.spatial_index = {CapabilityState::Degraded, "spatial index traversal failed; sequential scan used"};
-        }
+    const bool sequential_fallback = !planner_direct_scan && !spx_query_ok;
+    if (!source_current()) {
+        result.status = QueryStatus::SourceChanged;
+        result.error = "query source changed; reopen the dataset";
+        return result;
     }
 
     if (planner_direct_scan) {
@@ -209,11 +231,7 @@ QueryResult QueryEngine::query_bbox_unified(
         result.spatial_metrics.candidate_ratio = 1.0;
     } else if (sequential_fallback) {
         result.execution_path = kPathBboxModelSequentialFallback;
-        result.fallback_reason = resolved_.has_spatial_index == false
-            ? kDiagnosticSpatialIndexNotDeclared
-            : (!spatial_index_present_ ? kDiagnosticSpatialIndexMissing
-            : (!spx_parse_ok || capabilities_.spatial_index.state == CapabilityState::Degraded ? capabilities_.spatial_index.reason
-                             : kDiagnosticSpxGridUnsupported));
+        result.fallback_reason = index_reason;
         result.spatial_metrics.candidate_count = feature_count;
         result.spatial_metrics.candidate_ratio = 1.0;
     } else {
@@ -223,10 +241,10 @@ QueryResult QueryEngine::query_bbox_unified(
             static_cast<double>(feature_count);
     }
     result.spatial_metrics.candidate_lookup_ms =
-        elapsed_ms(candidate_start);
+        elapsed_ms(candidate_start) + preparation_ms;
 
     const bool use_adaptive_sequential_scan =
-        !planner_direct_scan && spx_parse_ok &&
+        !planner_direct_scan && spx_query_ok &&
         feature_count >= kMinimumAdaptiveFeatureCount &&
         result.spatial_metrics.candidate_ratio >=
             sequential_density_threshold();
@@ -351,7 +369,7 @@ QueryResult QueryEngine::query_bbox_unified(
             if (scanned == candidates.size() && !source_row_failed) {
                 std::sort(result.matched_fids.begin(),
                           result.matched_fids.end());
-                result.execution_path = spx_parse_ok
+                result.execution_path = spx_query_ok
                     ? kPathBboxModelSpxCandidatesBatched
                     : kPathBboxModelCandidateFallbackBatched;
                 return;
@@ -393,7 +411,7 @@ QueryResult QueryEngine::query_bbox_unified(
         result.spatial_metrics.geometry_only_scan = scanned != 0;
 
         if ((scanned != feature_count || source_row_failed) && feature_count != 0) {
-            result.execution_path = spx_parse_ok
+            result.execution_path = spx_query_ok
                 ? kPathBboxModelSpxCandidates
                 : kPathBboxModelCandidateFallback;
             result.matched_fids.clear();
@@ -416,7 +434,7 @@ QueryResult QueryEngine::query_bbox_unified(
             result.spatial_metrics.candidate_ratio = 1.0;
         }
     } else {
-        if (spx_parse_ok)
+        if (spx_query_ok)
             result.execution_path = kPathBboxModelSpxCandidates;
         evaluate_candidates();
     }
@@ -425,7 +443,7 @@ QueryResult QueryEngine::query_bbox_unified(
         result.status = QueryStatus::Unsupported;
         result.error = "source geometry predicate could not be evaluated completely";
         result.matched_fids.clear();
-        result.spatial_metrics.total_ms = elapsed_ms(total_start);
+        result.spatial_metrics.total_ms = elapsed_ms(total_start) + preparation_ms;
         return result;
     }
 
@@ -454,7 +472,7 @@ QueryResult QueryEngine::query_bbox_unified(
             ? "source geometry predicate could not be evaluated completely"
             : "source geometry row could not be read completely";
         result.matched_fids.clear();
-        result.spatial_metrics.total_ms = elapsed_ms(total_start);
+        result.spatial_metrics.total_ms = elapsed_ms(total_start) + preparation_ms;
         return result;
     }
 
@@ -465,7 +483,12 @@ QueryResult QueryEngine::query_bbox_unified(
             std::to_string(result.spatial_metrics.invalid_geometries) +
             kDiagnosticGeometryDecodeErrors;
     }
-    result.spatial_metrics.total_ms = elapsed_ms(total_start);
+    if (!source_current()) {
+        result.status = QueryStatus::SourceChanged;
+        result.error = "query source changed; reopen the dataset";
+        result.matched_fids.clear();
+    }
+    result.spatial_metrics.total_ms = elapsed_ms(total_start) + preparation_ms;
     return result;
 }
 

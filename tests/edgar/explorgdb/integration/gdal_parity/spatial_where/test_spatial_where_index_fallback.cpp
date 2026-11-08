@@ -28,6 +28,7 @@ using namespace explorgdb;
 
 namespace {
 constexpr const char* kLayer = "index_fallback_points";
+bool damage_native_source_spx(const std::filesystem::path& path, int mode, size_t rows);
 
 bool sql(GDALDataset* ds, const std::string& text) {
     CPLErrorReset();
@@ -111,7 +112,7 @@ void expect_safe_attribute_fallback(const QueryResult& result) {
 
 class SpatialWhereIndexFallbackTest : public GdbTutorialFixture {
 protected:
-    std::string createFixture(bool floating = false, int count = 3) {
+    std::string createFixture(bool floating = false, int count = 3, bool null_empty = false) {
         const std::string path =
             spatial_where_test_utils::fixture_path(
                 "fast_gdb_spatial_where_index_fallback").string();
@@ -129,7 +130,12 @@ protected:
             feature->SetField("value", values[i % 3]);
             OGRPoint point(count == 3 ? i + 1.0 : i % 100 + 1.0,
                            count == 3 ? i + 1.0 : i / 100 + 1.0);
-            EXPECT_EQ(feature->SetGeometry(&point), OGRERR_NONE);
+            if (!null_empty || i < count - 2)
+                EXPECT_EQ(feature->SetGeometry(&point), OGRERR_NONE);
+            else if (i == count - 1) {
+                OGRPoint empty;
+                EXPECT_EQ(feature->SetGeometry(&empty), OGRERR_NONE);
+            }
             EXPECT_EQ(layer->CreateFeature(feature), OGRERR_NONE);
             OGRFeature::DestroyFeature(feature);
         }
@@ -867,8 +873,9 @@ TEST_F(SpatialWhereIndexFallbackTest, UnsupportedGeometryCannotBecomeSuccessfulP
         }
         request.where_clause = "value >= 10";
         const auto result = engine.query(request);
-        if (narrow && kind == QueryKind::SpatialWhere)
-            EXPECT_TRUE(result.combined_metrics.fused_spatial_attribute_scan) << result.execution_path << " " << result.fallback_reason << " candidates=" << result.spatial_metrics.candidate_count;
+        // An unsupported source cannot establish a candidate coverage proof.
+        // Both paths must evaluate the complete source and report Unsupported.
+        EXPECT_FALSE(result.combined_metrics.fused_spatial_attribute_scan);
         EXPECT_EQ(result.status, QueryStatus::Unsupported);
         EXPECT_FALSE(result.error.empty());
         EXPECT_TRUE(result.matched_fids.empty());
@@ -913,6 +920,7 @@ TEST_F(SpatialWhereIndexFallbackTest, CanonicalTableBoundsMatchNativeEnvelopesAn
         "POLYGON ((0 0,10 0,10 10,0 10,0 0),(2 2,2 3,3 3,3 2,2 2))",
         "POINT ZM (2 3 4 5)", "LINESTRING ZM (-10 -10 1 2,10 20 3 4,30 -10 5 6)"};
     std::vector<OGREnvelope> expected;
+    std::vector<std::vector<std::unique_ptr<OGRGeometry>>> source_geometries(6);
     for (size_t shape = 0; shape < 6; ++shape) {
         auto* layer = dataset->CreateLayer(names[shape], nullptr, types[shape], nullptr);
         ASSERT_NE(layer, nullptr);
@@ -968,10 +976,14 @@ TEST_F(SpatialWhereIndexFallbackTest, CanonicalTableBoundsMatchNativeEnvelopesAn
         EXPECT_EQ(OGR_GT_HasZ(actual_type), OGR_GT_HasZ(types[shape]));
         EXPECT_EQ(OGR_GT_HasM(actual_type), OGR_GT_HasM(types[shape]));
         feature->GetGeometryRef()->getEnvelope(&expected[shape]);
+        source_geometries[shape].emplace_back(feature->GetGeometryRef()->clone());
         for (GIntBig fid : {2, 3}) {
             feature.reset(layer->GetFeature(fid)); ASSERT_NE(feature, nullptr);
             EXPECT_TRUE(feature->GetGeometryRef() == nullptr || feature->GetGeometryRef()->IsEmpty());
         }
+        feature.reset(layer->GetFeature(4)); ASSERT_NE(feature, nullptr);
+        ASSERT_NE(feature->GetGeometryRef(), nullptr);
+        source_geometries[shape].emplace_back(feature->GetGeometryRef()->clone());
     }
     dataset.reset();
     GdbCatalog catalog; ASSERT_TRUE(catalog.scan(path));
@@ -1004,6 +1016,7 @@ TEST_F(SpatialWhereIndexFallbackTest, CanonicalTableBoundsMatchNativeEnvelopesAn
         EXPECT_EQ(rows, 4U);
         const auto* spx = catalog.find_spx(table->id); ASSERT_NE(spx, nullptr);
         const auto index_path = entry_path(path, spx).string();
+        ASSERT_TRUE(damage_native_source_spx(index_path, 0, 4));
         TablxCacheKey index_identity; ASSERT_TRUE(TablxCache::make_key(index_path, index_identity));
         const auto key = detail::make_table_spatial_source_key(parser, expected_tablx, index_identity);
         ASSERT_TRUE(key.has_value());
@@ -1016,5 +1029,210 @@ TEST_F(SpatialWhereIndexFallbackTest, CanonicalTableBoundsMatchNativeEnvelopesAn
         std::vector<RowSlot> candidates;
         ASSERT_TRUE(built.index->query(*values[1].bounds, stable, candidates));
         EXPECT_EQ(candidates, (std::vector<RowSlot>{0, 3}));
+        QueryEngine engine(catalog, *table); ASSERT_TRUE(engine.open());
+        for (const auto& box : {GdbBbox{-10.1, -10.1, -9.9, -9.9}, GdbBbox{2.4, 2.4, 2.6, 2.6},
+                GdbBbox{2.9, 1.9, 3.1, 2.1}, GdbBbox{0, 4.9, .1, 5.1},
+                GdbBbox{14.9, 12.4, 15.1, 12.6}, GdbBbox{50, 50, 51, 51}, GdbBbox{-11, -11, 31, 21}}) {
+            OGRLinearRing ring;
+            ring.addPoint(box.xmin, box.ymin); ring.addPoint(box.xmax, box.ymin);
+            ring.addPoint(box.xmax, box.ymax); ring.addPoint(box.xmin, box.ymax);
+            ring.closeRings();
+            OGRPolygon rectangle; ASSERT_EQ(rectangle.addRing(&ring), OGRERR_NONE);
+            std::vector<RowSlot> oracle;
+            for (size_t row = 0; row < 2; ++row)
+                if (source_geometries[shape][row]->Intersects(&rectangle)) oracle.push_back(row == 0 ? 0 : 3);
+            QueryRequest request;
+            request.xmin = box.xmin; request.ymin = box.ymin; request.xmax = box.xmax; request.ymax = box.ymax;
+            for (auto kind : {QueryKind::SpatialWhere, QueryKind::SpatialBbox}) {
+                request.kind = kind; request.where_clause = "value >= 0";
+                const auto result = engine.query(request);
+                EXPECT_EQ(result.status, QueryStatus::Ok) << result.error;
+                EXPECT_EQ(result.matched_fids, oracle) << shape << " " << result.execution_path;
+                EXPECT_TRUE(result.spatial_metrics.source_directory_hit);
+            }
+        }
+    }
+}
+
+namespace {
+// Mutate only native temporary v1 SPX copies; preserve the page tree/leaf chain.
+// 0: wrong keys, 1: duplicate replaces missing FID, 2: remove FID with valid
+// counts, 3: out-of-range FID, 4: wrong separators, 5: NULL replaces source FID.
+bool damage_native_source_spx(const std::filesystem::path& path, int mode, size_t rows) {
+    std::ifstream input(path, std::ios::binary);
+    std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(input)), {});
+    const auto get = [&](size_t offset, size_t width) {
+        uint64_t value = 0;
+        for (size_t i = 0; i < width; ++i) value |= uint64_t(bytes.at(offset + i)) << (8 * i);
+        return value;
+    };
+    const auto put = [&](size_t offset, uint64_t value, size_t width) {
+        for (size_t i = 0; i < width; ++i) bytes.at(offset + i) = static_cast<uint8_t>(value >> (8 * i));
+    };
+    constexpr size_t page = 4096, header = 12, capacity = (page - header) / 12;
+    constexpr size_t values = header + capacity * 4;
+    if (bytes.size() < 22 || get(bytes.size() - 4, 4) != 1 || (bytes.size() - 22) % page) return false;
+    const size_t pages = (bytes.size() - 22) / page;
+    const size_t depth = get(pages * page + 6, 4);
+    if (!pages || !depth) return false;
+    size_t changed = 0, removed = 0;
+    if (mode == 0 || mode == 4) {
+        const size_t limit = mode == 4 ? 1 : pages;
+        if (mode == 4 && depth == 1) return false;
+        for (size_t id = 1; id <= limit; ++id) {
+            const size_t offset = (id - 1) * page, count = get(offset + 4, 4);
+            if (count > capacity) return false;
+            for (size_t i = 0; i < count; ++i) { put(offset + values + i * 8, 0, 8); ++changed; }
+        }
+    } else {
+        size_t id = 1;
+        for (size_t level = depth; level > 1; --level) {
+            if (!id || id > pages) return false;
+            id = get((id - 1) * page + 8, 4);
+        }
+        size_t visited = 0;
+        while (id) {
+            if (id > pages || ++visited > pages) return false;
+            const size_t offset = (id - 1) * page, count = get(offset + 4, 4);
+            if (count > capacity) return false;
+            size_t retained = 0;
+            for (size_t i = 0; i < count; ++i) {
+                auto oid = get(offset + header + i * 4, 4);
+                const auto key = get(offset + values + i * 8, 8);
+                if (oid == 2) {
+                    ++changed;
+                    if (mode == 2) { ++removed; continue; }
+                    oid = mode == 1 ? 1 : mode == 3 ? rows + 1 : rows - 1;
+                }
+                put(offset + header + retained * 4, oid, 4);
+                put(offset + values + retained * 8, key, 8);
+                ++retained;
+            }
+            put(offset + 4, retained, 4);
+            id = get(offset, 4);
+        }
+        const auto total = get(pages * page + 10, 4);
+        if (removed > total) return false;
+        put(pages * page + 10, total - removed, 4);
+    }
+    if (!changed) return false;
+    std::ofstream output(path, std::ios::binary | std::ios::trunc);
+    output.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+    return output.good();
+}
+}
+
+TEST_F(SpatialWhereIndexFallbackTest, SourceProofRecoversWrongKeysAndFullyScansMissingOrInvalidFids) {
+    struct Source { RowSlot fid; double x, y; int value; };
+    const GdbBbox windows[] = {{1.9, .9, 2.1, 1.1}, {49.9, 49.9, 50.1, 50.1},
+        {98.9, 98.9, 99.1, 99.1}, {1, 1, 1, 1}, {1000, 1000, 1001, 1001}, {0, 0, 101, 101}};
+    for (int damage = 0; damage < 6; ++damage) {
+        SCOPED_TRACE(damage);
+        const auto path = createFixture(false, 10000, true);
+        std::vector<Source> oracle;
+        {
+            std::unique_ptr<GDALDataset, decltype(&GDALClose)> native(
+                static_cast<GDALDataset*>(GDALOpenEx(path.c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY,
+                    nullptr, nullptr, nullptr)), GDALClose);
+            ASSERT_NE(native, nullptr);
+            auto* layer = native->GetLayerByName(kLayer); ASSERT_NE(layer, nullptr);
+            while (auto* raw = layer->GetNextFeature()) {
+                std::unique_ptr<OGRFeature, decltype(&OGRFeature::DestroyFeature)> feature(raw, OGRFeature::DestroyFeature);
+                const auto* geometry = feature->GetGeometryRef();
+                if (!geometry || geometry->IsEmpty()) continue;
+                ASSERT_EQ(wkbFlatten(geometry->getGeometryType()), wkbPoint);
+                const auto* point = geometry->toPoint();
+                oracle.push_back({static_cast<RowSlot>(feature->GetFID() - 1), point->getX(), point->getY(),
+                    feature->GetFieldAsInteger("value")});
+            }
+        }
+        ASSERT_EQ(oracle.size(), 9998U);
+        GdbCatalog catalog; ResolvedTable table;
+        ASSERT_TRUE(resolve(path, catalog, table));
+        const auto* spx = catalog.find_spx(table.id); ASSERT_NE(spx, nullptr);
+        const auto index_path = entry_path(path, spx);
+        ASSERT_TRUE(damage_native_source_spx(index_path, damage, 10000));
+        QueryEngine engine(catalog, table); ASSERT_TRUE(engine.open());
+        bool fused_seen = false;
+        if (damage == 0) {
+            const auto& fields = engine.table()->fields();
+            const auto field = std::find_if(fields.begin(), fields.end(), [](const auto& item) { return item.type == FieldType::Geometry; });
+            ASSERT_NE(field, fields.end());
+            GdbSpatialIndexParser raw(index_path.string()); ASSERT_TRUE(raw.parse());
+            bool succeeded = false;
+            const auto old_candidates = raw.query_bbox(1.9, .9, 2.1, 1.1,
+                field->xorig, field->yorig, field->xyscale, field->grid_sizes, 9999, false, &succeeded);
+            EXPECT_TRUE(succeeded); // valid structure used to permit a successful omission
+            EXPECT_EQ(std::find(old_candidates.begin(), old_candidates.end(), 1), old_candidates.end());
+            std::cout << "[spx-source-proof] raw wrong-key candidates=" << old_candidates.size()
+                      << " expected source FID 1; validated engine checked below\n";
+        }
+        for (size_t round = 0; round < 2; ++round) for (const auto& window : windows) {
+            for (auto kind : {QueryKind::SpatialWhere, QueryKind::SpatialBbox}) {
+                QueryRequest request; request.kind = kind;
+                request.xmin = window.xmin; request.ymin = window.ymin;
+                request.xmax = window.xmax; request.ymax = window.ymax;
+                request.where_clause = "value >= 10";
+                std::vector<RowSlot> expected;
+                for (const auto& item : oracle) {
+                    if (item.x >= window.xmin && item.x <= window.xmax &&
+                        item.y >= window.ymin && item.y <= window.ymax &&
+                        (kind == QueryKind::SpatialBbox || item.value >= 10)) expected.push_back(item.fid);
+                }
+                std::sort(expected.begin(), expected.end());
+                const auto result = engine.query(request);
+                ASSERT_EQ(result.status, QueryStatus::Ok) << result.error;
+                fused_seen = fused_seen || result.combined_metrics.fused_spatial_attribute_scan;
+                EXPECT_EQ(result.matched_fids, expected) << result.execution_path;
+                const bool planned_scan = result.spatial_metrics.spx_bypassed;
+                if (!planned_scan && (damage == 0 || damage == 4)) {
+                    EXPECT_GT(result.spatial_metrics.source_directory_bytes, 0U);
+                    const bool first = round == 0 && &window == &windows[0] && kind == QueryKind::SpatialWhere;
+                    EXPECT_EQ(result.spatial_metrics.source_directory_hit, !first);
+                } else if (!planned_scan) {
+                    EXPECT_FALSE(result.combined_metrics.fused_spatial_attribute_scan);
+                    EXPECT_NE(result.fallback_reason.find("source proof failed"), std::string::npos);
+                }
+            }
+        }
+        EXPECT_EQ(catalog.spatial_source_cache()->entries(), damage == 0 || damage == 4 ? 1U : 0U);
+        EXPECT_EQ(fused_seen, damage == 0 || damage == 4);
+    }
+}
+
+TEST_F(SpatialWhereIndexFallbackTest, WarmSourceDirectoryRejectsReplacedTableAndTablxUntilReopen) {
+    for (bool replace_table : {false, true}) {
+        const auto path = createFixture(false, 10000);
+        GdbCatalog catalog; ResolvedTable table;
+        ASSERT_TRUE(resolve(path, catalog, table));
+        QueryEngine engine(catalog, table); ASSERT_TRUE(engine.open());
+        QueryRequest request;
+        request.kind = QueryKind::SpatialBbox;
+        request.xmin = 1.9; request.ymin = .9; request.xmax = 2.1; request.ymax = 1.1;
+        request.where_clause = "value >= 10";
+        const auto cold = engine.query(request);
+        ASSERT_EQ(cold.status, QueryStatus::Ok);
+        ASSERT_EQ(cold.matched_fids, (std::vector<RowSlot>{1}));
+        ASSERT_GT(cold.spatial_metrics.source_directory_bytes, 0U);
+        ASSERT_TRUE(engine.query(request).spatial_metrics.source_directory_hit);
+        const auto target = replace_table ? table.table_path : table.tablx_path;
+        const auto replacement = target + ".replacement";
+        ASSERT_TRUE(std::filesystem::copy_file(target, replacement, std::filesystem::copy_options::overwrite_existing));
+        std::filesystem::rename(replacement, target);
+        for (auto kind : {QueryKind::SpatialBbox, QueryKind::SpatialWhere}) {
+            request.kind = kind;
+            const auto stale = engine.query(request);
+            EXPECT_EQ(stale.status, QueryStatus::SourceChanged);
+            EXPECT_TRUE(stale.matched_fids.empty());
+        }
+        GdbCatalog fresh_catalog; ResolvedTable fresh_table;
+        ASSERT_TRUE(resolve(path, fresh_catalog, fresh_table));
+        QueryEngine fresh(fresh_catalog, fresh_table); ASSERT_TRUE(fresh.open());
+        request.kind = QueryKind::SpatialBbox;
+        const auto current = fresh.query(request);
+        EXPECT_EQ(current.status, QueryStatus::Ok) << current.error;
+        EXPECT_EQ(current.matched_fids, cold.matched_fids);
+        EXPECT_FALSE(current.spatial_metrics.source_directory_hit);
+        EXPECT_GT(current.spatial_metrics.source_directory_bytes, 0U);
     }
 }

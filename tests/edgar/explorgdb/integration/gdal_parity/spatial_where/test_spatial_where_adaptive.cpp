@@ -177,13 +177,15 @@ TEST_F(SpatialWhereAdaptiveTest,
     ASSERT_FALSE(path.empty());
 
     const QueryResult result = run_query(path, 0.0, 9.0, "value >= 5");
+    EXPECT_NEAR(result.spatial_metrics.estimated_coverage, 9.0 / 99.0, 1e-9);
     EXPECT_EQ(result.execution_path, "spatial-where:spatial-candidates");
     EXPECT_TRUE(result.combined_metrics.used_spatial_index);
     EXPECT_FALSE(result.combined_metrics.used_attribute_index);
     EXPECT_TRUE(result.combined_metrics.attribute_index_bypassed);
     EXPECT_TRUE(result.combined_metrics.fused_spatial_attribute_scan);
-    EXPECT_GE(result.combined_metrics.fused_candidate_count, 10U);
-    EXPECT_LE(result.combined_metrics.fused_candidate_count, 12U);
+    // The validated source leaf is conservative and may contain the whole
+    // small table; every candidate is still checked in one fused row pass.
+    EXPECT_EQ(result.combined_metrics.fused_candidate_count, 100U);
     EXPECT_EQ(result.combined_metrics.spatial_candidate_count,
               result.combined_metrics.fused_candidate_count);
     EXPECT_EQ(result.combined_metrics.spatial_match_count, 10U);
@@ -207,6 +209,7 @@ TEST_F(SpatialWhereAdaptiveTest,
     ASSERT_FALSE(path.empty());
 
     const QueryResult result = run_query(path, 0.0, 99.0, "value >= 90");
+    EXPECT_DOUBLE_EQ(result.spatial_metrics.estimated_coverage, 1.0);
     EXPECT_EQ(result.execution_path, "spatial-where:spx+atx");
     EXPECT_TRUE(result.combined_metrics.used_spatial_index);
     EXPECT_TRUE(result.combined_metrics.used_attribute_index);

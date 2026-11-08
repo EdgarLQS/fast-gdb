@@ -345,27 +345,34 @@ non-finite public-request errors. See [evidence and remaining integrity checks](
 
 ## Bound attribute integrity and incomplete source rows
 
+`SourceProofRecoversWrongKeysAndFullyScansMissingOrInvalidFids` exercises native
+SPX mutations across cold/warm ordinary and fused queries with independent
+source-row truth. The six native geometry types also compare interior windows
+against GDAL read-back geometries; file replacement and the Unified synthetic
+index-declaration refresh test cover stale proofs. See [query proof evidence](../docs/plan/evidence/2026-11-08-spx-query-source-proof.md).
+
 `SpatialSourceCacheTest` covers positive-proof snapshot identity, retryable
 failures, concurrent cold builds, byte/count LRU limits, and catalog rescan
 invalidation without metadata changes. Real GDAL layers also exercise cached
-proofs. QueryEngine integration remains pending. See [cache evidence](../docs/plan/evidence/2026-11-08-spx-source-cache.md).
+proofs. QueryEngine now consumes the same cache; the linked record describes
+the earlier component stage. See [cache evidence](../docs/plan/evidence/2026-11-08-spx-source-cache.md).
 
 `CanonicalTableBoundsMatchNativeEnvelopesAndPreserveNullEmpty` compares actual
 GDAL-written point/multipoint/line/polygon and ZM layers with read-back envelopes
 and builds source directories from persisted SPX files. `SpatialSourceTableTest`
-also exercises the new table callback without a GDAL runtime. Neither enables
-the pending QueryEngine integration. See [table source evidence](../docs/plan/evidence/2026-11-08-spx-table-source.md).
+also exercises the table callback without a GDAL runtime. Entry-point coverage
+is listed above. See [table source evidence](../docs/plan/evidence/2026-11-08-spx-table-source.md).
 
 `SpatialSourceIndexTest` verifies pinned-handle v1/v2 leaf I/O, wrong physical
 keys, missing/duplicate FIDs, callback failure, snapshot changes and candidate
 budget rejection without publishing partial output. Source bounds are synthetic
-callbacks; actual GDB/QueryEngine integration remains pending.
+callbacks; actual-table and QueryEngine coverage is listed above.
 See [I/O adapter scope](../docs/plan/evidence/2026-11-08-spx-source-index-io.md).
 
 `SpatialSourceDirectoryTest` exercises the bounded source-bounds directory core:
 random-window candidate coverage, sparse/deleted slots, duplicate versus missing
-FIDs, NULL/Empty, resource rejection and immutable publication. It is not yet a
-QueryEngine integration test. See [component scope](../docs/plan/evidence/2026-11-08-spx-source-directory-core.md).
+FIDs, NULL/Empty, resource rejection and immutable publication. It remains a component test;
+QueryEngine integration coverage is listed above. See [component scope](../docs/plan/evidence/2026-11-08-spx-source-directory-core.md).
 
 `full.spx-level-inventory` runs the standalone v1/v2 inventory boundary tests;
 the inventory of five actual GDBs found 125 SPX files containing only level-0

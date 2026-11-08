@@ -322,9 +322,6 @@ bool QueryEngine::open() {
     opened_ = false;
     parser_.reset();
     source_tablx_identity_.reset();
-    spatial_index_.reset();
-    spatial_index_initialized_ = false;
-    spatial_index_present_ = false;
     capabilities_ = CapabilityReport{};
 
     if (resolved_.table_path.empty() || resolved_.tablx_path.empty()) {
@@ -396,22 +393,17 @@ QueryResult QueryEngine::query_impl(const QueryRequest& request, std::optional<i
         result.fallback_reason = kFallbackTableNotOpen;
         return result;
     }
-    const bool check_attribute_sources = request.kind == QueryKind::AttributeDouble ||
+    const bool check_sources = request.kind == QueryKind::AttributeDouble ||
                                       request.kind == QueryKind::AttributeString ||
+                                      request.kind == QueryKind::SpatialBbox ||
                                       request.kind == QueryKind::SpatialWhere;
-    const auto source_current = [&] {
-        TablxCacheKey table, tablx;
-        return source_tablx_identity_ &&
-            TablxCache::make_key(resolved_.table_path, table) && table == parser_->source_identity() &&
-            TablxCache::make_key(resolved_.tablx_path, tablx) && tablx == *source_tablx_identity_;
-    };
     const auto changed_result = [] {
         QueryResult result;
         result.status = QueryStatus::SourceChanged;
         result.error = "query source changed; reopen the dataset";
         return result;
     };
-    if (check_attribute_sources && !source_current()) return changed_result();
+    if (check_sources && !source_current()) return changed_result();
     if (!projection_is_valid(request, parser_.get())) {
         QueryResult result;
         result.status = QueryStatus::InvalidRequest;
@@ -455,9 +447,16 @@ QueryResult QueryEngine::query_impl(const QueryRequest& request, std::optional<i
             result.fallback_reason = kFallbackInvalidQueryKind;
             break;
     }
-    if (check_attribute_sources && !source_current()) return changed_result();
+    if (check_sources && !source_current()) return changed_result();
     classify_query_status(request, result);
     return apply_request_options(std::move(result), request, parser_.get());
+}
+
+bool QueryEngine::source_current() const {
+    TablxCacheKey table, tablx;
+    return parser_ && source_tablx_identity_ &&
+        TablxCache::make_key(resolved_.table_path, table) && table == parser_->source_identity() &&
+        TablxCache::make_key(resolved_.tablx_path, tablx) && tablx == *source_tablx_identity_;
 }
 
 // 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。

@@ -1,0 +1,33 @@
+[  4%] Built target explorgdb_common_lib
+[ 10%] Built target fast_gdb_geometry_core
+[ 11%] Built target generate_large_gdb
+[ 16%] Built target fast_gdb_geometry_test_runner
+[ 17%] Building CXX object CMakeFiles/explorgdb_reader_lib.dir/src/edgar/explorgdb/reader/query/query_engine_combined.cpp.o
+[ 18%] Linking CXX static library libexplorgdb_reader_lib.a
+ranlib: warning: 'libexplorgdb_reader_lib.a(windows_posix_compat.cpp.o)' has no symbols
+ranlib: warning: 'libexplorgdb_reader_lib.a(windows_posix_compat.cpp.o)' has no symbols
+[ 38%] Built target explorgdb_reader_lib
+[ 38%] Linking CXX shared library libfast_gdb_runtime.dylib
+[ 40%] Built target fast_gdb_curve_gdal
+[ 41%] Linking CXX executable bin/explorgdb_cli
+[ 43%] Built target fast_gdb_runtime
+[ 43%] Built target explorgdb_cli
+[ 44%] Linking CXX executable bin/fast_gdb_hybrid_test_runner
+[ 45%] Linking CXX executable bin/fast_gdb_gdal_read_write_boundary_test_runner
+[ 46%] Built target fast_gdb_gdal_read_write_boundary_test_runner
+[ 48%] Built target fast_gdb_hybrid_test_runner
+[ 48%] Linking CXX executable bin/verify_arcgis_indexes
+[ 49%] Built target verify_arcgis_indexes
+[ 50%] Linking CXX executable bin/verify_gdal_indexes
+[ 51%] Built target verify_gdal_indexes
+[ 51%] Linking CXX shared module gdal_FastFileGDB.so
+[ 52%] Built target gdal_FastFileGDB
+[ 53%] Linking CXX executable bin/fast_gdb_unified_test_runner
+[ 54%] Linking CXX executable bin/gdb_tutorial_test_runner
+ld: warning: ignoring duplicate libraries: 'libexplorgdb_reader_lib.a'
+[ 93%] Built target gdb_tutorial_test_runner
+[ 94%] Linking CXX executable bin/fast_gdb_driver_test_runner
+[ 96%] Built target fast_gdb_unified_test_runner
+[ 96%] Linking CXX executable bin/fast_gdb_driver_mismatch_test_runner
+[ 98%] Built target fast_gdb_driver_test_runner
+[100%] Built target fast_gdb_driver_mismatch_test_runner

@@ -1,0 +1,218 @@
+-- Install configuration: "Release"
+-- Installing: /tmp/source-engine-install/include
+-- Installing: /tmp/source-engine-install/include/gmock
+-- Installing: /tmp/source-engine-install/include/gmock/gmock-nice-strict.h
+-- Installing: /tmp/source-engine-install/include/gmock/gmock-more-actions.h
+-- Installing: /tmp/source-engine-install/include/gmock/gmock.h
+-- Installing: /tmp/source-engine-install/include/gmock/gmock-cardinalities.h
+-- Installing: /tmp/source-engine-install/include/gmock/gmock-spec-builders.h
+-- Installing: /tmp/source-engine-install/include/gmock/gmock-matchers.h
+-- Installing: /tmp/source-engine-install/include/gmock/gmock-more-matchers.h
+-- Installing: /tmp/source-engine-install/include/gmock/gmock-function-mocker.h
+-- Installing: /tmp/source-engine-install/include/gmock/gmock-actions.h
+-- Installing: /tmp/source-engine-install/include/gmock/internal
+-- Installing: /tmp/source-engine-install/include/gmock/internal/gmock-pp.h
+-- Installing: /tmp/source-engine-install/include/gmock/internal/custom
+-- Installing: /tmp/source-engine-install/include/gmock/internal/custom/gmock-port.h
+-- Installing: /tmp/source-engine-install/include/gmock/internal/custom/gmock-matchers.h
+-- Installing: /tmp/source-engine-install/include/gmock/internal/custom/gmock-generated-actions.h
+-- Installing: /tmp/source-engine-install/include/gmock/internal/custom/README.md
+-- Installing: /tmp/source-engine-install/include/gmock/internal/gmock-port.h
+-- Installing: /tmp/source-engine-install/include/gmock/internal/gmock-internal-utils.h
+-- Installing: /tmp/source-engine-install/lib/libgmock.a
+-- Installing: /tmp/source-engine-install/lib/libgmock_main.a
+-- Installing: /tmp/source-engine-install/lib/pkgconfig/gmock.pc
+-- Installing: /tmp/source-engine-install/lib/pkgconfig/gmock_main.pc
+-- Installing: /tmp/source-engine-install/lib/cmake/GTest/GTestTargets.cmake
+-- Installing: /tmp/source-engine-install/lib/cmake/GTest/GTestTargets-release.cmake
+-- Installing: /tmp/source-engine-install/lib/cmake/GTest/GTestConfigVersion.cmake
+-- Installing: /tmp/source-engine-install/lib/cmake/GTest/GTestConfig.cmake
+-- Up-to-date: /tmp/source-engine-install/include
+-- Installing: /tmp/source-engine-install/include/gtest
+-- Installing: /tmp/source-engine-install/include/gtest/gtest-param-test.h
+-- Installing: /tmp/source-engine-install/include/gtest/gtest-matchers.h
+-- Installing: /tmp/source-engine-install/include/gtest/gtest-spi.h
+-- Installing: /tmp/source-engine-install/include/gtest/gtest-assertion-result.h
+-- Installing: /tmp/source-engine-install/include/gtest/gtest-test-part.h
+-- Installing: /tmp/source-engine-install/include/gtest/gtest_pred_impl.h
+-- Installing: /tmp/source-engine-install/include/gtest/gtest_prod.h
+-- Installing: /tmp/source-engine-install/include/gtest/gtest-printers.h
+-- Installing: /tmp/source-engine-install/include/gtest/gtest-death-test.h
+-- Installing: /tmp/source-engine-install/include/gtest/gtest-typed-test.h
+-- Installing: /tmp/source-engine-install/include/gtest/gtest.h
+-- Installing: /tmp/source-engine-install/include/gtest/internal
+-- Installing: /tmp/source-engine-install/include/gtest/internal/gtest-internal.h
+-- Installing: /tmp/source-engine-install/include/gtest/internal/gtest-filepath.h
+-- Installing: /tmp/source-engine-install/include/gtest/internal/custom
+-- Installing: /tmp/source-engine-install/include/gtest/internal/custom/gtest-printers.h
+-- Installing: /tmp/source-engine-install/include/gtest/internal/custom/gtest-port.h
+-- Installing: /tmp/source-engine-install/include/gtest/internal/custom/gtest.h
+-- Installing: /tmp/source-engine-install/include/gtest/internal/custom/README.md
+-- Installing: /tmp/source-engine-install/include/gtest/internal/gtest-type-util.h
+-- Installing: /tmp/source-engine-install/include/gtest/internal/gtest-death-test-internal.h
+-- Installing: /tmp/source-engine-install/include/gtest/internal/gtest-string.h
+-- Installing: /tmp/source-engine-install/include/gtest/internal/gtest-param-util.h
+-- Installing: /tmp/source-engine-install/include/gtest/internal/gtest-port.h
+-- Installing: /tmp/source-engine-install/include/gtest/internal/gtest-port-arch.h
+-- Installing: /tmp/source-engine-install/include/gtest/gtest-message.h
+-- Installing: /tmp/source-engine-install/lib/libgtest.a
+-- Installing: /tmp/source-engine-install/lib/libgtest_main.a
+-- Installing: /tmp/source-engine-install/lib/pkgconfig/gtest.pc
+-- Installing: /tmp/source-engine-install/lib/pkgconfig/gtest_main.pc
+-- Installing: /tmp/source-engine-install/lib/gdalplugins/3.10/gdal_FastFileGDB.so
+-- Set non-toolchain portion of runtime path of "/tmp/source-engine-install/lib/gdalplugins/3.10/gdal_FastFileGDB.so" to "$ORIGIN/../.."
+-- Installing: /tmp/source-engine-install/include/fast_gdb/unified
+-- Installing: /tmp/source-engine-install/include/fast_gdb/unified/routing.h
+-- Installing: /tmp/source-engine-install/include/fast_gdb/unified/unified.h
+-- Installing: /tmp/source-engine-install/lib/libfast_gdb_geometry_core.a
+-- Installing: /tmp/source-engine-install/lib/libexplorgdb_common_lib.a
+-- Installing: /tmp/source-engine-install/lib/libexplorgdb_reader_lib.a
+-- Installing: /tmp/source-engine-install/lib/libfast_gdb_runtime.so.0.2.0
+-- Installing: /tmp/source-engine-install/lib/libfast_gdb_runtime.so.0
+-- Installing: /tmp/source-engine-install/lib/libfast_gdb_runtime.so
+-- Installing: /tmp/source-engine-install/lib/libfast_gdb_curve_gdal.a
+-- Installing: /tmp/source-engine-install/lib/libfast_gdb_adaptive.a
+-- Installing: /tmp/source-engine-install/include/fast_gdb/common
+-- Installing: /tmp/source-engine-install/include/fast_gdb/common/varint.h
+-- Installing: /tmp/source-engine-install/include/fast_gdb/common/uuid_value.h
+-- Installing: /tmp/source-engine-install/include/fast_gdb/common/binary_reader.h
+-- Installing: /tmp/source-engine-install/include/fast_gdb/common/ole_date.h
+-- Installing: /tmp/source-engine-install/include/fast_gdb/common/explorgdb_types.h
+-- Installing: /tmp/source-engine-install/include/fast_gdb/common/utf16.h
+-- Installing: /tmp/source-engine-install/include/fast_gdb/reader/capability_report.h
+-- Installing: /tmp/source-engine-install/include/fast_gdb/reader/reader.h
+-- Installing: /tmp/source-engine-install/include/fast_gdb/reader/catalog_resolver.h
+-- Installing: /tmp/source-engine-install/include/fast_gdb/reader/field_layout.h
+-- Installing: /tmp/source-engine-install/include/fast_gdb/reader/gdb_catalog.h
+-- Installing: /tmp/source-engine-install/include/fast_gdb/reader/gdb_table.h
+-- Installing: /tmp/source-engine-install/include/fast_gdb/reader/gdb_tablx.h
+-- Installing: /tmp/source-engine-install/include/fast_gdb/reader/gdb_tablx_cache.h
+-- Installing: /tmp/source-engine-install/include/fast_gdb/reader/metadata_reader.h
+-- Installing: /tmp/source-engine-install/include/fast_gdb/reader/curve_geometry.h
+-- Installing: /tmp/source-engine-install/include/fast_gdb/reader/gdb_geometry.h
+-- Installing: /tmp/source-engine-install/include/fast_gdb/reader/geometry_model.h
+-- Installing: /tmp/source-engine-install/include/fast_gdb/reader/polygon_topology.h
+-- Installing: /tmp/source-engine-install/include/fast_gdb/reader/spatial_predicate.h
+-- Installing: /tmp/source-engine-install/include/fast_gdb/reader/wkb_writer.h
+-- Installing: /tmp/source-engine-install/include/fast_gdb/reader/wkt_writer.h
+-- Installing: /tmp/source-engine-install/include/fast_gdb/reader/gdb_attribute_index.h
+-- Installing: /tmp/source-engine-install/include/fast_gdb/reader/gdb_indexes.h
+-- Installing: /tmp/source-engine-install/include/fast_gdb/reader/gdb_spatial_index.h
+-- Installing: /tmp/source-engine-install/include/fast_gdb/reader/unistd.h
+-- Installing: /tmp/source-engine-install/include/fast_gdb/reader/windows_posix_compat.h
+-- Installing: /tmp/source-engine-install/include/fast_gdb/reader/windows_sliding_map.h
+-- Installing: /tmp/source-engine-install/include/fast_gdb/reader/query_engine.h
+-- Installing: /tmp/source-engine-install/include/fast_gdb/reader/sys/mman.h
+-- Installing: /tmp/source-engine-install/include/fast_gdb/reader/geometry/geometry_model.h
+-- Installing: /tmp/source-engine-install/include/fast_gdb/curve_gdal
+-- Installing: /tmp/source-engine-install/include/fast_gdb/curve_gdal/gdal_curve_backend.h
+-- Installing: /tmp/source-engine-install/include/fast_gdb/curve_gdal/hybrid_geometry_reader.h
+-- Installing: /tmp/source-engine-install/include/fast_gdb/adaptive
+-- Installing: /tmp/source-engine-install/include/fast_gdb/adaptive/adaptive_reader.h
+-- Installing: /tmp/source-engine-install/include/fast_gdb/adaptive/adaptive_backends.h
+-- Installing: /tmp/source-engine-install/lib/cmake/fast_gdb/fast_gdbTargets.cmake
+-- Installing: /tmp/source-engine-install/lib/cmake/fast_gdb/fast_gdbTargets-release.cmake
+-- Installing: /tmp/source-engine-install/lib/cmake/fast_gdb/fast_gdbConfig.cmake
+-- Installing: /tmp/source-engine-install/lib/cmake/fast_gdb/fast_gdbConfigVersion.cmake
+-- Installing: /tmp/source-engine-install/share/fast_gdb/README.md
+-- Installing: /tmp/source-engine-install/share/fast_gdb/README.en.md
+-- Installing: /tmp/source-engine-install/share/fast_gdb/CHANGELOG.md
+-- Installing: /tmp/source-engine-install/share/fast_gdb/LICENSE
+-- Installing: /tmp/source-engine-install/share/fast_gdb/THIRD_PARTY_NOTICES.md
+-- Installing: /tmp/source-engine-install/share/fast_gdb/release-notes.md
+-- The CXX compiler identification is GNU 14.2.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Found GDAL: /usr/lib/aarch64-linux-gnu/libgdal.so (found version "3.10.3")
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE
+-- Configuring done (0.1s)
+-- Generating done (0.0s)
+-- Build files have been written to: /tmp/source-engine-consumer-linear
+[ 50%] Building CXX object CMakeFiles/fast_gdb_package_consumer.dir/main.cpp.o
+[100%] Linking CXX executable fast_gdb_package_consumer
+[100%] Built target fast_gdb_package_consumer
+Internal ctest changing into directory: /tmp/source-engine-consumer-linear
+Test project /tmp/source-engine-consumer-linear
+    Start 1: fast_gdb_package_consumer
+1/1 Test #1: fast_gdb_package_consumer ........   Passed    0.00 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) =   0.00 sec
+-- The CXX compiler identification is GNU 14.2.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Found GDAL: /usr/lib/aarch64-linux-gnu/libgdal.so (found version "3.10.3")
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE
+-- Configuring done (0.1s)
+-- Generating done (0.0s)
+-- Build files have been written to: /tmp/source-engine-consumer-hybrid
+[ 50%] Building CXX object CMakeFiles/fast_gdb_package_consumer.dir/main.cpp.o
+[100%] Linking CXX executable fast_gdb_package_consumer
+[100%] Built target fast_gdb_package_consumer
+Internal ctest changing into directory: /tmp/source-engine-consumer-hybrid
+Test project /tmp/source-engine-consumer-hybrid
+    Start 1: fast_gdb_package_consumer
+1/1 Test #1: fast_gdb_package_consumer ........   Passed    0.00 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) =   0.00 sec
+-- The CXX compiler identification is GNU 14.2.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Found GDAL: /usr/lib/aarch64-linux-gnu/libgdal.so (found version "3.10.3")
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE
+-- Configuring done (0.1s)
+-- Generating done (0.0s)
+-- Build files have been written to: /tmp/source-engine-consumer-adaptive
+[ 50%] Building CXX object CMakeFiles/fast_gdb_package_consumer.dir/main.cpp.o
+[100%] Linking CXX executable fast_gdb_package_consumer
+[100%] Built target fast_gdb_package_consumer
+Internal ctest changing into directory: /tmp/source-engine-consumer-adaptive
+Test project /tmp/source-engine-consumer-adaptive
+    Start 1: fast_gdb_package_consumer
+1/1 Test #1: fast_gdb_package_consumer ........   Passed    0.02 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) =   0.02 sec
+-- The CXX compiler identification is GNU 14.2.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Found GDAL: /usr/lib/aarch64-linux-gnu/libgdal.so (found version "3.10.3")
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE
+-- Configuring done (0.1s)
+-- Generating done (0.0s)
+-- Build files have been written to: /tmp/source-engine-consumer-unified
+[ 50%] Building CXX object CMakeFiles/fast_gdb_package_consumer.dir/main.cpp.o
+[100%] Linking CXX executable fast_gdb_package_consumer
+[100%] Built target fast_gdb_package_consumer
+Internal ctest changing into directory: /tmp/source-engine-consumer-unified
+Test project /tmp/source-engine-consumer-unified
+    Start 1: fast_gdb_package_consumer
+1/1 Test #1: fast_gdb_package_consumer ........   Passed    0.00 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) =   0.00 sec

@@ -97,6 +97,8 @@ struct SpatialQueryMetrics {
     double estimated_coverage = 0.0;
     bool spx_bypassed = false;
     bool geometry_only_scan = false;
+    bool source_directory_hit = false;
+    size_t source_directory_bytes = 0;
     double candidate_ratio = 0.0;
     double candidate_lookup_ms = 0.0;
     double geometry_scan_ms = 0.0;
@@ -354,6 +356,17 @@ public:
 private:
     CompiledWhere prepare_where(const std::string& text,
                                 bool* cache_hit = nullptr) const;
+    bool source_current() const;
+    bool spatial_candidates(const GdbBbox& box, std::vector<RowSlot>& output,
+                            std::string& reason, SpatialQueryMetrics& metrics);
+    struct SpatialCandidatePlan {
+        bool succeeded = false;
+        std::vector<RowSlot> fids;
+        std::string reason;
+        SpatialQueryMetrics metrics;
+    };
+    QueryResult query_bbox_prepared(double xmin, double ymin, double xmax, double ymax,
+                                   SpatialCandidatePlan* prepared);
     const FieldDescriptor* geometry_field() const;
     bool feature_intersects(RowSlot fid,
                             double xmin, double ymin,
@@ -389,10 +402,7 @@ private:
     std::unique_ptr<GdbTableParser> parser_;
     std::optional<TablxCacheKey> source_tablx_identity_;
     std::shared_ptr<const detail::AttributeValueQueryContext> make_value_context(size_t field, bool temporal = false, bool allow_full_scan = false) const;
-    std::unique_ptr<GdbSpatialIndexParser> spatial_index_;
     bool opened_ = false;
-    bool spatial_index_initialized_ = false;
-    bool spatial_index_present_ = false;
     CapabilityReport capabilities_;
 };
 

@@ -1,0 +1,15 @@
+[1/15] Building CXX object CMakeFiles/explorgdb_reader_lib.dir/src/edgar/explorgdb/reader/query/query_engine_combined.cpp.o
+[2/15] Linking CXX static library libexplorgdb_reader_lib.a
+[3/15] Linking CXX executable bin/explorgdb_cli
+[4/15] Linking CXX shared library libfast_gdb_runtime.so.0.2.0
+[5/15] Creating library symlink libfast_gdb_runtime.so.0 libfast_gdb_runtime.so
+[6/15] Linking CXX shared module gdal_FastFileGDB.so
+[7/15] Linking CXX executable bin/fast_gdb_hybrid_test_runner
+[8/15] Linking CXX executable bin/fast_gdb_unified_test_runner
+[9/15] Linking CXX executable bin/fast_gdb_driver_test_runner
+[10/15] Linking CXX executable bin/fast_gdb_driver_mismatch_test_runner
+[11/15] Linking CXX executable bin/fast_gdb_gdal_read_write_boundary_test_runner
+[12/15] Linking CXX executable bin/fast_gdb_adaptive_reader_test_runner
+[13/15] Linking CXX executable bin/verify_arcgis_indexes
+[14/15] Linking CXX executable bin/verify_gdal_indexes
+[15/15] Linking CXX executable bin/gdb_tutorial_test_runner

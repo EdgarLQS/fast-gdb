@@ -1,0 +1,150 @@
+Note: Google Test filter = SpatialWhere*.*:RealDataReleaseContractTest.SuppliedGdbSpatialWindowsReturnSameFidsAsGdal
+[==========] Running 47 tests from 12 test suites.
+[----------] Global test environment set-up.
+[----------] 1 test from SpatialWhereBenchmarkTest
+[ RUN      ] SpatialWhereBenchmarkTest.Point100KSchemaV2Evidence
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/integration/gdal_parity/benchmark/test_spatial_where_benchmark.cpp:222: Skipped
+set FAST_GDB_RUN_SPATIAL_WHERE_BENCHMARKS=1
+
+[  SKIPPED ] SpatialWhereBenchmarkTest.Point100KSchemaV2Evidence (33 ms)
+[----------] 1 test from SpatialWhereBenchmarkTest (33 ms total)
+
+[----------] 2 tests from SpatialWhereAdaptiveTest
+[ RUN      ] SpatialWhereAdaptiveTest.SelectiveSpatialCandidatesUseFusedSingleRowScan
+[       OK ] SpatialWhereAdaptiveTest.SelectiveSpatialCandidatesUseFusedSingleRowScan (28 ms)
+[ RUN      ] SpatialWhereAdaptiveTest.HighCoverageUsesDirectAttributeIndexAndReportsMetrics
+[       OK ] SpatialWhereAdaptiveTest.HighCoverageUsesDirectAttributeIndexAndReportsMetrics (4 ms)
+[----------] 2 tests from SpatialWhereAdaptiveTest (33 ms total)
+
+[----------] 1 test from SpatialWhereDimensionTest
+[ RUN      ] SpatialWhereDimensionTest.PointZPointMAndPointZMUseXYForBbox
+[       OK ] SpatialWhereDimensionTest.PointZPointMAndPointZMUseXYForBbox (14 ms)
+[----------] 1 test from SpatialWhereDimensionTest (14 ms total)
+
+[----------] 1 test from SpatialWhereFunctionalIndexTest
+[ RUN      ] SpatialWhereFunctionalIndexTest.LowerIndexFallsBackForCaseSensitiveDirectComparison
+[       OK ] SpatialWhereFunctionalIndexTest.LowerIndexFallsBackForCaseSensitiveDirectComparison (3 ms)
+[----------] 1 test from SpatialWhereFunctionalIndexTest (3 ms total)
+
+[----------] 3 tests from SpatialWhereFusedGeometryTest
+[ RUN      ] SpatialWhereFusedGeometryTest.MultiPointMatchesGdal
+[       OK ] SpatialWhereFusedGeometryTest.MultiPointMatchesGdal (5 ms)
+[ RUN      ] SpatialWhereFusedGeometryTest.PolylineMatchesGdal
+[       OK ] SpatialWhereFusedGeometryTest.PolylineMatchesGdal (5 ms)
+[ RUN      ] SpatialWhereFusedGeometryTest.PolygonMatchesGdal
+[       OK ] SpatialWhereFusedGeometryTest.PolygonMatchesGdal (4 ms)
+[----------] 3 tests from SpatialWhereFusedGeometryTest (14 ms total)
+
+[----------] 3 tests from SpatialWhereGeometryTest
+[ RUN      ] SpatialWhereGeometryTest.PolylineCrossingUsesExactIntersection
+[       OK ] SpatialWhereGeometryTest.PolylineCrossingUsesExactIntersection (4 ms)
+[ RUN      ] SpatialWhereGeometryTest.PolygonHoleDoesNotBecomeEnvelopeHit
+[       OK ] SpatialWhereGeometryTest.PolygonHoleDoesNotBecomeEnvelopeHit (4 ms)
+[ RUN      ] SpatialWhereGeometryTest.MultiPointUsesAnyMemberIntersection
+[       OK ] SpatialWhereGeometryTest.MultiPointUsesAnyMemberIntersection (4 ms)
+[----------] 3 tests from SpatialWhereGeometryTest (13 ms total)
+
+[----------] 20 tests from SpatialWhereIndexFallbackTest
+[ RUN      ] SpatialWhereIndexFallbackTest.MissingAtxKeepsCorrectResults
+[       OK ] SpatialWhereIndexFallbackTest.MissingAtxKeepsCorrectResults (5 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.DamagedAtxKeepsCorrectResults
+[       OK ] SpatialWhereIndexFallbackTest.DamagedAtxKeepsCorrectResults (3 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.DamagedAtxAttributeQueryFallsBackToSequentialScan
+[       OK ] SpatialWhereIndexFallbackTest.DamagedAtxAttributeQueryFallsBackToSequentialScan (3 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.MissingAtxAttributeQueryFallsBackToSequentialScan
+[       OK ] SpatialWhereIndexFallbackTest.MissingAtxAttributeQueryFallsBackToSequentialScan (3 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.InconsistentAtxTrailerCountKeepsCorrectResults
+[       OK ] SpatialWhereIndexFallbackTest.InconsistentAtxTrailerCountKeepsCorrectResults (4 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.CyclicAtxLeafChainKeepsCorrectResults
+[       OK ] SpatialWhereIndexFallbackTest.CyclicAtxLeafChainKeepsCorrectResults (3 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.MissingSpxStillUsesAtxCandidates
+[       OK ] SpatialWhereIndexFallbackTest.MissingSpxStillUsesAtxCandidates (3 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.OfficialSetFeatureRebuildsMissingSpxForFreshFastReader
+[       OK ] SpatialWhereIndexFallbackTest.OfficialSetFeatureRebuildsMissingSpxForFreshFastReader (4 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.MissingBothIndexesStillMatches
+[       OK ] SpatialWhereIndexFallbackTest.MissingBothIndexesStillMatches (3 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.NaNFloatKeyFallsBackToActualFieldsForEveryOperator
+[       OK ] SpatialWhereIndexFallbackTest.NaNFloatKeyFallsBackToActualFieldsForEveryOperator (6 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.NonFinitePublicAttributeProbesAreExplicitErrors
+[       OK ] SpatialWhereIndexFallbackTest.NonFinitePublicAttributeProbesAreExplicitErrors (4 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.FiniteWrongKeysDuplicateFidsAndMissingRowsUseCompleteFieldScan
+[       OK ] SpatialWhereIndexFallbackTest.FiniteWrongKeysDuplicateFidsAndMissingRowsUseCompleteFieldScan (61 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.ExactInt64EntryPointRechecksNativeFieldsAndSharesProof
+[       OK ] SpatialWhereIndexFallbackTest.ExactInt64EntryPointRechecksNativeFieldsAndSharesProof (9 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.ValidatedNumericDirectoryReportsColdProofAndWarmQueries
+[numeric-wide] rows=10000 op== matches=1 rounds=3 indexed_median_ms=0.125667 where_scan_median_ms=0.270209
+[numeric-wide] rows=10000 op=!= matches=9895 rounds=3 indexed_median_ms=0.368084 where_scan_median_ms=0.273333
+[numeric-wide] rows=10000 op=< matches=4947 rounds=3 indexed_median_ms=0.379167 where_scan_median_ms=0.290083
+[numeric-wide] rows=10000 op=<= matches=4948 rounds=3 indexed_median_ms=0.381583 where_scan_median_ms=0.28125
+[numeric-wide] rows=10000 op=> matches=4948 rounds=3 indexed_median_ms=0.382041 where_scan_median_ms=0.285291
+[numeric-wide] rows=10000 op=>= matches=4949 rounds=3 indexed_median_ms=0.390375 where_scan_median_ms=0.284417
+[numeric-directory] rows=10000 nonnull=9896 cold_ms=1.086 validation_ms=1.02167 validation_rows=19896 cold_pages=31 cache_bytes=3904 warm_queries=63 warm_pages=63 warm_keys=1133 warm_median_ms=0.125708 warm_p95_ms=0.13275 warm_p99_ms=0.136083 baseline_pages=126 baseline_keys=11007 baseline_median_ms=0.035458 baseline_p95_ms=0.040083 baseline_p99_ms=0.063459
+[       OK ] SpatialWhereIndexFallbackTest.ValidatedNumericDirectoryReportsColdProofAndWarmQueries (29 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.UnreadableAttributeRowCannotBecomePartialSpatialWhereSuccess
+[       OK ] SpatialWhereIndexFallbackTest.UnreadableAttributeRowCannotBecomePartialSpatialWhereSuccess (3 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.UnsupportedGeometryCannotBecomeSuccessfulPartialResult
+[       OK ] SpatialWhereIndexFallbackTest.UnsupportedGeometryCannotBecomeSuccessfulPartialResult (35 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.ParsedSpxWithUnreadableLeafCannotReturnSuccessfulEmptyResult
+[       OK ] SpatialWhereIndexFallbackTest.ParsedSpxWithUnreadableLeafCannotReturnSuccessfulEmptyResult (3 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.CanonicalTableBoundsMatchNativeEnvelopesAndPreserveNullEmpty
+[       OK ] SpatialWhereIndexFallbackTest.CanonicalTableBoundsMatchNativeEnvelopesAndPreserveNullEmpty (34 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.SourceProofRecoversWrongKeysAndFullyScansMissingOrInvalidFids
+[spx-source-proof] raw wrong-key candidates=0 expected source FID 1; validated engine checked below
+[       OK ] SpatialWhereIndexFallbackTest.SourceProofRecoversWrongKeysAndFullyScansMissingOrInvalidFids (308 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.WarmSourceDirectoryRejectsReplacedTableAndTablxUntilReopen
+[       OK ] SpatialWhereIndexFallbackTest.WarmSourceDirectoryRejectsReplacedTableAndTablxUntilReopen (75 ms)
+[----------] 20 tests from SpatialWhereIndexFallbackTest (611 ms total)
+
+[----------] 4 tests from SpatialWhereIntegrationTest
+[ RUN      ] SpatialWhereIntegrationTest.IndexedSingleComparisonMatchesGdalFullFidVector
+[       OK ] SpatialWhereIntegrationTest.IndexedSingleComparisonMatchesGdalFullFidVector (11 ms)
+[ RUN      ] SpatialWhereIntegrationTest.CompoundWhereEvaluatesOnlyExactSpatialMatches
+[       OK ] SpatialWhereIntegrationTest.CompoundWhereEvaluatesOnlyExactSpatialMatches (4 ms)
+[ RUN      ] SpatialWhereIntegrationTest.StringIndexCandidatesAreRecheckedAgainstFullWhere
+[       OK ] SpatialWhereIntegrationTest.StringIndexCandidatesAreRecheckedAgainstFullWhere (4 ms)
+[ RUN      ] SpatialWhereIntegrationTest.EmptySetsShortCircuitAndInvalidRequestsAreDiagnosed
+[       OK ] SpatialWhereIntegrationTest.EmptySetsShortCircuitAndInvalidRequestsAreDiagnosed (4 ms)
+[----------] 4 tests from SpatialWhereIntegrationTest (24 ms total)
+
+[----------] 1 test from SpatialWhereNullTest
+[ RUN      ] SpatialWhereNullTest.NullNotEqualUsesSqlThreeValuedLogicAndRecordsGdalDifference
+[       OK ] SpatialWhereNullTest.NullNotEqualUsesSqlThreeValuedLogicAndRecordsGdalDifference (3 ms)
+[----------] 1 test from SpatialWhereNullTest (3 ms total)
+
+[----------] 5 tests from SpatialWhereUuidTest
+[ RUN      ] SpatialWhereUuidTest.SyntheticGuidIndexMatchesGdalRecordScanAcrossPages
+[       OK ] SpatialWhereUuidTest.SyntheticGuidIndexMatchesGdalRecordScanAcrossPages (35 ms)
+[ RUN      ] SpatialWhereUuidTest.DamagedGuidIndexFallsBackToValueScan
+[       OK ] SpatialWhereUuidTest.DamagedGuidIndexFallsBackToValueScan (25 ms)
+[ RUN      ] SpatialWhereUuidTest.CanonicalWrongGuidKeysFallBackToOriginalValues
+[       OK ] SpatialWhereUuidTest.CanonicalWrongGuidKeysFallBackToOriginalValues (30 ms)
+[ RUN      ] SpatialWhereUuidTest.DuplicateGuidFidsFallBackToCompleteValues
+[       OK ] SpatialWhereUuidTest.DuplicateGuidFidsFallBackToCompleteValues (27 ms)
+[ RUN      ] SpatialWhereUuidTest.MissingGuidEntryDoesNotLoseOriginalRecord
+[       OK ] SpatialWhereUuidTest.MissingGuidEntryDoesNotLoseOriginalRecord (30 ms)
+[----------] 5 tests from SpatialWhereUuidTest (149 ms total)
+
+[----------] 5 tests from SpatialWhereUnicodeTest
+[ RUN      ] SpatialWhereUnicodeTest.BmpTextUsesIndexAndRechecks
+[       OK ] SpatialWhereUnicodeTest.BmpTextUsesIndexAndRechecks (3 ms)
+[ RUN      ] SpatialWhereUnicodeTest.NonBmpEqualityUsesIndexWithoutFalseNegative
+[       OK ] SpatialWhereUnicodeTest.NonBmpEqualityUsesIndexWithoutFalseNegative (3 ms)
+[ RUN      ] SpatialWhereUnicodeTest.FullStringPredicatesRecheckPaddingTruncationAndUnicodeOrder
+[       OK ] SpatialWhereUnicodeTest.FullStringPredicatesRecheckPaddingTruncationAndUnicodeOrder (51 ms)
+[ RUN      ] SpatialWhereUnicodeTest.ValidatedDirectoryPrunesMultiPageQueriesAndRefreshesSnapshots
+[string-directory] rows=10000 field_width=256 long_values=1 cold_ms=3.53592 cold_pages=419 cache_bytes=54462 warm_queries=63 warm_pages=67 warm_entries=1600 warm_median_ms=0.128417 warm_p95_ms=0.142292 warm_p99_ms=0.238083 baseline_pages=26397 baseline_entries=630000 baseline_median_ms=2.722 baseline_p95_ms=2.78404 baseline_p99_ms=3.12479
+[       OK ] SpatialWhereUnicodeTest.ValidatedDirectoryPrunesMultiPageQueriesAndRefreshesSnapshots (228 ms)
+[ RUN      ] SpatialWhereUnicodeTest.ChangedIndexWithWrongKeysFallsBackAndCachesFailedProof
+[       OK ] SpatialWhereUnicodeTest.ChangedIndexWithWrongKeysFallsBackAndCachesFailedProof (4 ms)
+[----------] 5 tests from SpatialWhereUnicodeTest (292 ms total)
+
+[----------] 1 test from RealDataReleaseContractTest
+[ RUN      ] RealDataReleaseContractTest.SuppliedGdbSpatialWindowsReturnSameFidsAsGdal
+[       OK ] RealDataReleaseContractTest.SuppliedGdbSpatialWindowsReturnSameFidsAsGdal (1377 ms)
+[----------] 1 test from RealDataReleaseContractTest (1377 ms total)
+
+[----------] Global test environment tear-down
+[==========] 47 tests from 12 test suites ran. (2571 ms total)
+[  PASSED  ] 46 tests.
+[  SKIPPED ] 1 test, listed below:
+[  SKIPPED ] SpatialWhereBenchmarkTest.Point100KSchemaV2Evidence

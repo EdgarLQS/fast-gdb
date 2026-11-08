@@ -1918,6 +1918,125 @@ TEST(UnifiedGdalFacadeTest, RealAwsImmutablePrefixReadsWhenConfigured) {
     auto first = cursor.value().next();
     ASSERT_TRUE(first) << first.error().message;
 }
+
+TEST(UnifiedFastFacadeTest, RefreshRebuildsWarmProofWithSyntheticIndexDeclaration) {
+    namespace fs = std::filesystem;
+    const auto path = fs::temp_directory_path() / "fast_gdb_unified_source_proof_refresh.gdb";
+    struct Cleanup {
+        fs::path path;
+        ~Cleanup() { std::error_code ignored; fs::remove_all(path, ignored); }
+    } cleanup{path};
+    const auto declare_index = [&] {
+        // GDAL writes HasSpatialIndex=false even when it persists a valid SPX.
+        // This temporary fixture deliberately declares the index to exercise
+        // the proof/cache path; it is not ArcGIS metadata acceptance evidence.
+        const auto items = path / "a00000004.gdbtable";
+        std::ifstream input(items, std::ios::binary);
+        std::string bytes((std::istreambuf_iterator<char>(input)), {});
+        input.close();
+        const std::string marker = "HasSpatialIndex>false";
+        const auto position = bytes.find(marker);
+        if (position == std::string::npos)
+            return bytes.find("HasSpatialIndex>true ") != std::string::npos;
+        // Equal-width XML text preserves the table/row/string length prefixes.
+        bytes.replace(position + marker.size() - 5, 5, "true ");
+        std::ofstream output(items, std::ios::binary | std::ios::trunc);
+        output.write(bytes.data(), bytes.size());
+        return output.good();
+    };
+    fs::remove_all(path);
+    GDALAllRegister();
+    auto* driver = GetGDALDriverManager()->GetDriverByName("OpenFileGDB");
+    ASSERT_NE(driver, nullptr);
+    std::unique_ptr<GDALDataset, decltype(&GDALClose)> native(
+        driver->Create(path.string().c_str(), 0, 0, 0, GDT_Unknown, nullptr), GDALClose);
+    ASSERT_NE(native, nullptr);
+    auto* native_layer = native->CreateLayer("points", nullptr, wkbPoint, nullptr);
+    ASSERT_NE(native_layer, nullptr);
+    OGRFieldDefn value("value", OFTInteger);
+    ASSERT_EQ(native_layer->CreateField(&value), OGRERR_NONE);
+    for (int i = 0; i < 500; ++i) {
+        std::unique_ptr<OGRFeature, decltype(&OGRFeature::DestroyFeature)> feature(
+            OGRFeature::CreateFeature(native_layer->GetLayerDefn()), OGRFeature::DestroyFeature);
+        OGRPoint point(i + 1, i + 1);
+        feature->SetField("value", i);
+        ASSERT_EQ(feature->SetGeometry(&point), OGRERR_NONE);
+        ASSERT_EQ(native_layer->CreateFeature(feature.get()), OGRERR_NONE);
+    }
+    native.reset();
+    native.reset(static_cast<GDALDataset*>(GDALOpenEx(path.string().c_str(), GDAL_OF_VECTOR | GDAL_OF_UPDATE,
+        nullptr, nullptr, nullptr)));
+    ASSERT_NE(native, nullptr);
+    native_layer = native->GetLayerByName("points"); ASSERT_NE(native_layer, nullptr);
+    while (auto* raw = native_layer->GetNextFeature()) {
+        std::unique_ptr<OGRFeature, decltype(&OGRFeature::DestroyFeature)> feature(raw, OGRFeature::DestroyFeature);
+        ASSERT_EQ(native_layer->SetFeature(feature.get()), OGRERR_NONE);
+    }
+    CPLErrorReset();
+    native->ExecuteSQL("RECOMPUTE EXTENT ON points", nullptr, nullptr);
+    ASSERT_LT(CPLGetLastErrorType(), CE_Failure);
+    native->ExecuteSQL("CREATE INDEX source_value_idx ON points(value)", nullptr, nullptr);
+    ASSERT_LT(CPLGetLastErrorType(), CE_Failure);
+    native.reset();
+
+    ASSERT_TRUE(declare_index());
+    {
+        explorgdb::GdbCatalog catalog; ASSERT_TRUE(catalog.scan(path.string()));
+        explorgdb::CatalogResolver resolver(catalog); ASSERT_TRUE(resolver.load());
+        const auto table = resolver.resolve("points"); ASSERT_TRUE(table.has_value());
+        explorgdb::QueryEngine probe(catalog, *table); ASSERT_TRUE(probe.open());
+        explorgdb::QueryRequest request; request.kind = explorgdb::QueryKind::SpatialBbox;
+        request.xmin = 1.9; request.ymin = 1.9; request.xmax = 2.1; request.ymax = 2.1;
+        const auto result = probe.query(request);
+        ASSERT_GT(result.spatial_metrics.source_directory_bytes, 0U) << result.fallback_reason;
+    }
+    OpenOptions options; options.backend = BackendPreference::FastOnly;
+    auto dataset = Dataset::open(path.string(), options); ASSERT_TRUE(dataset) << dataset.error().message;
+    auto layer = dataset.value().open_layer("points"); ASSERT_TRUE(layer) << layer.error().message;
+    Query old_window; old_window.spatial_filter = Envelope{1.9, 1.9, 2.1, 2.1};
+    for (int round = 0; round < 2; ++round) {
+        auto result = layer.value().open_cursor(old_window); ASSERT_TRUE(result) << result.error().message;
+        auto cursor = std::move(result).value();
+        EXPECT_NE(cursor.query_report().execution_path.find("bbox:model:spx-candidates"), std::string::npos)
+            << cursor.query_report().execution_path;
+        const auto item = cursor.next(); ASSERT_TRUE(item); ASSERT_TRUE(item.value().has_value());
+        EXPECT_EQ(item.value()->fid, 2);
+        const auto end = cursor.next(); ASSERT_TRUE(end); EXPECT_FALSE(end.value().has_value());
+        cursor.close();
+    }
+    native.reset(static_cast<GDALDataset*>(GDALOpenEx(path.string().c_str(), GDAL_OF_VECTOR | GDAL_OF_UPDATE,
+        nullptr, nullptr, nullptr)));
+    ASSERT_NE(native, nullptr);
+    native_layer = native->GetLayerByName("points"); ASSERT_NE(native_layer, nullptr);
+    std::unique_ptr<OGRFeature, decltype(&OGRFeature::DestroyFeature)> changed(
+        native_layer->GetFeature(2), OGRFeature::DestroyFeature);
+    ASSERT_NE(changed, nullptr);
+    OGRPoint moved(900, 900); ASSERT_EQ(changed->SetGeometry(&moved), OGRERR_NONE);
+    ASSERT_EQ(native_layer->SetFeature(changed.get()), OGRERR_NONE);
+    native.reset();
+    ASSERT_TRUE(declare_index());
+    const auto stale = layer.value().open_cursor(old_window);
+    ASSERT_FALSE(stale);
+    EXPECT_TRUE(stale.error().code == ErrorCode::SourceChanged || stale.error().code == ErrorCode::SchemaMismatch);
+    auto refreshed = dataset.value().refresh(); ASSERT_TRUE(refreshed) << refreshed.error().message;
+    // Uncoordinated external writes need not advance the coordinator counter;
+    // refresh must replace the source snapshot and expire old handles anyway.
+    const auto expired = dataset.value().layer_names();
+    ASSERT_FALSE(expired); EXPECT_EQ(expired.error().code, ErrorCode::ReaderExpired);
+    auto current = refreshed.value().open_layer("points"); ASSERT_TRUE(current) << current.error().message;
+    auto old_result = current.value().open_cursor(old_window); ASSERT_TRUE(old_result) << old_result.error().message;
+    auto old_cursor = std::move(old_result).value();
+    const auto old_end = old_cursor.next(); ASSERT_TRUE(old_end); EXPECT_FALSE(old_end.value().has_value());
+    old_cursor.close();
+    Query new_window; new_window.spatial_filter = Envelope{899.9, 899.9, 900.1, 900.1};
+    auto result = current.value().open_cursor(new_window); ASSERT_TRUE(result) << result.error().message;
+    auto cursor = std::move(result).value();
+    EXPECT_NE(cursor.query_report().execution_path.find("bbox:model:spx-candidates"), std::string::npos)
+        << cursor.query_report().execution_path;
+    const auto item = cursor.next(); ASSERT_TRUE(item); ASSERT_TRUE(item.value().has_value());
+    EXPECT_EQ(item.value()->fid, 2);
+    const auto end = cursor.next(); ASSERT_TRUE(end); EXPECT_FALSE(end.value().has_value());
+}
 #endif
 
 }  // namespace

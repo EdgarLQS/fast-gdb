@@ -266,6 +266,9 @@ inline constexpr size_t kRecordPrefixSize = 4U;  // blob length prefix
 inline constexpr size_t kAtxBypassMaxCandidates = 65536U;
 inline constexpr size_t kAtxBypassRatioDenominator = 8U;
 inline constexpr double kFusedCoverageThreshold = 0.125;
+// Source-envelope leaves can cover an entire small table. A bounded fused
+// row pass still avoids a geometry pass followed by another attribute pass.
+inline constexpr size_t kFusedSmallCandidateLimit = 512U;
 
 // ═══════════════════════════════════════════════
 // 列存储字段宽度（Field physical widths for writing）

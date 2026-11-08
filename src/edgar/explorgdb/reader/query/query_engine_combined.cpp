@@ -22,9 +22,6 @@ namespace {
 
 using CombinedClock = std::chrono::steady_clock;
 
-constexpr size_t kAtxBypassMaxCandidates = 65536U;
-constexpr size_t kAtxBypassRatioDenominator = 8U;
-
 double elapsed_ms(CombinedClock::time_point start) {
     return std::chrono::duration<double, std::milli>(
         CombinedClock::now() - start).count();
@@ -101,8 +98,19 @@ double query_coverage_ratio(const FieldDescriptor& field,
     const double width = field.xmax - field.xmin;
     const double height = field.ymax - field.ymin;
     if (!std::isfinite(width) || !std::isfinite(height) ||
-        width <= 0.0 || height <= 0.0) {
+        width < 0.0 || height < 0.0) {
         return 0.0;
+    }
+    // A horizontal/vertical layer still has one-dimensional selectivity;
+    // treating every flat extent as zero would fuse even whole-layer queries.
+    if (width == 0.0 || height == 0.0) {
+        if (xmax < field.xmin || xmin > field.xmax ||
+            ymax < field.ymin || ymin > field.ymax) return 0.0;
+        const double x = width == 0.0 ? 1.0 :
+            std::max(0.0, std::min(xmax, field.xmax) - std::max(xmin, field.xmin)) / width;
+        const double y = height == 0.0 ? 1.0 :
+            std::max(0.0, std::min(ymax, field.ymax) - std::max(ymin, field.ymin)) / height;
+        return std::clamp(x * y, 0.0, 1.0);
     }
 
     const double overlap_xmin = std::max(xmin, field.xmin);
@@ -389,6 +397,7 @@ QueryResult QueryEngine::query_spatial_where(const QueryRequest& request) {
     }
 
     const auto predicate = expression.indexable_predicate();
+    std::optional<SpatialCandidatePlan> spatial_plan;
 
     // Selective SPX candidates can be spatially checked and WHERE-rechecked
     // from one parsed row. This removes the old geometry pass followed by a
@@ -412,17 +421,11 @@ QueryResult QueryEngine::query_spatial_where(const QueryRequest& request) {
                   *geom_field,
                   request.xmin, request.ymin,
                   request.xmax, request.ymax);
-        const bool spx_extent_supported = geom_field != nullptr &&
-            GdbSpatialIndexParser::supports_layer_extent(
-                geom_field->xmin, geom_field->ymin,
-                geom_field->xmax, geom_field->ymax,
-                geom_field->grid_sizes);
         const bool fused_shape_supported =
             geom_field != nullptr && feature_count != 0 &&
             fid_slot_count != 0 &&
             geometry_field_index < parser_->fields().size() &&
             estimated_coverage <= kFusedCoverageThreshold &&
-            spx_extent_supported &&
             resolved_.has_spatial_index != false;
 
         if (fused_shape_supported) {
@@ -430,45 +433,21 @@ QueryResult QueryEngine::query_spatial_where(const QueryRequest& request) {
                 catalog_, resolved_.id, parser_->fields(), *predicate);
             if (attribute.available) {
                 const auto candidate_start = CombinedClock::now();
-                if (!spatial_index_initialized_) {
-                    spatial_index_initialized_ = true;
-                    const CatalogEntry* spx = catalog_.find_spx(resolved_.id);
-                    spatial_index_present_ =
-                        spx != nullptr && resolved_.has_spatial_index != false;
-                    if (spatial_index_present_) {
-                        auto index = std::make_unique<GdbSpatialIndexParser>(
-                            catalog_.path() + "/" + spx->filename);
-                        if (index->parse()) {
-                            spatial_index_ = std::move(index);
-                        } else {
-                            capabilities_.spatial_index = {
-                                CapabilityState::Degraded,
-                                ".spx exists but could not be parsed; "
-                                "falling back to sequential model filtering"};
-                        }
-                    }
-                }
+                auto& prepared = spatial_plan.emplace();
+                prepared.succeeded = spatial_candidates(
+                    {request.xmin, request.ymin, request.xmax, request.ymax},
+                    prepared.fids, prepared.reason, prepared.metrics);
+                prepared.metrics.candidate_lookup_ms = elapsed_ms(candidate_start);
+                if (prepared.succeeded) {
+                    const auto& candidates = prepared.fids;
+                    const double candidate_lookup_ms = prepared.metrics.candidate_lookup_ms;
 
-                if (spatial_index_ != nullptr) {
-                    const bool merge_x_ranges =
-                        request.ymin <= geom_field->ymin &&
-                        request.ymax >= geom_field->ymax;
-                    bool succeeded = false;
-                    std::vector<RowSlot> candidates =
-                        spatial_index_->query_bbox(
-                            request.xmin, request.ymin,
-                            request.xmax, request.ymax,
-                            geom_field->xorig, geom_field->yorig,
-                            geom_field->xyscale, geom_field->grid_sizes,
-                            fid_slot_count - 1U,
-                            merge_x_ranges, &succeeded);
-                    const double candidate_lookup_ms =
-                        elapsed_ms(candidate_start);
-
-                    if (succeeded && !candidates.empty() &&
-                        should_bypass_attribute_index(
-                            candidates.size(), feature_count)) {
+                    if (!candidates.empty() &&
+                        (should_bypass_attribute_index(candidates.size(), feature_count) ||
+                         (feature_count >= kAtxBypassRatioDenominator &&
+                          candidates.size() <= kFusedSmallCandidateLimit))) {
                         QueryResult fused;
+                        fused.spatial_metrics = prepared.metrics;
                         fused.execution_path =
                             kPathSpatialWhereSpatialCandidates;
                         fused.combined_metrics.used_spatial_index = true;
@@ -588,9 +567,11 @@ QueryResult QueryEngine::query_spatial_where(const QueryRequest& request) {
     }
 
     const auto spatial_start = CombinedClock::now();
-    QueryResult spatial = query_bbox_unified(
-        request.xmin, request.ymin, request.xmax, request.ymax);
-    result.combined_metrics.spatial_ms = elapsed_ms(spatial_start);
+    QueryResult spatial = query_bbox_prepared(
+        request.xmin, request.ymin, request.xmax, request.ymax,
+        spatial_plan ? &*spatial_plan : nullptr);
+    result.combined_metrics.spatial_ms = elapsed_ms(spatial_start) +
+        (spatial_plan ? spatial_plan->metrics.candidate_lookup_ms : 0.0);
     result.spatial_metrics = spatial.spatial_metrics;
     result.combined_metrics.spatial_candidate_count =
         spatial.spatial_metrics.candidate_count;

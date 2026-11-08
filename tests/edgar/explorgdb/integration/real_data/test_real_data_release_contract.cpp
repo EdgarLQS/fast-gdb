@@ -1965,7 +1965,7 @@ TEST(RealDataReleaseContractTest,
     uint64_t skipped_curve_rows = 0;
     uint64_t skipped_topology_layers = 0;
     uint64_t skipped_no_extent_layers = 0;
-    uint64_t unsupported_grid_fallback_layers = 0;
+    uint64_t source_proof_fallback_layers = 0;
     uint64_t mismatches = 0;
     std::string first_mismatch;
     std::ostringstream mismatch_details;
@@ -2040,10 +2040,10 @@ TEST(RealDataReleaseContractTest,
             if (layer_name.rfind("CRS_", 0) == 0) {
                 EXPECT_EQ(fast_result.execution_path,
                           kPathBboxModelSequentialFallback);
-                EXPECT_EQ(fast_result.fallback_reason,
-                          kDiagnosticSpxGridUnsupported);
+                EXPECT_NE(fast_result.fallback_reason.find("spatial source proof failed"), std::string::npos);
+                EXPECT_EQ(fast_result.spatial_metrics.source_directory_bytes, 0U);
                 if (std::string(window.label) == "whole")
-                    ++unsupported_grid_fallback_layers;
+                    ++source_proof_fallback_layers;
             }
 
             std::vector<RowSlot> gdal_fids;
@@ -2148,8 +2148,8 @@ TEST(RealDataReleaseContractTest,
         << "curve spatial queries have a separate geometry policy contract";
     EXPECT_EQ(skipped_topology_layers, 2u)
         << "the two intentionally malformed topology layers have explicit status tests";
-    EXPECT_EQ(unsupported_grid_fallback_layers, 3u)
-        << "CRS layers outside the 31-bit SPX grid must use sequential filtering";
+    EXPECT_EQ(source_proof_fallback_layers, 3u)
+        << "these CRS layers cannot establish complete source coverage and must use sequential filtering";
     EXPECT_EQ(mismatches, 0u) << first_mismatch << mismatch_details.str();
     RecordProperty("QueriedLayers", std::to_string(queried_layers));
     RecordProperty("ComparedSpatialWindows", std::to_string(compared_windows));
@@ -2157,8 +2157,8 @@ TEST(RealDataReleaseContractTest,
     RecordProperty("SkippedCurveRows", std::to_string(skipped_curve_rows));
     RecordProperty("SkippedTopologyLayers",
                    std::to_string(skipped_topology_layers));
-    RecordProperty("UnsupportedGridFallbackLayers",
-                   std::to_string(unsupported_grid_fallback_layers));
+    RecordProperty("SourceProofFallbackLayers",
+                   std::to_string(source_proof_fallback_layers));
     RecordProperty("SkippedNoExtentLayers",
                    std::to_string(skipped_no_extent_layers));
 }
