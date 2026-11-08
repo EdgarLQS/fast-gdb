@@ -1,0 +1,26 @@
+Note: Google Test filter = RealDataReleaseContractTest.Historical*
+[==========] Running 6 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 6 tests from RealDataReleaseContractTest
+[ RUN      ] RealDataReleaseContractTest.HistoricalGdbEveryNonCurveGeometryMatchesGdal
+[       OK ] RealDataReleaseContractTest.HistoricalGdbEveryNonCurveGeometryMatchesGdal (83 ms)
+[ RUN      ] RealDataReleaseContractTest.HistoricalAttributeIndexesMatchIndependentRecordScan
+[       OK ] RealDataReleaseContractTest.HistoricalAttributeIndexesMatchIndependentRecordScan (49 ms)
+[ RUN      ] RealDataReleaseContractTest.HistoricalDatePredicatesMatchIndependentRecordScan
+[       OK ] RealDataReleaseContractTest.HistoricalDatePredicatesMatchIndependentRecordScan (22 ms)
+[ RUN      ] RealDataReleaseContractTest.HistoricalUuidPredicatesMatchIndependentRecordScan
+[       OK ] RealDataReleaseContractTest.HistoricalUuidPredicatesMatchIndependentRecordScan (30 ms)
+[ RUN      ] RealDataReleaseContractTest.HistoricalUnknownIndexMetadataReturnsUnsupported
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/integration/real_data/test_real_data_release_contract.cpp:1798: Skipped
+dataset has no ATX with unparsed metadata
+
+[  SKIPPED ] RealDataReleaseContractTest.HistoricalUnknownIndexMetadataReturnsUnsupported (2 ms)
+[ RUN      ] RealDataReleaseContractTest.HistoricalSpatialQueriesMatchIndependentGeometryScan
+[       OK ] RealDataReleaseContractTest.HistoricalSpatialQueriesMatchIndependentGeometryScan (1036 ms)
+[----------] 6 tests from RealDataReleaseContractTest (1223 ms total)
+
+[----------] Global test environment tear-down
+[==========] 6 tests from 1 test suite ran. (1224 ms total)
+[  PASSED  ] 5 tests.
+[  SKIPPED ] 1 test, listed below:
+[  SKIPPED ] RealDataReleaseContractTest.HistoricalUnknownIndexMetadataReturnsUnsupported

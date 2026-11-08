@@ -6,6 +6,7 @@
 #include "gdb_indexes.h"
 #include "gdb_tablx_cache.h"
 #include "gdb_attribute_value_cache.h"
+#include "gdb_spatial_source_cache.h"
 #include <algorithm>
 #include <cstring>
 #include <filesystem>
@@ -26,6 +27,7 @@ bool GdbCatalog::scan(const std::string& gdb_path) {
     gdb_path_ = gdb_path;
     entries_.clear();
     attribute_value_cache_ = std::make_shared<detail::AttributeValueCache>();
+    spatial_source_cache_ = std::make_shared<detail::SpatialSourceCache>();
     index_metadata_cache_ = std::make_shared<IndexMetadataCacheState>();
     has_magic_ = false;
     has_timestamps_ = false;

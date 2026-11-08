@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <sys/mman.h>
 #include <unistd.h>
 
 namespace explorgdb::detail {
@@ -14,6 +15,11 @@ uint64_t integer(const uint8_t* bytes, size_t width) {
 }
 }
 SpatialSourceIndex::~SpatialSourceIndex() = default;
+
+size_t SpatialSourceIndex::bytes() const {
+    return sizeof(*this) + path_.capacity() + sizeof(GdbSpatialIndexParser) +
+        parser_->file_path_.capacity() + directory_->bytes();
+}
 
 bool SpatialSourceIndex::stable() const {
     TablxCacheKey handle, path;
@@ -45,6 +51,13 @@ SpatialSourceBuildResult SpatialSourceIndex::build(const std::string& path, cons
         if (!index->parser_->parse() || !index->stable()) {
             result.reason = "SPX parse or identity validation failed"; return result;
         }
+        // This adapter only uses pread and metadata. Retaining the raw parser's
+        // mapping/page buffers would defeat the cache's retained-payload budget.
+        if (index->parser_->mapped_data_) {
+            munmap(const_cast<uint8_t*>(index->parser_->mapped_data_), index->parser_->mapped_size_);
+            index->parser_->mapped_data_ = nullptr;
+        }
+        for (auto& cached : index->parser_->page_cache_) std::vector<uint8_t>().swap(cached.data);
         const auto& parser = *index->parser_;
         const auto& trailer = parser.trailer_;
         SpatialSourceDirectoryBuilder builder(source.slots, source.active_rows,

@@ -1,11 +1,15 @@
 #include <gtest/gtest.h>
 #include "gdb_spatial_source_index.h"
 #include "gdb_spatial_source_table.h"
+#include "gdb_catalog.h"
 #include "gdb_table.h"
 #include "test_paths.h"
 #include <filesystem>
 #include <fstream>
 #include <atomic>
+#include <future>
+#include <chrono>
+#include <limits>
 
 using namespace explorgdb;
 using namespace explorgdb::detail;
@@ -148,4 +152,243 @@ TEST(SpatialSourceTableTest, FixedFixtureBatchAndFullScanAgreeWithoutGdalRuntime
         return true;
     }));
     EXPECT_EQ(count, table.active_feature_count()); EXPECT_EQ(compared, 4U);
+    TablxCacheKey index_identity;
+    index_identity.inode = 123;
+    const auto key = make_table_spatial_source_key(table, expected_tablx, index_identity);
+    ASSERT_TRUE(key.has_value());
+    EXPECT_TRUE(key->table == expected_table); EXPECT_TRUE(key->tablx == expected_tablx);
+    EXPECT_TRUE(key->index == index_identity);
+    ASSERT_LT(key->field, table.fields().size());
+    const auto& geometry = table.fields()[key->field];
+    EXPECT_EQ(geometry.type, FieldType::Geometry);
+    EXPECT_EQ(key->fields, table.fields().size());
+    EXPECT_EQ(key->geometry_type, table.header().geom_type_full);
+    EXPECT_EQ(key->transform, (std::array<double, 7>{geometry.xorig, geometry.yorig, geometry.xyscale,
+        geometry.zorig, geometry.zscale, geometry.morig, geometry.mscale}));
+}
+
+namespace {
+SpatialSourceKey cache_key(const Fixture& fixture) {
+    SpatialSourceKey key;
+    EXPECT_TRUE(TablxCache::make_key(fixture.path.string(), key.index));
+    key.slots = fixture.input.slots;
+    key.active_rows = fixture.input.active_rows;
+    return key;
+}
+}
+
+TEST(SpatialSourceCacheTest, WarmProofDoesNotRetainOrInvokeBorrowedSourceCallbacks) {
+    Fixture fixture;
+    SpatialSourceCache cache;
+    const auto key = cache_key(fixture);
+    const auto first = cache.get_or_build(fixture.path.string(), key, fixture.input);
+    ASSERT_NE(first.index, nullptr) << first.reason;
+    auto warm_input = fixture.input;
+    warm_input.read_bounds = [](const auto&, auto&) -> bool { ADD_FAILURE(); return false; };
+    warm_input.scan_source = [](const auto&) -> bool { ADD_FAILURE(); return false; };
+    bool hit = false;
+    const auto warm = cache.get_or_build(fixture.path.string(), key, warm_input, &hit);
+    ASSERT_TRUE(hit); EXPECT_EQ(warm.index, first.index);
+    std::vector<RowSlot> candidates;
+    ASSERT_TRUE(warm.index->query({75, 75, 76, 76}, warm_input.source_stable, candidates));
+    EXPECT_EQ(candidates, (std::vector<RowSlot>{0, 1}));
+    EXPECT_EQ(cache.entries(), 1U);
+    EXPECT_GE(cache.bytes(), first.index->bytes());
+    EXPECT_LE(cache.bytes(), SpatialSourceCache::kMaxBytes);
+}
+
+TEST(SpatialSourceCacheTest, EverySourceIdentitySchemaAndTransformChangeMissesTheCache) {
+    Fixture fixture;
+    SpatialSourceCache cache;
+    const auto key = cache_key(fixture);
+    const auto baseline = cache.get_or_build(fixture.path.string(), key, fixture.input);
+    ASSERT_NE(baseline.index, nullptr);
+    // The synthetic reader supplies the same bounds for each independently
+    // identified source; none may reuse the baseline proof's interpretation.
+    for (size_t change = 0; change < 14; ++change) {
+        auto changed = key;
+        if (change == 0) ++changed.table.inode;
+        else if (change == 1) ++changed.tablx.inode;
+        else if (change == 2) ++changed.field;
+        else if (change == 3) ++changed.fields;
+        else if (change == 4) ++changed.geometry_type;
+        else if (change == 5) ++changed.slots;
+        else if (change == 6) --changed.active_rows;
+        else changed.transform[change - 7] = 1;
+        auto input = fixture.input;
+        input.slots = changed.slots;
+        input.active_rows = changed.active_rows;
+        bool hit = true;
+        const auto result = cache.get_or_build(fixture.path.string(), changed, input, &hit);
+        EXPECT_FALSE(hit) << change;
+        EXPECT_NE(result.index, baseline.index) << change;
+        // An active-count mismatch also fails the proof, rather than being
+        // mistaken for the original cached success.
+        if (change != 6) ASSERT_NE(result.index, nullptr) << result.reason;
+        else EXPECT_EQ(result.index, nullptr);
+    }
+}
+
+TEST(SpatialSourceCacheTest, TransientFailureAndChangedSourcesNeverPoisonTheSnapshot) {
+    Fixture fixture;
+    SpatialSourceCache cache;
+    const auto key = cache_key(fixture);
+    auto failing = fixture.input;
+    failing.scan_source = [](const auto&) { return false; };
+    EXPECT_EQ(cache.get_or_build(fixture.path.string(), key, failing).index, nullptr);
+    EXPECT_EQ(cache.entries(), 0U);
+    const auto valid = cache.get_or_build(fixture.path.string(), key, fixture.input);
+    ASSERT_NE(valid.index, nullptr);
+    failing = fixture.input;
+    failing.source_stable = [] { return false; };
+    EXPECT_EQ(cache.get_or_build(fixture.path.string(), key, failing).index, nullptr);
+    failing.source_stable = []() -> bool { throw std::runtime_error("source changed"); };
+    EXPECT_EQ(cache.get_or_build(fixture.path.string(), key, failing).index, nullptr);
+    bool hit = false;
+    EXPECT_EQ(cache.get_or_build(fixture.path.string(), key, fixture.input, &hit).index, valid.index);
+    EXPECT_TRUE(hit);
+
+    // Mutating a physical key does not alter the source proof's meaning, but
+    // must still cause an identity miss and a new pinned handle/proof.
+    const auto timestamp = std::filesystem::last_write_time(fixture.path);
+    { std::fstream file(fixture.path, std::ios::binary | std::ios::in | std::ios::out);
+      ASSERT_TRUE(file.is_open()); file.seekp(4096 + 3000); file.put(42); }
+    // Filesystem clock granularity need not distinguish rapid equal-size writes.
+    // This case tests an observable identity change; rescan below independently
+    // tests invalidation when all identity fields remain unchanged.
+    std::filesystem::last_write_time(fixture.path, timestamp + std::chrono::seconds(2));
+    EXPECT_EQ(cache.get_or_build(fixture.path.string(), key, fixture.input).index, nullptr);
+    const auto new_key = cache_key(fixture);
+    const auto rebuilt = cache.get_or_build(fixture.path.string(), new_key, fixture.input, &hit);
+    ASSERT_NE(rebuilt.index, nullptr) << rebuilt.reason;
+    EXPECT_FALSE(hit); EXPECT_NE(rebuilt.index, valid.index);
+    std::vector<RowSlot> output{42};
+    EXPECT_FALSE(valid.index->query({75, 75, 76, 76}, fixture.input.source_stable, output));
+    EXPECT_EQ(output, (std::vector<RowSlot>{42}));
+}
+
+TEST(SpatialSourceCacheTest, InvalidInterpretationsCannotMatchOrEnterTheCache) {
+    Fixture fixture;
+    SpatialSourceCache cache;
+    const auto key = cache_key(fixture);
+    ASSERT_NE(cache.get_or_build(fixture.path.string(), key, fixture.input).index, nullptr);
+    for (size_t change = 0; change < 4; ++change) {
+        auto invalid = key;
+        if (change == 0) invalid.transform[0] = std::numeric_limits<double>::quiet_NaN();
+        if (change == 1) invalid.transform[2] = std::numeric_limits<double>::infinity();
+        if (change == 2) ++invalid.slots;
+        if (change == 3) ++invalid.active_rows;
+        bool hit = true;
+        EXPECT_EQ(cache.get_or_build(fixture.path.string(), invalid, fixture.input, &hit).index, nullptr);
+        EXPECT_FALSE(hit);
+    }
+    EXPECT_EQ(cache.entries(), 1U);
+}
+
+TEST(SpatialSourceCacheTest, ChangeDuringProofIsNotPublishedAndCanBeRetried) {
+    Fixture fixture;
+    SpatialSourceCache cache;
+    const auto key = cache_key(fixture);
+    auto input = fixture.input;
+    bool stable = true;
+    input.source_stable = [&] { return stable; };
+    const auto scan = input.scan_source;
+    input.scan_source = [&](const auto& callback) {
+        const bool result = scan(callback);
+        stable = false;
+        return result;
+    };
+    EXPECT_EQ(cache.get_or_build(fixture.path.string(), key, input).index, nullptr);
+    EXPECT_EQ(cache.entries(), 0U);
+    EXPECT_NE(cache.get_or_build(fixture.path.string(), key, fixture.input).index, nullptr);
+}
+
+TEST(SpatialSourceCacheTest, LruAndByteBudgetEvictionKeepExistingReadersValid) {
+    Fixture fixture;
+    SpatialSourceCache cache;
+    auto key = cache_key(fixture);
+    std::vector<SpatialSourceBuildResult> retained;
+    for (size_t i = 0; i < SpatialSourceCache::kMaxEntries; ++i) {
+        key.field = i;
+        retained.push_back(cache.get_or_build(fixture.path.string(), key, fixture.input));
+        ASSERT_NE(retained.back().index, nullptr);
+    }
+    key.field = 0;
+    bool hit = false;
+    EXPECT_EQ(cache.get_or_build(fixture.path.string(), key, fixture.input, &hit).index, retained[0].index);
+    EXPECT_TRUE(hit);
+    key.field = SpatialSourceCache::kMaxEntries;
+    ASSERT_NE(cache.get_or_build(fixture.path.string(), key, fixture.input).index, nullptr);
+    EXPECT_EQ(cache.entries(), SpatialSourceCache::kMaxEntries);
+    key.field = 1; // least recently used, while field 0 was touched
+    ASSERT_NE(cache.get_or_build(fixture.path.string(), key, fixture.input, &hit).index, nullptr);
+    EXPECT_FALSE(hit);
+    std::vector<RowSlot> output;
+    ASSERT_TRUE(retained[1].index->query({300, 300, 300, 300}, fixture.input.source_stable, output));
+    EXPECT_EQ(output, (std::vector<RowSlot>{2}));
+
+    // Exactly enough accounted retained payload for one entry: adding another
+    // must evict by bytes even though the entry-count limit is not reached.
+    SpatialSourceCache measure;
+    ASSERT_NE(measure.get_or_build(fixture.path.string(), key, fixture.input).index, nullptr);
+    SpatialSourceCache small(measure.bytes());
+    ASSERT_NE(small.get_or_build(fixture.path.string(), key, fixture.input).index, nullptr);
+    ++key.field;
+    ASSERT_NE(small.get_or_build(fixture.path.string(), key, fixture.input).index, nullptr);
+    EXPECT_EQ(small.entries(), 1U); EXPECT_EQ(small.bytes(), measure.bytes());
+    --key.field;
+    ASSERT_NE(small.get_or_build(fixture.path.string(), key, fixture.input, &hit).index, nullptr);
+    EXPECT_FALSE(hit);
+    SpatialSourceCache disabled(0);
+    EXPECT_NE(disabled.get_or_build(fixture.path.string(), key, fixture.input).index, nullptr);
+    EXPECT_EQ(disabled.entries(), 0U); EXPECT_EQ(disabled.bytes(), 0U);
+}
+
+TEST(SpatialSourceCacheTest, ConcurrentColdReadersShareOneProof) {
+    Fixture fixture;
+    SpatialSourceCache cache;
+    const auto key = cache_key(fixture);
+    std::atomic<size_t> scans{0};
+    const auto scan = fixture.input.scan_source;
+    fixture.input.scan_source = [&](const auto& callback) { ++scans; return scan(callback); };
+    std::promise<void> start;
+    const auto ready = start.get_future().share();
+    std::vector<std::future<SpatialSourceBuildResult>> readers;
+    for (size_t i = 0; i < 8; ++i) readers.push_back(std::async(std::launch::async, [&] {
+        ready.wait();
+        return cache.get_or_build(fixture.path.string(), key, fixture.input);
+    }));
+    start.set_value();
+    const auto first = readers.front().get();
+    ASSERT_NE(first.index, nullptr);
+    for (size_t i = 1; i < readers.size(); ++i) EXPECT_EQ(readers[i].get().index, first.index);
+    EXPECT_EQ(scans.load(), 1U); EXPECT_EQ(cache.entries(), 1U);
+}
+
+TEST(SpatialSourceCacheTest, CatalogCopiesShareProofsButRescanStartsEmptyEvenForUnchangedIdentity) {
+    Fixture fixture;
+    const auto root = fixture.path.parent_path() / (fixture.path.stem().string() + "_catalog");
+    std::filesystem::create_directories(root);
+    const auto index = root / "a00000009.spx";
+    std::filesystem::copy_file(fixture.path, index, std::filesystem::copy_options::overwrite_existing);
+    GdbCatalog catalog;
+    ASSERT_TRUE(catalog.scan(root.string()));
+    auto key = cache_key(fixture);
+    ASSERT_TRUE(TablxCache::make_key(index.string(), key.index));
+    const auto built = catalog.spatial_source_cache()->get_or_build(index.string(), key, fixture.input);
+    ASSERT_NE(built.index, nullptr) << built.reason;
+    GdbCatalog copy = catalog;
+    const auto old_cache = copy.spatial_source_cache();
+    EXPECT_EQ(catalog.spatial_source_cache(), old_cache);
+    ASSERT_TRUE(catalog.scan(root.string()));
+    EXPECT_NE(catalog.spatial_source_cache(), old_cache);
+    EXPECT_EQ(catalog.spatial_source_cache()->entries(), 0U);
+    EXPECT_EQ(old_cache->entries(), 1U);
+    bool hit = false;
+    EXPECT_EQ(old_cache->get_or_build(index.string(), key, fixture.input, &hit).index, built.index);
+    EXPECT_TRUE(hit);
+    const auto rebuilt = catalog.spatial_source_cache()->get_or_build(index.string(), key, fixture.input, &hit);
+    ASSERT_NE(rebuilt.index, nullptr);
+    EXPECT_FALSE(hit); EXPECT_NE(rebuilt.index, built.index);
+    std::filesystem::remove_all(root);
 }

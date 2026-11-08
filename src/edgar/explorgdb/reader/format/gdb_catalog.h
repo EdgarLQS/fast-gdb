@@ -21,7 +21,7 @@
 #include <vector>
 
 namespace explorgdb {
-namespace detail { class AttributeValueCache; }
+namespace detail { class AttributeValueCache; class SpatialSourceCache; }
 
 class GdbCatalog {
 public:
@@ -110,9 +110,11 @@ public:
 
     // Shared only within this catalog snapshot; scan() starts a fresh cache.
     std::shared_ptr<detail::AttributeValueCache> attribute_value_cache() const { return attribute_value_cache_; }
+    std::shared_ptr<detail::SpatialSourceCache> spatial_source_cache() const { return spatial_source_cache_; }
 
 private:
     std::shared_ptr<detail::AttributeValueCache> attribute_value_cache_;
+    std::shared_ptr<detail::SpatialSourceCache> spatial_source_cache_;
     struct IndexMetadataCacheEntry {
         bool parsed = false;
         std::vector<IndexEntry> entries;

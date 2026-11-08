@@ -1,0 +1,61 @@
+[0/1] Re-running CMake...
+--
+-- === fast-gdb Reader build ===
+-- Product scope: Reader only; FileGDB edits belong to GDAL/OpenFileGDB
+-- Curve backend: BUILTIN
+-- Geometry output: STANDARD_WKB
+-- GDAL components: OFF
+-- Pure C++ product: fast_gdb_linear
+-- Unified product: fast_gdb_unified
+--
+-- Configuring done (0.1s)
+-- Generating done (0.0s)
+-- Build files have been written to: /tmp/fast-gdb-linux-asan
+[1/36] Building CXX object CMakeFiles/explorgdb_reader_lib.dir/src/edgar/explorgdb/reader/api/capability_report.cpp.o
+[2/36] Building CXX object CMakeFiles/explorgdb_reader_lib.dir/src/edgar/explorgdb/reader/api/feature_cursor.cpp.o
+[3/36] Building CXX object CMakeFiles/explorgdb_reader_lib.dir/src/edgar/explorgdb/reader/api/reader.cpp.o
+[4/36] Building CXX object CMakeFiles/explorgdb_reader_lib.dir/src/edgar/explorgdb/reader/format/catalog_resolver.cpp.o
+[5/36] Building CXX object CMakeFiles/explorgdb_reader_lib.dir/src/edgar/explorgdb/reader/format/gdb_catalog.cpp.o
+[6/36] Building CXX object CMakeFiles/explorgdb_reader_lib.dir/src/edgar/explorgdb/reader/format/metadata_reader.cpp.o
+[7/36] Building CXX object CMakeFiles/explorgdb_reader_lib.dir/src/edgar/explorgdb/reader/index/gdb_spatial_source_index.cpp.o
+In file included from /src/src/edgar/explorgdb/reader/index/gdb_spatial_source_index.cpp:6:
+/src/src/edgar/explorgdb/reader/io/sys/mman.h:240:2: warning: #include_next is a GCC extension
+  240 | #include_next <sys/mman.h>
+      |  ^~~~~~~~~~~~
+In file included from /src/src/edgar/explorgdb/reader/index/gdb_spatial_source_index.cpp:7:
+/src/src/edgar/explorgdb/reader/io/unistd.h:30:2: warning: #include_next is a GCC extension
+   30 | #include_next <unistd.h>
+      |  ^~~~~~~~~~~~
+[8/36] Building CXX object CMakeFiles/explorgdb_reader_lib.dir/src/edgar/explorgdb/reader/index/gdb_spatial_source_cache.cpp.o
+[9/36] Building CXX object CMakeFiles/explorgdb_reader_lib.dir/src/edgar/explorgdb/reader/index/gdb_spatial_source_table.cpp.o
+[10/36] Building CXX object CMakeFiles/explorgdb_reader_lib.dir/src/edgar/explorgdb/reader/query/query_engine.cpp.o
+[11/36] Building CXX object CMakeFiles/explorgdb_reader_lib.dir/src/edgar/explorgdb/reader/query/query_engine_combined.cpp.o
+[12/36] Building CXX object CMakeFiles/explorgdb_reader_lib.dir/src/edgar/explorgdb/reader/query/query_engine_geometry.cpp.o
+[13/36] Linking CXX static library libexplorgdb_reader_lib.a
+[14/36] Building CXX object CMakeFiles/fast_gdb_runtime.dir/src/edgar/explorgdb/adaptive/adaptive_coordination.cpp.o
+[15/36] Building CXX object CMakeFiles/fast_gdb_runtime.dir/src/edgar/explorgdb/unified/unified.cpp.o
+/src/src/edgar/explorgdb/unified/unified.cpp: In function ‘fast_gdb::unified::Result<explorgdb::FastReaderLease> fast_gdb::unified::{anonymous}::acquire_fast_reader_lease(const std::string&)’:
+/src/src/edgar/explorgdb/unified/unified.cpp:270:21: warning: redundant move in return statement [-Wredundant-move]
+  270 |     return std::move(lease);
+      |            ~~~~~~~~~^~~~~~~
+/src/src/edgar/explorgdb/unified/unified.cpp:270:21: note: remove ‘std::move’ call
+[16/36] Linking CXX shared library libfast_gdb_runtime.so.0.2.0
+[17/36] Creating library symlink libfast_gdb_runtime.so.0 libfast_gdb_runtime.so
+[18/36] Building CXX object CMakeFiles/fast_gdb_unified_test_runner.dir/tests/edgar/explorgdb/unified/test_unified_fast.cpp.o
+[19/36] Building CXX object CMakeFiles/gdb_tutorial_test_runner.dir/tests/edgar/explorgdb/reader/api/test_capability_report.cpp.o
+[20/36] Building CXX object CMakeFiles/gdb_tutorial_test_runner.dir/tests/edgar/explorgdb/reader/api/test_feature_cursor.cpp.o
+[21/36] Building CXX object CMakeFiles/gdb_tutorial_test_runner.dir/tests/edgar/explorgdb/reader/api/test_reader.cpp.o
+[22/36] Building CXX object CMakeFiles/gdb_tutorial_test_runner.dir/tests/edgar/explorgdb/reader/format/test_catalog.cpp.o
+[23/36] Building CXX object CMakeFiles/gdb_tutorial_test_runner.dir/tests/edgar/explorgdb/reader/format/test_catalog_index_metadata_cache.cpp.o
+[24/36] Building CXX object CMakeFiles/gdb_tutorial_test_runner.dir/tests/edgar/explorgdb/reader/format/test_catalog_resolver.cpp.o
+[25/36] Building CXX object CMakeFiles/gdb_tutorial_test_runner.dir/tests/edgar/explorgdb/reader/format/test_corrupt_input_conformance.cpp.o
+[26/36] Building CXX object CMakeFiles/gdb_tutorial_test_runner.dir/tests/edgar/explorgdb/reader/format/test_full_audit.cpp.o
+[27/36] Building CXX object CMakeFiles/gdb_tutorial_test_runner.dir/tests/edgar/explorgdb/reader/format/test_gdbtable.cpp.o
+[28/36] Building CXX object CMakeFiles/gdb_tutorial_test_runner.dir/tests/edgar/explorgdb/reader/format/test_gdbtablx.cpp.o
+[29/36] Building CXX object CMakeFiles/gdb_tutorial_test_runner.dir/tests/edgar/explorgdb/reader/format/test_metadata_contracts.cpp.o
+[30/36] Building CXX object CMakeFiles/gdb_tutorial_test_runner.dir/tests/edgar/explorgdb/reader/format/test_synthetic.cpp.o
+[31/36] Building CXX object CMakeFiles/gdb_tutorial_test_runner.dir/tests/edgar/explorgdb/reader/index/test_gdb_spatial_source_index.cpp.o
+[32/36] Building CXX object CMakeFiles/gdb_tutorial_test_runner.dir/tests/edgar/explorgdb/reader/index/test_gdbindexes.cpp.o
+[33/36] Building CXX object CMakeFiles/gdb_tutorial_test_runner.dir/tests/edgar/explorgdb/reader/query/test_query_engine.cpp.o
+[34/36] Linking CXX executable bin/fast_gdb_unified_test_runner
+[35/36] Linking CXX executable bin/gdb_tutorial_test_runner

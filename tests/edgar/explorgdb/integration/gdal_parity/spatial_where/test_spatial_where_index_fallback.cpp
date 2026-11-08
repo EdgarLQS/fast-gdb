@@ -1003,8 +1003,16 @@ TEST_F(SpatialWhereIndexFallbackTest, CanonicalTableBoundsMatchNativeEnvelopesAn
         ASSERT_TRUE(input.scan_source([&](RowSlot, const auto&) { ++rows; return true; }));
         EXPECT_EQ(rows, 4U);
         const auto* spx = catalog.find_spx(table->id); ASSERT_NE(spx, nullptr);
-        const auto built = detail::SpatialSourceIndex::build(entry_path(path, spx).string(), input);
+        const auto index_path = entry_path(path, spx).string();
+        TablxCacheKey index_identity; ASSERT_TRUE(TablxCache::make_key(index_path, index_identity));
+        const auto key = detail::make_table_spatial_source_key(parser, expected_tablx, index_identity);
+        ASSERT_TRUE(key.has_value());
+        bool cache_hit = true;
+        const auto built = catalog.spatial_source_cache()->get_or_build(index_path, *key, input, &cache_hit);
         ASSERT_NE(built.index, nullptr) << built.reason;
+        EXPECT_FALSE(cache_hit);
+        const auto warm = catalog.spatial_source_cache()->get_or_build(index_path, *key, input, &cache_hit);
+        EXPECT_TRUE(cache_hit); EXPECT_EQ(warm.index, built.index);
         std::vector<RowSlot> candidates;
         ASSERT_TRUE(built.index->query(*values[1].bounds, stable, candidates));
         EXPECT_EQ(candidates, (std::vector<RowSlot>{0, 3}));

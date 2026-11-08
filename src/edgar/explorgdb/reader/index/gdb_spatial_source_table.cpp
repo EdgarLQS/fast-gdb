@@ -56,6 +56,24 @@ bool source_bounds(const FieldRef& geometry, GdbGeomDecoder& decoder,
 }
 }
 
+std::optional<SpatialSourceKey> make_table_spatial_source_key(GdbTableParser& table,
+    const TablxCacheKey& tablx, const TablxCacheKey& index) {
+    if (!table.ensure_fields_loaded()) return std::nullopt;
+    const auto& fields = table.fields();
+    const auto field = std::find_if(fields.begin(), fields.end(), [](const auto& item) {
+        return item.type == FieldType::Geometry;
+    });
+    if (field == fields.end()) return std::nullopt;
+    SpatialSourceKey key;
+    key.index = index; key.table = table.source_identity(); key.tablx = tablx;
+    key.field = field - fields.begin(); key.fields = fields.size();
+    key.slots = table.feature_count(); key.active_rows = table.active_feature_count();
+    key.geometry_type = table.header().geom_type_full;
+    key.transform = {field->xorig, field->yorig, field->xyscale,
+        field->zorig, field->zscale, field->morig, field->mscale};
+    return key;
+}
+
 SpatialSourceInput make_table_spatial_source_input(GdbTableParser& table,
     std::function<bool()> source_stable) {
     SpatialSourceInput input;

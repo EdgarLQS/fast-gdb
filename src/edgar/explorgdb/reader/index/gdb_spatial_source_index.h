@@ -23,7 +23,7 @@ struct SpatialSourceBuildResult {
     std::string reason;
 };
 // Owns a pinned SPX handle; warm queries use bounded pread, not raw key lookup.
-// Not yet connected to QueryEngine or a catalog-level cache.
+// Catalog caches complete proofs; QueryEngine integration is still pending.
 class SpatialSourceIndex {
 public:
     static constexpr size_t kMaxCandidateBytes = 16U * 1024U * 1024U;
@@ -32,7 +32,7 @@ public:
     bool query(const GdbBbox& box, const std::function<bool()>& source_stable,
                std::vector<RowSlot>& output,
                size_t max_candidates = kMaxCandidateBytes / sizeof(RowSlot)) const;
-    size_t bytes() const { return directory_->bytes(); }
+    size_t bytes() const;
 private:
     SpatialSourceIndex() = default;
     bool stable() const;

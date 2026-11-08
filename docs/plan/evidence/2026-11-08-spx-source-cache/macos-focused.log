@@ -1,0 +1,67 @@
+Note: Google Test filter = SpatialSourceCacheTest.*:SpatialSourceIndexTest.*:SpatialSourceTableTest.*:SpatialSourceDirectoryTest.*:SpatialWhereIndexFallbackTest.CanonicalTableBoundsMatchNativeEnvelopesAndPreserveNullEmpty
+[==========] Running 23 tests from 5 test suites.
+[----------] Global test environment set-up.
+[----------] 8 tests from SpatialSourceDirectoryTest
+[ RUN      ] SpatialSourceDirectoryTest.EveryIntersectingSourceIsCoveredByASelectedLeaf
+[       OK ] SpatialSourceDirectoryTest.EveryIntersectingSourceIsCoveredByASelectedLeaf (0 ms)
+[ RUN      ] SpatialSourceDirectoryTest.DuplicateFidsCannotHideMissingNonemptySource
+[       OK ] SpatialSourceDirectoryTest.DuplicateFidsCannotHideMissingNonemptySource (0 ms)
+[ RUN      ] SpatialSourceDirectoryTest.OverlappingXIntervalsKeepEarlierWideLeafAndPruneOthers
+[       OK ] SpatialSourceDirectoryTest.OverlappingXIntervalsKeepEarlierWideLeafAndPruneOthers (0 ms)
+[ RUN      ] SpatialSourceDirectoryTest.NullEntriesCannotProveCoverageForNonemptySource
+[       OK ] SpatialSourceDirectoryTest.NullEntriesCannotProveCoverageForNonemptySource (0 ms)
+[ RUN      ] SpatialSourceDirectoryTest.NullEmptyAndDuplicateGridEntriesRetainValidCoverage
+[       OK ] SpatialSourceDirectoryTest.NullEmptyAndDuplicateGridEntriesRetainValidCoverage (0 ms)
+[ RUN      ] SpatialSourceDirectoryTest.DeletedSlotsShortScansAndWrongTotalsNeverPublish
+[       OK ] SpatialSourceDirectoryTest.DeletedSlotsShortScansAndWrongTotalsNeverPublish (0 ms)
+[ RUN      ] SpatialSourceDirectoryTest.InvalidReferencesAndNonfiniteBoundsFailClosed
+[       OK ] SpatialSourceDirectoryTest.InvalidReferencesAndNonfiniteBoundsFailClosed (0 ms)
+[ RUN      ] SpatialSourceDirectoryTest.ResourceLimitsRejectBeforeLargeAllocations
+[       OK ] SpatialSourceDirectoryTest.ResourceLimitsRejectBeforeLargeAllocations (0 ms)
+[----------] 8 tests from SpatialSourceDirectoryTest (0 ms total)
+
+[----------] 5 tests from SpatialSourceIndexTest
+[ RUN      ] SpatialSourceIndexTest.SourceBoundsRecoverCandidatesDespiteWrongGridKeysAndSeparators
+[       OK ] SpatialSourceIndexTest.SourceBoundsRecoverCandidatesDespiteWrongGridKeysAndSeparators (0 ms)
+[ RUN      ] SpatialSourceIndexTest.MissingDuplicateOutOfRangeAndCyclicEntriesNeverPublish
+[       OK ] SpatialSourceIndexTest.MissingDuplicateOutOfRangeAndCyclicEntriesNeverPublish (1 ms)
+[ RUN      ] SpatialSourceIndexTest.CallbackMismatchFailureAndSourceChangeNeverPublish
+[       OK ] SpatialSourceIndexTest.CallbackMismatchFailureAndSourceChangeNeverPublish (0 ms)
+[ RUN      ] SpatialSourceIndexTest.CandidateBudgetAndChangedSourcePreserveCallerOutput
+[       OK ] SpatialSourceIndexTest.CandidateBudgetAndChangedSourcePreserveCallerOutput (0 ms)
+[ RUN      ] SpatialSourceIndexTest.IndexChangeDuringSourceReadRejectsProof
+[       OK ] SpatialSourceIndexTest.IndexChangeDuringSourceReadRejectsProof (0 ms)
+[----------] 5 tests from SpatialSourceIndexTest (3 ms total)
+
+[----------] 1 test from SpatialSourceTableTest
+[ RUN      ] SpatialSourceTableTest.FixedFixtureBatchAndFullScanAgreeWithoutGdalRuntime
+[       OK ] SpatialSourceTableTest.FixedFixtureBatchAndFullScanAgreeWithoutGdalRuntime (2 ms)
+[----------] 1 test from SpatialSourceTableTest (2 ms total)
+
+[----------] 8 tests from SpatialSourceCacheTest
+[ RUN      ] SpatialSourceCacheTest.WarmProofDoesNotRetainOrInvokeBorrowedSourceCallbacks
+[       OK ] SpatialSourceCacheTest.WarmProofDoesNotRetainOrInvokeBorrowedSourceCallbacks (0 ms)
+[ RUN      ] SpatialSourceCacheTest.EverySourceIdentitySchemaAndTransformChangeMissesTheCache
+[       OK ] SpatialSourceCacheTest.EverySourceIdentitySchemaAndTransformChangeMissesTheCache (0 ms)
+[ RUN      ] SpatialSourceCacheTest.TransientFailureAndChangedSourcesNeverPoisonTheSnapshot
+[       OK ] SpatialSourceCacheTest.TransientFailureAndChangedSourcesNeverPoisonTheSnapshot (0 ms)
+[ RUN      ] SpatialSourceCacheTest.InvalidInterpretationsCannotMatchOrEnterTheCache
+[       OK ] SpatialSourceCacheTest.InvalidInterpretationsCannotMatchOrEnterTheCache (0 ms)
+[ RUN      ] SpatialSourceCacheTest.ChangeDuringProofIsNotPublishedAndCanBeRetried
+[       OK ] SpatialSourceCacheTest.ChangeDuringProofIsNotPublishedAndCanBeRetried (0 ms)
+[ RUN      ] SpatialSourceCacheTest.LruAndByteBudgetEvictionKeepExistingReadersValid
+[       OK ] SpatialSourceCacheTest.LruAndByteBudgetEvictionKeepExistingReadersValid (0 ms)
+[ RUN      ] SpatialSourceCacheTest.ConcurrentColdReadersShareOneProof
+[       OK ] SpatialSourceCacheTest.ConcurrentColdReadersShareOneProof (0 ms)
+[ RUN      ] SpatialSourceCacheTest.CatalogCopiesShareProofsButRescanStartsEmptyEvenForUnchangedIdentity
+[       OK ] SpatialSourceCacheTest.CatalogCopiesShareProofsButRescanStartsEmptyEvenForUnchangedIdentity (0 ms)
+[----------] 8 tests from SpatialSourceCacheTest (4 ms total)
+
+[----------] 1 test from SpatialWhereIndexFallbackTest
+[ RUN      ] SpatialWhereIndexFallbackTest.CanonicalTableBoundsMatchNativeEnvelopesAndPreserveNullEmpty
+[       OK ] SpatialWhereIndexFallbackTest.CanonicalTableBoundsMatchNativeEnvelopesAndPreserveNullEmpty (30 ms)
+[----------] 1 test from SpatialWhereIndexFallbackTest (30 ms total)
+
+[----------] Global test environment tear-down
+[==========] 23 tests from 5 test suites ran. (40 ms total)
+[  PASSED  ] 23 tests.

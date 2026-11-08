@@ -345,6 +345,11 @@ non-finite public-request errors. See [evidence and remaining integrity checks](
 
 ## Bound attribute integrity and incomplete source rows
 
+`SpatialSourceCacheTest` covers positive-proof snapshot identity, retryable
+failures, concurrent cold builds, byte/count LRU limits, and catalog rescan
+invalidation without metadata changes. Real GDAL layers also exercise cached
+proofs. QueryEngine integration remains pending. See [cache evidence](../docs/plan/evidence/2026-11-08-spx-source-cache.md).
+
 `CanonicalTableBoundsMatchNativeEnvelopesAndPreserveNullEmpty` compares actual
 GDAL-written point/multipoint/line/polygon and ZM layers with read-back envelopes
 and builds source directories from persisted SPX files. `SpatialSourceTableTest`
