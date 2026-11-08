@@ -82,6 +82,9 @@ def main():
         write_atx(strings, [key.decode('utf-16be').encode('utf-16le') for key, _ in physical], 0x20)
         spatial = folder / 'point.spx'
         write_atx(spatial, [struct.pack('<Q', ((1 << 29) << 31) | (1 << 29))], 0)
+        coarse_spatial = folder / 'coarse.spx'
+        coarse_cell = (1 << 29) // 16
+        write_atx(coarse_spatial, [struct.pack('<Q', (2 << 62) | (coarse_cell << 31) | coarse_cell)], 0)
         broken_spatial = folder / 'broken.spx'
         broken = bytearray(spatial.read_bytes())
         struct.pack_into('<I', broken, 4, 0xffffffff)
@@ -102,6 +105,7 @@ def main():
         run('query', damaged_gdb, table_id, 'spatial', 0, 0, 1, 1, 1, 1, code=2)
         run('query', damaged_gdb, table_id, 'spatial', 0, 0, 1, 1, 0, 0, code=2)
         expect_fids(run('query-spx', spatial, 0, 0, 0, 0, 1, 1), [0])
+        expect_fids(run('query-spx', coarse_spatial, 0, 0, 0, 0, 1, 1), [0])
         expect_fids(run('query-spx', spatial, 100, 100, 100, 100, 1, 1), [])
         for path in (broken_spatial, zero_fid_spatial, folder / 'missing.spx'):
             run('query-spx', path, 0, 0, 0, 0, 1, 1, code=2)

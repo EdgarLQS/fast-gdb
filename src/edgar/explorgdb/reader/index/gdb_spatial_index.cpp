@@ -295,15 +295,17 @@ bool GdbSpatialIndexParser::find_minmax_idx(
     uint64_t min_val, uint64_t max_val,
     int& min_idx, int& max_idx) const {
 
+    const uint64_t sign = uint64_t{1} << 63;
+    min_val ^= sign; max_val ^= sign;
     const uint8_t* base = page + values_offset_;
     int lo = 0, hi = n_vals - 1;
     while (hi - lo >= 2) {
         int mid = (lo + hi) / 2;
-        const uint64_t v = read_object_id(base + mid * 8, 8U);
+        const uint64_t v = read_object_id(base + mid * 8, 8U) ^ sign;
         if (v <= max_val) lo = mid; else hi = mid;
     }
     while (true) {
-        const uint64_t v = read_object_id(base + hi * 8, 8U);
+        const uint64_t v = read_object_id(base + hi * 8, 8U) ^ sign;
         if (v <= max_val) break;
         hi--;
         if (hi < 0) return false;
@@ -314,11 +316,11 @@ bool GdbSpatialIndexParser::find_minmax_idx(
     lo = 0;
     while (step1_max - lo >= 2) {
         int mid = (lo + step1_max) / 2;
-        const uint64_t v = read_object_id(base + mid * 8, 8U);
+        const uint64_t v = read_object_id(base + mid * 8, 8U) ^ sign;
         if (v >= min_val) step1_max = mid; else lo = mid;
     }
     while (true) {
-        const uint64_t v = read_object_id(base + lo * 8, 8U);
+        const uint64_t v = read_object_id(base + lo * 8, 8U) ^ sign;
         if (v >= min_val) break;
         lo++;
         if (lo == n_vals) return false;
@@ -340,8 +342,8 @@ bool GdbSpatialIndexParser::collect_fids_btree(
     if (entry_count == 0U) return depth == 1;
     if (entry_count > max_per_page_) return false;
 
-    uint32_t q_min_cx = static_cast<uint32_t>((start_raw >> 31) & 0x7FFFFFFF);
-    uint32_t q_max_cx = static_cast<uint32_t>((end_raw >> 31) & 0x7FFFFFFF);
+    const uint64_t sign = uint64_t{1} << 63;
+    const uint64_t lower = start_raw ^ sign, upper = end_raw ^ sign;
 
     if (depth == 1) {
         int min_idx, max_idx;
@@ -350,7 +352,7 @@ bool GdbSpatialIndexParser::collect_fids_btree(
         for (int i = min_idx; i <= max_idx; i++) {
             const uint64_t v = read_object_id(
                 page + values_offset_ + static_cast<size_t>(i) * 8U, 8U);
-            if (v >= start_raw && v <= end_raw) {
+            if ((v ^ sign) >= lower && (v ^ sign) <= upper) {
                 const ObjectId fid = read_object_id(
                     page + leaf_header_size(trailer_.version) +
                         static_cast<size_t>(i) * trailer_.object_id_size,
@@ -365,16 +367,14 @@ bool GdbSpatialIndexParser::collect_fids_btree(
         for (int i = 0; i < static_cast<int>(entry_count); i++) {
             const uint64_t v = read_object_id(
                 page + values_offset_ + static_cast<size_t>(i) * 8U, 8U);
-            uint32_t cx = static_cast<uint32_t>((v >> 31) & 0x7FFFFFFF);
-            if (cx > q_max_cx) { i_last = i; break; }
+            if ((v ^ sign) > upper) { i_last = i; break; }
         }
 
-        int i_first = 0;
+        int i_first = static_cast<int>(entry_count);
         for (int i = 0; i < static_cast<int>(entry_count); i++) {
             const uint64_t v = read_object_id(
                 page + values_offset_ + static_cast<size_t>(i) * 8U, 8U);
-            uint32_t cx = static_cast<uint32_t>((v >> 31) & 0x7FFFFFFF);
-            if (cx >= q_min_cx) { i_first = (i > 0) ? i - 1 : 0; break; }
+            if ((v ^ sign) >= lower) { i_first = i; break; }
         }
 
         int visit_end = std::min(i_last, static_cast<int>(entry_count));
@@ -434,16 +434,15 @@ std::vector<RowSlot> GdbSpatialIndexParser::query_bbox(
             return static_cast<int64_t>(value);
         };
         auto cell_for_min = [&](double coord) -> int64_t {
-            const long double raw = std::floor(
-                static_cast<long double>(coord) / grid_resolutions[0]);
-            const long double scaled = std::floor(raw / scale_factor);
-            return clamp31(scaled + (1LL << 29));
+            const long double shifted = static_cast<long double>(coord) /
+                grid_resolutions[0] + (1LL << 29);
+            return clamp31(std::floor(shifted / scale_factor));
         };
         auto cell_for_max = [&](double coord) -> int64_t {
-            const long double raw = std::floor(
-                static_cast<long double>(coord) / grid_resolutions[0]);
-            const long double scaled = std::floor(raw / scale_factor);
-            return clamp31(scaled + (1LL << 29) + 1);
+            const long double shifted = static_cast<long double>(coord) /
+                grid_resolutions[0] + (1LL << 29);
+            // Keep a conservative upper neighbor for double-precision writer rounding.
+            return clamp31(std::floor(shifted / scale_factor) + 1);
         };
 
         int64_t cell_min_x = cell_for_min(xmin);

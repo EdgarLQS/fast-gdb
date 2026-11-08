@@ -14,6 +14,8 @@ macOS GDAL 3.13.0 和 Linux ARM64 GDAL 3.10.3 各 82 个真实进程检查通过
 
 ## 下一步发现：多级网格偏移
 
+后续状态：下述公式及混合 signed 键排序问题已在[粗网格修复](2026-11-08-coarse-spx-grid.md)中修复并留证；本节保留修复前调查经过与原始探针。
+
 核对 [GDAL 3.10.3 Writer](https://github.com/OSGeo/gdal/blob/v3.10.3/ogr/ogrsf_frmts/openfilegdb/filegdbindex_write.cpp#L779) 与 [Reader 的 GetScaledCoord](https://github.com/OSGeo/gdal/blob/v3.10.3/ogr/ogrsf_frmts/openfilegdb/filegdbindex.cpp#L2366)：网格偏移参与分辨率比值缩放。当前实现先缩放坐标、再加固定 `2^29`，粗网格的偏移位置不同。
 
 使用现有 CLI fixture builder `write_atx` 构造一条 8 字节 SPX 键：分辨率 `[1,4,16]`、level 2、点 `(0,0)`，cell 为 `2^29/16`，键为 `(2<<62)|(cell<<31)|cell`，FID 为 1。按该公式应命中 row slot 0，但当前返回成功的零候选。见[合成探针](2026-11-08-spx-cli-status/coarse-grid-probe.log)。这不是 ArcGIS 原生多级索引验收，却足以把下一步聚焦到可验证的公式差异。

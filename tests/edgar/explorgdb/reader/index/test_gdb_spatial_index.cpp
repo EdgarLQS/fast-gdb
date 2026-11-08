@@ -6,6 +6,7 @@
 #include "gdb_spatial_index.h"
 #include "test_paths.h"
 #include <cmath>
+#include <algorithm>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -336,5 +337,62 @@ TEST(SpatialIndexTest, ResultsAreSorted) {
     // 验证 FID 列表已排序（query_bbox 内部做了 sort + unique）
     for (size_t i = 1; i < fids.size(); ++i) {
         EXPECT_GT(fids[i], fids[i - 1]) << "FIDs should be strictly ascending at index " << i;
+    }
+}
+
+TEST(SpatialIndexTest, CoarseGridOffsetAndSignedLevelsKeepPointCandidates) {
+    for (uint32_t version : {1U, 2U}) for (bool branched : {false, true})
+      for (double coarse : {16.0, 11.2}) for (bool merge : {false, true}) {
+        const size_t page_size = version == 1 ? 4096 : 65536;
+        const size_t oid = version == 1 ? 4 : 8;
+        const size_t header = version == 1 ? 12 : 20;
+        const size_t value_offset = header + ((page_size - header) / (oid + 8)) * oid;
+        const double grids[] = {1.0, 4.0, coarse};
+        for (double coordinate : {-64.0, -0.25, 0.0, 3.999999999, 4.0, 64.0}) {
+            std::vector<std::pair<uint64_t, uint64_t>> keys;
+            for (size_t level = 0; level < 3; ++level) {
+                // Independent GDAL Writer formula, including the scaled shift.
+                const auto cell = static_cast<uint64_t>(std::floor(coordinate / grids[level] +
+                    double(1U << 29) / (grids[level] / grids[0])));
+                keys.emplace_back((uint64_t(level) << 62) | (cell << 31) | cell, level + 1);
+            }
+            std::sort(keys.begin(), keys.end(), [](const auto& a, const auto& b) {
+                return (a.first ^ (uint64_t{1} << 63)) < (b.first ^ (uint64_t{1} << 63));
+            });
+            const size_t pages = branched ? 3 : 1;
+            std::vector<uint8_t> bytes(pages * page_size + (version == 1 ? 22 : 30), 0);
+            const auto put_oid = [&](size_t offset, uint64_t value) {
+                if (oid == 4) write_u32_le(bytes, offset, static_cast<uint32_t>(value));
+                else write_u64_le(bytes, offset, value);
+            };
+            if (branched) {
+                write_u32_le(bytes, oid, 1);
+                put_oid(oid + 4, 2); put_oid(oid + 4 + oid, 3);
+                write_u64_le(bytes, value_offset, keys[0].first);
+            }
+            for (size_t i = 0; i < keys.size(); ++i) {
+                const size_t leaf = branched ? (i == 0 ? 1 : 2) : 0;
+                const size_t slot = branched && i != 0 ? i - 1 : i;
+                write_u32_le(bytes, leaf * page_size + oid, branched ? (leaf == 1 ? 1 : 2) : 3);
+                put_oid(leaf * page_size + header + slot * oid, keys[i].second);
+                write_u64_le(bytes, leaf * page_size + value_offset + slot * 8, keys[i].first);
+            }
+            const size_t tail = pages * page_size;
+            bytes[tail] = 8; write_u32_le(bytes, tail + 2, 1);
+            write_u32_le(bytes, tail + 6, branched ? 2 : 1);
+            if (version == 1) write_u32_le(bytes, tail + 10, 3);
+            else write_u64_le(bytes, tail + 10, 3);
+            write_u32_le(bytes, bytes.size() - 4, version);
+            const auto path = fs::temp_directory_path() / "fast_gdb_coarse_levels.spx";
+            { std::ofstream out(path, std::ios::binary); out.write(reinterpret_cast<const char*>(bytes.data()), bytes.size()); }
+            GdbSpatialIndexParser parser(path.string());
+            ASSERT_TRUE(parser.parse());
+            bool succeeded = false;
+            const auto fids = parser.query_bbox(coordinate, coordinate, coordinate, coordinate,
+                0, 0, 1, {1, 4, coarse}, 2, merge, &succeeded);
+            EXPECT_TRUE(succeeded);
+            EXPECT_EQ(fids, (std::vector<RowSlot>{0, 1, 2})) << coordinate << " version=" << version << " branch=" << branched;
+            fs::remove(path);
+        }
     }
 }

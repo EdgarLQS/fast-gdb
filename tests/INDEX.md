@@ -345,6 +345,11 @@ non-finite public-request errors. See [evidence and remaining integrity checks](
 
 ## Bound attribute integrity and incomplete source rows
 
+`SpatialIndexTest.CoarseGridOffsetAndSignedLevelsKeepPointCandidates` checks
+scaled grid shifts and signed mixed-level keys across v1/v2 leaves and branches,
+integer/noninteger ratios and merged ranges. The CLI suite includes the coarse
+origin probe. See [coarse-grid evidence](../docs/plan/evidence/2026-11-08-coarse-spx-grid.md).
+
 `verify_typed_atx_cli.py` also checks SPX traversal failures, missing files,
 invalid bounds/grids and legitimate empty results in real CLI processes, including
 a damaged copy of the fixed GDB. See [SPX CLI coverage](../docs/plan/evidence/2026-11-08-spx-cli-status.md).
