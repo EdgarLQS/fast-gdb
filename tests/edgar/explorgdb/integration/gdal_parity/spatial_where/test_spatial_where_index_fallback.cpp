@@ -704,6 +704,42 @@ TEST_F(SpatialWhereIndexFallbackTest, ValidatedNumericDirectoryReportsColdProofA
         baseline_pages += metrics.pages_visited;
         baseline_keys += metrics.entries_scanned;
     }
+    const AttrOp operations[] = {AttrOp::Eq, AttrOp::Ne, AttrOp::Lt, AttrOp::Le, AttrOp::Gt, AttrOp::Ge};
+    const char* symbols[] = {"=", "!=", "<", "<=", ">", ">="};
+    for (size_t operation = 0; operation < 6; ++operation) {
+        std::vector<RowSlot> expected;
+        for (const auto& item : oracle) {
+            const double value = item.second;
+            const bool matched = operation == 0 ? value == 0.125 : operation == 1 ? value != 0.125 :
+                operation == 2 ? value < 0.125 : operation == 3 ? value <= 0.125 :
+                operation == 4 ? value > 0.125 : value >= 0.125;
+            if (matched) expected.push_back(item.first);
+        }
+        std::sort(expected.begin(), expected.end());
+        request.attr_op = operations[operation];
+        request.double_value = 0.125;
+        QueryRequest scan;
+        scan.kind = QueryKind::WhereClause;
+        scan.where_clause = std::string("value ") + symbols[operation] + " 0.125";
+        std::vector<double> indexed_times, scan_times;
+        for (size_t round = 0; round < 3; ++round) {
+            const auto begin = std::chrono::steady_clock::now();
+            const auto indexed = engine.query(request);
+            indexed_times.push_back(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin).count());
+            ASSERT_EQ(indexed.status, QueryStatus::Ok) << indexed.error;
+            EXPECT_EQ(indexed.matched_fids, expected);
+            const auto scan_begin = std::chrono::steady_clock::now();
+            const auto scanned = engine.query(scan);
+            scan_times.push_back(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - scan_begin).count());
+            ASSERT_EQ(scanned.status, QueryStatus::Ok) << scanned.error;
+            EXPECT_EQ(scanned.matched_fids, expected);
+        }
+        std::sort(indexed_times.begin(), indexed_times.end());
+        std::sort(scan_times.begin(), scan_times.end());
+        std::cout << "[numeric-wide] rows=" << rows << " op=" << symbols[operation]
+                  << " matches=" << expected.size() << " rounds=3 indexed_median_ms=" << indexed_times[1]
+                  << " where_scan_median_ms=" << scan_times[1] << '\n';
+    }
     std::sort(warm_ms.begin(), warm_ms.end());
     std::sort(baseline_ms.begin(), baseline_ms.end());
     std::cout << "[numeric-directory] rows=" << rows << " nonnull=" << oracle.size()

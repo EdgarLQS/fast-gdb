@@ -1,0 +1,18 @@
+Note: Google Test filter = SpatialWhereIndexFallbackTest.ValidatedNumericDirectoryReportsColdProofAndWarmQueries
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from SpatialWhereIndexFallbackTest
+[ RUN      ] SpatialWhereIndexFallbackTest.ValidatedNumericDirectoryReportsColdProofAndWarmQueries
+[numeric-wide] rows=10000 op== matches=1 rounds=3 indexed_median_ms=0.127917 where_scan_median_ms=0.255917
+[numeric-wide] rows=10000 op=!= matches=9895 rounds=3 indexed_median_ms=0.513083 where_scan_median_ms=0.2595
+[numeric-wide] rows=10000 op=< matches=4947 rounds=3 indexed_median_ms=0.259875 where_scan_median_ms=0.272792
+[numeric-wide] rows=10000 op=<= matches=4948 rounds=3 indexed_median_ms=0.260125 where_scan_median_ms=0.269792
+[numeric-wide] rows=10000 op=> matches=4948 rounds=3 indexed_median_ms=0.267959 where_scan_median_ms=0.271917
+[numeric-wide] rows=10000 op=>= matches=4949 rounds=3 indexed_median_ms=0.270417 where_scan_median_ms=0.272291
+[numeric-directory] rows=10000 nonnull=9896 cold_ms=1.22263 validation_ms=1.11512 validation_rows=19896 cold_pages=31 cache_bytes=3904 warm_queries=63 warm_pages=63 warm_keys=1133 warm_median_ms=0.123666 warm_p95_ms=0.127209 warm_p99_ms=0.164083 baseline_pages=126 baseline_keys=11007 baseline_median_ms=0.034666 baseline_p95_ms=0.037834 baseline_p99_ms=0.045458
+[       OK ] SpatialWhereIndexFallbackTest.ValidatedNumericDirectoryReportsColdProofAndWarmQueries (74 ms)
+[----------] 1 test from SpatialWhereIndexFallbackTest (74 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (74 ms total)
+[  PASSED  ] 1 test.
