@@ -20,6 +20,7 @@
 #include "catalog_resolver.h"
 #include "gdb_catalog.h"
 #include "query_engine.h"
+#include "gdb_spatial_source_table.h"
 #include "spatial_where_test_utils.h"
 #include "test_fixture.h"
 
@@ -799,6 +800,10 @@ TEST_F(SpatialWhereIndexFallbackTest, UnreadableAttributeRowCannotBecomePartialS
     ASSERT_FALSE(parser.peek_geometry_blob(1, geometry, size));
     FeatureRecord record;
     ASSERT_FALSE(parser.read_record_by_fid(1, record));
+    const auto source_input = detail::make_table_spatial_source_input(parser, [] { return true; });
+    std::vector<detail::SpatialSourceEntry> source_values;
+    EXPECT_FALSE(source_input.read_bounds({1}, source_values));
+    EXPECT_FALSE(source_input.scan_source([](RowSlot, const auto&) { return true; }));
     QueryEngine engine(catalog, table);
     ASSERT_TRUE(engine.open());
     QueryRequest request;
@@ -845,6 +850,12 @@ TEST_F(SpatialWhereIndexFallbackTest, UnsupportedGeometryCannotBecomeSuccessfulP
         file.put(0x7f); // unsupported shape type; preserve row and blob length
         ASSERT_TRUE(file.good());
     }
+    GdbTableParser source_table(table.table_path);
+    ASSERT_TRUE(source_table.open()); ASSERT_TRUE(source_table.load_tablx(table.tablx_path));
+    const auto source_input = detail::make_table_spatial_source_input(source_table, [] { return true; });
+    std::vector<detail::SpatialSourceEntry> source_values;
+    EXPECT_FALSE(source_input.read_bounds({1}, source_values));
+    EXPECT_FALSE(source_input.scan_source([](RowSlot, const auto&) { return true; }));
     QueryEngine engine(catalog, table);
     ASSERT_TRUE(engine.open());
     for (bool narrow : {false, true}) for (auto kind : {QueryKind::SpatialBbox, QueryKind::SpatialWhere}) {
@@ -888,5 +899,114 @@ TEST_F(SpatialWhereIndexFallbackTest, ParsedSpxWithUnreadableLeafCannotReturnSuc
         EXPECT_EQ(result.matched_fids, kind == QueryKind::SpatialBbox ?
             (std::vector<RowSlot>{0, 1, 2}) : (std::vector<RowSlot>{1, 2}));
         EXPECT_FALSE(result.fallback_reason.empty());
+    }
+}
+
+TEST_F(SpatialWhereIndexFallbackTest, CanonicalTableBoundsMatchNativeEnvelopesAndPreserveNullEmpty) {
+    const auto path = spatial_where_test_utils::fixture_path("fast_gdb_source_bounds_real").string();
+    std::unique_ptr<GDALDataset, decltype(&GDALClose)> dataset(createGdb(path.c_str()), GDALClose);
+    ASSERT_NE(dataset, nullptr);
+    const char* names[] = {"source_point_rows", "source_multipoint_rows", "source_line_rows", "source_polygon_rows", "source_point_zm_rows", "source_line_zm_rows"};
+    const OGRwkbGeometryType types[] = {wkbPoint, wkbMultiPoint, wkbLineString, wkbPolygon, wkbPointZM, wkbLineStringZM};
+    const char* wkts[] = {"POINT (2 3)", "MULTIPOINT ((-2 3),(4 -5))",
+        "LINESTRING (-10 -10,10 20,30 -10)",
+        "POLYGON ((0 0,10 0,10 10,0 10,0 0),(2 2,2 3,3 3,3 2,2 2))",
+        "POINT ZM (2 3 4 5)", "LINESTRING ZM (-10 -10 1 2,10 20 3 4,30 -10 5 6)"};
+    std::vector<OGREnvelope> expected;
+    for (size_t shape = 0; shape < 6; ++shape) {
+        auto* layer = dataset->CreateLayer(names[shape], nullptr, types[shape], nullptr);
+        ASSERT_NE(layer, nullptr);
+        OGRFieldDefn value("value", OFTInteger);
+        ASSERT_EQ(layer->CreateField(&value), OGRERR_NONE);
+        OGRGeometry* raw = nullptr;
+        ASSERT_EQ(OGRGeometryFactory::createFromWkt(wkts[shape], nullptr, &raw), OGRERR_NONE);
+        std::unique_ptr<OGRGeometry> geometry(raw);
+        OGREnvelope envelope; geometry->getEnvelope(&envelope); expected.push_back(envelope);
+        for (size_t row = 0; row < 4; ++row) {
+            std::unique_ptr<OGRFeature, decltype(&OGRFeature::DestroyFeature)> feature(
+                OGRFeature::CreateFeature(layer->GetLayerDefn()), OGRFeature::DestroyFeature);
+            feature->SetField("value", static_cast<int>(row));
+            if (row == 0 || (row == 3 && shape != 0 && shape != 4))
+                ASSERT_EQ(feature->SetGeometry(geometry.get()), OGRERR_NONE);
+            if (row == 3 && (shape == 0 || shape == 4)) {
+                OGRPoint other(5, 6);
+                if (shape == 4) { other.setZ(7); other.setM(8); }
+                ASSERT_EQ(feature->SetGeometry(&other), OGRERR_NONE);
+            }
+            if (row == 2) {
+                std::unique_ptr<OGRGeometry> empty(OGRGeometryFactory::createGeometry(types[shape]));
+                ASSERT_EQ(feature->SetGeometry(empty.get()), OGRERR_NONE);
+            }
+            ASSERT_EQ(layer->CreateFeature(feature.get()), OGRERR_NONE);
+        }
+    }
+    dataset.reset();
+    dataset.reset(static_cast<GDALDataset*>(GDALOpenEx(path.c_str(), GDAL_OF_VECTOR | GDAL_OF_UPDATE,
+        nullptr, nullptr, nullptr)));
+    ASSERT_NE(dataset, nullptr);
+    ASSERT_EQ(dataset->GetLayerCount(), 6);
+    for (const char* name : names) {
+        auto* layer = dataset->GetLayerByName(name);
+        ASSERT_NE(layer, nullptr);
+        layer->ResetReading();
+        while (auto* raw = layer->GetNextFeature()) {
+            std::unique_ptr<OGRFeature, decltype(&OGRFeature::DestroyFeature)> feature(raw, OGRFeature::DestroyFeature);
+            ASSERT_EQ(layer->SetFeature(feature.get()), OGRERR_NONE);
+        }
+        ASSERT_TRUE(sql(dataset.get(), std::string("RECOMPUTE EXTENT ON ") + name));
+        ASSERT_TRUE(sql(dataset.get(), std::string("CREATE INDEX source_value_idx ON ") + name + "(value)"));
+    }
+    dataset.reset();
+    dataset.reset(static_cast<GDALDataset*>(GDALOpenEx(path.c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY,
+        nullptr, nullptr, nullptr)));
+    ASSERT_NE(dataset, nullptr);
+    for (size_t shape = 0; shape < 6; ++shape) {
+        auto* layer = dataset->GetLayerByName(names[shape]); ASSERT_NE(layer, nullptr);
+        std::unique_ptr<OGRFeature, decltype(&OGRFeature::DestroyFeature)> feature(layer->GetFeature(1), OGRFeature::DestroyFeature);
+        ASSERT_NE(feature, nullptr); ASSERT_NE(feature->GetGeometryRef(), nullptr);
+        const auto actual_type = feature->GetGeometryRef()->getGeometryType();
+        EXPECT_EQ(OGR_GT_HasZ(actual_type), OGR_GT_HasZ(types[shape]));
+        EXPECT_EQ(OGR_GT_HasM(actual_type), OGR_GT_HasM(types[shape]));
+        feature->GetGeometryRef()->getEnvelope(&expected[shape]);
+        for (GIntBig fid : {2, 3}) {
+            feature.reset(layer->GetFeature(fid)); ASSERT_NE(feature, nullptr);
+            EXPECT_TRUE(feature->GetGeometryRef() == nullptr || feature->GetGeometryRef()->IsEmpty());
+        }
+    }
+    dataset.reset();
+    GdbCatalog catalog; ASSERT_TRUE(catalog.scan(path));
+    CatalogResolver resolver(catalog); ASSERT_TRUE(resolver.load());
+    for (size_t shape = 0; shape < 6; ++shape) {
+        SCOPED_TRACE(names[shape]);
+        const auto table = resolver.resolve(names[shape]); ASSERT_TRUE(table.has_value());
+        GdbTableParser parser(table->table_path);
+        ASSERT_TRUE(parser.open()); ASSERT_TRUE(parser.load_tablx(table->tablx_path));
+        const auto expected_table = parser.source_identity();
+        TablxCacheKey expected_tablx; ASSERT_TRUE(TablxCache::make_key(table->tablx_path, expected_tablx));
+        const auto stable = [&] {
+            TablxCacheKey current_table, current_tablx;
+            return TablxCache::make_key(table->table_path, current_table) && current_table == expected_table &&
+                TablxCache::make_key(table->tablx_path, current_tablx) && current_tablx == expected_tablx;
+        };
+        const auto input = detail::make_table_spatial_source_input(parser, stable);
+        std::vector<detail::SpatialSourceEntry> values;
+        ASSERT_TRUE(input.read_bounds({2, 0, 1, 0}, values));
+        ASSERT_EQ(values.size(), 4U);
+        EXPECT_EQ(values[0].fid, 2U); EXPECT_FALSE(values[0].bounds.has_value());
+        EXPECT_EQ(values[2].fid, 1U); EXPECT_FALSE(values[2].bounds.has_value());
+        ASSERT_TRUE(values[1].bounds.has_value());
+        EXPECT_NEAR(values[1].bounds->xmin, expected[shape].MinX, 1e-7);
+        EXPECT_NEAR(values[1].bounds->ymin, expected[shape].MinY, 1e-7);
+        EXPECT_NEAR(values[1].bounds->xmax, expected[shape].MaxX, 1e-7);
+        EXPECT_NEAR(values[1].bounds->ymax, expected[shape].MaxY, 1e-7);
+        size_t rows = 0;
+        ASSERT_TRUE(input.scan_source([&](RowSlot, const auto&) { ++rows; return true; }));
+        EXPECT_EQ(rows, 4U);
+        const auto* spx = catalog.find_spx(table->id); ASSERT_NE(spx, nullptr);
+        const auto built = detail::SpatialSourceIndex::build(entry_path(path, spx).string(), input);
+        ASSERT_NE(built.index, nullptr) << built.reason;
+        std::vector<RowSlot> candidates;
+        ASSERT_TRUE(built.index->query(*values[1].bounds, stable, candidates));
+        EXPECT_EQ(candidates, (std::vector<RowSlot>{0, 3}));
     }
 }

@@ -210,7 +210,8 @@ set(FAST_GDB_READER_INDEX_SOURCES
     src/edgar/explorgdb/reader/index/gdb_indexes.cpp
     src/edgar/explorgdb/reader/index/gdb_spatial_index.cpp
     src/edgar/explorgdb/reader/index/gdb_spatial_source_directory.cpp
-    src/edgar/explorgdb/reader/index/gdb_spatial_source_index.cpp)
+    src/edgar/explorgdb/reader/index/gdb_spatial_source_index.cpp
+    src/edgar/explorgdb/reader/index/gdb_spatial_source_table.cpp)
 set(FAST_GDB_READER_QUERY_SOURCES
     src/edgar/explorgdb/reader/query/query_engine.cpp
     src/edgar/explorgdb/reader/query/query_engine_combined.cpp

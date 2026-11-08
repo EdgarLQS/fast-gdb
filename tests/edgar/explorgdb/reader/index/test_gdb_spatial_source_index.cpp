@@ -1,5 +1,8 @@
 #include <gtest/gtest.h>
 #include "gdb_spatial_source_index.h"
+#include "gdb_spatial_source_table.h"
+#include "gdb_table.h"
+#include "test_paths.h"
 #include <filesystem>
 #include <fstream>
 #include <atomic>
@@ -112,4 +115,37 @@ TEST(SpatialSourceIndexTest, IndexChangeDuringSourceReadRejectsProof) {
     };
     const auto built = SpatialSourceIndex::build(fixture.path.string(), fixture.input);
     EXPECT_EQ(built.index, nullptr);
+}
+
+TEST(SpatialSourceTableTest, FixedFixtureBatchAndFullScanAgreeWithoutGdalRuntime) {
+    const auto directory = explorgdb_test_paths::test_data_path("test_data/benchmark/wide_50_gdal.gdb");
+    const auto table_path = (directory / "a00000009.gdbtable").string();
+    const auto tablx_path = (directory / "a00000009.gdbtablx").string();
+    GdbTableParser table(table_path);
+    ASSERT_TRUE(table.open()); ASSERT_TRUE(table.load_tablx(tablx_path));
+    const auto expected_table = table.source_identity();
+    TablxCacheKey expected_tablx; ASSERT_TRUE(TablxCache::make_key(tablx_path, expected_tablx));
+    auto input = make_table_spatial_source_input(table, [&] {
+        TablxCacheKey current_table, current_tablx;
+        return TablxCache::make_key(table_path, current_table) && current_table == expected_table &&
+            TablxCache::make_key(tablx_path, current_tablx) && current_tablx == expected_tablx;
+    });
+    std::vector<SpatialSourceEntry> batch;
+    ASSERT_TRUE(input.read_bounds({2, 0, 1, 0}, batch));
+    ASSERT_EQ(batch.size(), 4U);
+    EXPECT_EQ(batch[0].fid, 2U); EXPECT_EQ(batch[1].fid, 0U); EXPECT_EQ(batch[2].fid, 1U);
+    size_t count = 0, compared = 0;
+    ASSERT_TRUE(input.scan_source([&](RowSlot fid, const std::optional<GdbBbox>& box) {
+        ++count;
+        for (const auto& expected : batch) if (expected.fid == fid) {
+            ++compared;
+            EXPECT_EQ(box.has_value(), expected.bounds.has_value());
+            if (box && expected.bounds) {
+                EXPECT_DOUBLE_EQ(box->xmin, expected.bounds->xmin); EXPECT_DOUBLE_EQ(box->ymin, expected.bounds->ymin);
+                EXPECT_DOUBLE_EQ(box->xmax, expected.bounds->xmax); EXPECT_DOUBLE_EQ(box->ymax, expected.bounds->ymax);
+            }
+        }
+        return true;
+    }));
+    EXPECT_EQ(count, table.active_feature_count()); EXPECT_EQ(compared, 4U);
 }

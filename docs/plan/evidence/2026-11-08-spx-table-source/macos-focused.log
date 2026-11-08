@@ -1,0 +1,33 @@
+Note: Google Test filter = SpatialSourceTableTest.*:SpatialSourceIndexTest.*:SpatialWhereIndexFallbackTest.CanonicalTableBoundsMatchNativeEnvelopesAndPreserveNullEmpty:SpatialWhereIndexFallbackTest.UnreadableAttributeRowCannotBecomePartialSpatialWhereSuccess:SpatialWhereIndexFallbackTest.UnsupportedGeometryCannotBecomeSuccessfulPartialResult
+[==========] Running 9 tests from 3 test suites.
+[----------] Global test environment set-up.
+[----------] 5 tests from SpatialSourceIndexTest
+[ RUN      ] SpatialSourceIndexTest.SourceBoundsRecoverCandidatesDespiteWrongGridKeysAndSeparators
+[       OK ] SpatialSourceIndexTest.SourceBoundsRecoverCandidatesDespiteWrongGridKeysAndSeparators (0 ms)
+[ RUN      ] SpatialSourceIndexTest.MissingDuplicateOutOfRangeAndCyclicEntriesNeverPublish
+[       OK ] SpatialSourceIndexTest.MissingDuplicateOutOfRangeAndCyclicEntriesNeverPublish (1 ms)
+[ RUN      ] SpatialSourceIndexTest.CallbackMismatchFailureAndSourceChangeNeverPublish
+[       OK ] SpatialSourceIndexTest.CallbackMismatchFailureAndSourceChangeNeverPublish (0 ms)
+[ RUN      ] SpatialSourceIndexTest.CandidateBudgetAndChangedSourcePreserveCallerOutput
+[       OK ] SpatialSourceIndexTest.CandidateBudgetAndChangedSourcePreserveCallerOutput (0 ms)
+[ RUN      ] SpatialSourceIndexTest.IndexChangeDuringSourceReadRejectsProof
+[       OK ] SpatialSourceIndexTest.IndexChangeDuringSourceReadRejectsProof (0 ms)
+[----------] 5 tests from SpatialSourceIndexTest (3 ms total)
+
+[----------] 1 test from SpatialSourceTableTest
+[ RUN      ] SpatialSourceTableTest.FixedFixtureBatchAndFullScanAgreeWithoutGdalRuntime
+[       OK ] SpatialSourceTableTest.FixedFixtureBatchAndFullScanAgreeWithoutGdalRuntime (2 ms)
+[----------] 1 test from SpatialSourceTableTest (2 ms total)
+
+[----------] 3 tests from SpatialWhereIndexFallbackTest
+[ RUN      ] SpatialWhereIndexFallbackTest.UnreadableAttributeRowCannotBecomePartialSpatialWhereSuccess
+[       OK ] SpatialWhereIndexFallbackTest.UnreadableAttributeRowCannotBecomePartialSpatialWhereSuccess (49 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.UnsupportedGeometryCannotBecomeSuccessfulPartialResult
+[       OK ] SpatialWhereIndexFallbackTest.UnsupportedGeometryCannotBecomeSuccessfulPartialResult (33 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.CanonicalTableBoundsMatchNativeEnvelopesAndPreserveNullEmpty
+[       OK ] SpatialWhereIndexFallbackTest.CanonicalTableBoundsMatchNativeEnvelopesAndPreserveNullEmpty (12 ms)
+[----------] 3 tests from SpatialWhereIndexFallbackTest (96 ms total)
+
+[----------] Global test environment tear-down
+[==========] 9 tests from 3 test suites ran. (101 ms total)
+[  PASSED  ] 9 tests.

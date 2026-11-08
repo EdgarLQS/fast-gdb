@@ -1,0 +1,21 @@
+[1/2] Building CXX object CMakeFiles/gdb_tutorial_test_runner.dir/tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_index_fallback.cpp.o
+/src/tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_index_fallback.cpp: In member function ‘virtual void SpatialWhereIndexFallbackTest_UnsupportedGeometryCannotBecomeSuccessfulPartialResult_Test::TestBody()’:
+/src/tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_index_fallback.cpp:870:12: warning: suggest explicit braces to avoid ambiguous ‘else’ [-Wdangling-else]
+  870 |         if (narrow && kind == QueryKind::SpatialWhere)
+      |            ^
+/src/tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_index_fallback.cpp: In member function ‘virtual void SpatialWhereIndexFallbackTest_CanonicalTableBoundsMatchNativeEnvelopesAndPreserveNullEmpty_Test::TestBody()’:
+/src/tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_index_fallback.cpp:929:16: warning: suggest explicit braces to avoid ambiguous ‘else’ [-Wdangling-else]
+  929 |             if (row == 0 || (row == 3 && shape != 0 && shape != 4))
+      |                ^
+[2/2] Linking CXX executable bin/gdb_tutorial_test_runner
+Note: Google Test filter = SpatialWhereIndexFallbackTest.CanonicalTableBoundsMatchNativeEnvelopesAndPreserveNullEmpty
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from SpatialWhereIndexFallbackTest
+[ RUN      ] SpatialWhereIndexFallbackTest.CanonicalTableBoundsMatchNativeEnvelopesAndPreserveNullEmpty
+[       OK ] SpatialWhereIndexFallbackTest.CanonicalTableBoundsMatchNativeEnvelopesAndPreserveNullEmpty (15 ms)
+[----------] 1 test from SpatialWhereIndexFallbackTest (15 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (15 ms total)
+[  PASSED  ] 1 test.

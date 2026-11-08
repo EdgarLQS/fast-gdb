@@ -345,6 +345,12 @@ non-finite public-request errors. See [evidence and remaining integrity checks](
 
 ## Bound attribute integrity and incomplete source rows
 
+`CanonicalTableBoundsMatchNativeEnvelopesAndPreserveNullEmpty` compares actual
+GDAL-written point/multipoint/line/polygon and ZM layers with read-back envelopes
+and builds source directories from persisted SPX files. `SpatialSourceTableTest`
+also exercises the new table callback without a GDAL runtime. Neither enables
+the pending QueryEngine integration. See [table source evidence](../docs/plan/evidence/2026-11-08-spx-table-source.md).
+
 `SpatialSourceIndexTest` verifies pinned-handle v1/v2 leaf I/O, wrong physical
 keys, missing/duplicate FIDs, callback failure, snapshot changes and candidate
 budget rejection without publishing partial output. Source bounds are synthetic
