@@ -345,6 +345,11 @@ non-finite public-request errors. See [evidence and remaining integrity checks](
 
 ## Bound attribute integrity and incomplete source rows
 
+`SpatialWhereIndexFallbackTest.ParsedSpxWithUnreadableLeafCannotReturnSuccessfulEmptyResult`
+checks a GDAL-written SPX whose trailer parses but visited page count is invalid;
+bbox and combined queries must scan the full source. The v2 SPX test also checks
+the optional traversal-status output. See [SPX failure evidence](../docs/plan/evidence/2026-11-08-spx-traversal-errors.md).
+
 The native numeric scale test now checks six wide predicates against independent
 GDAL field-scan FIDs and the public WHERE scan, three rounds per operator.
 See [wide query evidence](../docs/plan/evidence/2026-11-08-wide-attribute-queries.md).

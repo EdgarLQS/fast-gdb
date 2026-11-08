@@ -1,0 +1,79 @@
+Note: Google Test filter = SpatialIndexTest.*:SpatialWhereIndexFallbackTest.*
+[==========] Running 30 tests from 2 test suites.
+[----------] Global test environment set-up.
+[----------] 13 tests from SpatialIndexTest
+[ RUN      ] SpatialIndexTest.ParseValidSmall
+[       OK ] SpatialIndexTest.ParseValidSmall (0 ms)
+[ RUN      ] SpatialIndexTest.ParseValidLarge
+[       OK ] SpatialIndexTest.ParseValidLarge (0 ms)
+[ RUN      ] SpatialIndexTest.VersionTwoQueries64BitObjectIdsThroughBranchPages
+[       OK ] SpatialIndexTest.VersionTwoQueries64BitObjectIdsThroughBranchPages (0 ms)
+[ RUN      ] SpatialIndexTest.ParseNonexistent
+[       OK ] SpatialIndexTest.ParseNonexistent (0 ms)
+[ RUN      ] SpatialIndexTest.ParseTruncated
+[       OK ] SpatialIndexTest.ParseTruncated (0 ms)
+[ RUN      ] SpatialIndexTest.RejectsPageWithTooManyEntries
+[       OK ] SpatialIndexTest.RejectsPageWithTooManyEntries (0 ms)
+[ RUN      ] SpatialIndexTest.QuerySmallBbox
+[       OK ] SpatialIndexTest.QuerySmallBbox (0 ms)
+[ RUN      ] SpatialIndexTest.QueryEmptyBbox
+[       OK ] SpatialIndexTest.QueryEmptyBbox (0 ms)
+[ RUN      ] SpatialIndexTest.QueryLargeBbox
+[       OK ] SpatialIndexTest.QueryLargeBbox (0 ms)
+[ RUN      ] SpatialIndexTest.QueryEmptyGridResolutions
+[       OK ] SpatialIndexTest.QueryEmptyGridResolutions (0 ms)
+[ RUN      ] SpatialIndexTest.RejectsInvalidQueryInputs
+[       OK ] SpatialIndexTest.RejectsInvalidQueryInputs (0 ms)
+[ RUN      ] SpatialIndexTest.RejectsLayerExtentsOutsideLevelZeroCellRange
+[       OK ] SpatialIndexTest.RejectsLayerExtentsOutsideLevelZeroCellRange (0 ms)
+[ RUN      ] SpatialIndexTest.ResultsAreSorted
+[       OK ] SpatialIndexTest.ResultsAreSorted (0 ms)
+[----------] 13 tests from SpatialIndexTest (1 ms total)
+
+[----------] 17 tests from SpatialWhereIndexFallbackTest
+[ RUN      ] SpatialWhereIndexFallbackTest.MissingAtxKeepsCorrectResults
+[       OK ] SpatialWhereIndexFallbackTest.MissingAtxKeepsCorrectResults (15 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.DamagedAtxKeepsCorrectResults
+[       OK ] SpatialWhereIndexFallbackTest.DamagedAtxKeepsCorrectResults (3 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.DamagedAtxAttributeQueryFallsBackToSequentialScan
+[       OK ] SpatialWhereIndexFallbackTest.DamagedAtxAttributeQueryFallsBackToSequentialScan (3 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.MissingAtxAttributeQueryFallsBackToSequentialScan
+[       OK ] SpatialWhereIndexFallbackTest.MissingAtxAttributeQueryFallsBackToSequentialScan (4 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.InconsistentAtxTrailerCountKeepsCorrectResults
+[       OK ] SpatialWhereIndexFallbackTest.InconsistentAtxTrailerCountKeepsCorrectResults (3 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.CyclicAtxLeafChainKeepsCorrectResults
+[       OK ] SpatialWhereIndexFallbackTest.CyclicAtxLeafChainKeepsCorrectResults (3 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.MissingSpxStillUsesAtxCandidates
+[       OK ] SpatialWhereIndexFallbackTest.MissingSpxStillUsesAtxCandidates (4 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.OfficialSetFeatureRebuildsMissingSpxForFreshFastReader
+[       OK ] SpatialWhereIndexFallbackTest.OfficialSetFeatureRebuildsMissingSpxForFreshFastReader (5 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.MissingBothIndexesStillMatches
+[       OK ] SpatialWhereIndexFallbackTest.MissingBothIndexesStillMatches (4 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.NaNFloatKeyFallsBackToActualFieldsForEveryOperator
+[       OK ] SpatialWhereIndexFallbackTest.NaNFloatKeyFallsBackToActualFieldsForEveryOperator (7 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.NonFinitePublicAttributeProbesAreExplicitErrors
+[       OK ] SpatialWhereIndexFallbackTest.NonFinitePublicAttributeProbesAreExplicitErrors (4 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.FiniteWrongKeysDuplicateFidsAndMissingRowsUseCompleteFieldScan
+[       OK ] SpatialWhereIndexFallbackTest.FiniteWrongKeysDuplicateFidsAndMissingRowsUseCompleteFieldScan (51 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.ExactInt64EntryPointRechecksNativeFieldsAndSharesProof
+[       OK ] SpatialWhereIndexFallbackTest.ExactInt64EntryPointRechecksNativeFieldsAndSharesProof (9 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.ValidatedNumericDirectoryReportsColdProofAndWarmQueries
+[numeric-wide] rows=10000 op== matches=1 rounds=3 indexed_median_ms=0.182125 where_scan_median_ms=0.298459
+[numeric-wide] rows=10000 op=!= matches=9895 rounds=3 indexed_median_ms=0.45225 where_scan_median_ms=0.295709
+[numeric-wide] rows=10000 op=< matches=4947 rounds=3 indexed_median_ms=0.459375 where_scan_median_ms=0.306625
+[numeric-wide] rows=10000 op=<= matches=4948 rounds=3 indexed_median_ms=0.459917 where_scan_median_ms=0.310291
+[numeric-wide] rows=10000 op=> matches=4948 rounds=3 indexed_median_ms=0.455833 where_scan_median_ms=0.307166
+[numeric-wide] rows=10000 op=>= matches=4949 rounds=3 indexed_median_ms=0.415791 where_scan_median_ms=0.308584
+[numeric-directory] rows=10000 nonnull=9896 cold_ms=1.28438 validation_ms=1.20575 validation_rows=19896 cold_pages=31 cache_bytes=3904 warm_queries=63 warm_pages=63 warm_keys=1133 warm_median_ms=0.182708 warm_p95_ms=0.277042 warm_p99_ms=0.28325 baseline_pages=126 baseline_keys=11007 baseline_median_ms=0.04775 baseline_p95_ms=0.070375 baseline_p99_ms=0.086458
+[       OK ] SpatialWhereIndexFallbackTest.ValidatedNumericDirectoryReportsColdProofAndWarmQueries (37 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.UnreadableAttributeRowCannotBecomePartialSpatialWhereSuccess
+[       OK ] SpatialWhereIndexFallbackTest.UnreadableAttributeRowCannotBecomePartialSpatialWhereSuccess (4 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.UnsupportedGeometryCannotBecomeSuccessfulPartialResult
+[       OK ] SpatialWhereIndexFallbackTest.UnsupportedGeometryCannotBecomeSuccessfulPartialResult (37 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.ParsedSpxWithUnreadableLeafCannotReturnSuccessfulEmptyResult
+[       OK ] SpatialWhereIndexFallbackTest.ParsedSpxWithUnreadableLeafCannotReturnSuccessfulEmptyResult (3 ms)
+[----------] 17 tests from SpatialWhereIndexFallbackTest (204 ms total)
+
+[----------] Global test environment tear-down
+[==========] 30 tests from 2 test suites ran. (205 ms total)
+[  PASSED  ] 30 tests.

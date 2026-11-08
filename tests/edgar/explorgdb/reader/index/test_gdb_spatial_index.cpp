@@ -134,8 +134,12 @@ TEST(SpatialIndexTest, VersionTwoQueries64BitObjectIdsThroughBranchPages) {
     EXPECT_EQ(parser.trailer().page_size, 65536U);
     EXPECT_EQ(parser.trailer().object_id_size, 8U);
 
+    bool succeeded = false;
     const std::vector<RowSlot> row_slots = parser.query_bbox(
-        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, {1.0});
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, {1.0}, 0, false, &succeeded);
+    EXPECT_TRUE(succeeded);
+    EXPECT_TRUE(parser.query_bbox(1, 0, 0, 0, 0, 0, 1, {1}, 0, false, &succeeded).empty());
+    EXPECT_FALSE(succeeded);
     EXPECT_EQ(row_slots, (std::vector<RowSlot>{0x100000004ULL}));
     fs::remove(path);
 }

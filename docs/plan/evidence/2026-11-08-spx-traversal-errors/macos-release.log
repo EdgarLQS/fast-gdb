@@ -1,0 +1,1247 @@
+Test project /Users/edgarlqs/Downloads/fast-gdb/build-s4-release
+        Start 610: full.fixture-manifest.acceptance-metadata
+        Start 182: hybrid.RealDataReleaseContractTest.SuppliedGdbSpatialWindowsReturnSameFidsAsGdal
+  1/611 Test #610: full.fixture-manifest.acceptance-metadata ...........................................................................   Passed    0.05 sec
+        Start 181: hybrid.RealDataReleaseContractTest.HistoricalSpatialQueriesMatchIndependentGeometryScan
+  2/611 Test #182: hybrid.RealDataReleaseContractTest.SuppliedGdbSpatialWindowsReturnSameFidsAsGdal ....................................   Passed    1.32 sec
+        Start 596: full.RealDataReleaseContractTest.HistoricalSpatialQueriesMatchIndependentGeometryScan
+  3/611 Test #181: hybrid.RealDataReleaseContractTest.HistoricalSpatialQueriesMatchIndependentGeometryScan .............................   Passed    1.28 sec
+        Start 175: hybrid.RealDataReleaseContractTest.SuppliedGdbEveryNonCurveGeometryMatchesGdal
+  4/611 Test #175: hybrid.RealDataReleaseContractTest.SuppliedGdbEveryNonCurveGeometryMatchesGdal ......................................   Passed    1.16 sec
+        Start  33: unified.UnifiedGdalFacadeTest.RefreshReadsExternalGdalAttributeAndGeometryChanges
+  5/611 Test #596: full.RealDataReleaseContractTest.HistoricalSpatialQueriesMatchIndependentGeometryScan ...............................   Passed    1.25 sec
+        Start 597: full.RealDataReleaseContractTest.SuppliedGdbSpatialWindowsReturnSameFidsAsGdal
+  6/611 Test  #33: unified.UnifiedGdalFacadeTest.RefreshReadsExternalGdalAttributeAndGeometryChanges ...................................   Passed    0.48 sec
+        Start  31: unified.UnifiedGdalFacadeTest.SuppliedSparseObjectIdsMapThroughPublicApi
+  7/611 Test  #31: unified.UnifiedGdalFacadeTest.SuppliedSparseObjectIdsMapThroughPublicApi ............................................   Passed    0.38 sec
+        Start 174: hybrid.RealDataReleaseContractTest.SuppliedGdbEveryFeatureRowAndAttributeMatchesGdal
+  8/611 Test #174: hybrid.RealDataReleaseContractTest.SuppliedGdbEveryFeatureRowAndAttributeMatchesGdal ................................   Passed    0.38 sec
+        Start 611: full.cli.typed-atx
+  9/611 Test #597: full.RealDataReleaseContractTest.SuppliedGdbSpatialWindowsReturnSameFidsAsGdal ......................................   Passed    1.24 sec
+        Start 590: full.RealDataReleaseContractTest.SuppliedGdbEveryNonCurveGeometryMatchesGdal
+ 10/611 Test #611: full.cli.typed-atx ..................................................................................................   Passed    0.58 sec
+        Start 192: hybrid.RealDataReleaseContractTest.MillionPointRowsAndGeometryMatchGdal
+ 11/611 Test #192: hybrid.RealDataReleaseContractTest.MillionPointRowsAndGeometryMatchGdal .............................................   Passed    0.40 sec
+        Start 190: hybrid.RealDataReleaseContractTest.SuppliedCurvesPreserveSourceAndCompareLinearizationsToGdal
+ 12/611 Test #590: full.RealDataReleaseContractTest.SuppliedGdbEveryNonCurveGeometryMatchesGdal ........................................   Passed    1.15 sec
+        Start 581: full.SpatialWhereUnicodeTest.ValidatedDirectoryPrunesMultiPageQueriesAndRefreshesSnapshots
+ 13/611 Test #190: hybrid.RealDataReleaseContractTest.SuppliedCurvesPreserveSourceAndCompareLinearizationsToGdal .......................   Passed    0.25 sec
+        Start 177: hybrid.RealDataReleaseContractTest.HistoricalAttributeIndexesMatchIndependentRecordScan
+ 14/611 Test #177: hybrid.RealDataReleaseContractTest.HistoricalAttributeIndexesMatchIndependentRecordScan .............................   Passed    0.23 sec
+        Start  30: unified.UnifiedGdalFacadeTest.CurvePolicyPreservesAndLinearizesWithProvenance
+ 15/611 Test #581: full.SpatialWhereUnicodeTest.ValidatedDirectoryPrunesMultiPageQueriesAndRefreshesSnapshots ..........................   Passed    0.42 sec
+        Start 275: full.ReaderConcurrencyTest.IndependentReadersReturnIdenticalFeatureDigests
+ 16/611 Test  #30: unified.UnifiedGdalFacadeTest.CurvePolicyPreservesAndLinearizesWithProvenance .......................................   Passed    0.28 sec
+        Start 179: hybrid.RealDataReleaseContractTest.HistoricalUuidPredicatesMatchIndependentRecordScan
+ 17/611 Test #179: hybrid.RealDataReleaseContractTest.HistoricalUuidPredicatesMatchIndependentRecordScan ...............................   Passed    0.22 sec
+        Start 178: hybrid.RealDataReleaseContractTest.HistoricalDatePredicatesMatchIndependentRecordScan
+ 18/611 Test #178: hybrid.RealDataReleaseContractTest.HistoricalDatePredicatesMatchIndependentRecordScan ...............................   Passed    0.23 sec
+        Start  47: fastfilegdb.FastFileGdbDriverTest.ExposesFeatureDatasetGroupHierarchy
+ 19/611 Test #275: full.ReaderConcurrencyTest.IndependentReadersReturnIdenticalFeatureDigests ..........................................   Passed    0.61 sec
+        Start 589: full.RealDataReleaseContractTest.SuppliedGdbEveryFeatureRowAndAttributeMatchesGdal
+ 20/611 Test  #47: fastfilegdb.FastFileGdbDriverTest.ExposesFeatureDatasetGroupHierarchy ...............................................   Passed    0.31 sec
+        Start 176: hybrid.RealDataReleaseContractTest.HistoricalGdbEveryNonCurveGeometryMatchesGdal
+ 21/611 Test #589: full.RealDataReleaseContractTest.SuppliedGdbEveryFeatureRowAndAttributeMatchesGdal ..................................   Passed    0.38 sec
+        Start 607: full.RealDataReleaseContractTest.MillionPointRowsAndGeometryMatchGdal
+ 22/611 Test #176: hybrid.RealDataReleaseContractTest.HistoricalGdbEveryNonCurveGeometryMatchesGdal ....................................   Passed    0.18 sec
+        Start  45: fastfilegdb.FastFileGdbDriverTest.PreservesTemporalOffsetAndBinaryPayload
+ 23/611 Test  #45: fastfilegdb.FastFileGdbDriverTest.PreservesTemporalOffsetAndBinaryPayload ...........................................   Passed    0.28 sec
+        Start  32: unified.UnifiedGdalFacadeTest.FrozenFastSchemaRejectsExternalFieldChanges
+ 24/611 Test #607: full.RealDataReleaseContractTest.MillionPointRowsAndGeometryMatchGdal ...............................................   Passed    0.41 sec
+        Start 562: full.SpatialWhereIndexFallbackTest.FiniteWrongKeysDuplicateFidsAndMissingRowsUseCompleteFieldScan
+ 25/611 Test  #32: unified.UnifiedGdalFacadeTest.FrozenFastSchemaRejectsExternalFieldChanges ...........................................   Passed    0.24 sec
+        Start   9: unified.UnifiedFastFacadeTest.OpensUtf8PathWithChineseDirectoryAndReadsFeature
+ 26/611 Test #562: full.SpatialWhereIndexFallbackTest.FiniteWrongKeysDuplicateFidsAndMissingRowsUseCompleteFieldScan ...................   Passed    0.22 sec
+        Start 592: full.RealDataReleaseContractTest.HistoricalAttributeIndexesMatchIndependentRecordScan
+ 27/611 Test   #9: unified.UnifiedFastFacadeTest.OpensUtf8PathWithChineseDirectoryAndReadsFeature ......................................   Passed    0.21 sec
+        Start  20: unified.UnifiedFastFacadeTest.ReadByFidHandlesSparseAndDeletedRows
+ 28/611 Test #592: full.RealDataReleaseContractTest.HistoricalAttributeIndexesMatchIndependentRecordScan ...............................   Passed    0.22 sec
+        Start 594: full.RealDataReleaseContractTest.HistoricalUuidPredicatesMatchIndependentRecordScan
+ 29/611 Test  #20: unified.UnifiedFastFacadeTest.ReadByFidHandlesSparseAndDeletedRows ..................................................   Passed    0.23 sec
+        Start  35: unified.UnifiedGdalFacadeTest.AutoFallsBackForWhitelistedQueryGap
+ 30/611 Test #594: full.RealDataReleaseContractTest.HistoricalUuidPredicatesMatchIndependentRecordScan .................................   Passed    0.21 sec
+        Start 580: full.SpatialWhereUnicodeTest.FullStringPredicatesRecheckPaddingTruncationAndUnicodeOrder
+ 31/611 Test  #35: unified.UnifiedGdalFacadeTest.AutoFallsBackForWhitelistedQueryGap ...................................................   Passed    0.23 sec
+        Start  23: unified.UnifiedFastFacadeTest.ReadsBinaryFieldsUnderPayloadBudget
+ 32/611 Test #580: full.SpatialWhereUnicodeTest.FullStringPredicatesRecheckPaddingTruncationAndUnicodeOrder ............................   Passed    0.21 sec
+        Start 573: full.SpatialWhereUuidTest.SyntheticGuidIndexMatchesGdalRecordScanAcrossPages
+ 33/611 Test  #23: unified.UnifiedFastFacadeTest.ReadsBinaryFieldsUnderPayloadBudget ...................................................   Passed    0.22 sec
+        Start 194: hybrid.RealDataReleaseContractTest.SpatialReferenceNamesAndEllipsoidsMatchGdalForSuppliedCrsLayers
+ 34/611 Test #573: full.SpatialWhereUuidTest.SyntheticGuidIndexMatchesGdalRecordScanAcrossPages ........................................   Passed    0.20 sec
+        Start 566: full.SpatialWhereIndexFallbackTest.UnsupportedGeometryCannotBecomeSuccessfulPartialResult
+ 35/611 Test #194: hybrid.RealDataReleaseContractTest.SpatialReferenceNamesAndEllipsoidsMatchGdalForSuppliedCrsLayers ..................   Passed    0.20 sec
+        Start  41: unified.UnifiedGdalFacadeTest.FastAndGdalSchemasExposeParityInputs
+ 36/611 Test #566: full.SpatialWhereIndexFallbackTest.UnsupportedGeometryCannotBecomeSuccessfulPartialResult ...........................   Passed    0.21 sec
+        Start 593: full.RealDataReleaseContractTest.HistoricalDatePredicatesMatchIndependentRecordScan
+ 37/611 Test  #41: unified.UnifiedGdalFacadeTest.FastAndGdalSchemasExposeParityInputs ..................................................   Passed    0.20 sec
+        Start  19: unified.UnifiedFastFacadeTest.ExposesFeatureDatasetGroups
+ 38/611 Test #593: full.RealDataReleaseContractTest.HistoricalDatePredicatesMatchIndependentRecordScan .................................   Passed    0.20 sec
+        Start 575: full.SpatialWhereUuidTest.CanonicalWrongGuidKeysFallBackToOriginalValues
+ 39/611 Test  #19: unified.UnifiedFastFacadeTest.ExposesFeatureDatasetGroups ...........................................................   Passed    0.20 sec
+        Start 193: hybrid.RealDataReleaseContractTest.RealBadPolygonTopologyIsReportedInsteadOfSilentlyRepaired
+ 40/611 Test #575: full.SpatialWhereUuidTest.CanonicalWrongGuidKeysFallBackToOriginalValues ............................................   Passed    0.19 sec
+        Start 564: full.SpatialWhereIndexFallbackTest.ValidatedNumericDirectoryReportsColdProofAndWarmQueries
+ 41/611 Test #193: hybrid.RealDataReleaseContractTest.RealBadPolygonTopologyIsReportedInsteadOfSilentlyRepaired ........................   Passed    0.18 sec
+        Start 191: hybrid.RealDataReleaseContractTest.Sparse32BitFidsMatchGdalFeatureRows
+ 42/611 Test #564: full.SpatialWhereIndexFallbackTest.ValidatedNumericDirectoryReportsColdProofAndWarmQueries ..........................   Passed    0.21 sec
+        Start 577: full.SpatialWhereUuidTest.MissingGuidEntryDoesNotLoseOriginalRecord
+ 43/611 Test #191: hybrid.RealDataReleaseContractTest.Sparse32BitFidsMatchGdalFeatureRows ..............................................   Passed    0.17 sec
+        Start  22: unified.UnifiedFastFacadeTest.ExposesWorkspaceAndLayerMetadataSnapshots
+ 44/611 Test #577: full.SpatialWhereUuidTest.MissingGuidEntryDoesNotLoseOriginalRecord .................................................   Passed    0.19 sec
+        Start 576: full.SpatialWhereUuidTest.DuplicateGuidFidsFallBackToCompleteValues
+ 45/611 Test  #22: unified.UnifiedFastFacadeTest.ExposesWorkspaceAndLayerMetadataSnapshots .............................................   Passed    0.19 sec
+        Start 173: hybrid.RealDataReleaseContractTest.RegularFileGdbMatchesCoreReadContract
+ 46/611 Test #576: full.SpatialWhereUuidTest.DuplicateGuidFidsFallBackToCompleteValues .................................................   Passed    0.19 sec
+        Start 462: full.AttributeValueKeyTest.ValidatedTypedDirectoriesKeepExactV1V2ResultsAcrossUnorderedLeaves
+ 47/611 Test #173: hybrid.RealDataReleaseContractTest.RegularFileGdbMatchesCoreReadContract ............................................   Passed    0.18 sec
+        Start  11: unified.UnifiedFastFacadeTest.ProjectsAttributesAndSkipsOutputGeometryDecode
+ 48/611 Test #462: full.AttributeValueKeyTest.ValidatedTypedDirectoriesKeepExactV1V2ResultsAcrossUnorderedLeaves .......................   Passed    0.19 sec
+        Start 605: full.RealDataReleaseContractTest.SuppliedCurvesPreserveSourceAndCompareLinearizationsToGdal
+ 49/611 Test  #11: unified.UnifiedFastFacadeTest.ProjectsAttributesAndSkipsOutputGeometryDecode ........................................   Passed    0.19 sec
+        Start  12: unified.UnifiedFastFacadeTest.ReusesCatalogSchemaAndQueryPreparationWithinGeneration
+ 50/611 Test #605: full.RealDataReleaseContractTest.SuppliedCurvesPreserveSourceAndCompareLinearizationsToGdal .........................   Passed    0.25 sec
+        Start 574: full.SpatialWhereUuidTest.DamagedGuidIndexFallsBackToValueScan
+ 51/611 Test  #12: unified.UnifiedFastFacadeTest.ReusesCatalogSchemaAndQueryPreparationWithinGeneration ................................   Passed    0.19 sec
+        Start 189: hybrid.RealDataReleaseContractTest.CurvePolylineMMatchesGdalWithoutHybridFallback
+ 52/611 Test #574: full.SpatialWhereUuidTest.DamagedGuidIndexFallsBackToValueScan ......................................................   Passed    0.21 sec
+        Start 591: full.RealDataReleaseContractTest.HistoricalGdbEveryNonCurveGeometryMatchesGdal
+ 53/611 Test #189: hybrid.RealDataReleaseContractTest.CurvePolylineMMatchesGdalWithoutHybridFallback ...................................   Passed    0.20 sec
+        Start 188: hybrid.RealDataReleaseContractTest.CurveFileGdbUsesBuiltinWkbFirstPath
+ 54/611 Test #591: full.RealDataReleaseContractTest.HistoricalGdbEveryNonCurveGeometryMatchesGdal ......................................   Passed    0.18 sec
+        Start 563: full.SpatialWhereIndexFallbackTest.ExactInt64EntryPointRechecksNativeFieldsAndSharesProof
+ 55/611 Test #188: hybrid.RealDataReleaseContractTest.CurveFileGdbUsesBuiltinWkbFirstPath ..............................................   Passed    0.18 sec
+        Start 186: hybrid.RealDataReleaseContractTest.TypedTemporalWhereMatchesNativeValues
+ 56/611 Test #563: full.SpatialWhereIndexFallbackTest.ExactInt64EntryPointRechecksNativeFieldsAndSharesProof ...........................   Passed    0.19 sec
+        Start 582: full.SpatialWhereUnicodeTest.ChangedIndexWithWrongKeysFallsBackAndCachesFailedProof
+ 57/611 Test #186: hybrid.RealDataReleaseContractTest.TypedTemporalWhereMatchesNativeValues ............................................   Passed    0.18 sec
+        Start  48: fastfilegdb.FastFileGdbDriverTest.ImplementsReadFilterAndResetContract
+ 58/611 Test #582: full.SpatialWhereUnicodeTest.ChangedIndexWithWrongKeysFallsBackAndCachesFailedProof .................................   Passed    0.19 sec
+        Start 565: full.SpatialWhereIndexFallbackTest.UnreadableAttributeRowCannotBecomePartialSpatialWhereSuccess
+ 59/611 Test  #48: fastfilegdb.FastFileGdbDriverTest.ImplementsReadFilterAndResetContract ..............................................   Passed    0.19 sec
+        Start  17: unified.UnifiedFastFacadeTest.RejectsInvalidQueryBeforeBackendSelection
+ 60/611 Test #565: full.SpatialWhereIndexFallbackTest.UnreadableAttributeRowCannotBecomePartialSpatialWhereSuccess .....................   Passed    0.18 sec
+        Start 560: full.SpatialWhereIndexFallbackTest.NaNFloatKeyFallsBackToActualFieldsForEveryOperator
+ 61/611 Test  #17: unified.UnifiedFastFacadeTest.RejectsInvalidQueryBeforeBackendSelection .............................................   Passed    0.18 sec
+        Start  38: unified.UnifiedGdalFacadeTest.ProjectsFieldsWithoutBreakingAttributeFilters
+ 62/611 Test #560: full.SpatialWhereIndexFallbackTest.NaNFloatKeyFallsBackToActualFieldsForEveryOperator ...............................   Passed    0.19 sec
+        Start 561: full.SpatialWhereIndexFallbackTest.NonFinitePublicAttributeProbesAreExplicitErrors
+ 63/611 Test  #38: unified.UnifiedGdalFacadeTest.ProjectsFieldsWithoutBreakingAttributeFilters .........................................   Passed    0.21 sec
+        Start  36: unified.UnifiedGdalFacadeTest.GdalOnlyUsesOfficialOpenFileGdb
+ 64/611 Test #561: full.SpatialWhereIndexFallbackTest.NonFinitePublicAttributeProbesAreExplicitErrors ..................................   Passed    0.20 sec
+        Start 452: full.AttributeStringCacheTest.BoundsNeverExcludeMatchingLeavesIncludingLongPrefixes
+ 65/611 Test  #36: unified.UnifiedGdalFacadeTest.GdalOnlyUsesOfficialOpenFileGdb .......................................................   Passed    0.20 sec
+        Start  42: unified.UnifiedGdalFacadeTest.GdalOnlyPreservesFeatureDatasetGroups
+ 66/611 Test #452: full.AttributeStringCacheTest.BoundsNeverExcludeMatchingLeavesIncludingLongPrefixes .................................   Passed    0.18 sec
+        Start 296: full.CorruptInputConformance.RejectedRowsNeverBecomePartialOrSyntheticNullCells
+ 67/611 Test  #42: unified.UnifiedGdalFacadeTest.GdalOnlyPreservesFeatureDatasetGroups .................................................   Passed    0.18 sec
+        Start 184: hybrid.RealDataReleaseContractTest.ArcGisFieldTypeInventoryAndSparseFidsAreExplicit
+ 68/611 Test #296: full.CorruptInputConformance.RejectedRowsNeverBecomePartialOrSyntheticNullCells .....................................   Passed    0.17 sec
+        Start 579: full.SpatialWhereUnicodeTest.NonBmpEqualityUsesIndexWithoutFalseNegative
+ 69/611 Test #184: hybrid.RealDataReleaseContractTest.ArcGisFieldTypeInventoryAndSparseFidsAreExplicit .................................   Passed    0.17 sec
+        Start  28: unified.UnifiedFastFacadeTest.RefreshBlocksActiveCursorAndExpiresOldHandles
+ 70/611 Test #579: full.SpatialWhereUnicodeTest.NonBmpEqualityUsesIndexWithoutFalseNegative ............................................   Passed    0.18 sec
+        Start 453: full.AttributeStringCacheTest.ColdProofAndWarmDifferentProbesSelectOnlyMatchingRanges
+ 71/611 Test  #28: unified.UnifiedFastFacadeTest.RefreshBlocksActiveCursorAndExpiresOldHandles .........................................   Passed    0.18 sec
+        Start 183: hybrid.RealDataReleaseContractTest.ArcGisMetadataSidecarShapesAreReadable
+ 72/611 Test #453: full.AttributeStringCacheTest.ColdProofAndWarmDifferentProbesSelectOnlyMatchingRanges ...............................   Passed    0.17 sec
+        Start 460: full.AttributeValueKeyTest.SortableKeysPreserveIntegerPrecisionAndIeeeOrder
+ 73/611 Test #183: hybrid.RealDataReleaseContractTest.ArcGisMetadataSidecarShapesAreReadable ...........................................   Passed    0.17 sec
+        Start  34: unified.UnifiedGdalFacadeTest.ExplicitConcurrentPolicyUsesUnverifiedGdal
+ 74/611 Test #460: full.AttributeValueKeyTest.SortableKeysPreserveIntegerPrecisionAndIeeeOrder .........................................   Passed    0.16 sec
+        Start 445: full.AttributeIndexSafetyTest.UuidAsciiKeysUseTypedCanonicalOrderAcrossPages
+ 75/611 Test  #34: unified.UnifiedGdalFacadeTest.ExplicitConcurrentPolicyUsesUnverifiedGdal ............................................   Passed    0.18 sec
+        Start  44: fastfilegdb.FastFileGdbDriverTest.RegistersAndReadsThroughUnifiedRuntime
+ 76/611 Test #445: full.AttributeIndexSafetyTest.UuidAsciiKeysUseTypedCanonicalOrderAcrossPages ........................................   Passed    0.17 sec
+        Start 444: full.AttributeIndexSafetyTest.TemporalMillisecondsKeepEqualKeysAcrossLeafBoundaries
+ 77/611 Test  #44: fastfilegdb.FastFileGdbDriverTest.RegistersAndReadsThroughUnifiedRuntime ............................................   Passed    0.18 sec
+        Start 185: hybrid.RealDataReleaseContractTest.ArcGisExpectedValuesResolveAndPreserveNulls
+ 78/611 Test #444: full.AttributeIndexSafetyTest.TemporalMillisecondsKeepEqualKeysAcrossLeafBoundaries .................................   Passed    0.17 sec
+        Start 457: full.AttributeStringCacheTest.ConcurrentBuildersShareOneProof
+ 79/611 Test #185: hybrid.RealDataReleaseContractTest.ArcGisExpectedValuesResolveAndPreserveNulls ......................................   Passed    0.17 sec
+        Start  27: unified.UnifiedFastFacadeTest.SharesCoordinatorAndFailsClosedDuringWriter
+ 80/611 Test #457: full.AttributeStringCacheTest.ConcurrentBuildersShareOneProof .......................................................   Passed    0.16 sec
+        Start 454: full.AttributeStringCacheTest.RejectsDuplicateMissingAndMismatchedIndexEntries
+ 81/611 Test  #27: unified.UnifiedFastFacadeTest.SharesCoordinatorAndFailsClosedDuringWriter ...........................................   Passed    0.18 sec
+        Start  10: unified.UnifiedFastFacadeTest.FreezesSchemaAndStreamsOwnedFeatures
+ 82/611 Test #454: full.AttributeStringCacheTest.RejectsDuplicateMissingAndMismatchedIndexEntries ......................................   Passed    0.17 sec
+        Start 301: full.GeometryLengthConformance.OverflowingVaruintCannotWrapIntoEmptyGeometry
+ 83/611 Test  #10: unified.UnifiedFastFacadeTest.FreezesSchemaAndStreamsOwnedFeatures ..................................................   Passed    0.17 sec
+        Start  37: unified.UnifiedGdalFacadeTest.ReportsAttachmentAndBoundedBinaryGaps
+ 84/611 Test #301: full.GeometryLengthConformance.OverflowingVaruintCannotWrapIntoEmptyGeometry ........................................   Passed    0.16 sec
+        Start 241: full.Utf16Test.StrictUtf8ConversionPreservesOutputOnInvalidInput
+ 85/611 Test  #37: unified.UnifiedGdalFacadeTest.ReportsAttachmentAndBoundedBinaryGaps .................................................   Passed    0.18 sec
+        Start  21: unified.UnifiedFastFacadeTest.ReadsDenseV4GdalReferenceThroughUnifiedApi
+ 86/611 Test #241: full.Utf16Test.StrictUtf8ConversionPreservesOutputOnInvalidInput ....................................................   Passed    0.16 sec
+        Start 451: full.AttributeIndexSafetyTest.ExplicitSchemaCannotReinterpretIncompatibleKeyWidth
+ 87/611 Test  #21: unified.UnifiedFastFacadeTest.ReadsDenseV4GdalReferenceThroughUnifiedApi ............................................   Passed    0.17 sec
+        Start 196: gdal-reader-boundary.GdalWriteFastReaderBoundaryTest.SameDirectoryReadWhileGdalWriterIsOpenIsCharacterizationOnly
+ 88/611 Test #451: full.AttributeIndexSafetyTest.ExplicitSchemaCannotReinterpretIncompatibleKeyWidth ...................................   Passed    0.16 sec
+        Start 455: full.AttributeStringCacheTest.EmptyIndexRequiresEmptyNonNullSourceProof
+ 89/611 Test #196: gdal-reader-boundary.GdalWriteFastReaderBoundaryTest.SameDirectoryReadWhileGdalWriterIsOpenIsCharacterizationOnly ...   Passed    0.17 sec
+        Start  16: unified.UnifiedFastFacadeTest.CancellationBeforeFirstPublicationIsAtomic
+ 90/611 Test #455: full.AttributeStringCacheTest.EmptyIndexRequiresEmptyNonNullSourceProof .............................................   Passed    0.16 sec
+        Start 281: full.GdbCatalogTest.RescanningVersionOnlyHeaderClearsPreviousMagicWord
+ 91/611 Test  #16: unified.UnifiedFastFacadeTest.CancellationBeforeFirstPublicationIsAtomic ............................................   Passed    0.17 sec
+        Start  18: unified.UnifiedFastFacadeTest.BoundsFidAscendingCandidateMemory
+ 92/611 Test #281: full.GdbCatalogTest.RescanningVersionOnlyHeaderClearsPreviousMagicWord ..............................................   Passed    0.16 sec
+        Start 459: full.AttributeStringCacheTest.SourceChangeDuringValidationPublishesNeitherProofNorCandidates
+ 93/611 Test  #18: unified.UnifiedFastFacadeTest.BoundsFidAscendingCandidateMemory .....................................................   Passed    0.17 sec
+        Start  29: unified.UnifiedFastFacadeTest.FailedRefreshLeavesDatasetExpired
+ 94/611 Test #459: full.AttributeStringCacheTest.SourceChangeDuringValidationPublishesNeitherProofNorCandidates ........................   Passed    0.16 sec
+        Start 449: full.AttributeIndexSafetyTest.NaNProbeIsRejectedForFiniteNumericIndexes
+ 95/611 Test  #29: unified.UnifiedFastFacadeTest.FailedRefreshLeavesDatasetExpired .....................................................   Passed    0.18 sec
+        Start  13: unified.UnifiedFastFacadeTest.ReadAllPublishesWithinLimits
+ 96/611 Test #449: full.AttributeIndexSafetyTest.NaNProbeIsRejectedForFiniteNumericIndexes .............................................   Passed    0.17 sec
+        Start 378: full.MetadataReaderTest.ReadsOptionalSpatialIndexDeclaration
+ 97/611 Test  #13: unified.UnifiedFastFacadeTest.ReadAllPublishesWithinLimits ..........................................................   Passed    0.18 sec
+        Start  26: unified.UnifiedFastFacadeTest.ReportsCapabilitiesAndQueryPlan
+ 98/611 Test #378: full.MetadataReaderTest.ReadsOptionalSpatialIndexDeclaration ........................................................   Passed    0.16 sec
+        Start 450: full.AttributeIndexSafetyTest.InfinitiesAndSignedZeroRetainOrderedIeeeComparisons
+ 99/611 Test  #26: unified.UnifiedFastFacadeTest.ReportsCapabilitiesAndQueryPlan .......................................................   Passed    0.18 sec
+        Start  25: unified.UnifiedFastFacadeTest.NativeExtensionsAreFastOnlyAndBounded
+100/611 Test #450: full.AttributeIndexSafetyTest.InfinitiesAndSignedZeroRetainOrderedIeeeComparisons ...................................   Passed    0.17 sec
+        Start 447: full.AttributeIndexSafetyTest.StringKeysPreserveSpacesSurrogatesAndPhysicalOrder
+101/611 Test #447: full.AttributeIndexSafetyTest.StringKeysPreserveSpacesSurrogatesAndPhysicalOrder ....................................   Passed    0.17 sec
+        Start 458: full.AttributeStringCacheTest.BudgetAndLruBoundMemoryWithoutPublishingCandidates
+102/611 Test  #25: unified.UnifiedFastFacadeTest.NativeExtensionsAreFastOnlyAndBounded .................................................   Passed    0.18 sec
+        Start  39: unified.UnifiedGdalFacadeTest.GdalDeadlineFailsBeforeCursorPublication
+103/611 Test #458: full.AttributeStringCacheTest.BudgetAndLruBoundMemoryWithoutPublishingCandidates ....................................   Passed    0.17 sec
+        Start 456: full.AttributeStringCacheTest.ChangedSourceIdentitiesCannotReuseProof
+104/611 Test  #39: unified.UnifiedGdalFacadeTest.GdalDeadlineFailsBeforeCursorPublication ..............................................   Passed    0.17 sec
+        Start  40: unified.UnifiedGdalFacadeTest.BoundsFidAscendingCandidateMemory
+105/611 Test #456: full.AttributeStringCacheTest.ChangedSourceIdentitiesCannotReuseProof ...............................................   Passed    0.17 sec
+        Start 393: full.NullableBitmapCompatTest.ZeroLengthRowWithRequiredAttributeFailsClosedAcrossScans
+106/611 Test  #40: unified.UnifiedGdalFacadeTest.BoundsFidAscendingCandidateMemory .....................................................   Passed    0.17 sec
+        Start  15: unified.UnifiedFastFacadeTest.DeadlineFailsBeforeCursorPublication
+107/611 Test #393: full.NullableBitmapCompatTest.ZeroLengthRowWithRequiredAttributeFailsClosedAcrossScans ..............................   Passed    0.17 sec
+        Start 224: full.OleDateTest.CheckedMillisecondsRejectNonfiniteAndOverflowWithoutChangingOutput
+108/611 Test  #15: unified.UnifiedFastFacadeTest.DeadlineFailsBeforeCursorPublication ..................................................   Passed    0.18 sec
+        Start  14: unified.UnifiedFastFacadeTest.RejectsInvalidPublicFid
+109/611 Test #224: full.OleDateTest.CheckedMillisecondsRejectNonfiniteAndOverflowWithoutChangingOutput .................................   Passed    0.16 sec
+        Start 448: full.AttributeIndexSafetyTest.NaNKeysCannotCompareEqualOrPublishPartialResults
+110/611 Test  #14: unified.UnifiedFastFacadeTest.RejectsInvalidPublicFid ...............................................................   Passed    0.17 sec
+        Start 195: gdal-reader-boundary.GdalWriteFastReaderBoundaryTest.SupportedQuiescedReaderWorkflowReopensWithNewData
+111/611 Test #448: full.AttributeIndexSafetyTest.NaNKeysCannotCompareEqualOrPublishPartialResults ......................................   Passed    0.16 sec
+        Start 443: full.AttributeIndexSafetyTest.Float32SchemaSelectsFloatingPointKeys
+112/611 Test #195: gdal-reader-boundary.GdalWriteFastReaderBoundaryTest.SupportedQuiescedReaderWorkflowReopensWithNewData ..............   Passed    0.17 sec
+        Start  49: fastfilegdb-mismatch.FastFileGdbBuildIdTest.RefusesMismatchedRuntime
+113/611 Test #443: full.AttributeIndexSafetyTest.Float32SchemaSelectsFloatingPointKeys .................................................   Passed    0.16 sec
+        Start 442: full.AttributeIndexSafetyTest.SmallIntegerKeysKeepTheirSignedOrder
+114/611 Test  #49: fastfilegdb-mismatch.FastFileGdbBuildIdTest.RefusesMismatchedRuntime ................................................   Passed    0.17 sec
+        Start   8: unified.UnifiedFastFacadeTest.OpensDatasetFromGdalStylePath
+115/611 Test #442: full.AttributeIndexSafetyTest.SmallIntegerKeysKeepTheirSignedOrder ..................................................   Passed    0.16 sec
+        Start 513: full.QueryWhereInternalTest.UuidPredicatesCompareValuesAcrossRowRepresentations
+116/611 Test   #8: unified.UnifiedFastFacadeTest.OpensDatasetFromGdalStylePath .........................................................   Passed    0.17 sec
+        Start   4: unified.UnifiedRouteTest.AutoUsesFastForLocalSource
+117/611 Test #513: full.QueryWhereInternalTest.UuidPredicatesCompareValuesAcrossRowRepresentations .....................................   Passed    0.16 sec
+        Start 223: full.OleDateTest.FormatsCalendarDatesOutsideNanosecondClockRange
+118/611 Test   #4: unified.UnifiedRouteTest.AutoUsesFastForLocalSource .................................................................   Passed    0.16 sec
+        Start   1: unified.UnifiedSourceTest.NormalizesS3ToVsiS3
+119/611 Test #223: full.OleDateTest.FormatsCalendarDatesOutsideNanosecondClockRange ....................................................   Passed    0.16 sec
+        Start 514: full.QueryWhereInternalTest.TemporalPredicatesKeepWideCalendarOrder
+120/611 Test   #1: unified.UnifiedSourceTest.NormalizesS3ToVsiS3 .......................................................................   Passed    0.16 sec
+        Start  46: fastfilegdb.FastFileGdbDriverTest.RejectsUpdateOpen
+121/611 Test #514: full.QueryWhereInternalTest.TemporalPredicatesKeepWideCalendarOrder .................................................   Passed    0.16 sec
+        Start 392: full.NullableBitmapCompatTest.ZeroLengthRowHasConsistentObjectIdNullAndGeometryAcrossReadPaths
+122/611 Test  #46: fastfilegdb.FastFileGdbDriverTest.RejectsUpdateOpen .................................................................   Passed    0.16 sec
+        Start 169: hybrid.HybridGeometryContract.RejectsInvalidDatasetWithoutGuessing
+123/611 Test #392: full.NullableBitmapCompatTest.ZeroLengthRowHasConsistentObjectIdNullAndGeometryAcrossReadPaths ......................   Passed    0.16 sec
+        Start 461: full.AttributeValueKeyTest.ComparisonDomainsCannotShareDifferentMeanings
+124/611 Test #169: hybrid.HybridGeometryContract.RejectsInvalidDatasetWithoutGuessing ..................................................   Passed    0.16 sec
+        Start 170: hybrid.HybridGeometryContract.RejectsNegativeGdalFid
+125/611 Test #461: full.AttributeValueKeyTest.ComparisonDomainsCannotShareDifferentMeanings ............................................   Passed    0.16 sec
+        Start 326: full.TablxCacheTest.HitRefreshesLruOrder
+126/611 Test #170: hybrid.HybridGeometryContract.RejectsNegativeGdalFid ................................................................   Passed    0.17 sec
+        Start   7: unified.UnifiedRouteTest.GdalOffReturnsBackendUnavailable
+127/611 Test #326: full.TablxCacheTest.HitRefreshesLruOrder ............................................................................   Passed    0.17 sec
+        Start 280: full.GdbCatalogTest.ReadsVersionAndMagicHeaderVariant
+128/611 Test   #7: unified.UnifiedRouteTest.GdalOffReturnsBackendUnavailable ...........................................................   Passed    0.16 sec
+        Start   6: unified.UnifiedRouteTest.OnlyWhitelistedCapabilityFailuresFallback
+129/611 Test #280: full.GdbCatalogTest.ReadsVersionAndMagicHeaderVariant ...............................................................   Passed    0.16 sec
+        Start 446: full.AttributeIndexSafetyTest.MaterializedInt64KeepsExactValuesForDiagnostics
+130/611 Test   #6: unified.UnifiedRouteTest.OnlyWhitelistedCapabilityFailuresFallback ..................................................   Passed    0.16 sec
+        Start   3: unified.UnifiedSourceTest.RemoteConsistencyDefaultsToUnverified
+131/611 Test #446: full.AttributeIndexSafetyTest.MaterializedInt64KeepsExactValuesForDiagnostics .......................................   Passed    0.16 sec
+        Start 488: full.GdbIndexesExpressionTest.FailedReadCannotExposeStaleOrPartialMetadata
+132/611 Test   #3: unified.UnifiedSourceTest.RemoteConsistencyDefaultsToUnverified .....................................................   Passed    0.16 sec
+        Start 172: hybrid.RealDataReleaseContractTest.SyntheticMultiPatchIsoWkbIsAcceptedByGdal
+133/611 Test #488: full.GdbIndexesExpressionTest.FailedReadCannotExposeStaleOrPartialMetadata ..........................................   Passed    0.17 sec
+        Start 567: full.SpatialWhereIndexFallbackTest.ParsedSpxWithUnreadableLeafCannotReturnSuccessfulEmptyResult
+134/611 Test #172: hybrid.RealDataReleaseContractTest.SyntheticMultiPatchIsoWkbIsAcceptedByGdal ........................................   Passed    0.16 sec
+        Start   5: unified.UnifiedRouteTest.S3AlwaysUsesGdalUnlessFastOnly
+135/611 Test #567: full.SpatialWhereIndexFallbackTest.ParsedSpxWithUnreadableLeafCannotReturnSuccessfulEmptyResult .....................   Passed    0.17 sec
+        Start 328: full.TablxCacheTest.FileChangeInvalidatesKey
+136/611 Test   #5: unified.UnifiedRouteTest.S3AlwaysUsesGdalUnlessFastOnly .............................................................   Passed    0.16 sec
+        Start   2: unified.UnifiedSourceTest.RejectsUnsupportedVsiAndCredentialUris
+137/611 Test   #2: unified.UnifiedSourceTest.RejectsUnsupportedVsiAndCredentialUris ....................................................   Passed    0.16 sec
+        Start 171: hybrid.HybridGeometryContract.ThreadCacheCanBeClearedRepeatedly
+138/611 Test #328: full.TablxCacheTest.FileChangeInvalidatesKey ........................................................................   Passed    0.27 sec
+        Start 474: full.SpatialIndexTest.RejectsLayerExtentsOutsideLevelZeroCellRange
+139/611 Test #171: hybrid.HybridGeometryContract.ThreadCacheCanBeClearedRepeatedly .....................................................   Passed    0.16 sec
+        Start 168: hybrid.HybridGeometryContract.MapsFastFidWithExplicitOffset
+140/611 Test #474: full.SpatialIndexTest.RejectsLayerExtentsOutsideLevelZeroCellRange ..................................................   Passed    0.16 sec
+        Start 558: full.SpatialWhereIndexFallbackTest.OfficialSetFeatureRebuildsMissingSpxForFreshFastReader
+141/611 Test #168: hybrid.HybridGeometryContract.MapsFastFidWithExplicitOffset .........................................................   Passed    0.16 sec
+        Start  50: geometry.CurveGeometryContract.LinearizesThreePointCircularArc
+142/611 Test  #50: geometry.CurveGeometryContract.LinearizesThreePointCircularArc ......................................................   Passed    0.00 sec
+        Start 156: geometry.QueryGridBboxTest.RoundTripsDecodedVerticesAcrossCoordinateScales
+143/611 Test #156: geometry.QueryGridBboxTest.RoundTripsDecodedVerticesAcrossCoordinateScales ..........................................   Passed    0.00 sec
+        Start 153: geometry.QueryGridBboxTest.IncludesDecodedVertexAtExactWorldBoundary
+144/611 Test #153: geometry.QueryGridBboxTest.IncludesDecodedVertexAtExactWorldBoundary ................................................   Passed    0.00 sec
+        Start 155: geometry.QueryGridBboxTest.IncludesAllIntegersSharingAnOutputDouble
+145/611 Test #155: geometry.QueryGridBboxTest.IncludesAllIntegersSharingAnOutputDouble .................................................   Passed    0.00 sec
+        Start 154: geometry.QueryGridBboxTest.KeepsSubGridWindowsContinuous
+146/611 Test #154: geometry.QueryGridBboxTest.KeepsSubGridWindowsContinuous ............................................................   Passed    0.00 sec
+        Start  88: geometry.GeometryTest.MultiPatchLegacyWktFailsClosedForUnknownPartTypes
+147/611 Test  #88: geometry.GeometryTest.MultiPatchLegacyWktFailsClosedForUnknownPartTypes .............................................   Passed    0.00 sec
+        Start  78: geometry.GeometryTest.DecodeFromFieldEmpty
+148/611 Test  #78: geometry.GeometryTest.DecodeFromFieldEmpty ..........................................................................   Passed    0.00 sec
+        Start 147: geometry.GeometryModelDecoder.MultipatchMapsRingGroupsAndMixedPartsToStandardWkb
+149/611 Test #147: geometry.GeometryModelDecoder.MultipatchMapsRingGroupsAndMixedPartsToStandardWkb ....................................   Passed    0.00 sec
+        Start 136: geometry.GeometryDecoderSafety.DeterministicGarbageNeverThrows
+150/611 Test #136: geometry.GeometryDecoderSafety.DeterministicGarbageNeverThrows ......................................................   Passed    0.00 sec
+        Start 166: geometry.GeometryValueToWkt.RejectsInvalidNestedTypeAndDimensions
+151/611 Test #166: geometry.GeometryValueToWkt.RejectsInvalidNestedTypeAndDimensions ...................................................   Passed    0.00 sec
+        Start 140: geometry.WkbContract.WritesValidStableMultiPolygonStructure
+152/611 Test #140: geometry.WkbContract.WritesValidStableMultiPolygonStructure .........................................................   Passed    0.00 sec
+        Start 112: geometry.GeometryTest.GeometryIntersectsBbox_Polyline
+153/611 Test #112: geometry.GeometryTest.GeometryIntersectsBbox_Polyline ...............................................................   Passed    0.00 sec
+        Start 146: geometry.GeometryModelDecoder.MultipatchParsesAllPartTypesFacesAndRingGroups
+154/611 Test #146: geometry.GeometryModelDecoder.MultipatchParsesAllPartTypesFacesAndRingGroups ........................................   Passed    0.00 sec
+        Start 106: geometry.GeometryTest.PointBoundaryUsesRawMinusOneCoordinateFormula
+155/611 Test #106: geometry.GeometryTest.PointBoundaryUsesRawMinusOneCoordinateFormula .................................................   Passed    0.00 sec
+        Start 137: geometry.PolygonTopologyContract.OrganizesHoleAndIslandIndependentOfOrderAndDirection
+156/611 Test #137: geometry.PolygonTopologyContract.OrganizesHoleAndIslandIndependentOfOrderAndDirection ...............................   Passed    0.00 sec
+        Start 110: geometry.GeometryTest.IntersectsWithPeek_PolygonInside
+157/611 Test #110: geometry.GeometryTest.IntersectsWithPeek_PolygonInside ..............................................................   Passed    0.00 sec
+        Start 132: geometry.GeometryCurveDecoder.ParsesArcgisMissingMMarkerBeforeNativeCurveDescriptors
+158/611 Test #132: geometry.GeometryCurveDecoder.ParsesArcgisMissingMMarkerBeforeNativeCurveDescriptors ................................   Passed    0.00 sec
+        Start  90: geometry.GeometryTest.GeneralPolygon
+159/611 Test  #90: geometry.GeometryTest.GeneralPolygon ................................................................................   Passed    0.00 sec
+        Start  94: geometry.GeometryTest.GeneralWithoutCurveFlagIsNotUnsupportedCurve
+160/611 Test  #94: geometry.GeometryTest.GeneralWithoutCurveFlagIsNotUnsupportedCurve ..................................................   Passed    0.00 sec
+        Start 119: geometry.GeometryTest.PeekBbox_GeneralPolygon
+161/611 Test #119: geometry.GeometryTest.PeekBbox_GeneralPolygon .......................................................................   Passed    0.00 sec
+        Start 135: geometry.GeometryDecoderSafety.EveryNonEmptyTruncatedPrefixFailsWithoutThrowing
+162/611 Test #135: geometry.GeometryDecoderSafety.EveryNonEmptyTruncatedPrefixFailsWithoutThrowing .....................................   Passed    0.00 sec
+        Start  56: geometry.CurveGeometryContract.RejectsInvalidOptionsAndDescriptors
+163/611 Test  #56: geometry.CurveGeometryContract.RejectsInvalidOptionsAndDescriptors ..................................................   Passed    0.00 sec
+        Start 124: geometry.GeometryTest.IntersectsWithPeek_PolygonPipFallback
+164/611 Test #124: geometry.GeometryTest.IntersectsWithPeek_PolygonPipFallback .........................................................   Passed    0.00 sec
+        Start  69: geometry.GeometryTest.GeneralMultiPointZDecode
+165/611 Test  #69: geometry.GeometryTest.GeneralMultiPointZDecode ......................................................................   Passed    0.00 sec
+        Start  62: geometry.GeometryTest.Polygon2D
+166/611 Test  #62: geometry.GeometryTest.Polygon2D .....................................................................................   Passed    0.00 sec
+        Start  97: geometry.GeometryTest.GeneralPolygonCurveFlagWithZeroCurvesBehavesLikeNormalPolygon
+167/611 Test  #97: geometry.GeometryTest.GeneralPolygonCurveFlagWithZeroCurvesBehavesLikeNormalPolygon .................................   Passed    0.00 sec
+        Start 151: geometry.GeometryModelDecoder.EmptyMultipatchKeepsEmptyStatusWithoutWkb
+168/611 Test #151: geometry.GeometryModelDecoder.EmptyMultipatchKeepsEmptyStatusWithoutWkb .............................................   Passed    0.00 sec
+        Start  80: geometry.GeometryTest.PointZM
+169/611 Test  #80: geometry.GeometryTest.PointZM .......................................................................................   Passed    0.00 sec
+        Start 126: geometry.GeometryOutputContract.WritesIsoZmTypeCodesAndCoordinates
+170/611 Test #126: geometry.GeometryOutputContract.WritesIsoZmTypeCodesAndCoordinates ..................................................   Passed    0.00 sec
+        Start 127: geometry.GeometryOutputContract.WktUsesOrganizedPolygonTopology
+171/611 Test #127: geometry.GeometryOutputContract.WktUsesOrganizedPolygonTopology .....................................................   Passed    0.00 sec
+        Start  52: geometry.CurveGeometryContract.LinearizesBezierAndInterpolatesZAndM
+172/611 Test  #52: geometry.CurveGeometryContract.LinearizesBezierAndInterpolatesZAndM .................................................   Passed    0.00 sec
+        Start 115: geometry.GeometryTest.PeekBbox_MultiPatch
+173/611 Test #115: geometry.GeometryTest.PeekBbox_MultiPatch ...........................................................................   Passed    0.00 sec
+        Start  95: geometry.GeometryTest.GeneralCurveSpatialFilterFailsClosed
+174/611 Test  #95: geometry.GeometryTest.GeneralCurveSpatialFilterFailsClosed ..........................................................   Passed    0.00 sec
+        Start  61: geometry.GeometryTest.Polyline2D
+175/611 Test  #61: geometry.GeometryTest.Polyline2D ....................................................................................   Passed    0.00 sec
+        Start  54: geometry.CurveGeometryContract.UsesConventionalRotationAfterDescriptorNormalization
+176/611 Test  #54: geometry.CurveGeometryContract.UsesConventionalRotationAfterDescriptorNormalization .................................   Passed    0.00 sec
+        Start 108: geometry.GeometryTest.IntersectsWithPeek_MultiPointInside
+177/611 Test #108: geometry.GeometryTest.IntersectsWithPeek_MultiPointInside ...........................................................   Passed    0.00 sec
+        Start  83: geometry.GeometryTest.GeneralPointMDecode
+178/611 Test  #83: geometry.GeometryTest.GeneralPointMDecode ...........................................................................   Passed    0.00 sec
+        Start 160: geometry.GeometryValueToWkt.ConvertsDimensionsAndEmptyPoint
+179/611 Test #160: geometry.GeometryValueToWkt.ConvertsDimensionsAndEmptyPoint .........................................................   Passed    0.00 sec
+        Start 157: geometry.GeometryWriterExactTest.PointZmOutputRemainsByteAndTextCompatible
+180/611 Test #157: geometry.GeometryWriterExactTest.PointZmOutputRemainsByteAndTextCompatible ..........................................   Passed    0.00 sec
+        Start 133: geometry.GeometryCurveDecoder.PreservesCanonicalMArrayBeforeDescriptors
+181/611 Test #133: geometry.GeometryCurveDecoder.PreservesCanonicalMArrayBeforeDescriptors .............................................   Passed    0.00 sec
+        Start 102: geometry.GeometryTest.PeekBbox_GeneralMultiPointReadsNPointsThenBboxWithoutNParts
+182/611 Test #102: geometry.GeometryTest.PeekBbox_GeneralMultiPointReadsNPointsThenBboxWithoutNParts ...................................   Passed    0.00 sec
+        Start  98: geometry.GeometryTest.GeneralPolygonCurveSpatialFilterFailsClosed
+183/611 Test  #98: geometry.GeometryTest.GeneralPolygonCurveSpatialFilterFailsClosed ...................................................   Passed    0.00 sec
+        Start 162: geometry.GeometryValueToWkt.ConvertsIsoSurfaceTypesAndHeterogeneousCollections
+184/611 Test #162: geometry.GeometryValueToWkt.ConvertsIsoSurfaceTypesAndHeterogeneousCollections ......................................   Passed    0.00 sec
+        Start 120: geometry.GeometryTest.GeometryIntersectsBbox_GeneralPolyline
+185/611 Test #120: geometry.GeometryTest.GeometryIntersectsBbox_GeneralPolyline ........................................................   Passed    0.00 sec
+        Start 125: geometry.GeometryTest.GeometryIntersectsBbox_PolygonPipFallback
+186/611 Test #125: geometry.GeometryTest.GeometryIntersectsBbox_PolygonPipFallback .....................................................   Passed    0.00 sec
+        Start  96: geometry.GeometryTest.GeneralPolylineCurveFlagWithZeroCurvesBehavesLikeNormalPolyline
+187/611 Test  #96: geometry.GeometryTest.GeneralPolylineCurveFlagWithZeroCurvesBehavesLikeNormalPolyline ...............................   Passed    0.00 sec
+        Start  75: geometry.GeometryTest.EmptyPolyline
+188/611 Test  #75: geometry.GeometryTest.EmptyPolyline .................................................................................   Passed    0.00 sec
+        Start  68: geometry.GeometryTest.GeneralMultiPoint2DDecode
+189/611 Test  #68: geometry.GeometryTest.GeneralMultiPoint2DDecode .....................................................................   Passed    0.00 sec
+        Start  85: geometry.GeometryTest.MultiPatch
+190/611 Test  #85: geometry.GeometryTest.MultiPatch ....................................................................................   Passed    0.00 sec
+        Start  72: geometry.GeometryTest.PolylineZ
+191/611 Test  #72: geometry.GeometryTest.PolylineZ .....................................................................................   Passed    0.00 sec
+        Start  84: geometry.GeometryTest.GeneralPointZMDecode
+192/611 Test #558: full.SpatialWhereIndexFallbackTest.OfficialSetFeatureRebuildsMissingSpxForFreshFastReader ...........................   Passed    0.18 sec
+        Start 318: full.TablxCacheTest.SharedOffsetsRetainSameImmutableArray
+193/611 Test  #84: geometry.GeometryTest.GeneralPointZMDecode ..........................................................................   Passed    0.00 sec
+        Start 148: geometry.GeometryModelDecoder.MultipatchConnectedOuterRingsMatchGdalTinHeuristic
+194/611 Test #148: geometry.GeometryModelDecoder.MultipatchConnectedOuterRingsMatchGdalTinHeuristic ....................................   Passed    0.00 sec
+        Start 161: geometry.GeometryValueToWkt.ConvertsLinePolygonAndCollections
+195/611 Test #161: geometry.GeometryValueToWkt.ConvertsLinePolygonAndCollections .......................................................   Passed    0.00 sec
+        Start  60: geometry.GeometryTest.MultiPoint2D
+196/611 Test  #60: geometry.GeometryTest.MultiPoint2D ..................................................................................   Passed    0.00 sec
+        Start  59: geometry.GeometryTest.EmptyPoint
+197/611 Test  #59: geometry.GeometryTest.EmptyPoint ....................................................................................   Passed    0.00 sec
+        Start  58: geometry.GeometryTest.PointZ
+198/611 Test  #58: geometry.GeometryTest.PointZ ........................................................................................   Passed    0.00 sec
+        Start 144: geometry.GeometryModelDecoder.GeometryReadOptionsPreserveOrExplicitlyLinearizeCurvePayload
+199/611 Test #144: geometry.GeometryModelDecoder.GeometryReadOptionsPreserveOrExplicitlyLinearizeCurvePayload ..........................   Passed    0.00 sec
+        Start 143: geometry.GeometryModelDecoder.ReportsTruncationAndSupportsExplicitCurveModes
+200/611 Test #143: geometry.GeometryModelDecoder.ReportsTruncationAndSupportsExplicitCurveModes ........................................   Passed    0.00 sec
+        Start 134: geometry.GeometryCurveDecoder.MissingMMarkerStillFailsClosedOnTruncation
+201/611 Test #134: geometry.GeometryCurveDecoder.MissingMMarkerStillFailsClosedOnTruncation ............................................   Passed    0.00 sec
+        Start  87: geometry.GeometryTest.MultiPatchEmpty
+202/611 Test  #87: geometry.GeometryTest.MultiPatchEmpty ...............................................................................   Passed    0.00 sec
+        Start  86: geometry.GeometryTest.MultiPatchM
+203/611 Test  #86: geometry.GeometryTest.MultiPatchM ...................................................................................   Passed    0.00 sec
+        Start 149: geometry.GeometryModelDecoder.MultipatchSpatialFilterChecksProjectedSurfaces
+204/611 Test #149: geometry.GeometryModelDecoder.MultipatchSpatialFilterChecksProjectedSurfaces ........................................   Passed    0.00 sec
+        Start 145: geometry.GeometryModelDecoder.MultipatchPreservesStructureDimensionsAndRawPayload
+205/611 Test #145: geometry.GeometryModelDecoder.MultipatchPreservesStructureDimensionsAndRawPayload ...................................   Passed    0.00 sec
+        Start 105: geometry.GeometryTest.IntersectsWithPeek_PointInside
+206/611 Test #105: geometry.GeometryTest.IntersectsWithPeek_PointInside ................................................................   Passed    0.00 sec
+        Start 139: geometry.PolygonTopologyContract.KeepsZAndMAttachedWhenOrientationIsReversed
+207/611 Test #139: geometry.PolygonTopologyContract.KeepsZAndMAttachedWhenOrientationIsReversed ........................................   Passed    0.00 sec
+        Start 165: geometry.GeometryValueToWkt.RejectsMissingTruncatedAndUnsupportedWkb
+208/611 Test #165: geometry.GeometryValueToWkt.RejectsMissingTruncatedAndUnsupportedWkb ................................................   Passed    0.00 sec
+        Start 138: geometry.PolygonTopologyContract.RejectsSelfIntersectionDuplicateAndDegenerateRings
+209/611 Test #138: geometry.PolygonTopologyContract.RejectsSelfIntersectionDuplicateAndDegenerateRings .................................   Passed    0.00 sec
+        Start  73: geometry.GeometryTest.PolygonZ
+210/611 Test  #73: geometry.GeometryTest.PolygonZ ......................................................................................   Passed    0.00 sec
+        Start  63: geometry.GeometryTest.DecodeFromField
+211/611 Test  #63: geometry.GeometryTest.DecodeFromField ...............................................................................   Passed    0.00 sec
+        Start  91: geometry.GeometryTest.GeneralPolylineWithZ
+212/611 Test  #91: geometry.GeometryTest.GeneralPolylineWithZ ..........................................................................   Passed    0.00 sec
+        Start  66: geometry.GeometryTest.MultiPointZ
+213/611 Test  #66: geometry.GeometryTest.MultiPointZ ...................................................................................   Passed    0.00 sec
+        Start  55: geometry.CurveGeometryContract.ReconstructsMixedLinearAndCurveSegments
+214/611 Test  #55: geometry.CurveGeometryContract.ReconstructsMixedLinearAndCurveSegments ..............................................   Passed    0.00 sec
+        Start 101: geometry.GeometryTest.PeekBbox_MultiPointReadsNPointsThenBbox
+215/611 Test #101: geometry.GeometryTest.PeekBbox_MultiPointReadsNPointsThenBbox .......................................................   Passed    0.00 sec
+        Start  67: geometry.GeometryTest.MultiPointM
+216/611 Test  #67: geometry.GeometryTest.MultiPointM ...................................................................................   Passed    0.00 sec
+        Start  57: geometry.GeometryTest.Point2D
+217/611 Test  #57: geometry.GeometryTest.Point2D .......................................................................................   Passed    0.00 sec
+        Start 128: geometry.GeometryTopologySafety.OrientationHandlesFullInt64Range
+218/611 Test #128: geometry.GeometryTopologySafety.OrientationHandlesFullInt64Range ....................................................   Passed    0.00 sec
+        Start 167: geometry.GeometryValueToWkt.RejectsInvalidCountsAndUnclosedRings
+219/611 Test #167: geometry.GeometryValueToWkt.RejectsInvalidCountsAndUnclosedRings ....................................................   Passed    0.00 sec
+        Start 141: geometry.GeometryModelDecoder.DecodesPointAndProducesWkbWithoutWktRoundTrip
+220/611 Test #141: geometry.GeometryModelDecoder.DecodesPointAndProducesWkbWithoutWktRoundTrip .........................................   Passed    0.00 sec
+        Start 113: geometry.GeometryTest.GeometryIntersectsBbox_Polygon
+221/611 Test #113: geometry.GeometryTest.GeometryIntersectsBbox_Polygon ................................................................   Passed    0.00 sec
+        Start 158: geometry.GeometryWriterExactTest.InvalidWkbFailsClosedForOnDemandWkt
+222/611 Test #158: geometry.GeometryWriterExactTest.InvalidWkbFailsClosedForOnDemandWkt ................................................   Passed    0.00 sec
+        Start 142: geometry.GeometryModelDecoder.PolygonWkbAndSpatialFilterShareTopology
+223/611 Test #142: geometry.GeometryModelDecoder.PolygonWkbAndSpatialFilterShareTopology ...............................................   Passed    0.00 sec
+        Start 122: geometry.GeometryTest.IntersectsWithPeek_GeneralPolyline
+224/611 Test #122: geometry.GeometryTest.IntersectsWithPeek_GeneralPolyline ............................................................   Passed    0.00 sec
+        Start  93: geometry.GeometryTest.GeneralPolygonWithCurvesIsExplicitlyUnsupported
+225/611 Test  #93: geometry.GeometryTest.GeneralPolygonWithCurvesIsExplicitlyUnsupported ...............................................   Passed    0.00 sec
+        Start 109: geometry.GeometryTest.IntersectsWithPeek_PolylineInside
+226/611 Test #109: geometry.GeometryTest.IntersectsWithPeek_PolylineInside .............................................................   Passed    0.00 sec
+        Start 131: geometry.GeometrySpatialSafety.ContinuousGridBboxCrossesSegment
+227/611 Test #131: geometry.GeometrySpatialSafety.ContinuousGridBboxCrossesSegment .....................................................   Passed    0.00 sec
+        Start 104: geometry.GeometryTest.PeekBbox_Polygon
+228/611 Test #104: geometry.GeometryTest.PeekBbox_Polygon ..............................................................................   Passed    0.00 sec
+        Start  92: geometry.GeometryTest.GeneralPolylineWithCurvesIsExplicitlyUnsupported
+229/611 Test  #92: geometry.GeometryTest.GeneralPolylineWithCurvesIsExplicitlyUnsupported ..............................................   Passed    0.00 sec
+        Start 103: geometry.GeometryTest.PeekBbox_Polyline
+230/611 Test #103: geometry.GeometryTest.PeekBbox_Polyline .............................................................................   Passed    0.00 sec
+        Start 118: geometry.GeometryTest.PeekBbox_GeneralPolyline
+231/611 Test #118: geometry.GeometryTest.PeekBbox_GeneralPolyline ......................................................................   Passed    0.00 sec
+        Start 163: geometry.GeometryValueToWkt.ConvertsEmptyNonPointTypes
+232/611 Test #163: geometry.GeometryValueToWkt.ConvertsEmptyNonPointTypes ..............................................................   Passed    0.00 sec
+        Start 107: geometry.GeometryTest.IntersectsWithPeek_PointOutside
+233/611 Test #107: geometry.GeometryTest.IntersectsWithPeek_PointOutside ...............................................................   Passed    0.00 sec
+        Start  79: geometry.GeometryTest.PointM
+234/611 Test  #79: geometry.GeometryTest.PointM ........................................................................................   Passed    0.00 sec
+        Start  74: geometry.GeometryTest.EmptyMultiPoint
+235/611 Test  #74: geometry.GeometryTest.EmptyMultiPoint ...............................................................................   Passed    0.00 sec
+        Start  71: geometry.GeometryTest.GeneralMultiPointZMDecode
+236/611 Test  #71: geometry.GeometryTest.GeneralMultiPointZMDecode .....................................................................   Passed    0.00 sec
+        Start  51: geometry.CurveGeometryContract.LinearizesFullCircleAndPreservesClosure
+237/611 Test  #51: geometry.CurveGeometryContract.LinearizesFullCircleAndPreservesClosure ..............................................   Passed    0.00 sec
+        Start 150: geometry.GeometryModelDecoder.MultipatchRetainsUnknownTypesAndRejectsInvalidTriangleGroups
+238/611 Test #150: geometry.GeometryModelDecoder.MultipatchRetainsUnknownTypesAndRejectsInvalidTriangleGroups ..........................   Passed    0.00 sec
+        Start  82: geometry.GeometryTest.GeneralPointZDecode
+239/611 Test  #82: geometry.GeometryTest.GeneralPointZDecode ...........................................................................   Passed    0.00 sec
+        Start  64: geometry.GeometryTest.NullGeometry
+240/611 Test  #64: geometry.GeometryTest.NullGeometry ..................................................................................   Passed    0.00 sec
+        Start 111: geometry.GeometryTest.GeometryIntersectsBbox_Point
+241/611 Test #111: geometry.GeometryTest.GeometryIntersectsBbox_Point ..................................................................   Passed    0.00 sec
+        Start 100: geometry.GeometryTest.PeekBbox_MultiPoint
+242/611 Test #100: geometry.GeometryTest.PeekBbox_MultiPoint ...........................................................................   Passed    0.00 sec
+        Start 121: geometry.GeometryTest.GeometryIntersectsBbox_GeneralPolygon
+243/611 Test #121: geometry.GeometryTest.GeometryIntersectsBbox_GeneralPolygon .........................................................   Passed    0.00 sec
+        Start 159: geometry.GeometryValueToWkt.ConvertsPointAndBigEndianPoint
+244/611 Test #159: geometry.GeometryValueToWkt.ConvertsPointAndBigEndianPoint ..........................................................   Passed    0.00 sec
+        Start  77: geometry.GeometryTest.UnknownType
+245/611 Test  #77: geometry.GeometryTest.UnknownType ...................................................................................   Passed    0.00 sec
+        Start  53: geometry.CurveGeometryContract.LinearizesMinorMajorAndCompleteEllipse
+246/611 Test  #53: geometry.CurveGeometryContract.LinearizesMinorMajorAndCompleteEllipse ...............................................   Passed    0.00 sec
+        Start 129: geometry.GeometryTopologySafety.OrientationHandlesNegativeExtremeProducts
+247/611 Test #129: geometry.GeometryTopologySafety.OrientationHandlesNegativeExtremeProducts ...........................................   Passed    0.00 sec
+        Start  89: geometry.GeometryTest.GeneralPolyline
+248/611 Test  #89: geometry.GeometryTest.GeneralPolyline ...............................................................................   Passed    0.00 sec
+        Start 164: geometry.GeometryValueToWkt.ConvertsEmptyMembersInCollections
+249/611 Test #164: geometry.GeometryValueToWkt.ConvertsEmptyMembersInCollections .......................................................   Passed    0.00 sec
+        Start 152: geometry.GeometryModelDecoder.GeneralMultipatchUsesZAndMTypeFlags
+250/611 Test #152: geometry.GeometryModelDecoder.GeneralMultipatchUsesZAndMTypeFlags ...................................................   Passed    0.00 sec
+        Start 123: geometry.GeometryTest.IntersectsWithPeek_GeneralPolygon
+251/611 Test #123: geometry.GeometryTest.IntersectsWithPeek_GeneralPolygon .............................................................   Passed    0.00 sec
+        Start  81: geometry.GeometryTest.GeneralPoint2DDecode
+252/611 Test  #81: geometry.GeometryTest.GeneralPoint2DDecode ..........................................................................   Passed    0.00 sec
+        Start  76: geometry.GeometryTest.EmptyPolygon
+253/611 Test  #76: geometry.GeometryTest.EmptyPolygon ..................................................................................   Passed    0.00 sec
+        Start  70: geometry.GeometryTest.GeneralMultiPointMDecode
+254/611 Test  #70: geometry.GeometryTest.GeneralMultiPointMDecode ......................................................................   Passed    0.00 sec
+        Start 117: geometry.GeometryTest.IntersectsWithPeek_MultiPatch
+255/611 Test #117: geometry.GeometryTest.IntersectsWithPeek_MultiPatch .................................................................   Passed    0.00 sec
+        Start  99: geometry.GeometryTest.PeekBbox_Point
+256/611 Test  #99: geometry.GeometryTest.PeekBbox_Point ................................................................................   Passed    0.00 sec
+        Start 130: geometry.GeometryTopologySafety.SegmentRelationsRemainStableAtInt64Bounds
+257/611 Test #130: geometry.GeometryTopologySafety.SegmentRelationsRemainStableAtInt64Bounds ...........................................   Passed    0.00 sec
+        Start 114: geometry.GeometryTest.GeometryIntersectsBbox_MultiPoint
+258/611 Test #114: geometry.GeometryTest.GeometryIntersectsBbox_MultiPoint .............................................................   Passed    0.00 sec
+        Start 116: geometry.GeometryTest.GeometryIntersectsBbox_MultiPatch
+259/611 Test #116: geometry.GeometryTest.GeometryIntersectsBbox_MultiPatch .............................................................   Passed    0.00 sec
+        Start  65: geometry.GeometryTest.WKTFormat
+260/611 Test  #65: geometry.GeometryTest.WKTFormat .....................................................................................   Passed    0.00 sec
+        Start  24: unified.UnifiedFastFacadeTest.ReadsArcGisAttachmentPayloadsWhenConfigured
+261/611 Test #318: full.TablxCacheTest.SharedOffsetsRetainSameImmutableArray ...........................................................   Passed    0.16 sec
+        Start 362: full.GdbTablxTest.CountsWithoutMaterializingValidFids
+262/611 Test  #24: unified.UnifiedFastFacadeTest.ReadsArcGisAttachmentPayloadsWhenConfigured ...........................................***Skipped   0.16 sec
+        Start  43: unified.UnifiedGdalFacadeTest.RealAwsImmutablePrefixReadsWhenConfigured
+263/611 Test #362: full.GdbTablxTest.CountsWithoutMaterializingValidFids ...............................................................   Passed    0.16 sec
+        Start 539: full.NullableSchemaEvolutionTest.GdalFieldGrowthKeepsFastGdbRowsAligned
+264/611 Test  #43: unified.UnifiedGdalFacadeTest.RealAwsImmutablePrefixReadsWhenConfigured .............................................***Skipped   0.16 sec
+        Start 180: hybrid.RealDataReleaseContractTest.HistoricalUnknownIndexMetadataReturnsUnsupported
+265/611 Test #539: full.NullableSchemaEvolutionTest.GdalFieldGrowthKeepsFastGdbRowsAligned .............................................   Passed    0.17 sec
+        Start 267: full.ReaderContractTest.OpensUtf8PathWithChineseDirectoryAndReadsFeature
+266/611 Test #180: hybrid.RealDataReleaseContractTest.HistoricalUnknownIndexMetadataReturnsUnsupported .................................***Skipped   0.17 sec
+        Start 187: hybrid.RealDataReleaseContractTest.CurveFileGdbIsExplicitlyUnsupported
+267/611 Test #267: full.ReaderContractTest.OpensUtf8PathWithChineseDirectoryAndReadsFeature ............................................   Passed    0.19 sec
+        Start 397: full.NullableBitmapCompatTest.WideCurrentBitmapsKeepOriginalValuesAndNullNewFields
+268/611 Test #187: hybrid.RealDataReleaseContractTest.CurveFileGdbIsExplicitlyUnsupported ..............................................***Skipped   0.16 sec
+269/611 Test #397: full.NullableBitmapCompatTest.WideCurrentBitmapsKeepOriginalValuesAndNullNewFields ..................................   Passed    0.17 sec
+        Start 609: full.RealDataReleaseContractTest.SpatialReferenceNamesAndEllipsoidsMatchGdalForSuppliedCrsLayers
+270/611 Test #609: full.RealDataReleaseContractTest.SpatialReferenceNamesAndEllipsoidsMatchGdalForSuppliedCrsLayers ....................   Passed    0.18 sec
+        Start 274: full.ReaderSnapshotTest.DetectsSameSizeChangeWithRestoredMtime
+271/611 Test #274: full.ReaderSnapshotTest.DetectsSameSizeChangeWithRestoredMtime ......................................................   Passed    0.19 sec
+        Start 370: full.MetadataContractTest.DecodesAttachmentMarkerFromRelationshipDefinitionXml
+272/611 Test #370: full.MetadataContractTest.DecodesAttachmentMarkerFromRelationshipDefinitionXml ......................................   Passed    0.17 sec
+        Start 371: full.MetadataContractTest.ClassifiesEveryKnownAdvancedObjectKind
+273/611 Test #371: full.MetadataContractTest.ClassifiesEveryKnownAdvancedObjectKind ....................................................   Passed    0.16 sec
+        Start 273: full.ReaderContractTest.ReportsCatalogRowsThatFailToDecode
+274/611 Test #273: full.ReaderContractTest.ReportsCatalogRowsThatFailToDecode ..........................................................   Passed    0.19 sec
+        Start 606: full.RealDataReleaseContractTest.Sparse32BitFidsMatchGdalFeatureRows
+275/611 Test #606: full.RealDataReleaseContractTest.Sparse32BitFidsMatchGdalFeatureRows ................................................   Passed    0.18 sec
+        Start 543: full.SpatialWhereDimensionTest.PointZPointMAndPointZMUseXYForBbox
+276/611 Test #543: full.SpatialWhereDimensionTest.PointZPointMAndPointZMUseXYForBbox ...................................................   Passed    0.18 sec
+        Start 608: full.RealDataReleaseContractTest.RealBadPolygonTopologyIsReportedInsteadOfSilentlyRepaired
+277/611 Test #608: full.RealDataReleaseContractTest.RealBadPolygonTopologyIsReportedInsteadOfSilentlyRepaired ..........................   Passed    0.18 sec
+        Start 588: full.RealDataReleaseContractTest.RegularFileGdbMatchesCoreReadContract
+278/611 Test #588: full.RealDataReleaseContractTest.RegularFileGdbMatchesCoreReadContract ..............................................   Passed    0.18 sec
+        Start 348: full.GdbTableTest.PeekGeometryBlob_AllFids
+279/611 Test #348: full.GdbTableTest.PeekGeometryBlob_AllFids ..........................................................................   Passed    0.18 sec
+        Start 270: full.ReaderContractTest.ReadsBinaryFieldsWithNullEmptyAndSizeLimitSemantics
+280/611 Test #270: full.ReaderContractTest.ReadsBinaryFieldsWithNullEmptyAndSizeLimitSemantics .........................................   Passed    0.18 sec
+        Start 569: full.SpatialWhereIntegrationTest.CompoundWhereEvaluatesOnlyExactSpatialMatches
+281/611 Test #569: full.SpatialWhereIntegrationTest.CompoundWhereEvaluatesOnlyExactSpatialMatches ......................................   Passed    0.18 sec
+        Start 568: full.SpatialWhereIntegrationTest.IndexedSingleComparisonMatchesGdalFullFidVector
+282/611 Test #568: full.SpatialWhereIntegrationTest.IndexedSingleComparisonMatchesGdalFullFidVector ....................................   Passed    0.18 sec
+        Start 601: full.RealDataReleaseContractTest.TypedTemporalWhereMatchesNativeValues
+283/611 Test #601: full.RealDataReleaseContractTest.TypedTemporalWhereMatchesNativeValues ..............................................   Passed    0.17 sec
+        Start 571: full.SpatialWhereIntegrationTest.EmptySetsShortCircuitAndInvalidRequestsAreDiagnosed
+284/611 Test #571: full.SpatialWhereIntegrationTest.EmptySetsShortCircuitAndInvalidRequestsAreDiagnosed ................................   Passed    0.18 sec
+        Start 570: full.SpatialWhereIntegrationTest.StringIndexCandidatesAreRecheckedAgainstFullWhere
+285/611 Test #570: full.SpatialWhereIntegrationTest.StringIndexCandidatesAreRecheckedAgainstFullWhere ..................................   Passed    0.18 sec
+        Start 603: full.RealDataReleaseContractTest.CurveFileGdbUsesBuiltinWkbFirstPath
+286/611 Test #603: full.RealDataReleaseContractTest.CurveFileGdbUsesBuiltinWkbFirstPath ................................................   Passed    0.18 sec
+        Start 604: full.RealDataReleaseContractTest.CurvePolylineMMatchesGdalWithoutHybridFallback
+287/611 Test #604: full.RealDataReleaseContractTest.CurvePolylineMMatchesGdalWithoutHybridFallback .....................................   Passed    0.18 sec
+        Start 572: full.SpatialWhereNullTest.NullNotEqualUsesSqlThreeValuedLogicAndRecordsGdalDifference
+288/611 Test #572: full.SpatialWhereNullTest.NullNotEqualUsesSqlThreeValuedLogicAndRecordsGdalDifference ...............................   Passed    0.17 sec
+        Start 555: full.SpatialWhereIndexFallbackTest.InconsistentAtxTrailerCountKeepsCorrectResults
+289/611 Test #555: full.SpatialWhereIndexFallbackTest.InconsistentAtxTrailerCountKeepsCorrectResults ...................................   Passed    0.17 sec
+        Start 354: full.GdbTablxTest.OpenSnapshotRejectsInPlaceRewrite
+290/611 Test #354: full.GdbTablxTest.OpenSnapshotRejectsInPlaceRewrite .................................................................   Passed    0.19 sec
+        Start 542: full.SpatialWhereAdaptiveTest.HighCoverageUsesDirectAttributeIndexAndReportsMetrics
+291/611 Test #542: full.SpatialWhereAdaptiveTest.HighCoverageUsesDirectAttributeIndexAndReportsMetrics .................................   Passed    0.18 sec
+        Start 525: full.FeatureCursorGdalTest.CandidateQueryKindsMatchLegacyQueryFids
+292/611 Test #525: full.FeatureCursorGdalTest.CandidateQueryKindsMatchLegacyQueryFids ..................................................   Passed    0.17 sec
+        Start 330: full.TablxCacheTest.SameSizeRewriteWithRestoredMtimeInvalidatesKey
+293/611 Test #330: full.TablxCacheTest.SameSizeRewriteWithRestoredMtimeInvalidatesKey ..................................................   Passed    0.20 sec
+        Start 329: full.TablxCacheTest.NanosecondTimestampDistinguishesSameSizeRewrite
+294/611 Test #329: full.TablxCacheTest.NanosecondTimestampDistinguishesSameSizeRewrite .................................................   Passed    0.19 sec
+        Start 550: full.SpatialWhereGeometryTest.MultiPointUsesAnyMemberIntersection
+295/611 Test #550: full.SpatialWhereGeometryTest.MultiPointUsesAnyMemberIntersection ...................................................   Passed    0.17 sec
+        Start 557: full.SpatialWhereIndexFallbackTest.MissingSpxStillUsesAtxCandidates
+296/611 Test #557: full.SpatialWhereIndexFallbackTest.MissingSpxStillUsesAtxCandidates .................................................   Passed    0.18 sec
+        Start 547: full.SpatialWhereFusedGeometryTest.PolygonMatchesGdal
+297/611 Test #547: full.SpatialWhereFusedGeometryTest.PolygonMatchesGdal ...............................................................   Passed    0.17 sec
+        Start 544: full.SpatialWhereFunctionalIndexTest.LowerIndexFallsBackForCaseSensitiveDirectComparison
+298/611 Test #544: full.SpatialWhereFunctionalIndexTest.LowerIndexFallsBackForCaseSensitiveDirectComparison ............................   Passed    0.17 sec
+        Start 598: full.RealDataReleaseContractTest.ArcGisMetadataSidecarShapesAreReadable
+299/611 Test #598: full.RealDataReleaseContractTest.ArcGisMetadataSidecarShapesAreReadable .............................................   Passed    0.17 sec
+        Start 528: full.FeatureCursorGdalTest.QueryEngineMoveKeepsCursorLiveAndSourceSafelyUnavailable
+300/611 Test #528: full.FeatureCursorGdalTest.QueryEngineMoveKeepsCursorLiveAndSourceSafelyUnavailable .................................   Passed    0.17 sec
+        Start 578: full.SpatialWhereUnicodeTest.BmpTextUsesIndexAndRechecks
+301/611 Test #578: full.SpatialWhereUnicodeTest.BmpTextUsesIndexAndRechecks ............................................................   Passed    0.17 sec
+        Start 546: full.SpatialWhereFusedGeometryTest.PolylineMatchesGdal
+302/611 Test #546: full.SpatialWhereFusedGeometryTest.PolylineMatchesGdal ..............................................................   Passed    0.18 sec
+        Start 548: full.SpatialWhereGeometryTest.PolylineCrossingUsesExactIntersection
+303/611 Test #548: full.SpatialWhereGeometryTest.PolylineCrossingUsesExactIntersection .................................................   Passed    0.17 sec
+        Start 526: full.FeatureCursorGdalTest.SpatialWhereMatchesGdalFieldsBinaryAndIsoWkbInOrder
+304/611 Test #526: full.FeatureCursorGdalTest.SpatialWhereMatchesGdalFieldsBinaryAndIsoWkbInOrder ......................................   Passed    0.17 sec
+        Start 524: full.FeatureCursorGdalTest.SequentialCursorStreamsFieldsGeometryAndSupportsMoveTo
+305/611 Test #524: full.FeatureCursorGdalTest.SequentialCursorStreamsFieldsGeometryAndSupportsMoveTo ...................................   Passed    0.18 sec
+        Start 531: full.FeatureCursorGdalTest.InvalidRequestIsFailureAndDoesNotModifyOutput
+306/611 Test #531: full.FeatureCursorGdalTest.InvalidRequestIsFailureAndDoesNotModifyOutput ............................................   Passed    0.17 sec
+        Start 559: full.SpatialWhereIndexFallbackTest.MissingBothIndexesStillMatches
+307/611 Test #559: full.SpatialWhereIndexFallbackTest.MissingBothIndexesStillMatches ...................................................   Passed    0.17 sec
+        Start 541: full.SpatialWhereAdaptiveTest.SelectiveSpatialCandidatesUseFusedSingleRowScan
+308/611 Test #541: full.SpatialWhereAdaptiveTest.SelectiveSpatialCandidatesUseFusedSingleRowScan .......................................   Passed    0.18 sec
+        Start 551: full.SpatialWhereIndexFallbackTest.MissingAtxKeepsCorrectResults
+309/611 Test #551: full.SpatialWhereIndexFallbackTest.MissingAtxKeepsCorrectResults ....................................................   Passed    0.17 sec
+        Start 556: full.SpatialWhereIndexFallbackTest.CyclicAtxLeafChainKeepsCorrectResults
+310/611 Test #556: full.SpatialWhereIndexFallbackTest.CyclicAtxLeafChainKeepsCorrectResults ............................................   Passed    0.17 sec
+        Start 549: full.SpatialWhereGeometryTest.PolygonHoleDoesNotBecomeEnvelopeHit
+311/611 Test #549: full.SpatialWhereGeometryTest.PolygonHoleDoesNotBecomeEnvelopeHit ...................................................   Passed    0.18 sec
+        Start 552: full.SpatialWhereIndexFallbackTest.DamagedAtxKeepsCorrectResults
+312/611 Test #552: full.SpatialWhereIndexFallbackTest.DamagedAtxKeepsCorrectResults ....................................................   Passed    0.17 sec
+        Start 545: full.SpatialWhereFusedGeometryTest.MultiPointMatchesGdal
+313/611 Test #545: full.SpatialWhereFusedGeometryTest.MultiPointMatchesGdal ............................................................   Passed    0.18 sec
+        Start 554: full.SpatialWhereIndexFallbackTest.MissingAtxAttributeQueryFallsBackToSequentialScan
+314/611 Test #554: full.SpatialWhereIndexFallbackTest.MissingAtxAttributeQueryFallsBackToSequentialScan ................................   Passed    0.18 sec
+        Start 527: full.FeatureCursorGdalTest.MoveConstructionAndAssignmentTransferEngineLease
+315/611 Test #527: full.FeatureCursorGdalTest.MoveConstructionAndAssignmentTransferEngineLease .........................................   Passed    0.17 sec
+        Start 600: full.RealDataReleaseContractTest.ArcGisExpectedValuesResolveAndPreserveNulls
+316/611 Test #600: full.RealDataReleaseContractTest.ArcGisExpectedValuesResolveAndPreserveNulls ........................................   Passed    0.16 sec
+        Start 553: full.SpatialWhereIndexFallbackTest.DamagedAtxAttributeQueryFallsBackToSequentialScan
+317/611 Test #553: full.SpatialWhereIndexFallbackTest.DamagedAtxAttributeQueryFallsBackToSequentialScan ................................   Passed    0.18 sec
+        Start 529: full.FeatureCursorGdalTest.EmptyCandidateCursorMoveToRemainsNormalEof
+318/611 Test #529: full.FeatureCursorGdalTest.EmptyCandidateCursorMoveToRemainsNormalEof ...............................................   Passed    0.17 sec
+        Start 272: full.ReaderContractTest.InventoriesEveryCatalogObjectAndReadsItByUuid
+319/611 Test #272: full.ReaderContractTest.InventoriesEveryCatalogObjectAndReadsItByUuid ...............................................   Passed    0.17 sec
+        Start 523: full.FeatureCursorEmptyGeometryTest.NullGeometryPreservesNullState
+320/611 Test #523: full.FeatureCursorEmptyGeometryTest.NullGeometryPreservesNullState ..................................................   Passed    0.17 sec
+        Start 599: full.RealDataReleaseContractTest.ArcGisFieldTypeInventoryAndSparseFidsAreExplicit
+321/611 Test #599: full.RealDataReleaseContractTest.ArcGisFieldTypeInventoryAndSparseFidsAreExplicit ...................................   Passed    0.16 sec
+        Start 357: full.GdbTablxTest.HasNonNullOffsets
+322/611 Test #357: full.GdbTablxTest.HasNonNullOffsets .................................................................................   Passed    0.16 sec
+        Start 494: full.QueryEngineIntegrationTest.OpenReadScanAndQueryBboxOnGeneratedGdb
+323/611 Test #494: full.QueryEngineIntegrationTest.OpenReadScanAndQueryBboxOnGeneratedGdb ..............................................   Passed    0.17 sec
+        Start 390: full.MetadataReaderIntegrationTest.ReadsDefinitionFromGdbItemsForGeneratedLayer
+324/611 Test #390: full.MetadataReaderIntegrationTest.ReadsDefinitionFromGdbItemsForGeneratedLayer .....................................   Passed    0.17 sec
+        Start 266: full.ReaderContractTest.CursorCanSkipOutputGeometryDecoding
+325/611 Test #266: full.ReaderContractTest.CursorCanSkipOutputGeometryDecoding .........................................................   Passed    0.17 sec
+        Start 265: full.ReaderContractTest.OpensLayerAndAppliesCursorOptions
+326/611 Test #265: full.ReaderContractTest.OpensLayerAndAppliesCursorOptions ...........................................................   Passed    0.16 sec
+        Start 269: full.ReaderContractTest.ReadsWorkspaceMetadataWithoutOpeningALayer
+327/611 Test #269: full.ReaderContractTest.ReadsWorkspaceMetadataWithoutOpeningALayer ..................................................   Passed    0.17 sec
+        Start 495: full.QueryEngineIntegrationTest.ConcurrentIndependentReadersReturnDeterministicResults
+328/611 Test #495: full.QueryEngineIntegrationTest.ConcurrentIndependentReadersReturnDeterministicResults ..............................   Passed    0.17 sec
+        Start 536: full.FeatureCursorOnePassGeometryTest.MultiPointPolylineAndPolygonMatchRecordPath
+329/611 Test #536: full.FeatureCursorOnePassGeometryTest.MultiPointPolylineAndPolygonMatchRecordPath ...................................   Passed    0.17 sec
+        Start 533: full.FeatureCursorOnePassTest.RecordAndOnePassShareFieldsAndUseGeometryPlaceholder
+330/611 Test #533: full.FeatureCursorOnePassTest.RecordAndOnePassShareFieldsAndUseGeometryPlaceholder ..................................   Passed    0.16 sec
+        Start 534: full.FeatureCursorOnePassTest.NullGeometryUsesNullStatusNotRecordSlot
+331/611 Test #534: full.FeatureCursorOnePassTest.NullGeometryUsesNullStatusNotRecordSlot ...............................................   Passed    0.17 sec
+        Start 537: full.FeatureCursorReopenTest.ExhaustedCursorCannotReacquireAfterEngineReopen
+332/611 Test #537: full.FeatureCursorReopenTest.ExhaustedCursorCannotReacquireAfterEngineReopen ........................................   Passed    0.17 sec
+        Start 538: full.FeatureCursorReopenTest.ExhaustedCursorCannotRepositionWhileAnotherCursorIsActive
+333/611 Test #538: full.FeatureCursorReopenTest.ExhaustedCursorCannotRepositionWhileAnotherCursorIsActive ..............................   Passed    0.17 sec
+        Start 540: full.FeatureCursorZeroLengthTest.ObjectIdOnlyRowProducesACompleteFeatureRecord
+334/611 Test #540: full.FeatureCursorZeroLengthTest.ObjectIdOnlyRowProducesACompleteFeatureRecord ......................................   Passed    0.17 sec
+        Start 530: full.FeatureCursorGdalTest.EmptySequentialCursorMoveToRemainsNormalEof
+335/611 Test #530: full.FeatureCursorGdalTest.EmptySequentialCursorMoveToRemainsNormalEof ..............................................   Passed    0.16 sec
+        Start 535: full.FeatureCursorOnePassTest.CursorProfilingIsRequestScopedAndWkbOnly
+336/611 Test #535: full.FeatureCursorOnePassTest.CursorProfilingIsRequestScopedAndWkbOnly ..............................................   Passed    0.16 sec
+        Start 294: full.CorruptInputConformance.TruncatedCoreFilesFailClosed
+337/611 Test #294: full.CorruptInputConformance.TruncatedCoreFilesFailClosed ...........................................................   Passed    0.17 sec
+        Start 299: full.DateTimeWithOffsetBeforeGeometry_SequentialScan.KeepsGeometryFieldAligned
+338/611 Test #299: full.DateTimeWithOffsetBeforeGeometry_SequentialScan.KeepsGeometryFieldAligned ......................................   Passed    0.17 sec
+        Start 496: full.QueryEngineIntegrationTest.MissingAttributeIndexIsExplicitAndReturnsEmpty
+339/611 Test #496: full.QueryEngineIntegrationTest.MissingAttributeIndexIsExplicitAndReturnsEmpty ......................................   Passed    0.17 sec
+        Start 497: full.QueryEngineIntegrationTest.WhereClauseSupportsBasicAndFilters
+340/611 Test #497: full.QueryEngineIntegrationTest.WhereClauseSupportsBasicAndFilters ..................................................   Passed    0.17 sec
+        Start 298: full.DateTimeWithOffsetBeforeGeometry_PeekGeometry.UsesCanonicalTenByteSkip
+341/611 Test #298: full.DateTimeWithOffsetBeforeGeometry_PeekGeometry.UsesCanonicalTenByteSkip .........................................   Passed    0.16 sec
+        Start 532: full.FeatureCursorGdalTest.AttributeOnlyTableReturnsFeatureWithoutGeometry
+342/611 Test #532: full.FeatureCursorGdalTest.AttributeOnlyTableReturnsFeatureWithoutGeometry ..........................................   Passed    0.16 sec
+        Start 295: full.CorruptInputConformance.ReaderDoesNotPublishCorruptSystemCatalog
+343/611 Test #295: full.CorruptInputConformance.ReaderDoesNotPublishCorruptSystemCatalog ...............................................   Passed    0.17 sec
+        Start 395: full.NullableBitmapCompatTest.SequentialScanKeepsOldFieldsAligned
+344/611 Test #395: full.NullableBitmapCompatTest.SequentialScanKeepsOldFieldsAligned ...................................................   Passed    0.16 sec
+        Start 391: full.NullableBitmapCompatTest.ReadRecordTreatsMissingAddedNullableFieldsAsNull
+345/611 Test #391: full.NullableBitmapCompatTest.ReadRecordTreatsMissingAddedNullableFieldsAsNull ......................................   Passed    0.17 sec
+        Start 498: full.QueryEngineIntegrationTest.WhereClauseSupportsOrInAndParentheses
+346/611 Test #498: full.QueryEngineIntegrationTest.WhereClauseSupportsOrInAndParentheses ...............................................   Passed    0.16 sec
+        Start 394: full.NullableBitmapCompatTest.ParseRecordsUsesSameCompatLayout
+347/611 Test #394: full.NullableBitmapCompatTest.ParseRecordsUsesSameCompatLayout ......................................................   Passed    0.16 sec
+        Start 399: full.NullableBitmapCompatTest.PeekGeometryUsesCompatBitmapWidth
+348/611 Test #399: full.NullableBitmapCompatTest.PeekGeometryUsesCompatBitmapWidth .....................................................   Passed    0.16 sec
+        Start 419: full.AttributeIndexTest.ParseTruncatedFile
+349/611 Test #419: full.AttributeIndexTest.ParseTruncatedFile ..........................................................................   Passed    0.16 sec
+        Start 396: full.NullableBitmapCompatTest.CurrentTwoByteBitmapStillReadsAllFields
+350/611 Test #396: full.NullableBitmapCompatTest.CurrentTwoByteBitmapStillReadsAllFields ...............................................   Passed    0.16 sec
+        Start 309: full.FullAuditTest.AllTableHeadersParse
+351/611 Test #309: full.FullAuditTest.AllTableHeadersParse .............................................................................   Passed    0.16 sec
+        Start 297: full.DateTimeWithOffsetBeforeGeometry_ReadRecord.ConsumesOffsetBeforeGeometry
+352/611 Test #297: full.DateTimeWithOffsetBeforeGeometry_ReadRecord.ConsumesOffsetBeforeGeometry .......................................   Passed    0.16 sec
+        Start 344: full.GdbTableTest.ReadRecordByFid_MultipleFids
+353/611 Test #344: full.GdbTableTest.ReadRecordByFid_MultipleFids ......................................................................   Passed    0.16 sec
+        Start 306: full.FullAuditTest.DirectoryMagicValid
+354/611 Test #306: full.FullAuditTest.DirectoryMagicValid ..............................................................................   Passed    0.16 sec
+        Start 469: full.SpatialIndexTest.QuerySmallBbox
+355/611 Test #469: full.SpatialIndexTest.QuerySmallBbox ................................................................................   Passed    0.16 sec
+        Start 313: full.FullAuditTest.AllIndexesParse
+356/611 Test #313: full.FullAuditTest.AllIndexesParse ..................................................................................   Passed    0.16 sec
+        Start 289: full.GdbCatalogTest.EntryInfo
+357/611 Test #289: full.GdbCatalogTest.EntryInfo .......................................................................................   Passed    0.16 sec
+        Start 240: full.Utf16Test.TruncatedUtf8AndNullInputAreHandled
+358/611 Test #240: full.Utf16Test.TruncatedUtf8AndNullInputAreHandled ..................................................................   Passed    0.16 sec
+        Start 263: full.ReaderContractTest.ReportsStructuredArgumentErrors
+359/611 Test #263: full.ReaderContractTest.ReportsStructuredArgumentErrors .............................................................   Passed    0.16 sec
+        Start 484: full.GdbIndexesTest.AllIndexesParseWithoutCrash
+360/611 Test #484: full.GdbIndexesTest.AllIndexesParseWithoutCrash .....................................................................   Passed    0.16 sec
+        Start 333: full.GdbTableTest.HeaderVersion
+361/611 Test #333: full.GdbTableTest.HeaderVersion .....................................................................................   Passed    0.16 sec
+        Start 226: full.Utf16Test.AsciiOnly
+362/611 Test #226: full.Utf16Test.AsciiOnly ............................................................................................   Passed    0.16 sec
+        Start 584: full.HybridGeometryContract.RejectsInvalidDatasetWithoutGuessing
+363/611 Test #584: full.HybridGeometryContract.RejectsInvalidDatasetWithoutGuessing ....................................................   Passed    0.16 sec
+        Start 282: full.GdbCatalogTest.FindByExtension
+364/611 Test #282: full.GdbCatalogTest.FindByExtension .................................................................................   Passed    0.16 sec
+        Start 412: full.AttributeIndexTest.ParseValidString
+365/611 Test #412: full.AttributeIndexTest.ParseValidString ............................................................................   Passed    0.17 sec
+        Start 373: full.MetadataReaderTest.FallsBackToDefinitionWhenWktIsEmpty
+366/611 Test #373: full.MetadataReaderTest.FallsBackToDefinitionWhenWktIsEmpty .........................................................   Passed    0.16 sec
+        Start 290: full.GdbCatalogIndexMetadataCacheTest.CacheIsBoundToScanSnapshot
+367/611 Test #290: full.GdbCatalogIndexMetadataCacheTest.CacheIsBoundToScanSnapshot ....................................................   Passed    0.16 sec
+        Start 372: full.MetadataReaderTest.DecodesRequestedSpatialReference
+368/611 Test #372: full.MetadataReaderTest.DecodesRequestedSpatialReference ............................................................   Passed    0.16 sec
+        Start 585: full.HybridGeometryContract.RejectsNegativeGdalFid
+369/611 Test #585: full.HybridGeometryContract.RejectsNegativeGdalFid ..................................................................   Passed    0.16 sec
+        Start 437: full.AttributeIndexSafetyTest.DirectQueryNavigatesAndStopsAtRange
+370/611 Test #437: full.AttributeIndexSafetyTest.DirectQueryNavigatesAndStopsAtRange ...................................................   Passed    0.16 sec
+        Start 423: full.NumericQueryTest.QueryDoubleLt
+371/611 Test #423: full.NumericQueryTest.QueryDoubleLt .................................................................................   Passed    0.16 sec
+        Start 349: full.GdbTableTest.PeekGeometryBlob_InvalidFid
+372/611 Test #349: full.GdbTableTest.PeekGeometryBlob_InvalidFid .......................................................................   Passed    0.16 sec
+        Start 425: full.NumericQueryTest.QueryDoubleGt
+373/611 Test #425: full.NumericQueryTest.QueryDoubleGt .................................................................................   Passed    0.16 sec
+        Start 206: full.BinaryReaderTest.SeekAndTell
+374/611 Test #206: full.BinaryReaderTest.SeekAndTell ...................................................................................   Passed    0.16 sec
+        Start 341: full.GdbTableTest.RecordsWithoutTablxFails
+375/611 Test #341: full.GdbTableTest.RecordsWithoutTablxFails ..........................................................................   Passed    0.16 sec
+        Start 472: full.SpatialIndexTest.QueryEmptyGridResolutions
+376/611 Test #472: full.SpatialIndexTest.QueryEmptyGridResolutions .....................................................................   Passed    0.16 sec
+        Start 311: full.FullAuditTest.FeatureTablesHaveGeometryField
+377/611 Test #311: full.FullAuditTest.FeatureTablesHaveGeometryField ...................................................................   Passed    0.16 sec
+        Start 405: full.SyntheticTest.MemoryTablxOffsets
+378/611 Test #405: full.SyntheticTest.MemoryTablxOffsets ...............................................................................   Passed    0.16 sec
+        Start 365: full.GdbTablxTest.V3CompressedBlockMapResolvesLogicalRows
+379/611 Test #365: full.GdbTablxTest.V3CompressedBlockMapResolvesLogicalRows ...........................................................   Passed    0.16 sec
+        Start 414: full.AttributeIndexTest.DecodeNumericInt16
+380/611 Test #414: full.AttributeIndexTest.DecodeNumericInt16 ..........................................................................   Passed    0.16 sec
+        Start 477: full.GdbIndexesTest.SystemCatalogIndexes
+381/611 Test #477: full.GdbIndexesTest.SystemCatalogIndexes ............................................................................   Passed    0.16 sec
+        Start 312: full.FullAuditTest.AllTablxParse
+382/611 Test #312: full.FullAuditTest.AllTablxParse ....................................................................................   Passed    0.16 sec
+        Start 292: full.CatalogResolverTest.IgnoresInvalidRows
+383/611 Test #292: full.CatalogResolverTest.IgnoresInvalidRows .........................................................................   Passed    0.16 sec
+        Start 463: full.SpatialIndexTest.ParseValidSmall
+384/611 Test #463: full.SpatialIndexTest.ParseValidSmall ...............................................................................   Passed    0.16 sec
+        Start 339: full.GdbTableTest.FirstSystemCatalogRecord
+385/611 Test #339: full.GdbTableTest.FirstSystemCatalogRecord ..........................................................................   Passed    0.16 sec
+        Start 257: full.CapabilityReportTest.SupportedLayerIsReadable
+386/611 Test #257: full.CapabilityReportTest.SupportedLayerIsReadable ..................................................................   Passed    0.16 sec
+        Start 277: full.GdbCatalogTest.ScanSpxGdb
+387/611 Test #277: full.GdbCatalogTest.ScanSpxGdb ......................................................................................   Passed    0.16 sec
+        Start 375: full.MetadataReaderTest.DecodesLayerMetadataByNameOrPhysicalName
+388/611 Test #375: full.MetadataReaderTest.DecodesLayerMetadataByNameOrPhysicalName ....................................................   Passed    0.16 sec
+        Start 376: full.MetadataReaderTest.PreservesMissingVersusEmptyDefinitionPayload
+389/611 Test #376: full.MetadataReaderTest.PreservesMissingVersusEmptyDefinitionPayload ................................................   Passed    0.17 sec
+        Start 479: full.GdbIndexesTest.IndexCount
+390/611 Test #479: full.GdbIndexesTest.IndexCount ......................................................................................   Passed    0.16 sec
+        Start 327: full.TablxCacheTest.ConcurrentAccess
+391/611 Test #327: full.TablxCacheTest.ConcurrentAccess ................................................................................   Passed    0.16 sec
+        Start 401: full.SyntheticTest.CatalogScan
+392/611 Test #401: full.SyntheticTest.CatalogScan ......................................................................................   Passed    0.16 sec
+        Start 286: full.GdbCatalogTest.FindIndexes
+393/611 Test #286: full.GdbCatalogTest.FindIndexes .....................................................................................   Passed    0.17 sec
+        Start 386: full.MetadataReaderTest.DecodesCompleteRelationshipClassDefinition
+394/611 Test #386: full.MetadataReaderTest.DecodesCompleteRelationshipClassDefinition ..................................................   Passed    0.16 sec
+        Start 465: full.SpatialIndexTest.VersionTwoQueries64BitObjectIdsThroughBranchPages
+395/611 Test #465: full.SpatialIndexTest.VersionTwoQueries64BitObjectIdsThroughBranchPages .............................................   Passed    0.16 sec
+        Start 382: full.MetadataReaderTest.DecodesNamespacedLayerDefinitionDefaults
+396/611 Test #382: full.MetadataReaderTest.DecodesNamespacedLayerDefinitionDefaults ....................................................   Passed    0.16 sec
+        Start 304: full.FieldLayoutTest.ObjectIdConsumesNoBytes
+397/611 Test #304: full.FieldLayoutTest.ObjectIdConsumesNoBytes ........................................................................   Passed    0.16 sec
+        Start 218: full.OleDateTest.RoundsMillisecondCarryAcrossDayBoundary
+398/611 Test #218: full.OleDateTest.RoundsMillisecondCarryAcrossDayBoundary ............................................................   Passed    0.16 sec
+        Start 493: full.QueryEngineTest.ValidSpatialIndexDoesNotFallbackEvenForEmptyQuery
+399/611 Test #493: full.QueryEngineTest.ValidSpatialIndexDoesNotFallbackEvenForEmptyQuery ..............................................   Passed    0.16 sec
+        Start 207: full.BinaryReaderTest.SkipBytes
+400/611 Test #207: full.BinaryReaderTest.SkipBytes .....................................................................................   Passed    0.16 sec
+        Start 234: full.Utf16Test.MixedContent
+401/611 Test #234: full.Utf16Test.MixedContent .........................................................................................   Passed    0.16 sec
+        Start 220: full.OleDateTest.NegativeDate
+402/611 Test #220: full.OleDateTest.NegativeDate .......................................................................................   Passed    0.16 sec
+        Start 323: full.TablxCacheTest.MakeKeyFromMissingFile
+403/611 Test #323: full.TablxCacheTest.MakeKeyFromMissingFile ..........................................................................   Passed    0.16 sec
+        Start 428: full.StringQueryTest.QueryStringRange
+404/611 Test #428: full.StringQueryTest.QueryStringRange ...............................................................................   Passed    0.16 sec
+        Start 475: full.SpatialIndexTest.ResultsAreSorted
+405/611 Test #475: full.SpatialIndexTest.ResultsAreSorted ..............................................................................   Passed    0.16 sec
+        Start 355: full.GdbTablxTest.OffsetCount
+406/611 Test #355: full.GdbTablxTest.OffsetCount .......................................................................................   Passed    0.16 sec
+        Start 402: full.SyntheticTest.CatalogFindByExtension
+407/611 Test #402: full.SyntheticTest.CatalogFindByExtension ...........................................................................   Passed    0.16 sec
+        Start 236: full.Utf16Test.Utf16SurrogatePairEmitsFourByteUtf8
+408/611 Test #236: full.Utf16Test.Utf16SurrogatePairEmitsFourByteUtf8 ..................................................................   Passed    0.16 sec
+        Start 367: full.GdbTablxTest.ParseV3_6ByteOffset
+409/611 Test #367: full.GdbTablxTest.ParseV3_6ByteOffset ...............................................................................   Passed    0.16 sec
+        Start 439: full.AttributeIndexSafetyTest.TrailerCountMismatchFailsClosed
+410/611 Test #439: full.AttributeIndexSafetyTest.TrailerCountMismatchFailsClosed .......................................................   Passed    0.16 sec
+        Start 427: full.StringQueryTest.QueryStringEq
+411/611 Test #427: full.StringQueryTest.QueryStringEq ..................................................................................   Passed    0.16 sec
+        Start 342: full.GdbTableTest.StringFieldProperties
+412/611 Test #342: full.GdbTableTest.StringFieldProperties .............................................................................   Passed    0.16 sec
+        Start 368: full.GdbTablxTest.ParseUnknownVersion
+413/611 Test #368: full.GdbTablxTest.ParseUnknownVersion ...............................................................................   Passed    0.17 sec
+        Start 482: full.GdbIndexesTest.Magic5Present
+414/611 Test #482: full.GdbIndexesTest.Magic5Present ...................................................................................   Passed    0.16 sec
+        Start 319: full.TablxCacheTest.DifferentKeysAreIndependent
+415/611 Test #319: full.TablxCacheTest.DifferentKeysAreIndependent .....................................................................   Passed    0.16 sec
+        Start 507: full.QueryWhereInternalTest.EvaluatesMaterializedFeatureRecords
+416/611 Test #507: full.QueryWhereInternalTest.EvaluatesMaterializedFeatureRecords .....................................................   Passed    0.16 sec
+        Start 441: full.AttributeIndexSafetyTest.ZeroFidFailsClosed
+417/611 Test #441: full.AttributeIndexSafetyTest.ZeroFidFailsClosed ....................................................................   Passed    0.16 sec
+        Start 422: full.NumericQueryTest.QueryDoubleNe
+418/611 Test #422: full.NumericQueryTest.QueryDoubleNe .................................................................................   Passed    0.16 sec
+        Start 287: full.GdbCatalogTest.FindAtx
+419/611 Test #287: full.GdbCatalogTest.FindAtx .........................................................................................   Passed    0.16 sec
+        Start 361: full.GdbTablxTest.ValidFids
+420/611 Test #361: full.GdbTablxTest.ValidFids .........................................................................................   Passed    0.16 sec
+        Start 279: full.GdbCatalogTest.MagicValid
+421/611 Test #279: full.GdbCatalogTest.MagicValid ......................................................................................   Passed    0.17 sec
+        Start 250: full.VarintTest.Positive
+422/611 Test #250: full.VarintTest.Positive ............................................................................................   Passed    0.16 sec
+        Start 242: full.VaruintTest.Zero
+423/611 Test #242: full.VaruintTest.Zero ...............................................................................................   Passed    0.16 sec
+        Start 480: full.GdbIndexesTest.IndexNamesNotEmpty
+424/611 Test #480: full.GdbIndexesTest.IndexNamesNotEmpty ..............................................................................   Passed    0.16 sec
+        Start 216: full.OleDateTest.DateTimeString
+425/611 Test #216: full.OleDateTest.DateTimeString .....................................................................................   Passed    0.16 sec
+        Start 278: full.GdbCatalogTest.InvalidPath
+426/611 Test #278: full.GdbCatalogTest.InvalidPath .....................................................................................   Passed    0.16 sec
+        Start 430: full.StringQueryTest.QueryStringLe
+427/611 Test #430: full.StringQueryTest.QueryStringLe ..................................................................................   Passed    0.16 sec
+        Start 360: full.GdbTablxTest.VariableOffsetWidth
+428/611 Test #360: full.GdbTablxTest.VariableOffsetWidth ...............................................................................   Passed    0.16 sec
+        Start 404: full.SyntheticTest.MemoryTableFields
+429/611 Test #404: full.SyntheticTest.MemoryTableFields ................................................................................   Passed    0.17 sec
+        Start 255: full.VarintTest.RejectsOutOfRangeNegativeMagnitude
+430/611 Test #255: full.VarintTest.RejectsOutOfRangeNegativeMagnitude ..................................................................   Passed    0.16 sec
+        Start 307: full.FullAuditTest.TimestampsLoaded
+431/611 Test #307: full.FullAuditTest.TimestampsLoaded .................................................................................   Passed    0.16 sec
+        Start 471: full.SpatialIndexTest.QueryLargeBbox
+432/611 Test #471: full.SpatialIndexTest.QueryLargeBbox ................................................................................   Passed    0.16 sec
+        Start 247: full.VaruintTest.RejectsOverflowingTenBytePayload
+433/611 Test #247: full.VaruintTest.RejectsOverflowingTenBytePayload ...................................................................   Passed    0.17 sec
+        Start 324: full.TablxCacheTest.BypassSkipsCache
+434/611 Test #324: full.TablxCacheTest.BypassSkipsCache ................................................................................   Passed    0.16 sec
+        Start 237: full.Utf16Test.UnpairedSurrogatesEmitReplacementCharacter
+435/611 Test #237: full.Utf16Test.UnpairedSurrogatesEmitReplacementCharacter ...........................................................   Passed    0.16 sec
+        Start 336: full.GdbTableTest.SystemCatalogFields
+436/611 Test #336: full.GdbTableTest.SystemCatalogFields ...............................................................................   Passed    0.16 sec
+        Start 322: full.TablxCacheTest.MakeKeyFromRealFile
+437/611 Test #322: full.TablxCacheTest.MakeKeyFromRealFile .............................................................................   Passed    0.16 sec
+        Start 256: full.VarintTest.RejectsMoreThanTenBytes
+438/611 Test #256: full.VarintTest.RejectsMoreThanTenBytes .............................................................................   Passed    0.16 sec
+        Start 406: full.SyntheticTest.TablxParserFull
+439/611 Test #406: full.SyntheticTest.TablxParserFull ..................................................................................   Passed    0.16 sec
+        Start 246: full.VaruintTest.MultiByte
+440/611 Test #246: full.VaruintTest.MultiByte ..........................................................................................   Passed    0.16 sec
+        Start 331: full.TablxCacheTest.ClearEmptiesCache
+441/611 Test #331: full.TablxCacheTest.ClearEmptiesCache ...............................................................................   Passed    0.16 sec
+        Start 214: full.OleDateTest.KnownDate
+442/611 Test #214: full.OleDateTest.KnownDate ..........................................................................................   Passed    0.16 sec
+        Start 434: full.AttributeIndexSafetyTest.DirectNumericQueryMatchesMaterializedQuery
+443/611 Test #434: full.AttributeIndexSafetyTest.DirectNumericQueryMatchesMaterializedQuery ............................................   Passed    0.16 sec
+        Start 212: full.OleDateTest.Noon
+444/611 Test #212: full.OleDateTest.Noon ...............................................................................................   Passed    0.16 sec
+        Start 314: full.FullAuditTest.SystemCatalogRecordsEndToEnd
+445/611 Test #314: full.FullAuditTest.SystemCatalogRecordsEndToEnd .....................................................................   Passed    0.16 sec
+        Start 211: full.OleDateTest.OneDay
+446/611 Test #211: full.OleDateTest.OneDay .............................................................................................   Passed    0.16 sec
+        Start 421: full.NumericQueryTest.QueryDoubleEq
+447/611 Test #421: full.NumericQueryTest.QueryDoubleEq .................................................................................   Passed    0.16 sec
+        Start 203: full.BinaryReaderTest.OutOfRangeThrows
+448/611 Test #203: full.BinaryReaderTest.OutOfRangeThrows ..............................................................................   Passed    0.16 sec
+        Start 213: full.OleDateTest.UnixEpoch
+449/611 Test #213: full.OleDateTest.UnixEpoch ..........................................................................................   Passed    0.16 sec
+        Start 512: full.QueryWhereInternalTest.IntersectsSortedFidsAcross32BitBoundary
+450/611 Test #512: full.QueryWhereInternalTest.IntersectsSortedFidsAcross32BitBoundary .................................................   Passed    0.16 sec
+        Start 260: full.CapabilityReportTest.DegradedMultiPatchRemainsReadableWithExplicitBoundary
+451/611 Test #260: full.CapabilityReportTest.DegradedMultiPatchRemainsReadableWithExplicitBoundary .....................................   Passed    0.16 sec
+        Start 229: full.Utf16Test.NullAtStart
+452/611 Test #229: full.Utf16Test.NullAtStart ..........................................................................................   Passed    0.16 sec
+        Start 347: full.GdbTableTest.PeekGeometryBlob_Valid
+453/611 Test #347: full.GdbTableTest.PeekGeometryBlob_Valid ............................................................................   Passed    0.17 sec
+        Start 500: full.QueryWhereInternalTest.IdentifiesOnlySingleCompatibleComparisonAsIndexable
+454/611 Test #500: full.QueryWhereInternalTest.IdentifiesOnlySingleCompatibleComparisonAsIndexable .....................................   Passed    0.16 sec
+        Start 343: full.GdbTableTest.ReadRecordByFid_Basic
+455/611 Test #343: full.GdbTableTest.ReadRecordByFid_Basic .............................................................................   Passed    0.16 sec
+        Start 410: full.SyntheticTest.MultiTableCatalog
+456/611 Test #410: full.SyntheticTest.MultiTableCatalog ................................................................................   Passed    0.16 sec
+        Start 491: full.QueryEngineTest.MissingSpatialIndexFallsBack
+457/611 Test #491: full.QueryEngineTest.MissingSpatialIndexFallsBack ...................................................................   Passed    0.17 sec
+        Start 501: full.QueryWhereInternalTest.PreservesNullAndEscapedStringSemantics
+458/611 Test #501: full.QueryWhereInternalTest.PreservesNullAndEscapedStringSemantics ..................................................   Passed    0.16 sec
+        Start 389: full.MetadataReaderTest.DecodesSubtypeDefinitionsWithoutLosingCodes
+459/611 Test #389: full.MetadataReaderTest.DecodesSubtypeDefinitionsWithoutLosingCodes .................................................   Passed    0.16 sec
+        Start 209: full.BinaryReaderTest.ReadBytes
+460/611 Test #209: full.BinaryReaderTest.ReadBytes .....................................................................................   Passed    0.16 sec
+        Start 426: full.NumericQueryTest.QueryDoubleGe
+461/611 Test #426: full.NumericQueryTest.QueryDoubleGe .................................................................................   Passed    0.17 sec
+        Start 506: full.QueryWhereInternalTest.ReportsInvalidRequestsDistinctly
+462/611 Test #506: full.QueryWhereInternalTest.ReportsInvalidRequestsDistinctly ........................................................   Passed    0.16 sec
+        Start 424: full.NumericQueryTest.QueryDoubleLe
+463/611 Test #424: full.NumericQueryTest.QueryDoubleLe .................................................................................   Passed    0.16 sec
+        Start 215: full.OleDateTest.TimeOnly
+464/611 Test #215: full.OleDateTest.TimeOnly ...........................................................................................   Passed    0.16 sec
+        Start 358: full.GdbTablxTest.BitmapConsistency
+465/611 Test #358: full.GdbTablxTest.BitmapConsistency .................................................................................   Passed    0.16 sec
+        Start 384: full.MetadataReaderTest.SummarizesDatasetGroupsFromCatalogPaths
+466/611 Test #384: full.MetadataReaderTest.SummarizesDatasetGroupsFromCatalogPaths .....................................................   Passed    0.16 sec
+        Start 244: full.VaruintTest.MaxSingleByte
+467/611 Test #244: full.VaruintTest.MaxSingleByte ......................................................................................   Passed    0.16 sec
+        Start 420: full.AttributeIndexTest.ParseBadMagic
+468/611 Test #420: full.AttributeIndexTest.ParseBadMagic ...............................................................................   Passed    0.16 sec
+        Start 413: full.AttributeIndexTest.ParseNonexistent
+469/611 Test #413: full.AttributeIndexTest.ParseNonexistent ............................................................................   Passed    0.17 sec
+        Start 505: full.QueryWhereInternalTest.NotEqualTreatsNaNAsDifferent
+470/611 Test #505: full.QueryWhereInternalTest.NotEqualTreatsNaNAsDifferent ............................................................   Passed    0.16 sec
+        Start 417: full.AttributeIndexTest.DecodeStringUnicode
+471/611 Test #417: full.AttributeIndexTest.DecodeStringUnicode .........................................................................   Passed    0.16 sec
+        Start 435: full.AttributeIndexSafetyTest.DirectInt64QueryPreservesAdjacentLargeValues
+472/611 Test #435: full.AttributeIndexSafetyTest.DirectInt64QueryPreservesAdjacentLargeValues ..........................................   Passed    0.16 sec
+        Start 253: full.VarintTest.FullSignedRangeRoundTrips
+473/611 Test #253: full.VarintTest.FullSignedRangeRoundTrips ...........................................................................   Passed    0.16 sec
+        Start 470: full.SpatialIndexTest.QueryEmptyBbox
+474/611 Test #470: full.SpatialIndexTest.QueryEmptyBbox ................................................................................   Passed    0.16 sec
+        Start 252: full.VarintTest.EdgeValues
+475/611 Test #252: full.VarintTest.EdgeValues ..........................................................................................   Passed    0.16 sec
+        Start 408: full.SyntheticTest.EndToEndRecords
+476/611 Test #408: full.SyntheticTest.EndToEndRecords ..................................................................................   Passed    0.16 sec
+        Start 433: full.AttributeIndexSafetyTest.ValidSingleLeafStillParses
+477/611 Test #433: full.AttributeIndexSafetyTest.ValidSingleLeafStillParses ............................................................   Passed    0.17 sec
+        Start 366: full.GdbTablxTest.V4RecognizedBitmapResolvesLogicalRows
+478/611 Test #366: full.GdbTablxTest.V4RecognizedBitmapResolvesLogicalRows .............................................................   Passed    0.16 sec
+        Start 225: full.Utf16Test.EmptyInput
+479/611 Test #225: full.Utf16Test.EmptyInput ...........................................................................................   Passed    0.16 sec
+        Start 380: full.MetadataReaderTest.DecodesPrefixedXmlNamesAndEntities
+480/611 Test #380: full.MetadataReaderTest.DecodesPrefixedXmlNamesAndEntities ..........................................................   Passed    0.16 sec
+        Start 231: full.Utf16Test.TwoByteBoundary
+481/611 Test #231: full.Utf16Test.TwoByteBoundary ......................................................................................   Passed    0.16 sec
+        Start 350: full.GdbTableTest.ReadRecordByFid_SpatialData
+482/611 Test #350: full.GdbTableTest.ReadRecordByFid_SpatialData .......................................................................   Passed    0.16 sec
+        Start 284: full.GdbCatalogTest.FindNonExistent
+483/611 Test #284: full.GdbCatalogTest.FindNonExistent .................................................................................   Passed    0.16 sec
+        Start 320: full.TablxCacheTest.SameKeyReturnsSameData
+484/611 Test #320: full.TablxCacheTest.SameKeyReturnsSameData ..........................................................................   Passed    0.16 sec
+        Start 325: full.TablxCacheTest.EvictsOldestWhenFull
+485/611 Test #325: full.TablxCacheTest.EvictsOldestWhenFull ............................................................................   Passed    0.16 sec
+        Start 438: full.AttributeIndexSafetyTest.InvalidUnselectedBranchFailsClosed
+486/611 Test #438: full.AttributeIndexSafetyTest.InvalidUnselectedBranchFailsClosed ....................................................   Passed    0.16 sec
+        Start 338: full.GdbTableTest.GeometryOriginAlwaysPresent
+487/611 Test #338: full.GdbTableTest.GeometryOriginAlwaysPresent .......................................................................   Passed    0.16 sec
+        Start 303: full.FieldLayoutTest.SkipDateTimeWithOffsetKeepsFollowingFieldAligned
+488/611 Test #303: full.FieldLayoutTest.SkipDateTimeWithOffsetKeepsFollowingFieldAligned ...............................................   Passed    0.16 sec
+        Start 409: full.SyntheticTest.SparseBlockMapReadsLogicalRowsFromCompactTableOffsets
+489/611 Test #409: full.SyntheticTest.SparseBlockMapReadsLogicalRowsFromCompactTableOffsets ............................................   Passed    0.16 sec
+        Start 199: full.BinaryReaderTest.ReadI64Positive
+490/611 Test #199: full.BinaryReaderTest.ReadI64Positive ...............................................................................   Passed    0.16 sec
+        Start 486: full.GdbIndexesExpressionTest.LowerExpressionMapsFieldButIsNotDirect
+491/611 Test #486: full.GdbIndexesExpressionTest.LowerExpressionMapsFieldButIsNotDirect ................................................   Passed    0.16 sec
+        Start 283: full.GdbCatalogTest.FindById
+492/611 Test #283: full.GdbCatalogTest.FindById ........................................................................................   Passed    0.16 sec
+        Start 492: full.QueryEngineTest.UnparseableSpatialIndexFallsBack
+493/611 Test #492: full.QueryEngineTest.UnparseableSpatialIndexFallsBack ...............................................................   Passed    0.16 sec
+        Start 302: full.FieldLayoutTest.DateTimeWithOffsetUsesTenPhysicalBytes
+494/611 Test #302: full.FieldLayoutTest.DateTimeWithOffsetUsesTenPhysicalBytes .........................................................   Passed    0.16 sec
+        Start 481: full.GdbIndexesTest.KnownMagicTuples
+495/611 Test #481: full.GdbIndexesTest.KnownMagicTuples ................................................................................   Passed    0.16 sec
+        Start 407: full.SyntheticTest.MemoryIndexes
+496/611 Test #407: full.SyntheticTest.MemoryIndexes ....................................................................................   Passed    0.16 sec
+        Start 335: full.GdbTableTest.InvalidFile
+497/611 Test #335: full.GdbTableTest.InvalidFile .......................................................................................   Passed    0.16 sec
+        Start 418: full.AttributeIndexTest.ParseMultiLevelTree
+498/611 Test #418: full.AttributeIndexTest.ParseMultiLevelTree .........................................................................   Passed    0.16 sec
+        Start 473: full.SpatialIndexTest.RejectsInvalidQueryInputs
+499/611 Test #473: full.SpatialIndexTest.RejectsInvalidQueryInputs .....................................................................   Passed    0.16 sec
+        Start 291: full.CatalogResolverTest.IndexesSystemTablesByNameWithoutFixedIds
+500/611 Test #291: full.CatalogResolverTest.IndexesSystemTablesByNameWithoutFixedIds ...................................................   Passed    0.16 sec
+        Start 337: full.GdbTableTest.GeometryFieldWKT
+501/611 Test #337: full.GdbTableTest.GeometryFieldWKT ..................................................................................   Passed    0.17 sec
+        Start 245: full.VaruintTest.MinTwoByte
+502/611 Test #245: full.VaruintTest.MinTwoByte .........................................................................................   Passed    0.16 sec
+        Start 485: full.GdbIndexesExpressionTest.DirectFieldRemainsDirect
+503/611 Test #485: full.GdbIndexesExpressionTest.DirectFieldRemainsDirect ..............................................................   Passed    0.16 sec
+        Start 363: full.GdbTablxTest.V4DenseGdalReferenceParses
+504/611 Test #363: full.GdbTablxTest.V4DenseGdalReferenceParses ........................................................................   Passed    0.16 sec
+        Start 431: full.StringQueryTest.QueryStringGe
+505/611 Test #431: full.StringQueryTest.QueryStringGe ..................................................................................   Passed    0.16 sec
+        Start 468: full.SpatialIndexTest.RejectsPageWithTooManyEntries
+506/611 Test #468: full.SpatialIndexTest.RejectsPageWithTooManyEntries .................................................................   Passed    0.16 sec
+        Start 221: full.OleDateTest.NegativeDateWithFraction
+507/611 Test #221: full.OleDateTest.NegativeDateWithFraction ...........................................................................   Passed    0.16 sec
+        Start 340: full.GdbTableTest.ObjectIdIsImplicit
+508/611 Test #340: full.GdbTableTest.ObjectIdIsImplicit ................................................................................   Passed    0.16 sec
+        Start 264: full.ReaderContractTest.QueryDefaultsExposeBoundedOptions
+509/611 Test #264: full.ReaderContractTest.QueryDefaultsExposeBoundedOptions ...........................................................   Passed    0.16 sec
+        Start 288: full.GdbCatalogTest.FindAllAtx
+510/611 Test #288: full.GdbCatalogTest.FindAllAtx ......................................................................................   Passed    0.16 sec
+        Start 466: full.SpatialIndexTest.ParseNonexistent
+511/611 Test #466: full.SpatialIndexTest.ParseNonexistent ..............................................................................   Passed    0.16 sec
+        Start 499: full.QueryWhereInternalTest.CompilesAndEvaluatesExistingWhereSubset
+512/611 Test #499: full.QueryWhereInternalTest.CompilesAndEvaluatesExistingWhereSubset .................................................   Passed    0.16 sec
+        Start 346: full.GdbTableTest.ReadRecordByFid_NoTablx
+513/611 Test #346: full.GdbTableTest.ReadRecordByFid_NoTablx ...........................................................................   Passed    0.16 sec
+        Start 310: full.FullAuditTest.AllTableFieldsParse
+514/611 Test #310: full.FullAuditTest.AllTableFieldsParse ..............................................................................   Passed    0.16 sec
+        Start 511: full.QueryWhereInternalTest.IntersectsSortedFidsLinearlyAndUniquely
+515/611 Test #511: full.QueryWhereInternalTest.IntersectsSortedFidsLinearlyAndUniquely .................................................   Passed    0.16 sec
+        Start 230: full.Utf16Test.TwoByteUtf8
+516/611 Test #230: full.Utf16Test.TwoByteUtf8 ..........................................................................................   Passed    0.16 sec
+        Start 285: full.GdbCatalogTest.FindSpx
+517/611 Test #285: full.GdbCatalogTest.FindSpx .........................................................................................   Passed    0.17 sec
+        Start 208: full.BinaryReaderTest.DataPointer
+518/611 Test #208: full.BinaryReaderTest.DataPointer ...................................................................................   Passed    0.16 sec
+        Start 254: full.VarintTest.RejectsOutOfRangePositiveMagnitude
+519/611 Test #254: full.VarintTest.RejectsOutOfRangePositiveMagnitude ..................................................................   Passed    0.16 sec
+        Start 440: full.AttributeIndexSafetyTest.CyclicLeafChainFailsClosed
+520/611 Test #440: full.AttributeIndexSafetyTest.CyclicLeafChainFailsClosed ............................................................   Passed    0.16 sec
+        Start 411: full.AttributeIndexTest.ParseValidNumeric
+521/611 Test #411: full.AttributeIndexTest.ParseValidNumeric ...........................................................................   Passed    0.16 sec
+        Start 293: full.CatalogResolverTest.ResolvedTableCarriesSpatialRefsSnapshot
+522/611 Test #293: full.CatalogResolverTest.ResolvedTableCarriesSpatialRefsSnapshot ....................................................   Passed    0.16 sec
+        Start 356: full.GdbTablxTest.GetOffset
+523/611 Test #356: full.GdbTablxTest.GetOffset .........................................................................................   Passed    0.18 sec
+        Start 369: full.GdbTablxTest.IsBlockActiveOutOfRange
+524/611 Test #369: full.GdbTablxTest.IsBlockActiveOutOfRange ...........................................................................   Passed    0.16 sec
+        Start 249: full.VarintTest.Zero
+525/611 Test #249: full.VarintTest.Zero ................................................................................................   Passed    0.16 sec
+        Start 377: full.MetadataReaderTest.ExtractsCatalogPathAndDatasetTypeFromDefinitionXml
+526/611 Test #377: full.MetadataReaderTest.ExtractsCatalogPathAndDatasetTypeFromDefinitionXml ..........................................   Passed    0.16 sec
+        Start 202: full.BinaryReaderTest.UInt48Read
+527/611 Test #202: full.BinaryReaderTest.UInt48Read ....................................................................................   Passed    0.16 sec
+        Start 219: full.OleDateTest.DateOnlyString
+528/611 Test #219: full.OleDateTest.DateOnlyString .....................................................................................   Passed    0.16 sec
+        Start 305: full.FullAuditTest.AllFileTypesPresent
+529/611 Test #305: full.FullAuditTest.AllFileTypesPresent ..............................................................................   Passed    0.16 sec
+        Start 321: full.TablxCacheTest.InvalidateRemovesOnlyMatchingIdentity
+530/611 Test #321: full.TablxCacheTest.InvalidateRemovesOnlyMatchingIdentity ...........................................................   Passed    0.16 sec
+        Start 432: full.StringQueryTest.QueryStringLt
+531/611 Test #432: full.StringQueryTest.QueryStringLt ..................................................................................   Passed    0.16 sec
+        Start 353: full.GdbTablxTest.RejectsTruncatedOrInvalidOffsetTables
+532/611 Test #353: full.GdbTablxTest.RejectsTruncatedOrInvalidOffsetTables .............................................................   Passed    0.17 sec
+        Start 210: full.OleDateTest.Zero
+533/611 Test #210: full.OleDateTest.Zero ...............................................................................................   Passed    0.16 sec
+        Start 268: full.ReaderContractTest.RejectsLayerWhenFidBudgetIsZero
+534/611 Test #268: full.ReaderContractTest.RejectsLayerWhenFidBudgetIsZero .............................................................   Passed    0.16 sec
+        Start 388: full.MetadataReaderTest.ClassifiesAdvancedObjectKindsWithoutClaimingSemantics
+535/611 Test #388: full.MetadataReaderTest.ClassifiesAdvancedObjectKindsWithoutClaimingSemantics .......................................   Passed    0.16 sec
+        Start 200: full.BinaryReaderTest.FloatReads
+536/611 Test #200: full.BinaryReaderTest.FloatReads ....................................................................................   Passed    0.16 sec
+        Start 315: full.FullAuditTest.SummaryStatistics
+537/611 Test #315: full.FullAuditTest.SummaryStatistics ................................................................................   Passed    0.16 sec
+        Start 387: full.MetadataReaderTest.SummarizesAttachmentRelationshipAndTableResolution
+538/611 Test #387: full.MetadataReaderTest.SummarizesAttachmentRelationshipAndTableResolution ..........................................   Passed    0.16 sec
+        Start 198: full.BinaryReaderTest.SignedIntegerReads
+539/611 Test #198: full.BinaryReaderTest.SignedIntegerReads ............................................................................   Passed    0.16 sec
+        Start 251: full.VarintTest.Negative
+540/611 Test #251: full.VarintTest.Negative ............................................................................................   Passed    0.16 sec
+        Start 334: full.GdbTableTest.V4DenseGdalReferenceReadsRows
+541/611 Test #334: full.GdbTableTest.V4DenseGdalReferenceReadsRows .....................................................................   Passed    0.16 sec
+        Start 379: full.MetadataReaderTest.DecodesWorkspaceDomainsXml
+542/611 Test #379: full.MetadataReaderTest.DecodesWorkspaceDomainsXml ..................................................................   Passed    0.16 sec
+        Start 476: full.SpatialIndexMergeTest.FullHeightMergedRangeContainsStandardCandidates
+543/611 Test #476: full.SpatialIndexMergeTest.FullHeightMergedRangeContainsStandardCandidates ..........................................   Passed    0.16 sec
+        Start 258: full.CapabilityReportTest.UnsupportedGeometryBlocksLayer
+544/611 Test #258: full.CapabilityReportTest.UnsupportedGeometryBlocksLayer ............................................................   Passed    0.17 sec
+        Start 509: full.QueryWhereInternalTest.ComparesIntegerFieldsAndFloatingLiteralsExactly
+545/611 Test #509: full.QueryWhereInternalTest.ComparesIntegerFieldsAndFloatingLiteralsExactly .........................................   Passed    0.16 sec
+        Start 222: full.OleDateTest.NegativeDateTime
+546/611 Test #222: full.OleDateTest.NegativeDateTime ...................................................................................   Passed    0.16 sec
+        Start 228: full.Utf16Test.NullTermination
+547/611 Test #228: full.Utf16Test.NullTermination ......................................................................................   Passed    0.16 sec
+        Start 205: full.BinaryReaderTest.OverflowSizedBoundsFailClosed
+548/611 Test #205: full.BinaryReaderTest.OverflowSizedBoundsFailClosed .................................................................   Passed    0.16 sec
+        Start 489: full.QueryEngineTest.SequentialScanRequestIsDefault
+549/611 Test #489: full.QueryEngineTest.SequentialScanRequestIsDefault .................................................................   Passed    0.16 sec
+        Start 201: full.BinaryReaderTest.UInt40Read
+550/611 Test #201: full.BinaryReaderTest.UInt40Read ....................................................................................   Passed    0.16 sec
+        Start 352: full.GdbTablxTest.InvalidFile
+551/611 Test #352: full.GdbTablxTest.InvalidFile .......................................................................................   Passed    0.16 sec
+        Start 467: full.SpatialIndexTest.ParseTruncated
+552/611 Test #467: full.SpatialIndexTest.ParseTruncated ................................................................................   Passed    0.17 sec
+        Start 583: full.HybridGeometryContract.MapsFastFidWithExplicitOffset
+553/611 Test #583: full.HybridGeometryContract.MapsFastFidWithExplicitOffset ...........................................................   Passed    0.16 sec
+        Start 345: full.GdbTableTest.ReadRecordByFid_InvalidFid
+554/611 Test #345: full.GdbTableTest.ReadRecordByFid_InvalidFid ........................................................................   Passed    0.16 sec
+        Start 383: full.MetadataReaderTest.DecodesFieldDomainBindingsAndResolvesWorkspaceDomains
+555/611 Test #383: full.MetadataReaderTest.DecodesFieldDomainBindingsAndResolvesWorkspaceDomains .......................................   Passed    0.16 sec
+        Start 415: full.AttributeIndexTest.DecodeNumericInt32
+556/611 Test #415: full.AttributeIndexTest.DecodeNumericInt32 ..........................................................................   Passed    0.16 sec
+        Start 487: full.GdbIndexesExpressionTest.UnknownFunctionsAreNotDirect
+557/611 Test #487: full.GdbIndexesExpressionTest.UnknownFunctionsAreNotDirect ..........................................................   Passed    0.16 sec
+        Start 429: full.StringQueryTest.QueryStringNe
+558/611 Test #429: full.StringQueryTest.QueryStringNe ..................................................................................   Passed    0.16 sec
+        Start 227: full.Utf16Test.SingleChar
+559/611 Test #227: full.Utf16Test.SingleChar ...........................................................................................   Passed    0.16 sec
+        Start 232: full.Utf16Test.ThreeByteUtf8
+560/611 Test #232: full.Utf16Test.ThreeByteUtf8 ........................................................................................   Passed    0.16 sec
+        Start 233: full.Utf16Test.ThreeByteBoundary
+561/611 Test #233: full.Utf16Test.ThreeByteBoundary ....................................................................................   Passed    0.16 sec
+        Start 243: full.VaruintTest.SingleByte
+562/611 Test #243: full.VaruintTest.SingleByte .........................................................................................   Passed    0.16 sec
+        Start 478: full.GdbIndexesTest.InvalidFile
+563/611 Test #478: full.GdbIndexesTest.InvalidFile .....................................................................................   Passed    0.16 sec
+        Start 436: full.AttributeIndexSafetyTest.VersionTwoParsesAndQueries64BitObjectIds
+564/611 Test #436: full.AttributeIndexSafetyTest.VersionTwoParsesAndQueries64BitObjectIds ..............................................   Passed    0.17 sec
+        Start 239: full.Utf16Test.InvalidUtf8BytesEmitReplacementCharacters
+565/611 Test #239: full.Utf16Test.InvalidUtf8BytesEmitReplacementCharacters ............................................................   Passed    0.16 sec
+        Start 508: full.QueryWhereInternalTest.ComparesInt64LiteralsWithoutDoubleRounding
+566/611 Test #508: full.QueryWhereInternalTest.ComparesInt64LiteralsWithoutDoubleRounding ..............................................   Passed    0.16 sec
+        Start 316: full.TablxCacheTest.MissReturnsNull
+567/611 Test #316: full.TablxCacheTest.MissReturnsNull .................................................................................   Passed    0.16 sec
+        Start 403: full.SyntheticTest.MemoryTableHeader
+568/611 Test #403: full.SyntheticTest.MemoryTableHeader ................................................................................   Passed    0.16 sec
+        Start 261: full.CapabilityReportTest.StateNamesAreStable
+569/611 Test #261: full.CapabilityReportTest.StateNamesAreStable .......................................................................   Passed    0.16 sec
+        Start 381: full.MetadataReaderTest.ClassifiesMetadataXmlFailuresAndUnknownRoots
+570/611 Test #381: full.MetadataReaderTest.ClassifiesMetadataXmlFailuresAndUnknownRoots ................................................   Passed    0.16 sec
+        Start 483: full.GdbIndexesTest.SomeColumnNamesPresent
+571/611 Test #483: full.GdbIndexesTest.SomeColumnNamesPresent ..........................................................................   Passed    0.16 sec
+        Start 197: full.BinaryReaderTest.BasicIntegerReads
+572/611 Test #197: full.BinaryReaderTest.BasicIntegerReads .............................................................................   Passed    0.16 sec
+        Start 364: full.GdbTablxTest.V4UnknownBitmapFailsClosed
+573/611 Test #364: full.GdbTablxTest.V4UnknownBitmapFailsClosed ........................................................................   Passed    0.16 sec
+        Start 490: full.QueryEngineTest.WhereClauseRequestCarriesText
+574/611 Test #490: full.QueryEngineTest.WhereClauseRequestCarriesText ..................................................................   Passed    0.17 sec
+        Start 204: full.BinaryReaderTest.CanReadCheck
+575/611 Test #204: full.BinaryReaderTest.CanReadCheck ..................................................................................   Passed    0.17 sec
+        Start 374: full.MetadataReaderTest.RejectsDifferentWkid
+576/611 Test #374: full.MetadataReaderTest.RejectsDifferentWkid ........................................................................   Passed    0.16 sec
+        Start 503: full.QueryWhereInternalTest.ParsesTypedTemporalLiteralsAndComparesMillis
+577/611 Test #503: full.QueryWhereInternalTest.ParsesTypedTemporalLiteralsAndComparesMillis ............................................   Passed    0.16 sec
+        Start 504: full.QueryWhereInternalTest.RejectsTemporalTypeMismatchAndInvalidLiterals
+578/611 Test #504: full.QueryWhereInternalTest.RejectsTemporalTypeMismatchAndInvalidLiterals ...........................................   Passed    0.16 sec
+        Start 359: full.GdbTablxTest.IsBlockActive
+579/611 Test #359: full.GdbTablxTest.IsBlockActive .....................................................................................   Passed    0.16 sec
+        Start 351: full.GdbTablxTest.HeaderVersion
+580/611 Test #351: full.GdbTablxTest.HeaderVersion .....................................................................................   Passed    0.16 sec
+        Start 259: full.CapabilityReportTest.DegradedRasterAndCurveRemainReadable
+581/611 Test #259: full.CapabilityReportTest.DegradedRasterAndCurveRemainReadable ......................................................   Passed    0.17 sec
+        Start 262: full.FeatureCursorApiTest.QueryFeatureDefaultsAreStable
+582/611 Test #262: full.FeatureCursorApiTest.QueryFeatureDefaultsAreStable .............................................................   Passed    0.16 sec
+        Start 385: full.MetadataReaderTest.DecodesRelationshipClassAttributesXml
+583/611 Test #385: full.MetadataReaderTest.DecodesRelationshipClassAttributesXml .......................................................   Passed    0.17 sec
+        Start 317: full.TablxCacheTest.HitReturnsCorrectData
+584/611 Test #317: full.TablxCacheTest.HitReturnsCorrectData ...........................................................................   Passed    0.16 sec
+        Start 308: full.FullAuditTest.TableTablxPairing
+585/611 Test #308: full.FullAuditTest.TableTablxPairing ................................................................................   Passed    0.16 sec
+        Start 235: full.Utf16Test.MixedWithNull
+586/611 Test #235: full.Utf16Test.MixedWithNull ........................................................................................   Passed    0.16 sec
+        Start 510: full.QueryWhereInternalTest.ComparesDoubleFieldsAgainstExactIntegerLiterals
+587/611 Test #510: full.QueryWhereInternalTest.ComparesDoubleFieldsAgainstExactIntegerLiterals .........................................   Passed    0.16 sec
+        Start 238: full.Utf16Test.SupplementaryUtf8RoundTripsThroughUtf16Pair
+588/611 Test #238: full.Utf16Test.SupplementaryUtf8RoundTripsThroughUtf16Pair ..........................................................   Passed    0.16 sec
+        Start 502: full.QueryWhereInternalTest.AppliesSqlNullTruthTablesToCompoundPredicates
+589/611 Test #502: full.QueryWhereInternalTest.AppliesSqlNullTruthTablesToCompoundPredicates ...........................................   Passed    0.16 sec
+        Start 217: full.OleDateTest.PreservesMillisecondPrecision
+590/611 Test #217: full.OleDateTest.PreservesMillisecondPrecision ......................................................................   Passed    0.16 sec
+        Start 586: full.HybridGeometryContract.ThreadCacheCanBeClearedRepeatedly
+591/611 Test #586: full.HybridGeometryContract.ThreadCacheCanBeClearedRepeatedly .......................................................   Passed    0.16 sec
+        Start 400: full.SyntheticTest.RowSlotAndObjectIdRemainDistinctAcross32BitBoundary
+592/611 Test #400: full.SyntheticTest.RowSlotAndObjectIdRemainDistinctAcross32BitBoundary ..............................................   Passed    0.16 sec
+        Start 464: full.SpatialIndexTest.ParseValidLarge
+593/611 Test #464: full.SpatialIndexTest.ParseValidLarge ...............................................................................   Passed    0.16 sec
+        Start 248: full.VaruintTest.RejectsMoreThanTenBytes
+594/611 Test #248: full.VaruintTest.RejectsMoreThanTenBytes ............................................................................   Passed    0.16 sec
+        Start 416: full.AttributeIndexTest.DecodeNumericUnknownSize
+595/611 Test #416: full.AttributeIndexTest.DecodeNumericUnknownSize ....................................................................   Passed    0.16 sec
+        Start 300: full.DateTimeWithOffsetBeforeGeometry_GeometryOnlyScan.ReturnsZeroWhenAnyRowIsTruncated
+596/611 Test #300: full.DateTimeWithOffsetBeforeGeometry_GeometryOnlyScan.ReturnsZeroWhenAnyRowIsTruncated .............................   Passed    0.16 sec
+        Start 587: full.RealDataReleaseContractTest.SyntheticMultiPatchIsoWkbIsAcceptedByGdal
+597/611 Test #587: full.RealDataReleaseContractTest.SyntheticMultiPatchIsoWkbIsAcceptedByGdal ..........................................   Passed    0.16 sec
+        Start 271: full.ReaderContractTest.ReadsArcGisAttachmentFixtureWhenConfigured
+598/611 Test #271: full.ReaderContractTest.ReadsArcGisAttachmentFixtureWhenConfigured ..................................................***Skipped   0.16 sec
+        Start 276: full.ReaderConcurrencyBenchmarkTest.SharedLayerOpenAndFidReadProfile
+599/611 Test #276: full.ReaderConcurrencyBenchmarkTest.SharedLayerOpenAndFidReadProfile ................................................***Skipped   0.16 sec
+        Start 332: full.TablxCacheBenchmarkTest.SharedHitContentionProfile
+600/611 Test #332: full.TablxCacheBenchmarkTest.SharedHitContentionProfile .............................................................***Skipped   0.16 sec
+        Start 398: full.NullableBitmapCompatTest.LargeCurrentBitmapReadBenchmark
+601/611 Test #398: full.NullableBitmapCompatTest.LargeCurrentBitmapReadBenchmark .......................................................***Skipped   0.16 sec
+        Start 515: full.FeatureCursorBenchmarkTest.Point100KWkbFirstEvidence
+602/611 Test #515: full.FeatureCursorBenchmarkTest.Point100KWkbFirstEvidence ...........................................................***Skipped   0.16 sec
+        Start 516: full.SpatialDensityBenchmark.DensityMatrix1M
+603/611 Test #516: full.SpatialDensityBenchmark.DensityMatrix1M ........................................................................***Skipped   0.17 sec
+        Start 517: full.SpatialDensityBenchmark.DensityMatrix10M
+604/611 Test #517: full.SpatialDensityBenchmark.DensityMatrix10M .......................................................................***Skipped   0.16 sec
+        Start 518: full.SpatialDensityBenchmark.DensityMatrixConfigured
+605/611 Test #518: full.SpatialDensityBenchmark.DensityMatrixConfigured ................................................................***Skipped   0.16 sec
+        Start 519: full.SpatialWhereBenchmarkTest.Point100KSchemaV2Evidence
+606/611 Test #519: full.SpatialWhereBenchmarkTest.Point100KSchemaV2Evidence ............................................................***Skipped   0.16 sec
+        Start 520: full.ReaderRuntimeBenchmarkTest.ReadOnlyRuntimeProfile100K
+607/611 Test #520: full.ReaderRuntimeBenchmarkTest.ReadOnlyRuntimeProfile100K ..........................................................***Skipped   0.17 sec
+        Start 521: full.ReaderRuntimeBenchmarkTest.ReadOnlyRuntimeProfileConfigured
+608/611 Test #521: full.ReaderRuntimeBenchmarkTest.ReadOnlyRuntimeProfileConfigured ....................................................***Skipped   0.16 sec
+        Start 522: full.ReaderRuntimeBenchmarkTest.ReadOnlyRuntimeProfileBackendIsolated
+609/611 Test #522: full.ReaderRuntimeBenchmarkTest.ReadOnlyRuntimeProfileBackendIsolated ...............................................***Skipped   0.16 sec
+        Start 595: full.RealDataReleaseContractTest.HistoricalUnknownIndexMetadataReturnsUnsupported
+610/611 Test #595: full.RealDataReleaseContractTest.HistoricalUnknownIndexMetadataReturnsUnsupported ...................................***Skipped   0.17 sec
+        Start 602: full.RealDataReleaseContractTest.CurveFileGdbIsExplicitlyUnsupported
+611/611 Test #602: full.RealDataReleaseContractTest.CurveFileGdbIsExplicitlyUnsupported ................................................***Skipped   0.16 sec
+
+100% tests passed, 0 tests failed out of 611
+
+Total Test time (real) =  74.28 sec
+
+The following tests did not run:
+	 24 - unified.UnifiedFastFacadeTest.ReadsArcGisAttachmentPayloadsWhenConfigured (Skipped)
+	 43 - unified.UnifiedGdalFacadeTest.RealAwsImmutablePrefixReadsWhenConfigured (Skipped)
+	180 - hybrid.RealDataReleaseContractTest.HistoricalUnknownIndexMetadataReturnsUnsupported (Skipped)
+	187 - hybrid.RealDataReleaseContractTest.CurveFileGdbIsExplicitlyUnsupported (Skipped)
+	271 - full.ReaderContractTest.ReadsArcGisAttachmentFixtureWhenConfigured (Skipped)
+	276 - full.ReaderConcurrencyBenchmarkTest.SharedLayerOpenAndFidReadProfile (Skipped)
+	332 - full.TablxCacheBenchmarkTest.SharedHitContentionProfile (Skipped)
+	398 - full.NullableBitmapCompatTest.LargeCurrentBitmapReadBenchmark (Skipped)
+	515 - full.FeatureCursorBenchmarkTest.Point100KWkbFirstEvidence (Skipped)
+	516 - full.SpatialDensityBenchmark.DensityMatrix1M (Skipped)
+	517 - full.SpatialDensityBenchmark.DensityMatrix10M (Skipped)
+	518 - full.SpatialDensityBenchmark.DensityMatrixConfigured (Skipped)
+	519 - full.SpatialWhereBenchmarkTest.Point100KSchemaV2Evidence (Skipped)
+	520 - full.ReaderRuntimeBenchmarkTest.ReadOnlyRuntimeProfile100K (Skipped)
+	521 - full.ReaderRuntimeBenchmarkTest.ReadOnlyRuntimeProfileConfigured (Skipped)
+	522 - full.ReaderRuntimeBenchmarkTest.ReadOnlyRuntimeProfileBackendIsolated (Skipped)
+	595 - full.RealDataReleaseContractTest.HistoricalUnknownIndexMetadataReturnsUnsupported (Skipped)
+	602 - full.RealDataReleaseContractTest.CurveFileGdbIsExplicitlyUnsupported (Skipped)

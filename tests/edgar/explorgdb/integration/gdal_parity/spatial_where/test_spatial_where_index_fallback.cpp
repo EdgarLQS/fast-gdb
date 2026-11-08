@@ -863,3 +863,30 @@ TEST_F(SpatialWhereIndexFallbackTest, UnsupportedGeometryCannotBecomeSuccessfulP
         EXPECT_TRUE(result.matched_fids.empty());
     }
 }
+
+TEST_F(SpatialWhereIndexFallbackTest, ParsedSpxWithUnreadableLeafCannotReturnSuccessfulEmptyResult) {
+    const auto path = createFixture();
+    GdbCatalog catalog;
+    ResolvedTable table;
+    ASSERT_TRUE(resolve(path, catalog, table));
+    const auto* spx = catalog.find_spx(table.id);
+    ASSERT_NE(spx, nullptr);
+    {
+        std::fstream file(entry_path(path, spx), std::ios::binary | std::ios::in | std::ios::out);
+        file.seekp(4); // v1 root is a leaf in this three-point fixture
+        ASSERT_TRUE(write_u32_le(file, 0xffffffffU));
+    }
+    QueryEngine engine(catalog, table);
+    ASSERT_TRUE(engine.open());
+    QueryRequest request;
+    request.xmin = 0; request.ymin = 0; request.xmax = 10; request.ymax = 10;
+    request.where_clause = "value >= 10";
+    for (auto kind : {QueryKind::SpatialBbox, QueryKind::SpatialWhere}) {
+        request.kind = kind;
+        const auto result = engine.query(request);
+        EXPECT_EQ(result.status, QueryStatus::Ok) << result.error;
+        EXPECT_EQ(result.matched_fids, kind == QueryKind::SpatialBbox ?
+            (std::vector<RowSlot>{0, 1, 2}) : (std::vector<RowSlot>{1, 2}));
+        EXPECT_FALSE(result.fallback_reason.empty());
+    }
+}

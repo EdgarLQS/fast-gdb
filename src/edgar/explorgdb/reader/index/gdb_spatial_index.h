@@ -74,6 +74,7 @@ public:
      * @param grid_resolutions 空间索引网格分辨率列表。
      * @param max_fid 最大 FID；为 0 时使用排序去重。
      * @param merge_x_ranges 是否合并完整 Y 范围的 X 查询。
+     * @param query_succeeded Optional traversal status; false means the empty result is not trustworthy.
      * @return 空间索引命中的候选 FID 列表。
      */
     std::vector<RowSlot> query_bbox(
@@ -81,7 +82,8 @@ public:
         double xorig, double yorig, double xyscale,
         const std::vector<double>& grid_resolutions,
         RowSlot max_fid = 0,
-        bool merge_x_ranges = false) const;
+        bool merge_x_ranges = false,
+        bool* query_succeeded = nullptr) const;
 
 private:
     // 解析版本相关的 trailer
@@ -99,7 +101,7 @@ private:
                          int& min_idx, int& max_idx) const;
 
     // GDAL FindPages + GetNextRow: 递归导航 B+ 树
-    void collect_fids_btree(ObjectId page_id, int depth,
+    bool collect_fids_btree(ObjectId page_id, int depth,
                             uint64_t start_raw, uint64_t end_raw,
                             std::vector<RowSlot>& out_fids) const;
 

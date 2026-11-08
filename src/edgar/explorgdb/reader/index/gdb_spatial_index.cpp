@@ -327,18 +327,18 @@ bool GdbSpatialIndexParser::find_minmax_idx(
     return true;
 }
 
-void GdbSpatialIndexParser::collect_fids_btree(
+bool GdbSpatialIndexParser::collect_fids_btree(
     ObjectId page_id, int depth,
     uint64_t start_raw, uint64_t end_raw,
     std::vector<RowSlot>& out_fids) const {
 
-    if (page_id == 0 || depth <= 0) return;
+    if (page_id == 0 || depth <= 0) return false;
     const uint8_t* page = read_page(page_id, depth);
-    if (!page) return;
+    if (!page) return false;
 
     const uint32_t entry_count = read_u32_le(page + trailer_.object_id_size);
-    if (entry_count == 0U || entry_count > max_per_page_)
-        return;
+    if (entry_count == 0U) return depth == 1;
+    if (entry_count > max_per_page_) return false;
 
     uint32_t q_min_cx = static_cast<uint32_t>((start_raw >> 31) & 0x7FFFFFFF);
     uint32_t q_max_cx = static_cast<uint32_t>((end_raw >> 31) & 0x7FFFFFFF);
@@ -346,7 +346,7 @@ void GdbSpatialIndexParser::collect_fids_btree(
     if (depth == 1) {
         int min_idx, max_idx;
         if (!find_minmax_idx(page, entry_count, start_raw, end_raw, min_idx, max_idx))
-            return;
+            return true;
         for (int i = min_idx; i <= max_idx; i++) {
             const uint64_t v = read_object_id(
                 page + values_offset_ + static_cast<size_t>(i) * 8U, 8U);
@@ -356,8 +356,8 @@ void GdbSpatialIndexParser::collect_fids_btree(
                         static_cast<size_t>(i) * trailer_.object_id_size,
                     trailer_.object_id_size);
                 RowSlot row_slot = 0U;
-                if (object_id_to_row_slot(fid, row_slot))
-                    out_fids.push_back(row_slot);
+                if (!object_id_to_row_slot(fid, row_slot)) return false;
+                out_fids.push_back(row_slot);
             }
         }
     } else {
@@ -378,7 +378,7 @@ void GdbSpatialIndexParser::collect_fids_btree(
         }
 
         int visit_end = std::min(i_last, static_cast<int>(entry_count));
-        if (i_first > visit_end) return;
+        if (i_first > visit_end) return true;
 
         const int num_children = visit_end - i_first + 1;
         const size_t child_offset = nonleaf_header_size(trailer_.version);
@@ -389,11 +389,16 @@ void GdbSpatialIndexParser::collect_fids_btree(
                 page + child_offset + child_index * trailer_.object_id_size,
                 trailer_.object_id_size);
         }
-        for (ObjectId child : children) {
-            collect_fids_btree(child, depth - 1,
-                               start_raw, end_raw, out_fids);
+        for (size_t j = 0; j < children.size(); ++j) {
+            const ObjectId child = children[j];
+            // Forced single-child roots store count=1 and one pointer only.
+            if (child == 0 && entry_count == 1 && i_first + j == 1 &&
+                children.front() != 0) continue;
+            if (!collect_fids_btree(child, depth - 1,
+                                    start_raw, end_raw, out_fids)) return false;
         }
     }
+    return true;
 }
 
 std::vector<RowSlot> GdbSpatialIndexParser::query_bbox(
@@ -401,8 +406,9 @@ std::vector<RowSlot> GdbSpatialIndexParser::query_bbox(
     double /*xorig*/, double /*yorig*/, double /*xyscale*/,
     const std::vector<double>& grid_resolutions,
     RowSlot max_fid,
-    bool merge_x_ranges) const {
+    bool merge_x_ranges, bool* query_succeeded) const {
 
+    if (query_succeeded) *query_succeeded = false;
     clear_cache();
     std::vector<RowSlot> result_fids;
     if (mapped_size_ == 0 || grid_resolutions.empty() ||
@@ -454,8 +460,8 @@ std::vector<RowSlot> GdbSpatialIndexParser::query_bbox(
                 (static_cast<uint64_t>(level) << 62) |
                 (static_cast<uint64_t>(cell_max_x) << 31) |
                 static_cast<uint64_t>(cell_max_y);
-            collect_fids_btree(
-                1, trailer_.tree_depth, start_raw, end_raw, result_fids);
+            if (!collect_fids_btree(
+                1, trailer_.tree_depth, start_raw, end_raw, result_fids)) return {};
             continue;
         }
 
@@ -466,11 +472,12 @@ std::vector<RowSlot> GdbSpatialIndexParser::query_bbox(
             uint64_t end_raw = (static_cast<uint64_t>(level) << 62)
                              | (static_cast<uint64_t>(cx) << 31)
                              | static_cast<uint64_t>(cell_max_y);
-            collect_fids_btree(1, trailer_.tree_depth,
-                               start_raw, end_raw, result_fids);
+            if (!collect_fids_btree(1, trailer_.tree_depth,
+                                    start_raw, end_raw, result_fids)) return {};
         }
     }
 
+    if (query_succeeded) *query_succeeded = true;
     if (max_fid > 0 && max_fid < 100000000) {
         std::vector<bool> seen(static_cast<size_t>(max_fid + 1U), false);
         size_t unique_count = 0;

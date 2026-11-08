@@ -453,6 +453,7 @@ QueryResult QueryEngine::query_spatial_where(const QueryRequest& request) {
                     const bool merge_x_ranges =
                         request.ymin <= geom_field->ymin &&
                         request.ymax >= geom_field->ymax;
+                    bool succeeded = false;
                     std::vector<RowSlot> candidates =
                         spatial_index_->query_bbox(
                             request.xmin, request.ymin,
@@ -460,11 +461,11 @@ QueryResult QueryEngine::query_spatial_where(const QueryRequest& request) {
                             geom_field->xorig, geom_field->yorig,
                             geom_field->xyscale, geom_field->grid_sizes,
                             fid_slot_count - 1U,
-                            merge_x_ranges);
+                            merge_x_ranges, &succeeded);
                     const double candidate_lookup_ms =
                         elapsed_ms(candidate_start);
 
-                    if (!candidates.empty() &&
+                    if (succeeded && !candidates.empty() &&
                         should_bypass_attribute_index(
                             candidates.size(), feature_count)) {
                         QueryResult fused;

@@ -1,0 +1,39 @@
+Note: Google Test filter = SpatialWhereIndexFallbackTest.ParsedSpxWithUnreadableLeafCannotReturnSuccessfulEmptyResult
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from SpatialWhereIndexFallbackTest
+[ RUN      ] SpatialWhereIndexFallbackTest.ParsedSpxWithUnreadableLeafCannotReturnSuccessfulEmptyResult
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_index_fallback.cpp:889: Failure
+Expected equality of these values:
+  result.matched_fids
+    Which is: {}
+  kind == QueryKind::SpatialBbox ? (std::vector<RowSlot>{0, 1, 2}) : (std::vector<RowSlot>{1, 2})
+    Which is: { 0, 1, 2 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_index_fallback.cpp:890: Failure
+Value of: result.fallback_reason.empty()
+  Actual: true
+Expected: false
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_index_fallback.cpp:889: Failure
+Expected equality of these values:
+  result.matched_fids
+    Which is: {}
+  kind == QueryKind::SpatialBbox ? (std::vector<RowSlot>{0, 1, 2}) : (std::vector<RowSlot>{1, 2})
+    Which is: { 1, 2 }
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_index_fallback.cpp:890: Failure
+Value of: result.fallback_reason.empty()
+  Actual: true
+Expected: false
+
+[  FAILED  ] SpatialWhereIndexFallbackTest.ParsedSpxWithUnreadableLeafCannotReturnSuccessfulEmptyResult (63 ms)
+[----------] 1 test from SpatialWhereIndexFallbackTest (63 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (63 ms total)
+[  PASSED  ] 0 tests.
+[  FAILED  ] 1 test, listed below:
+[  FAILED  ] SpatialWhereIndexFallbackTest.ParsedSpxWithUnreadableLeafCannotReturnSuccessfulEmptyResult
+
+ 1 FAILED TEST

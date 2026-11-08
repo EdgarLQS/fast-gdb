@@ -187,15 +187,20 @@ QueryResult QueryEngine::query_bbox_unified(
             CapabilityState::Degraded,
             kDiagnosticSpxGridUnsupported};
     }
-    const bool sequential_fallback =
+    bool sequential_fallback =
         !planner_direct_scan &&
         (!spatial_index_present_ || !spx_extent_supported);
     if (!planner_direct_scan && spx_extent_supported) {
+        bool succeeded = false;
         candidates = spatial_index_->query_bbox(
             xmin, ymin, xmax, ymax,
             geom_field->xorig, geom_field->yorig,
             geom_field->xyscale, geom_field->grid_sizes,
-            parser_->feature_count() == 0 ? 0 : parser_->feature_count() - 1U);
+            parser_->feature_count() == 0 ? 0 : parser_->feature_count() - 1U, false, &succeeded);
+        if (!succeeded) {
+            sequential_fallback = true;
+            capabilities_.spatial_index = {CapabilityState::Degraded, "spatial index traversal failed; sequential scan used"};
+        }
     }
 
     if (planner_direct_scan) {
@@ -207,7 +212,7 @@ QueryResult QueryEngine::query_bbox_unified(
         result.fallback_reason = resolved_.has_spatial_index == false
             ? kDiagnosticSpatialIndexNotDeclared
             : (!spatial_index_present_ ? kDiagnosticSpatialIndexMissing
-            : (!spx_parse_ok ? capabilities_.spatial_index.reason
+            : (!spx_parse_ok || capabilities_.spatial_index.state == CapabilityState::Degraded ? capabilities_.spatial_index.reason
                              : kDiagnosticSpxGridUnsupported));
         result.spatial_metrics.candidate_count = feature_count;
         result.spatial_metrics.candidate_ratio = 1.0;
