@@ -840,3 +840,23 @@ TEST(AttributeIndexSafetyTest, InfinitiesAndSignedZeroRetainOrderedIeeeCompariso
         fs::remove(path);
     }
 }
+
+TEST(AttributeIndexSafetyTest, ExplicitSchemaCannotReinterpretIncompatibleKeyWidth) {
+    const auto path = build_single_value_atx("explicit_width", 0U, 1U, 1U);
+    for (auto type : {FieldType::Int16, FieldType::Int32, FieldType::Float32,
+                      FieldType::String, FieldType::Geometry}) {
+        GdbAttributeIndexParser parser(path, type);
+        EXPECT_FALSE(parser.parse()) << static_cast<int>(type);
+        EXPECT_TRUE(parser.all_entries().empty());
+        std::vector<RowSlot> rows{99};
+        EXPECT_FALSE(parser.query_double_direct(42, AttrOp::Eq, 1, rows));
+        EXPECT_EQ(rows, (std::vector<RowSlot>{99}));
+    }
+    GdbAttributeIndexParser legacy(path);
+    ASSERT_TRUE(legacy.parse());
+    EXPECT_EQ(legacy.query_double(42, AttrOp::Eq), (std::vector<RowSlot>{0}));
+    GdbAttributeIndexParser typed(path, FieldType::Float64);
+    ASSERT_TRUE(typed.parse());
+    EXPECT_EQ(typed.query_double(42, AttrOp::Eq), (std::vector<RowSlot>{0}));
+    fs::remove(path);
+}

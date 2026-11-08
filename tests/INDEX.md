@@ -345,6 +345,11 @@ non-finite public-request errors. See [evidence and remaining integrity checks](
 
 ## Bound attribute integrity and incomplete source rows
 
+Raw ATX explicit schema/width mismatches are rejected by
+`AttributeIndexSafetyTest.ExplicitSchemaCannotReinterpretIncompatibleKeyWidth`;
+`AttributeIndexTest.DecodeNumericUnknownSize` rejects invented zero values.
+See [key-layout validation](../docs/plan/evidence/2026-11-08-atx-key-layout.md).
+
 `AttributeValueKeyTest` covers exact integer/IEEE keys, isolated temporal domains,
 and v1/v2 unordered-leaf directories. `SpatialWhereIndexFallbackTest` covers finite
 wrong keys, duplicate/missing FIDs, native Int64 values, numeric scale, and unreadable

@@ -66,8 +66,8 @@ public:
      * @param field_type 源字段类型；4 字节键据此区分 INT32/FLOAT32，GUID ASCII 键需传 UUID 类型。
      */
     explicit GdbAttributeIndexParser(
-        const std::string& file_path,
-        FieldType field_type = FieldType::Int32);
+        const std::string& file_path);
+    GdbAttributeIndexParser(const std::string& file_path, FieldType field_type);
 
     // 解析整个文件并物化全部条目。任何页面越界、循环页链、条目计数
     // 不一致或零 FID 都会失败。
@@ -200,6 +200,8 @@ private:
         AttributeIndexQueryMetrics* metrics,
         bool string_candidates = false);
 
+    bool valid_key_layout() const;
+    bool explicit_field_type_ = false;
     std::string file_path_;
     FieldType field_type_ = FieldType::Int32;
     std::vector<uint8_t> file_data_;

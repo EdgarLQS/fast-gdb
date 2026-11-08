@@ -311,6 +311,7 @@ bool GdbAttributeIndexParser::query_direct(
         metrics->trailer_ms = elapsed_ms(trailer_start);
     }
 
+    if (!valid_key_layout()) return false;
     const bool uuid_field = field_type_ == FieldType::UUID_1 || field_type_ == FieldType::UUID_2;
     if (uuid_field && (!is_string || trailer_.value_size != 38U ||
                        trailer_.is_string || trailer_.is_numeric)) return false;

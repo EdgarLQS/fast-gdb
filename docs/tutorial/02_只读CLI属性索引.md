@@ -29,6 +29,8 @@ explorgdb_cli query-atx /data/id.atx '=' '{12345678-9ABC-DEF0-1234-567890ABCDEF}
 
 类型名为 `int16/int32/int64/float32/float64/string/uuid/globalid/datetime/date/time`。`uuid` 对应 UUID_1，`globalid` 对应 UUID_2。若源 schema 可读，显式类型必须与其一致。手工提供类型不等于已支持 v9 元数据发现。
 
+显式类型还必须匹配物理键宽度和标志；不兼容的宽度或不支持的类型会失败，不会改按其他数值类型解释。C++ 未指定类型的构造入口保留历史兼容解码，不能代替源 schema 绑定。见[校验与回归记录](../plan/evidence/2026-11-08-atx-key-layout.md)。
+
 INT64 使用范围内的整数文本，不经过 double。日期/时间类型的此处查询值为物理日数 double；它不是 SQL typed 日期字面量查询。GUID 接受标准连字符形式，可带花括号，字母大小写等价。
 
 ## 字符串的两种查询语义

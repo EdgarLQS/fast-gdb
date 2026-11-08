@@ -61,9 +61,36 @@ bool page_offset_for(ObjectId page_id,
 
 } // namespace
 
+GdbAttributeIndexParser::GdbAttributeIndexParser(const std::string& file_path)
+    : file_path_(file_path) {}
+
 GdbAttributeIndexParser::GdbAttributeIndexParser(
     const std::string& file_path, FieldType field_type)
-    : file_path_(file_path), field_type_(field_type) {}
+    : explicit_field_type_(true), file_path_(file_path), field_type_(field_type) {}
+
+bool GdbAttributeIndexParser::valid_key_layout() const {
+    const auto width = trailer_.value_size;
+    if (!explicit_field_type_) {
+        return trailer_.is_string ? width != 0 && width % 2 == 0 :
+            trailer_.is_numeric && (width == 2 || width == 4 || width == 8);
+    }
+    switch (field_type_) {
+        case FieldType::String: return trailer_.is_string && width != 0 && width % 2 == 0;
+        case FieldType::UUID_1:
+        case FieldType::UUID_2: return !trailer_.is_string && !trailer_.is_numeric && width == 38;
+        case FieldType::Int16: return trailer_.is_numeric && width == 2;
+        case FieldType::Int32:
+        case FieldType::Float32: return trailer_.is_numeric && width == 4;
+        case FieldType::ObjectId: return trailer_.is_numeric && (width == 4 || width == 8);
+        case FieldType::Int64:
+        case FieldType::Float64:
+        case FieldType::DateTime:
+        case FieldType::Date:
+        case FieldType::Time:
+        case FieldType::DateTimeWithOffset: return trailer_.is_numeric && width == 8;
+        default: return false;
+    }
+}
 
 // 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 bool GdbAttributeIndexParser::parse() {
@@ -180,7 +207,7 @@ bool GdbAttributeIndexParser::parse_trailer() {
     } else if (!trailer_.is_string && !trailer_.is_numeric) {
         return false;
     }
-    return trailer_.magic1 == 1U && stored_version == trailer_.version;
+    return trailer_.magic1 == 1U && stored_version == trailer_.version && valid_key_layout();
 }
 
 GdbAttributeIndexParser::PageInfo
@@ -365,8 +392,7 @@ AttributeIndexEntry GdbAttributeIndexParser::decode_value(
                 break;
             }
             default:
-                entry.numeric_value = 0;
-                break;
+                throw std::out_of_range("unsupported numeric attribute key width");
         }
         if (std::isnan(entry.numeric_value))
             throw std::out_of_range("unordered NaN attribute index key");

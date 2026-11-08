@@ -1,0 +1,120 @@
+Note: Google Test filter = AttributeIndexSafetyTest.ExplicitSchemaCannotReinterpretIncompatibleKeyWidth
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from AttributeIndexSafetyTest
+[ RUN      ] AttributeIndexSafetyTest.ExplicitSchemaCannotReinterpretIncompatibleKeyWidth
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:849: Failure
+Value of: parser.parse()
+  Actual: true
+Expected: false
+0
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:850: Failure
+Value of: parser.all_entries().empty()
+  Actual: false
+Expected: true
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:852: Failure
+Value of: parser.query_double_direct(42, AttrOp::Eq, 1, rows)
+  Actual: true
+Expected: false
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:853: Failure
+Value of: rows.empty()
+  Actual: false
+Expected: true
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:849: Failure
+Value of: parser.parse()
+  Actual: true
+Expected: false
+1
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:850: Failure
+Value of: parser.all_entries().empty()
+  Actual: false
+Expected: true
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:852: Failure
+Value of: parser.query_double_direct(42, AttrOp::Eq, 1, rows)
+  Actual: true
+Expected: false
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:853: Failure
+Value of: rows.empty()
+  Actual: false
+Expected: true
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:849: Failure
+Value of: parser.parse()
+  Actual: true
+Expected: false
+2
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:850: Failure
+Value of: parser.all_entries().empty()
+  Actual: false
+Expected: true
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:852: Failure
+Value of: parser.query_double_direct(42, AttrOp::Eq, 1, rows)
+  Actual: true
+Expected: false
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:853: Failure
+Value of: rows.empty()
+  Actual: false
+Expected: true
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:849: Failure
+Value of: parser.parse()
+  Actual: true
+Expected: false
+4
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:850: Failure
+Value of: parser.all_entries().empty()
+  Actual: false
+Expected: true
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:852: Failure
+Value of: parser.query_double_direct(42, AttrOp::Eq, 1, rows)
+  Actual: true
+Expected: false
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:853: Failure
+Value of: rows.empty()
+  Actual: false
+Expected: true
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:849: Failure
+Value of: parser.parse()
+  Actual: true
+Expected: false
+7
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:850: Failure
+Value of: parser.all_entries().empty()
+  Actual: false
+Expected: true
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:852: Failure
+Value of: parser.query_double_direct(42, AttrOp::Eq, 1, rows)
+  Actual: true
+Expected: false
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp:853: Failure
+Value of: rows.empty()
+  Actual: false
+Expected: true
+
+[  FAILED  ] AttributeIndexSafetyTest.ExplicitSchemaCannotReinterpretIncompatibleKeyWidth (0 ms)
+[----------] 1 test from AttributeIndexSafetyTest (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (1 ms total)
+[  PASSED  ] 0 tests.
+[  FAILED  ] 1 test, listed below:
+[  FAILED  ] AttributeIndexSafetyTest.ExplicitSchemaCannotReinterpretIncompatibleKeyWidth
+
+ 1 FAILED TEST

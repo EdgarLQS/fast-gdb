@@ -457,11 +457,11 @@ TEST(AttributeIndexTest, DecodeNumericInt32) {
 TEST(AttributeIndexTest, DecodeNumericUnknownSize) {
     auto path = build_unknown_size_atx();
     GdbAttributeIndexParser parser(path);
-    ASSERT_TRUE(parser.parse());
-    EXPECT_EQ(parser.all_entries().size(), 2u);
-    // value_size=3 走 default 分支 → numeric_value = 0
-    EXPECT_DOUBLE_EQ(parser.all_entries()[0].numeric_value, 0.0);
-    EXPECT_DOUBLE_EQ(parser.all_entries()[1].numeric_value, 0.0);
+    EXPECT_FALSE(parser.parse());
+    EXPECT_TRUE(parser.all_entries().empty());
+    std::vector<RowSlot> result{99};
+    EXPECT_FALSE(parser.query_double_direct(0, AttrOp::Eq, 2, result));
+    EXPECT_EQ(result, (std::vector<RowSlot>{99}));
     fs::remove(path);
 }
 
