@@ -311,3 +311,7 @@ CLI 自动绑定源字段类型、独立 ATX 接受显式类型、INT64 精确�
 ### 2026-11-08：空间谓词求值错误传播
 
 普通及融合查询在精确几何求值无法完成时返回 Unsupported 并清空部分结果，合法 NULL/Empty 保持不相交语义。新增真实 GDAL 万点网格损坏副本，明确覆盖融合路径；bbox 快捷判断与 SPX 候选完整性不在本次证明范围。双平台回归及剩余限制见[空间求值错误记录](evidence/2026-11-08-spatial-evaluation-errors.md)，总计划保持未完成。
+
+### 2026-11-08：近期修复的 S5.3 sanitizer 补验
+
+基于 `becba74` 当前源码重新构建 GDAL-free Debug，Linux ASan/UBSan/LSan 完整回归 441 项：436 PASS / 5 SKIP / 0 FAIL，16.49 秒，runtime 链接已核实。覆盖近期原始键布局、扫描 varuint 和最后子页等内置合同；GDAL 生成样本的集成测试不包含在此配置中。TSan 和 Windows 限制保持原状态，详见[当前源码补验](evidence/2026-11-08-current-sanitizers.md)。总计划仍未完成。

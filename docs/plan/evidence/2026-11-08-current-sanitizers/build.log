@@ -1,0 +1,43 @@
+CMAKE_BUILD_TYPE:STRING=Debug
+CMAKE_CXX_FLAGS:STRING=-fsanitize=address,undefined -fno-omit-frame-pointer
+FAST_GDB_BUILD_GDAL_DRIVER:BOOL=OFF
+FAST_GDB_WITH_GDAL:BOOL=OFF
+FAST_GDB_CURVE_BACKEND-STRINGS:INTERNAL=REJECT;BUILTIN;GDAL
+[1/29] Building CXX object CMakeFiles/explorgdb_reader_lib.dir/src/edgar/explorgdb/reader/api/feature_cursor.cpp.o
+[2/29] Building CXX object CMakeFiles/explorgdb_reader_lib.dir/src/edgar/explorgdb/reader/api/reader.cpp.o
+[3/29] Building CXX object CMakeFiles/explorgdb_reader_lib.dir/src/edgar/explorgdb/reader/format/gdb_catalog.cpp.o
+[4/29] Building CXX object CMakeFiles/explorgdb_reader_lib.dir/src/edgar/explorgdb/reader/format/gdb_table_field_scan.cpp.o
+[5/29] Building CXX object CMakeFiles/explorgdb_reader_lib.dir/src/edgar/explorgdb/reader/format/gdb_table_geometry_scan.cpp.o
+[6/29] Building CXX object CMakeFiles/explorgdb_reader_lib.dir/src/edgar/explorgdb/reader/index/gdb_attribute_index.cpp.o
+[7/29] Building CXX object CMakeFiles/explorgdb_reader_lib.dir/src/edgar/explorgdb/reader/index/gdb_attribute_index_query.cpp.o
+[8/29] Building CXX object CMakeFiles/explorgdb_reader_lib.dir/src/edgar/explorgdb/reader/index/gdb_attribute_value_cache.cpp.o
+[9/29] Building CXX object CMakeFiles/explorgdb_reader_lib.dir/src/edgar/explorgdb/reader/query/query_engine.cpp.o
+[10/29] Building CXX object CMakeFiles/explorgdb_reader_lib.dir/src/edgar/explorgdb/reader/query/query_engine_combined.cpp.o
+[11/29] Building CXX object CMakeFiles/explorgdb_reader_lib.dir/src/edgar/explorgdb/reader/query/query_engine_geometry.cpp.o
+[12/29] Building CXX object CMakeFiles/explorgdb_reader_lib.dir/src/edgar/explorgdb/reader/query/query_where_internal.cpp.o
+[13/29] Linking CXX static library libexplorgdb_reader_lib.a
+[14/29] Building CXX object CMakeFiles/fast_gdb_runtime.dir/src/edgar/explorgdb/adaptive/adaptive_coordination.cpp.o
+[15/29] Building CXX object CMakeFiles/fast_gdb_runtime.dir/src/edgar/explorgdb/unified/unified.cpp.o
+/src/src/edgar/explorgdb/unified/unified.cpp: In function ‘fast_gdb::unified::Result<explorgdb::FastReaderLease> fast_gdb::unified::{anonymous}::acquire_fast_reader_lease(const std::string&)’:
+/src/src/edgar/explorgdb/unified/unified.cpp:270:21: warning: redundant move in return statement [-Wredundant-move]
+  270 |     return std::move(lease);
+      |            ~~~~~~~~~^~~~~~~
+/src/src/edgar/explorgdb/unified/unified.cpp:270:21: note: remove ‘std::move’ call
+[16/29] Linking CXX shared library libfast_gdb_runtime.so.0.2.0
+[17/29] Creating library symlink libfast_gdb_runtime.so.0 libfast_gdb_runtime.so
+[18/29] Building CXX object CMakeFiles/fast_gdb_unified_test_runner.dir/tests/edgar/explorgdb/unified/test_unified_fast.cpp.o
+[19/29] Building CXX object CMakeFiles/gdb_tutorial_test_runner.dir/tests/edgar/explorgdb/reader/api/test_feature_cursor.cpp.o
+[20/29] Building CXX object CMakeFiles/gdb_tutorial_test_runner.dir/tests/edgar/explorgdb/reader/api/test_reader.cpp.o
+[21/29] Building CXX object CMakeFiles/gdb_tutorial_test_runner.dir/tests/edgar/explorgdb/reader/format/test_corrupt_input_conformance.cpp.o
+[22/29] Building CXX object CMakeFiles/gdb_tutorial_test_runner.dir/tests/edgar/explorgdb/reader/format/test_datetime_offset_before_geometry.cpp.o
+/src/tests/edgar/explorgdb/reader/format/test_datetime_offset_before_geometry.cpp: In lambda function:
+/src/tests/edgar/explorgdb/reader/format/test_datetime_offset_before_geometry.cpp:127:16: warning: suggest explicit braces to avoid ambiguous ‘else’ [-Wdangling-else]
+  127 |             if (fields[2].data != nullptr) EXPECT_EQ(fields[2].data[0], 0x00);
+      |                ^
+[23/29] Building CXX object CMakeFiles/gdb_tutorial_test_runner.dir/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index.cpp.o
+[24/29] Building CXX object CMakeFiles/gdb_tutorial_test_runner.dir/tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp.o
+[25/29] Building CXX object CMakeFiles/gdb_tutorial_test_runner.dir/tests/edgar/explorgdb/reader/index/test_gdb_attribute_value_cache.cpp.o
+[26/29] Building CXX object CMakeFiles/gdb_tutorial_test_runner.dir/tests/edgar/explorgdb/reader/query/test_query_engine.cpp.o
+[27/29] Building CXX object CMakeFiles/gdb_tutorial_test_runner.dir/tests/edgar/explorgdb/reader/query/test_query_where_internal.cpp.o
+[28/29] Linking CXX executable bin/fast_gdb_unified_test_runner
+[29/29] Linking CXX executable bin/gdb_tutorial_test_runner

@@ -345,6 +345,10 @@ non-finite public-request errors. See [evidence and remaining integrity checks](
 
 ## Bound attribute integrity and incomplete source rows
 
+Current GDAL-free ASan/UBSan/LSan verification through `becba74`: 436 PASS,
+5 SKIP, no failures. The native GDAL fixture tests are outside this configuration.
+See [current sanitizer evidence](../docs/plan/evidence/2026-11-08-current-sanitizers.md).
+
 `SpatialWhereIndexFallbackTest.UnsupportedGeometryCannotBecomeSuccessfulPartialResult`
 checks Unsupported/empty partial results when exact geometry evaluation fails,
 including a native GDAL grid fixture that asserts the fused scan path.
