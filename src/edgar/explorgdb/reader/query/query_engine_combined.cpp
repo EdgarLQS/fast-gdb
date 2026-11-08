@@ -137,7 +137,7 @@ SpatialRefDecision evaluate_spatial_ref(
     if (geometry.is_null || geometry.data == nullptr ||
         geometry.byte_len == 0) {
         ++metrics.invalid_geometries;
-        return SpatialRefDecision::Invalid;
+        return SpatialRefDecision::Reject;
     }
 
     const std::optional<GdbBbox> bounds = decoder.peek_bbox(
@@ -158,7 +158,8 @@ SpatialRefDecision evaluate_spatial_ref(
         geometry.data, geometry.byte_len);
     if (!model.valid()) {
         ++metrics.invalid_geometries;
-        return SpatialRefDecision::Invalid;
+        return model.status == GeometryStatus::Empty || model.status == GeometryStatus::Null
+            ? SpatialRefDecision::Reject : SpatialRefDecision::Invalid;
     }
 
     const long double scale = model.transform.xy_scale;
@@ -526,6 +527,11 @@ QueryResult QueryEngine::query_spatial_where(const QueryRequest& request) {
                                             request.xmin, request.ymin,
                                             request.xmax, request.ymax,
                                             fused.spatial_metrics);
+                                    if (decision == SpatialRefDecision::Invalid) {
+                                        fused.status = QueryStatus::Unsupported;
+                                        fused.error = "source geometry predicate could not be evaluated completely";
+                                        return false;
+                                    }
                                     if (decision != SpatialRefDecision::Match)
                                         return true;
 
@@ -538,6 +544,12 @@ QueryResult QueryEngine::query_spatial_where(const QueryRequest& request) {
                                     return true;
                                 });
                         const double fused_scan_ms = elapsed_ms(scan_start);
+
+                        if (fused.status != QueryStatus::Ok) {
+                            fused.matched_fids.clear();
+                            fused.combined_metrics.total_ms = elapsed_ms(total_start);
+                            return fused;
+                        }
 
                         if (scanned == candidates.size()) {
                             std::sort(fused.matched_fids.begin(),

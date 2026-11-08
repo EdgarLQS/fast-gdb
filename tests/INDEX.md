@@ -345,6 +345,11 @@ non-finite public-request errors. See [evidence and remaining integrity checks](
 
 ## Bound attribute integrity and incomplete source rows
 
+`SpatialWhereIndexFallbackTest.UnsupportedGeometryCannotBecomeSuccessfulPartialResult`
+checks Unsupported/empty partial results when exact geometry evaluation fails,
+including a native GDAL grid fixture that asserts the fused scan path.
+See [semantic failure propagation](../docs/plan/evidence/2026-11-08-spatial-evaluation-errors.md).
+
 The native GDAL numeric directory scale fixture checks maximum-key raw ATX
 queries (`=`, `>=`, `>`) visit at most one page per tree level, including the final
 child beyond all separators. See [last-child layout evidence](../docs/plan/evidence/2026-11-08-atx-last-child.md).

@@ -110,7 +110,7 @@ void expect_safe_attribute_fallback(const QueryResult& result) {
 
 class SpatialWhereIndexFallbackTest : public GdbTutorialFixture {
 protected:
-    std::string createFixture(bool floating = false) {
+    std::string createFixture(bool floating = false, int count = 3) {
         const std::string path =
             spatial_where_test_utils::fixture_path(
                 "fast_gdb_spatial_where_index_fallback").string();
@@ -123,10 +123,11 @@ protected:
         OGRFieldDefn value("value", floating ? OFTReal : OFTInteger);
         EXPECT_EQ(layer->CreateField(&value), OGRERR_NONE);
         const int values[] = {5, 10, 15};
-        for (int i = 0; i < 3; ++i) {
+        for (int i = 0; i < count; ++i) {
             OGRFeature* feature = OGRFeature::CreateFeature(layer->GetLayerDefn());
-            feature->SetField("value", values[i]);
-            OGRPoint point(i + 1.0, i + 1.0);
+            feature->SetField("value", values[i % 3]);
+            OGRPoint point(count == 3 ? i + 1.0 : i % 100 + 1.0,
+                           count == 3 ? i + 1.0 : i / 100 + 1.0);
             EXPECT_EQ(feature->SetGeometry(&point), OGRERR_NONE);
             EXPECT_EQ(layer->CreateFeature(feature), OGRERR_NONE);
             OGRFeature::DestroyFeature(feature);
@@ -768,6 +769,53 @@ TEST_F(SpatialWhereIndexFallbackTest, UnreadableAttributeRowCannotBecomePartialS
         request.double_value = 10;
         request.attr_op = AttrOp::Ge;
         const auto result = engine.query(request);
+        EXPECT_EQ(result.status, QueryStatus::Unsupported);
+        EXPECT_FALSE(result.error.empty());
+        EXPECT_TRUE(result.matched_fids.empty());
+    }
+}
+
+TEST_F(SpatialWhereIndexFallbackTest, UnsupportedGeometryCannotBecomeSuccessfulPartialResult) {
+    const auto path = createFixture(true, 10000);
+    GdbCatalog catalog;
+    ResolvedTable table;
+    ASSERT_TRUE(resolve(path, catalog, table));
+    std::vector<uint8_t> blob;
+    {
+        GdbTableParser parser(table.table_path);
+        ASSERT_TRUE(parser.open());
+        ASSERT_TRUE(parser.load_tablx(table.tablx_path));
+        const uint8_t* data = nullptr;
+        size_t size = 0;
+        ASSERT_TRUE(parser.peek_geometry_blob(1, data, size));
+        ASSERT_NE(data, nullptr);
+        ASSERT_GT(size, 0U);
+        blob.assign(data, data + size);
+    }
+    std::ifstream input(table.table_path, std::ios::binary);
+    std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(input)), {});
+    const auto position = std::search(bytes.begin(), bytes.end(), blob.begin(), blob.end());
+    ASSERT_NE(position, bytes.end());
+    ASSERT_EQ(std::search(position + 1, bytes.end(), blob.begin(), blob.end()), bytes.end());
+    {
+        std::fstream file(table.table_path, std::ios::binary | std::ios::in | std::ios::out);
+        file.seekp(position - bytes.begin());
+        file.put(0x7f); // unsupported shape type; preserve row and blob length
+        ASSERT_TRUE(file.good());
+    }
+    QueryEngine engine(catalog, table);
+    ASSERT_TRUE(engine.open());
+    for (bool narrow : {false, true}) for (auto kind : {QueryKind::SpatialBbox, QueryKind::SpatialWhere}) {
+        QueryRequest request;
+        request.kind = kind;
+        request.xmin = 0; request.ymin = 0; request.xmax = 10; request.ymax = 10;
+        if (narrow) {
+            request.xmin = 1.9; request.ymin = 0.9; request.xmax = 2.1; request.ymax = 1.1;
+        }
+        request.where_clause = "value >= 10";
+        const auto result = engine.query(request);
+        if (narrow && kind == QueryKind::SpatialWhere)
+            EXPECT_TRUE(result.combined_metrics.fused_spatial_attribute_scan) << result.execution_path << " " << result.fallback_reason << " candidates=" << result.spatial_metrics.candidate_count;
         EXPECT_EQ(result.status, QueryStatus::Unsupported);
         EXPECT_FALSE(result.error.empty());
         EXPECT_TRUE(result.matched_fids.empty());

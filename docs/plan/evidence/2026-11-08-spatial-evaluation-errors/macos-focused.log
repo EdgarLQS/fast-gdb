@@ -1,0 +1,60 @@
+Note: Google Test filter = SpatialWhereIndexFallbackTest.*:SpatialWhereAdaptiveTest.*:SpatialWhereIntegrationTest.*
+[==========] Running 22 tests from 3 test suites.
+[----------] Global test environment set-up.
+[----------] 2 tests from SpatialWhereAdaptiveTest
+[ RUN      ] SpatialWhereAdaptiveTest.SelectiveSpatialCandidatesUseFusedSingleRowScan
+[       OK ] SpatialWhereAdaptiveTest.SelectiveSpatialCandidatesUseFusedSingleRowScan (56 ms)
+[ RUN      ] SpatialWhereAdaptiveTest.HighCoverageUsesDirectAttributeIndexAndReportsMetrics
+[       OK ] SpatialWhereAdaptiveTest.HighCoverageUsesDirectAttributeIndexAndReportsMetrics (4 ms)
+[----------] 2 tests from SpatialWhereAdaptiveTest (61 ms total)
+
+[----------] 16 tests from SpatialWhereIndexFallbackTest
+[ RUN      ] SpatialWhereIndexFallbackTest.MissingAtxKeepsCorrectResults
+[       OK ] SpatialWhereIndexFallbackTest.MissingAtxKeepsCorrectResults (3 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.DamagedAtxKeepsCorrectResults
+[       OK ] SpatialWhereIndexFallbackTest.DamagedAtxKeepsCorrectResults (3 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.DamagedAtxAttributeQueryFallsBackToSequentialScan
+[       OK ] SpatialWhereIndexFallbackTest.DamagedAtxAttributeQueryFallsBackToSequentialScan (3 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.MissingAtxAttributeQueryFallsBackToSequentialScan
+[       OK ] SpatialWhereIndexFallbackTest.MissingAtxAttributeQueryFallsBackToSequentialScan (3 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.InconsistentAtxTrailerCountKeepsCorrectResults
+[       OK ] SpatialWhereIndexFallbackTest.InconsistentAtxTrailerCountKeepsCorrectResults (3 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.CyclicAtxLeafChainKeepsCorrectResults
+[       OK ] SpatialWhereIndexFallbackTest.CyclicAtxLeafChainKeepsCorrectResults (3 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.MissingSpxStillUsesAtxCandidates
+[       OK ] SpatialWhereIndexFallbackTest.MissingSpxStillUsesAtxCandidates (4 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.OfficialSetFeatureRebuildsMissingSpxForFreshFastReader
+[       OK ] SpatialWhereIndexFallbackTest.OfficialSetFeatureRebuildsMissingSpxForFreshFastReader (6 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.MissingBothIndexesStillMatches
+[       OK ] SpatialWhereIndexFallbackTest.MissingBothIndexesStillMatches (3 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.NaNFloatKeyFallsBackToActualFieldsForEveryOperator
+[       OK ] SpatialWhereIndexFallbackTest.NaNFloatKeyFallsBackToActualFieldsForEveryOperator (4 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.NonFinitePublicAttributeProbesAreExplicitErrors
+[       OK ] SpatialWhereIndexFallbackTest.NonFinitePublicAttributeProbesAreExplicitErrors (3 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.FiniteWrongKeysDuplicateFidsAndMissingRowsUseCompleteFieldScan
+[       OK ] SpatialWhereIndexFallbackTest.FiniteWrongKeysDuplicateFidsAndMissingRowsUseCompleteFieldScan (50 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.ExactInt64EntryPointRechecksNativeFieldsAndSharesProof
+[       OK ] SpatialWhereIndexFallbackTest.ExactInt64EntryPointRechecksNativeFieldsAndSharesProof (9 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.ValidatedNumericDirectoryReportsColdProofAndWarmQueries
+[numeric-directory] rows=10000 nonnull=9896 cold_ms=1.07325 validation_ms=1.007 validation_rows=19896 cold_pages=31 cache_bytes=3904 warm_queries=63 warm_pages=63 warm_keys=1133 warm_median_ms=0.127209 warm_p95_ms=0.206917 warm_p99_ms=0.22 baseline_pages=126 baseline_keys=11007 baseline_median_ms=0.036166 baseline_p95_ms=0.05475 baseline_p99_ms=0.070083
+[       OK ] SpatialWhereIndexFallbackTest.ValidatedNumericDirectoryReportsColdProofAndWarmQueries (20 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.UnreadableAttributeRowCannotBecomePartialSpatialWhereSuccess
+[       OK ] SpatialWhereIndexFallbackTest.UnreadableAttributeRowCannotBecomePartialSpatialWhereSuccess (3 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.UnsupportedGeometryCannotBecomeSuccessfulPartialResult
+[       OK ] SpatialWhereIndexFallbackTest.UnsupportedGeometryCannotBecomeSuccessfulPartialResult (33 ms)
+[----------] 16 tests from SpatialWhereIndexFallbackTest (163 ms total)
+
+[----------] 4 tests from SpatialWhereIntegrationTest
+[ RUN      ] SpatialWhereIntegrationTest.IndexedSingleComparisonMatchesGdalFullFidVector
+[       OK ] SpatialWhereIntegrationTest.IndexedSingleComparisonMatchesGdalFullFidVector (10 ms)
+[ RUN      ] SpatialWhereIntegrationTest.CompoundWhereEvaluatesOnlyExactSpatialMatches
+[       OK ] SpatialWhereIntegrationTest.CompoundWhereEvaluatesOnlyExactSpatialMatches (4 ms)
+[ RUN      ] SpatialWhereIntegrationTest.StringIndexCandidatesAreRecheckedAgainstFullWhere
+[       OK ] SpatialWhereIntegrationTest.StringIndexCandidatesAreRecheckedAgainstFullWhere (4 ms)
+[ RUN      ] SpatialWhereIntegrationTest.EmptySetsShortCircuitAndInvalidRequestsAreDiagnosed
+[       OK ] SpatialWhereIntegrationTest.EmptySetsShortCircuitAndInvalidRequestsAreDiagnosed (4 ms)
+[----------] 4 tests from SpatialWhereIntegrationTest (23 ms total)
+
+[----------] Global test environment tear-down
+[==========] 22 tests from 3 test suites ran. (247 ms total)
+[  PASSED  ] 22 tests.

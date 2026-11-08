@@ -244,6 +244,7 @@ QueryResult QueryEngine::query_bbox_unified(
         has_z, has_m);
 
     bool source_row_failed = false;
+    bool geometry_evaluation_failed = false;
     auto evaluate_blob = [&](RowSlot fid,
                              const uint8_t* blob,
                              size_t blob_size) {
@@ -278,6 +279,8 @@ QueryResult QueryEngine::query_bbox_unified(
             : SpatialClock::time_point{};
         GeometryModel model = decoder.decode_model(blob, blob_size);
         if (!model.valid()) {
+            if (model.status != GeometryStatus::Empty && model.status != GeometryStatus::Null)
+                geometry_evaluation_failed = true;
             if (profile_stages)
                 result.spatial_metrics.exact_filter_ms +=
                     elapsed_ms(exact_start);
@@ -287,6 +290,7 @@ QueryResult QueryEngine::query_bbox_unified(
 
         const long double scale = model.transform.xy_scale;
         if (scale == 0.0L) {
+            geometry_evaluation_failed = true;
             if (profile_stages)
                 result.spatial_metrics.exact_filter_ms +=
                     elapsed_ms(exact_start);
@@ -299,6 +303,7 @@ QueryResult QueryEngine::query_bbox_unified(
             !std::isfinite(static_cast<double>(query.ymin)) ||
             !std::isfinite(static_cast<double>(query.xmax)) ||
             !std::isfinite(static_cast<double>(query.ymax))) {
+            geometry_evaluation_failed = true;
             if (profile_stages)
                 result.spatial_metrics.exact_filter_ms +=
                     elapsed_ms(exact_start);
@@ -411,6 +416,14 @@ QueryResult QueryEngine::query_bbox_unified(
         evaluate_candidates();
     }
 
+    if (geometry_evaluation_failed) {
+        result.status = QueryStatus::Unsupported;
+        result.error = "source geometry predicate could not be evaluated completely";
+        result.matched_fids.clear();
+        result.spatial_metrics.total_ms = elapsed_ms(total_start);
+        return result;
+    }
+
     if (source_row_failed && !use_sequential_scan) {
         // An unreadable/stale SPX candidate is not proof that the table itself
         // is corrupt. Retry all active rows so stale/deleted candidates can fall back safely.
@@ -430,9 +443,11 @@ QueryResult QueryEngine::query_bbox_unified(
         if (!result.fallback_reason.empty()) result.fallback_reason += "; ";
         result.fallback_reason += "candidate row lookup failed; all active geometry rows evaluated";
     }
-    if (source_row_failed) {
+    if (source_row_failed || geometry_evaluation_failed) {
         result.status = QueryStatus::Unsupported;
-        result.error = "source geometry row could not be read completely";
+        result.error = geometry_evaluation_failed
+            ? "source geometry predicate could not be evaluated completely"
+            : "source geometry row could not be read completely";
         result.matched_fids.clear();
         result.spatial_metrics.total_ms = elapsed_ms(total_start);
         return result;
