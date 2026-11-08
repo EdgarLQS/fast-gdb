@@ -345,6 +345,11 @@ non-finite public-request errors. See [evidence and remaining integrity checks](
 
 ## Bound attribute integrity and incomplete source rows
 
+`SpatialSourceDirectoryTest` exercises the bounded source-bounds directory core:
+random-window candidate coverage, sparse/deleted slots, duplicate versus missing
+FIDs, NULL/Empty, resource rejection and immutable publication. It is not yet a
+QueryEngine integration test. See [component scope](../docs/plan/evidence/2026-11-08-spx-source-directory-core.md).
+
 `full.spx-level-inventory` runs the standalone v1/v2 inventory boundary tests;
 the inventory of five actual GDBs found 125 SPX files containing only level-0
 entries. This is corpus characterization, not source coverage acceptance.

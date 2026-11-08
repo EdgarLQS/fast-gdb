@@ -208,7 +208,8 @@ set(FAST_GDB_READER_INDEX_SOURCES
     src/edgar/explorgdb/reader/index/gdb_attribute_index_query.cpp
     src/edgar/explorgdb/reader/index/gdb_attribute_value_cache.cpp
     src/edgar/explorgdb/reader/index/gdb_indexes.cpp
-    src/edgar/explorgdb/reader/index/gdb_spatial_index.cpp)
+    src/edgar/explorgdb/reader/index/gdb_spatial_index.cpp
+    src/edgar/explorgdb/reader/index/gdb_spatial_source_directory.cpp)
 set(FAST_GDB_READER_QUERY_SOURCES
     src/edgar/explorgdb/reader/query/query_engine.cpp
     src/edgar/explorgdb/reader/query/query_engine_combined.cpp
@@ -374,6 +375,7 @@ if(BUILD_TESTING)
         tests/edgar/explorgdb/reader/index/test_gdb_attribute_index_safety.cpp
         tests/edgar/explorgdb/reader/index/test_gdb_attribute_value_cache.cpp
         tests/edgar/explorgdb/reader/index/test_gdb_spatial_index.cpp
+        tests/edgar/explorgdb/reader/index/test_gdb_spatial_source_directory.cpp
         tests/edgar/explorgdb/reader/index/test_gdb_spatial_index_merge.cpp
         tests/edgar/explorgdb/reader/index/test_gdbindexes.cpp
         tests/edgar/explorgdb/reader/index/test_gdbindexes_expression.cpp)

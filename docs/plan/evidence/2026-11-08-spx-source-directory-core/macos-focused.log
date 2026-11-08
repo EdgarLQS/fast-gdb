@@ -1,0 +1,25 @@
+Note: Google Test filter = SpatialSourceDirectoryTest.*
+[==========] Running 8 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 8 tests from SpatialSourceDirectoryTest
+[ RUN      ] SpatialSourceDirectoryTest.EveryIntersectingSourceIsCoveredByASelectedLeaf
+[       OK ] SpatialSourceDirectoryTest.EveryIntersectingSourceIsCoveredByASelectedLeaf (0 ms)
+[ RUN      ] SpatialSourceDirectoryTest.DuplicateFidsCannotHideMissingNonemptySource
+[       OK ] SpatialSourceDirectoryTest.DuplicateFidsCannotHideMissingNonemptySource (0 ms)
+[ RUN      ] SpatialSourceDirectoryTest.OverlappingXIntervalsKeepEarlierWideLeafAndPruneOthers
+[       OK ] SpatialSourceDirectoryTest.OverlappingXIntervalsKeepEarlierWideLeafAndPruneOthers (0 ms)
+[ RUN      ] SpatialSourceDirectoryTest.NullEntriesCannotProveCoverageForNonemptySource
+[       OK ] SpatialSourceDirectoryTest.NullEntriesCannotProveCoverageForNonemptySource (0 ms)
+[ RUN      ] SpatialSourceDirectoryTest.NullEmptyAndDuplicateGridEntriesRetainValidCoverage
+[       OK ] SpatialSourceDirectoryTest.NullEmptyAndDuplicateGridEntriesRetainValidCoverage (0 ms)
+[ RUN      ] SpatialSourceDirectoryTest.DeletedSlotsShortScansAndWrongTotalsNeverPublish
+[       OK ] SpatialSourceDirectoryTest.DeletedSlotsShortScansAndWrongTotalsNeverPublish (0 ms)
+[ RUN      ] SpatialSourceDirectoryTest.InvalidReferencesAndNonfiniteBoundsFailClosed
+[       OK ] SpatialSourceDirectoryTest.InvalidReferencesAndNonfiniteBoundsFailClosed (0 ms)
+[ RUN      ] SpatialSourceDirectoryTest.ResourceLimitsRejectBeforeLargeAllocations
+[       OK ] SpatialSourceDirectoryTest.ResourceLimitsRejectBeforeLargeAllocations (0 ms)
+[----------] 8 tests from SpatialSourceDirectoryTest (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 8 tests from 1 test suite ran. (0 ms total)
+[  PASSED  ] 8 tests.
