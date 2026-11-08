@@ -345,6 +345,10 @@ non-finite public-request errors. See [evidence and remaining integrity checks](
 
 ## Bound attribute integrity and incomplete source rows
 
+`verify_typed_atx_cli.py` also checks SPX traversal failures, missing files,
+invalid bounds/grids and legitimate empty results in real CLI processes, including
+a damaged copy of the fixed GDB. See [SPX CLI coverage](../docs/plan/evidence/2026-11-08-spx-cli-status.md).
+
 `SpatialWhereIndexFallbackTest.ParsedSpxWithUnreadableLeafCannotReturnSuccessfulEmptyResult`
 checks a GDAL-written SPX whose trailer parses but visited page count is invalid;
 bbox and combined queries must scan the full source. The v2 SPX test also checks

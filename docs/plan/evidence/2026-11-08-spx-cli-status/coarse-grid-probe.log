@@ -1,0 +1,19 @@
+{
+  "kind": "synthetic GDAL coarse-grid formula probe",
+  "grid_resolutions": [
+    1,
+    4,
+    16
+  ],
+  "point": [
+    0,
+    0
+  ],
+  "expected_fids": [
+    0
+  ],
+  "encoded_key": 9295429630926258176,
+  "returncode": 0,
+  "stdout": "=== Spatial Query: /var/folders/z6/n6g4xc114rq43q7qjvz5827w0000gn/T/fast_gdb_coarse_probe_36hv__e2/coarse.spx ===\nBbox: [0.00, 0.00, 0.00, 0.00]\nMatched FIDs: 0\n",
+  "stderr": ""
+}

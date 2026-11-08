@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import struct
 import subprocess
 import tempfile
@@ -79,7 +80,35 @@ def main():
                     for text in texts]
         physical.sort()
         write_atx(strings, [key.decode('utf-16be').encode('utf-16le') for key, _ in physical], 0x20)
+        spatial = folder / 'point.spx'
+        write_atx(spatial, [struct.pack('<Q', ((1 << 29) << 31) | (1 << 29))], 0)
+        broken_spatial = folder / 'broken.spx'
+        broken = bytearray(spatial.read_bytes())
+        struct.pack_into('<I', broken, 4, 0xffffffff)
+        broken_spatial.write_bytes(broken)
+        zero_fid_spatial = folder / 'zero-fid.spx'
+        broken = bytearray(spatial.read_bytes())
+        struct.pack_into('<I', broken, 12, 0)
+        zero_fid_spatial.write_bytes(broken)
+        damaged_gdb = folder / 'damaged.gdb'
+        shutil.copytree(options.gdb, damaged_gdb)
+        spx_path = next(damaged_gdb.glob('*.spx'))
+        table_id = int(spx_path.stem[1:], 16)
+        broken = bytearray(spx_path.read_bytes())
+        assert struct.unpack_from('<I', broken, len(broken) - 4)[0] == 1
+        struct.pack_into('<I', broken, 4, 0xffffffff)
+        spx_path.write_bytes(broken)
         raw_before = snapshot(folder)
+        run('query', damaged_gdb, table_id, 'spatial', 0, 0, 1, 1, 1, 1, code=2)
+        run('query', damaged_gdb, table_id, 'spatial', 0, 0, 1, 1, 0, 0, code=2)
+        expect_fids(run('query-spx', spatial, 0, 0, 0, 0, 1, 1), [0])
+        expect_fids(run('query-spx', spatial, 100, 100, 100, 100, 1, 1), [])
+        for path in (broken_spatial, zero_fid_spatial, folder / 'missing.spx'):
+            run('query-spx', path, 0, 0, 0, 0, 1, 1, code=2)
+        for bounds in ((1, 0, 0, 0), ('nan', 0, 0, 0), (0, 0, 'inf', 0)):
+            run('query-spx', spatial, *bounds, 1, 1, code=2)
+        for grid in ((0, 0), (-1, -1), (1, 2), ('nan', 'nan')):
+            run('query-spx', spatial, 0, 0, 0, 0, *grid, code=2)
         operations = {'=': lambda a, b: a == b, '!=': lambda a, b: a != b,
                       '<': lambda a, b: a < b, '<=': lambda a, b: a <= b,
                       '>': lambda a, b: a > b, '>=': lambda a, b: a >= b}

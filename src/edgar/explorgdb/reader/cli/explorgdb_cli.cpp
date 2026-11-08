@@ -608,29 +608,31 @@ static bool cmd_dump_atx(const std::string& path, const std::string& hint) {
     return true;
 }
 
-static void cmd_query_spx(const std::string& path, double xmin, double ymin,
+static bool cmd_query_spx(const std::string& path, double xmin, double ymin,
                           double xmax, double ymax,
                           double grid_step_x, double grid_step_y) {
     if (!std::isfinite(grid_step_x) || !std::isfinite(grid_step_y) ||
-        grid_step_x != grid_step_y) {
-        std::cerr << "The .spx query path requires a uniform XY grid step\n";
-        return;
+        grid_step_x <= 0.0 || grid_step_x != grid_step_y) {
+        std::cerr << "The .spx query path requires a positive uniform XY grid step\n";
+        return false;
     }
 
     explorgdb::GdbSpatialIndexParser parser(path);
     if (!parser.parse()) {
         std::cerr << "Failed to parse: " << path << "\n";
-        return;
+        return false;
     }
 
     // Use query_bbox for the spatial query
-    std::vector<double> grid_resolutions;
-    if (grid_step_x > 0.0) {
-        grid_resolutions = {grid_step_x, grid_step_x * 4.0, grid_step_x * 16.0};
-    } else {
-        grid_resolutions = {180000.0};
+    std::vector<double> grid_resolutions =
+        {grid_step_x, grid_step_x * 4.0, grid_step_x * 16.0};
+    bool succeeded = false;
+    auto result_fids = parser.query_bbox(xmin, ymin, xmax, ymax, 0.0, 0.0, grid_step_x,
+                                          grid_resolutions, 0, false, &succeeded);
+    if (!succeeded) {
+        std::cerr << "Spatial index traversal or query validation failed\n";
+        return false;
     }
-    auto result_fids = parser.query_bbox(xmin, ymin, xmax, ymax, 0.0, 0.0, grid_step_x, grid_resolutions);
 
     printf("=== Spatial Query: %s ===\n", path.c_str());
     printf("Bbox: [%.2f, %.2f, %.2f, %.2f]\n", xmin, ymin, xmax, ymax);
@@ -644,6 +646,7 @@ static void cmd_query_spx(const std::string& path, double xmin, double ymin,
     if (result_fids.size() > 20) {
         printf("  ... and %zu more\n", result_fids.size() - 20);
     }
+    return true;
 }
 
 static bool cmd_query_atx(const std::string& path, const std::string& op_str,
@@ -754,8 +757,8 @@ static bool cmd_query(const std::string& gdb_path, uint32_t table_id,
         double ymax = std::stod(args[3]);
         double gsx = std::stod(args[4]);
         double gsy = std::stod(args[5]);
-        if (!std::isfinite(gsx) || !std::isfinite(gsy) || gsx != gsy) {
-            std::cerr << "The .spx query path requires a uniform XY grid step\n";
+        if (!std::isfinite(gsx) || !std::isfinite(gsy) || gsx <= 0.0 || gsx != gsy) {
+            std::cerr << "The .spx query path requires a positive uniform XY grid step\n";
             return false;
         }
 
@@ -773,7 +776,13 @@ static bool cmd_query(const std::string& gdb_path, uint32_t table_id,
 
         // Use query_bbox instead of iterating all_entries
         std::vector<double> grid_resolutions = {gsx, gsx * 4.0, gsx * 16.0};
-        result_fids = spx_parser.query_bbox(xmin, ymin, xmax, ymax, 0.0, 0.0, gsx, grid_resolutions);
+        bool succeeded = false;
+        result_fids = spx_parser.query_bbox(xmin, ymin, xmax, ymax, 0.0, 0.0, gsx,
+                                               grid_resolutions, 0, false, &succeeded);
+        if (!succeeded) {
+            std::cerr << "Spatial index traversal or query validation failed\n";
+            return false;
+        }
 
     } else if (query_type == "attr") {
         if (args.size() < 3) {
@@ -978,9 +987,9 @@ static int run_cli(int argc, char* argv[]) {
         cmd_dump_spx(argv[2]);
     } else if (cmd == "query-spx") {
         if (argc < 9) { std::cerr << "Usage: query-spx <spx_path> <xmin> <ymin> <xmax> <ymax> <grid_step_x> <grid_step_y>\n"; return 1; }
-        cmd_query_spx(argv[2], std::stod(argv[3]), std::stod(argv[4]),
+        return cmd_query_spx(argv[2], std::stod(argv[3]), std::stod(argv[4]),
                       std::stod(argv[5]), std::stod(argv[6]),
-                      std::stod(argv[7]), std::stod(argv[8]));
+                      std::stod(argv[7]), std::stod(argv[8])) ? 0 : 2;
     } else if (cmd == "query-atx") {
         if (argc < 5 || argc > 6) { std::cerr << "Usage: query-atx <atx_path> <op> <value> [field_type]\n"; return 1; }
         return cmd_query_atx(argv[2], argv[3], argv[4], argc > 5 ? argv[5] : "") ? 0 : 2;
