@@ -1,0 +1,1602 @@
+{
+  "scope": "leaf inventory only; not source coverage verification",
+  "datasets": [
+    {
+      "dataset": "/data/testcurve.gdb",
+      "spx_files": 45,
+      "files": [
+        {
+          "file": "a00000004.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 0,
+          "levels": {},
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000000b.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 3,
+          "levels": {
+            "0": 3
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000000c.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 2,
+          "levels": {
+            "0": 2
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000000d.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 3,
+          "levels": {
+            "0": 3
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000000e.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 6,
+          "levels": {
+            "0": 6
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000000f.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 3,
+          "levels": {
+            "0": 3
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000010.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 2,
+          "levels": {
+            "0": 2
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000011.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 4,
+          "levels": {
+            "0": 4
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000012.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 17,
+          "levels": {
+            "0": 17
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000013.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 8,
+          "levels": {
+            "0": 8
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000014.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 0,
+          "levels": {},
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000015.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 6,
+          "levels": {
+            "0": 6
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000016.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 0,
+          "levels": {},
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000017.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 0,
+          "levels": {},
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000018.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 0,
+          "levels": {},
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000019.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 3,
+          "levels": {
+            "0": 3
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000001a.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 3,
+          "levels": {
+            "0": 3
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000001b.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 8,
+          "levels": {
+            "0": 8
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000001c.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 6,
+          "levels": {
+            "0": 6
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000001d.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 0,
+          "levels": {},
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000001e.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 0,
+          "levels": {},
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000001f.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 0,
+          "levels": {},
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000020.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 6,
+          "levels": {
+            "0": 6
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000021.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 8,
+          "levels": {
+            "0": 8
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000022.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 12,
+          "levels": {
+            "0": 12
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000023.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 4,
+          "levels": {
+            "0": 4
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000024.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 3,
+          "levels": {
+            "0": 3
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000025.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 1,
+          "levels": {
+            "0": 1
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000026.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 3,
+          "levels": {
+            "0": 3
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000027.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 1,
+          "levels": {
+            "0": 1
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000028.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 4,
+          "levels": {
+            "0": 4
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000029.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 3,
+          "levels": {
+            "0": 3
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000002a.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 4,
+          "levels": {
+            "0": 4
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000002b.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 4,
+          "levels": {
+            "0": 4
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000002c.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 3,
+          "levels": {
+            "0": 3
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000002d.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 1,
+          "levels": {
+            "0": 1
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000002e.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 0,
+          "levels": {},
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000002f.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 1,
+          "levels": {
+            "0": 1
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000030.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 0,
+          "levels": {},
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000031.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 1,
+          "levels": {
+            "0": 1
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000032.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 0,
+          "levels": {},
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000033.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 2,
+          "pages": 296,
+          "leaf_pages": 295,
+          "entries": 100000,
+          "levels": {
+            "0": 100000
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000034.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 2,
+          "pages": 57,
+          "leaf_pages": 56,
+          "entries": 18931,
+          "levels": {
+            "0": 18931
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000035.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 2,
+          "pages": 71,
+          "leaf_pages": 70,
+          "entries": 23530,
+          "levels": {
+            "0": 23530
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000036.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 3,
+          "pages": 2952,
+          "leaf_pages": 2942,
+          "entries": 1000000,
+          "levels": {
+            "0": 1000000
+          },
+          "signed_leaf_order": true
+        }
+      ]
+    },
+    {
+      "dataset": "/src/test_data/gdb/acceptance_metadata.gdb",
+      "spx_files": 7,
+      "files": [
+        {
+          "file": "a00000004.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 0,
+          "levels": {},
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000000d.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 7,
+          "levels": {
+            "0": 7
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000000e.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 5,
+          "levels": {
+            "0": 5
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000000f.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 5,
+          "levels": {
+            "0": 5
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000010.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 22,
+          "levels": {
+            "0": 22
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000011.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 18,
+          "levels": {
+            "0": 18
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000012.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 3,
+          "levels": {
+            "0": 3
+          },
+          "signed_leaf_order": true
+        }
+      ]
+    },
+    {
+      "dataset": "/tmp/gdal-historical/testopenfilegdb.gdb",
+      "spx_files": 35,
+      "files": [
+        {
+          "file": "a00000004.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 0,
+          "levels": {},
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000000a.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 5,
+          "levels": {
+            "0": 5
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000000b.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 20,
+          "levels": {
+            "0": 20
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000000c.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 20,
+          "levels": {
+            "0": 20
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000000d.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 20,
+          "levels": {
+            "0": 20
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000000e.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 20,
+          "levels": {
+            "0": 20
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000000f.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 20,
+          "levels": {
+            "0": 20
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000010.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 10,
+          "levels": {
+            "0": 10
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000011.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 5,
+          "levels": {
+            "0": 5
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000012.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 20,
+          "levels": {
+            "0": 20
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000013.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 20,
+          "levels": {
+            "0": 20
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000014.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 20,
+          "levels": {
+            "0": 20
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000015.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 20,
+          "levels": {
+            "0": 20
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000016.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 20,
+          "levels": {
+            "0": 20
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000017.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 20,
+          "levels": {
+            "0": 20
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000018.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 10,
+          "levels": {
+            "0": 10
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000019.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 0,
+          "levels": {},
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000001a.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 0,
+          "levels": {},
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000001b.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 0,
+          "levels": {},
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000001d.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 0,
+          "levels": {},
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000001f.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 36,
+          "levels": {
+            "0": 36
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000020.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 0,
+          "levels": {},
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000021.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 1,
+          "levels": {
+            "0": 1
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000022.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 1,
+          "levels": {
+            "0": 1
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000023.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 4,
+          "levels": {
+            "0": 4
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000024.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 4,
+          "levels": {
+            "0": 4
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000025.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 4,
+          "levels": {
+            "0": 4
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000026.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 4,
+          "levels": {
+            "0": 4
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000027.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 4,
+          "levels": {
+            "0": 4
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000028.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 4,
+          "levels": {
+            "0": 4
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000029.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 4,
+          "levels": {
+            "0": 4
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000002a.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 4,
+          "levels": {
+            "0": 4
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000002b.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 4,
+          "levels": {
+            "0": 4
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000002c.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 4,
+          "levels": {
+            "0": 4
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000002d.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 0,
+          "levels": {},
+          "signed_leaf_order": true
+        }
+      ]
+    },
+    {
+      "dataset": "/tmp/gdal-historical/testopenfilegdb92.gdb",
+      "spx_files": 19,
+      "files": [
+        {
+          "file": "a00000028.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 5,
+          "levels": {
+            "0": 5
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000029.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 20,
+          "levels": {
+            "0": 20
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000002a.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 20,
+          "levels": {
+            "0": 20
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000002b.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 20,
+          "levels": {
+            "0": 20
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000002c.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 20,
+          "levels": {
+            "0": 20
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000002d.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 10,
+          "levels": {
+            "0": 10
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000002e.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 5,
+          "levels": {
+            "0": 5
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000002f.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 20,
+          "levels": {
+            "0": 20
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000030.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 20,
+          "levels": {
+            "0": 20
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000031.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 20,
+          "levels": {
+            "0": 20
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000032.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 20,
+          "levels": {
+            "0": 20
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000033.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 20,
+          "levels": {
+            "0": 20
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000034.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 10,
+          "levels": {
+            "0": 10
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000035.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 0,
+          "levels": {},
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000036.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 0,
+          "levels": {},
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000037.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 0,
+          "levels": {},
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000038.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 0,
+          "levels": {},
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000039.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 36,
+          "levels": {
+            "0": 36
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000003a.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 0,
+          "levels": {},
+          "signed_leaf_order": true
+        }
+      ]
+    },
+    {
+      "dataset": "/tmp/gdal-historical/testopenfilegdb93.gdb",
+      "spx_files": 19,
+      "files": [
+        {
+          "file": "a00000029.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 5,
+          "levels": {
+            "0": 5
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000002a.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 20,
+          "levels": {
+            "0": 20
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000002b.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 20,
+          "levels": {
+            "0": 20
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000002c.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 20,
+          "levels": {
+            "0": 20
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000002d.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 20,
+          "levels": {
+            "0": 20
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000002e.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 10,
+          "levels": {
+            "0": 10
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000002f.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 5,
+          "levels": {
+            "0": 5
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000030.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 20,
+          "levels": {
+            "0": 20
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000031.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 20,
+          "levels": {
+            "0": 20
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000032.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 20,
+          "levels": {
+            "0": 20
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000033.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 20,
+          "levels": {
+            "0": 20
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000034.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 20,
+          "levels": {
+            "0": 20
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000035.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 10,
+          "levels": {
+            "0": 10
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000036.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 0,
+          "levels": {},
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000037.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 0,
+          "levels": {},
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000038.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 0,
+          "levels": {},
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a00000039.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 0,
+          "levels": {},
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000003a.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 36,
+          "levels": {
+            "0": 36
+          },
+          "signed_leaf_order": true
+        },
+        {
+          "file": "a0000003b.spx",
+          "status": "read",
+          "version": 1,
+          "depth": 1,
+          "pages": 1,
+          "leaf_pages": 1,
+          "entries": 0,
+          "levels": {},
+          "signed_leaf_order": true
+        }
+      ]
+    }
+  ]
+}

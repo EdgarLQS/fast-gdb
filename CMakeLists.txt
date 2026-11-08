@@ -620,6 +620,9 @@ if(BUILD_TESTING)
             PROPERTIES RESOURCE_LOCK fast_gdb_full_test_fixture
                        FIXTURES_REQUIRED fast_gdb_fixture_manifest)
         find_package(Python3 REQUIRED COMPONENTS Interpreter)
+        add_test(NAME full.spx-level-inventory
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/ci/test_inventory_spx_levels.py)
         add_test(
             NAME full.fixture-manifest.acceptance-metadata
             COMMAND ${Python3_EXECUTABLE}

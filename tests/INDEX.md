@@ -345,6 +345,11 @@ non-finite public-request errors. See [evidence and remaining integrity checks](
 
 ## Bound attribute integrity and incomplete source rows
 
+`full.spx-level-inventory` runs the standalone v1/v2 inventory boundary tests;
+the inventory of five actual GDBs found 125 SPX files containing only level-0
+entries. This is corpus characterization, not source coverage acceptance.
+See [inventory evidence](../docs/plan/evidence/2026-11-08-spx-corpus-levels.md).
+
 `SpatialIndexTest.CoarseGridOffsetAndSignedLevelsKeepPointCandidates` checks
 scaled grid shifts and signed mixed-level keys across v1/v2 leaves and branches,
 integer/noninteger ratios and merged ranges. The CLI suite includes the coarse

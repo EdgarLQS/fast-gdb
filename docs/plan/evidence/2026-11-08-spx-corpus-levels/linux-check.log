@@ -1,0 +1,22 @@
+--
+-- === fast-gdb Reader build ===
+-- Product scope: Reader only; FileGDB edits belong to GDAL/OpenFileGDB
+-- Curve backend: BUILTIN
+-- Geometry output: STANDARD_WKB
+-- GDAL components: ON
+-- Pure C++ product: fast_gdb_linear
+-- Unified product: fast_gdb_unified
+-- Hybrid product: fast_gdb_hybrid
+-- Coordinated product: fast_gdb_adaptive
+--
+-- Configuring done (0.1s)
+-- Generating done (0.0s)
+-- Build files have been written to: /tmp/fast-gdb-linux-s52
+Internal ctest changing into directory: /tmp/fast-gdb-linux-s52
+Test project /tmp/fast-gdb-linux-s52
+    Start 652: full.spx-level-inventory
+1/1 Test #652: full.spx-level-inventory .........   Passed    0.08 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) =   0.09 sec
