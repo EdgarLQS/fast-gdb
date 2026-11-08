@@ -1,0 +1,165 @@
+-- Install configuration: "Release"
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gmock
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gmock/gmock-nice-strict.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gmock/gmock-more-actions.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gmock/gmock.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gmock/gmock-cardinalities.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gmock/gmock-spec-builders.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gmock/gmock-matchers.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gmock/gmock-more-matchers.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gmock/gmock-function-mocker.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gmock/gmock-actions.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gmock/internal
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gmock/internal/gmock-pp.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gmock/internal/custom
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gmock/internal/custom/gmock-port.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gmock/internal/custom/gmock-matchers.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gmock/internal/custom/gmock-generated-actions.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gmock/internal/custom/README.md
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gmock/internal/gmock-port.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gmock/internal/gmock-internal-utils.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/lib/libgmock.a
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/lib/libgmock_main.a
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/lib/pkgconfig/gmock.pc
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/lib/pkgconfig/gmock_main.pc
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/lib/cmake/GTest/GTestTargets.cmake
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/lib/cmake/GTest/GTestTargets-release.cmake
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/lib/cmake/GTest/GTestConfigVersion.cmake
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/lib/cmake/GTest/GTestConfig.cmake
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gtest
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gtest/gtest-param-test.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gtest/gtest-matchers.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gtest/gtest-spi.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gtest/gtest-assertion-result.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gtest/gtest-test-part.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gtest/gtest_pred_impl.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gtest/gtest_prod.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gtest/gtest-printers.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gtest/gtest-death-test.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gtest/gtest-typed-test.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gtest/gtest.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gtest/internal
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gtest/internal/gtest-internal.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gtest/internal/gtest-filepath.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gtest/internal/custom
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gtest/internal/custom/gtest-printers.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gtest/internal/custom/gtest-port.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gtest/internal/custom/gtest.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gtest/internal/custom/README.md
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gtest/internal/gtest-type-util.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gtest/internal/gtest-death-test-internal.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gtest/internal/gtest-string.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gtest/internal/gtest-param-util.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gtest/internal/gtest-port.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gtest/internal/gtest-port-arch.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/gtest/gtest-message.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/lib/libgtest.a
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/lib/libgtest_main.a
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/lib/pkgconfig/gtest.pc
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/lib/pkgconfig/gtest_main.pc
+-- Installing: /tmp/fast-gdb-attribute-integrity-install/lib/gdalplugins/3.10/gdal_FastFileGDB.so
+-- Set non-toolchain portion of runtime path of "/tmp/fast-gdb-attribute-integrity-install/lib/gdalplugins/3.10/gdal_FastFileGDB.so" to "$ORIGIN/../.."
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/unified
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/unified/routing.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/unified/unified.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/lib/libfast_gdb_geometry_core.a
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/lib/libexplorgdb_common_lib.a
+-- Installing: /tmp/fast-gdb-attribute-integrity-install/lib/libexplorgdb_reader_lib.a
+-- Installing: /tmp/fast-gdb-attribute-integrity-install/lib/libfast_gdb_runtime.so.0.2.0
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/lib/libfast_gdb_runtime.so.0
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/lib/libfast_gdb_runtime.so
+-- Installing: /tmp/fast-gdb-attribute-integrity-install/lib/libfast_gdb_curve_gdal.a
+-- Installing: /tmp/fast-gdb-attribute-integrity-install/lib/libfast_gdb_adaptive.a
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/common
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/common/varint.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/common/uuid_value.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/common/binary_reader.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/common/ole_date.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/common/explorgdb_types.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/common/utf16.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/capability_report.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/reader.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/catalog_resolver.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/field_layout.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/gdb_catalog.h
+-- Installing: /tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/gdb_table.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/gdb_tablx.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/gdb_tablx_cache.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/metadata_reader.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/curve_geometry.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/gdb_geometry.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/geometry_model.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/polygon_topology.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/spatial_predicate.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/wkb_writer.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/wkt_writer.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/gdb_attribute_index.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/gdb_indexes.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/gdb_spatial_index.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/unistd.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/windows_posix_compat.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/windows_sliding_map.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/query_engine.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/sys/mman.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/geometry/geometry_model.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/curve_gdal
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/curve_gdal/gdal_curve_backend.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/curve_gdal/hybrid_geometry_reader.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/adaptive
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/adaptive/adaptive_reader.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/adaptive/adaptive_backends.h
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/lib/cmake/fast_gdb/fast_gdbTargets.cmake
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/lib/cmake/fast_gdb/fast_gdbTargets-release.cmake
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/lib/cmake/fast_gdb/fast_gdbConfig.cmake
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/lib/cmake/fast_gdb/fast_gdbConfigVersion.cmake
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/share/fast_gdb/README.md
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/share/fast_gdb/README.en.md
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/share/fast_gdb/CHANGELOG.md
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/share/fast_gdb/LICENSE
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/share/fast_gdb/THIRD_PARTY_NOTICES.md
+-- Up-to-date: /tmp/fast-gdb-attribute-integrity-install/share/fast_gdb/release-notes.md
+[ 50%] Building CXX object CMakeFiles/fast_gdb_package_consumer.dir/main.cpp.o
+[100%] Linking CXX executable fast_gdb_package_consumer
+[100%] Built target fast_gdb_package_consumer
+Internal ctest changing into directory: /tmp/fast-gdb-attribute-integrity-consumer-linear
+Test project /tmp/fast-gdb-attribute-integrity-consumer-linear
+    Start 1: fast_gdb_package_consumer
+1/1 Test #1: fast_gdb_package_consumer ........   Passed    0.00 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) =   0.00 sec
+[ 50%] Building CXX object CMakeFiles/fast_gdb_package_consumer.dir/main.cpp.o
+[100%] Linking CXX executable fast_gdb_package_consumer
+[100%] Built target fast_gdb_package_consumer
+Internal ctest changing into directory: /tmp/fast-gdb-attribute-integrity-consumer-hybrid
+Test project /tmp/fast-gdb-attribute-integrity-consumer-hybrid
+    Start 1: fast_gdb_package_consumer
+1/1 Test #1: fast_gdb_package_consumer ........   Passed    0.02 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) =   0.02 sec
+[ 50%] Building CXX object CMakeFiles/fast_gdb_package_consumer.dir/main.cpp.o
+[100%] Linking CXX executable fast_gdb_package_consumer
+[100%] Built target fast_gdb_package_consumer
+Internal ctest changing into directory: /tmp/fast-gdb-attribute-integrity-consumer-adaptive
+Test project /tmp/fast-gdb-attribute-integrity-consumer-adaptive
+    Start 1: fast_gdb_package_consumer
+1/1 Test #1: fast_gdb_package_consumer ........   Passed    0.02 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) =   0.02 sec
+[ 50%] Linking CXX executable fast_gdb_package_consumer
+[100%] Built target fast_gdb_package_consumer
+Internal ctest changing into directory: /tmp/fast-gdb-attribute-integrity-consumer-unified
+Test project /tmp/fast-gdb-attribute-integrity-consumer-unified
+    Start 1: fast_gdb_package_consumer
+1/1 Test #1: fast_gdb_package_consumer ........   Passed    0.00 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) =   0.00 sec

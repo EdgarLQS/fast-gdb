@@ -4,6 +4,7 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <string_view>
 
 namespace explorgdb {
@@ -27,6 +28,18 @@ inline bool canonical_uuid(std::string_view text, std::array<char, 32>& output) 
         else return false;
     }
     return target == output.size();
+}
+
+// Native GUID fields store mixed-endian 16-byte values.
+inline bool canonical_uuid_bytes(const uint8_t* data, size_t size, std::array<char, 32>& output) {
+    if (!data || size != 16) return false;
+    constexpr uint8_t order[] = {3,2,1,0,5,4,7,6,8,9,10,11,12,13,14,15};
+    constexpr char hex[] = "0123456789abcdef";
+    for (size_t i = 0; i < 16; ++i) {
+        const auto byte = data[order[i]];
+        output[2*i] = hex[byte >> 4]; output[2*i+1] = hex[byte & 15];
+    }
+    return true;
 }
 
 // FileGDB GUID ATX keys are fixed 38-byte uppercase ASCII with braces.

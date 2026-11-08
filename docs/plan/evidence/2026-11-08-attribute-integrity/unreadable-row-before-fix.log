@@ -1,0 +1,32 @@
+Note: Google Test filter = SpatialWhereIndexFallbackTest.UnreadableAttributeRow*
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from SpatialWhereIndexFallbackTest
+[ RUN      ] SpatialWhereIndexFallbackTest.UnreadableAttributeRowCannotBecomePartialSpatialWhereSuccess
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_index_fallback.cpp:757: Failure
+Expected equality of these values:
+  result.status
+    Which is: 4-byte object <00-00 00-00>
+  QueryStatus::Unsupported
+    Which is: 4-byte object <04-00 00-00>
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_index_fallback.cpp:758: Failure
+Value of: result.error.empty()
+  Actual: true
+Expected: false
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_index_fallback.cpp:759: Failure
+Value of: result.matched_fids.empty()
+  Actual: false
+Expected: true
+
+[  FAILED  ] SpatialWhereIndexFallbackTest.UnreadableAttributeRowCannotBecomePartialSpatialWhereSuccess (58 ms)
+[----------] 1 test from SpatialWhereIndexFallbackTest (58 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (58 ms total)
+[  PASSED  ] 0 tests.
+[  FAILED  ] 1 test, listed below:
+[  FAILED  ] SpatialWhereIndexFallbackTest.UnreadableAttributeRowCannotBecomePartialSpatialWhereSuccess
+
+ 1 FAILED TEST

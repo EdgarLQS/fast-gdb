@@ -783,15 +783,11 @@ uint64_t GdbTableParser::sequential_scan(ScanCallback callback) {
             if (bitmap_bytes == 0) break;
         }
 
-        if (accepted) {
-            refs = best_refs;
-        } else {
-            for (auto& ref : refs) {
-                if (!ref.is_null && ref.data == nullptr && ref.type != FieldType::ObjectId)
-                    ref.is_null = true;
-            }
-        }
-
+        // A rejected layout cannot supply trustworthy NULLs or partial cells.
+        // Stop before publishing that row; callers can distinguish a complete
+        // scan from an early stop by its count and their callback stop signal.
+        if (!accepted) break;
+        refs = best_refs;
         if (!callback(fid, refs.data(), field_count)) break;
         ++scanned;
     }

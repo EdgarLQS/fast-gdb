@@ -1,0 +1,113 @@
+Note: Google Test filter = Attribute*CacheTest.*:AttributeValueKeyTest.*:SpatialWhereIndexFallbackTest.*:SpatialWhereUuidTest.*:SpatialWhereUnicodeTest.*:SpatialWhereAdaptiveTest.*:QueryEngineIntegrationTest.*
+[==========] Running 42 tests from 7 test suites.
+[----------] Global test environment set-up.
+[----------] 8 tests from AttributeStringCacheTest
+[ RUN      ] AttributeStringCacheTest.BoundsNeverExcludeMatchingLeavesIncludingLongPrefixes
+[       OK ] AttributeStringCacheTest.BoundsNeverExcludeMatchingLeavesIncludingLongPrefixes (14 ms)
+[ RUN      ] AttributeStringCacheTest.ColdProofAndWarmDifferentProbesSelectOnlyMatchingRanges
+[       OK ] AttributeStringCacheTest.ColdProofAndWarmDifferentProbesSelectOnlyMatchingRanges (8 ms)
+[ RUN      ] AttributeStringCacheTest.RejectsDuplicateMissingAndMismatchedIndexEntries
+[       OK ] AttributeStringCacheTest.RejectsDuplicateMissingAndMismatchedIndexEntries (1 ms)
+[ RUN      ] AttributeStringCacheTest.EmptyIndexRequiresEmptyNonNullSourceProof
+[       OK ] AttributeStringCacheTest.EmptyIndexRequiresEmptyNonNullSourceProof (0 ms)
+[ RUN      ] AttributeStringCacheTest.ChangedSourceIdentitiesCannotReuseProof
+[       OK ] AttributeStringCacheTest.ChangedSourceIdentitiesCannotReuseProof (1 ms)
+[ RUN      ] AttributeStringCacheTest.ConcurrentBuildersShareOneProof
+[       OK ] AttributeStringCacheTest.ConcurrentBuildersShareOneProof (1 ms)
+[ RUN      ] AttributeStringCacheTest.BudgetAndLruBoundMemoryWithoutPublishingCandidates
+[       OK ] AttributeStringCacheTest.BudgetAndLruBoundMemoryWithoutPublishingCandidates (0 ms)
+[ RUN      ] AttributeStringCacheTest.SourceChangeDuringValidationPublishesNeitherProofNorCandidates
+[       OK ] AttributeStringCacheTest.SourceChangeDuringValidationPublishesNeitherProofNorCandidates (0 ms)
+[----------] 8 tests from AttributeStringCacheTest (29 ms total)
+
+[----------] 3 tests from AttributeValueKeyTest
+[ RUN      ] AttributeValueKeyTest.SortableKeysPreserveIntegerPrecisionAndIeeeOrder
+[       OK ] AttributeValueKeyTest.SortableKeysPreserveIntegerPrecisionAndIeeeOrder (0 ms)
+[ RUN      ] AttributeValueKeyTest.ComparisonDomainsCannotShareDifferentMeanings
+[       OK ] AttributeValueKeyTest.ComparisonDomainsCannotShareDifferentMeanings (0 ms)
+[ RUN      ] AttributeValueKeyTest.ValidatedTypedDirectoriesKeepExactV1V2ResultsAcrossUnorderedLeaves
+[       OK ] AttributeValueKeyTest.ValidatedTypedDirectoriesKeepExactV1V2ResultsAcrossUnorderedLeaves (26 ms)
+[----------] 3 tests from AttributeValueKeyTest (26 ms total)
+
+[----------] 5 tests from QueryEngineIntegrationTest
+[ RUN      ] QueryEngineIntegrationTest.OpenReadScanAndQueryBboxOnGeneratedGdb
+[       OK ] QueryEngineIntegrationTest.OpenReadScanAndQueryBboxOnGeneratedGdb (44 ms)
+[ RUN      ] QueryEngineIntegrationTest.ConcurrentIndependentReadersReturnDeterministicResults
+[       OK ] QueryEngineIntegrationTest.ConcurrentIndependentReadersReturnDeterministicResults (5 ms)
+[ RUN      ] QueryEngineIntegrationTest.MissingAttributeIndexIsExplicitAndReturnsEmpty
+[       OK ] QueryEngineIntegrationTest.MissingAttributeIndexIsExplicitAndReturnsEmpty (2 ms)
+[ RUN      ] QueryEngineIntegrationTest.WhereClauseSupportsBasicAndFilters
+[       OK ] QueryEngineIntegrationTest.WhereClauseSupportsBasicAndFilters (2 ms)
+[ RUN      ] QueryEngineIntegrationTest.WhereClauseSupportsOrInAndParentheses
+[       OK ] QueryEngineIntegrationTest.WhereClauseSupportsOrInAndParentheses (2 ms)
+[----------] 5 tests from QueryEngineIntegrationTest (57 ms total)
+
+[----------] 2 tests from SpatialWhereAdaptiveTest
+[ RUN      ] SpatialWhereAdaptiveTest.SelectiveSpatialCandidatesUseFusedSingleRowScan
+[       OK ] SpatialWhereAdaptiveTest.SelectiveSpatialCandidatesUseFusedSingleRowScan (13 ms)
+[ RUN      ] SpatialWhereAdaptiveTest.HighCoverageUsesDirectAttributeIndexAndReportsMetrics
+[       OK ] SpatialWhereAdaptiveTest.HighCoverageUsesDirectAttributeIndexAndReportsMetrics (4 ms)
+[----------] 2 tests from SpatialWhereAdaptiveTest (17 ms total)
+
+[----------] 14 tests from SpatialWhereIndexFallbackTest
+[ RUN      ] SpatialWhereIndexFallbackTest.MissingAtxKeepsCorrectResults
+[       OK ] SpatialWhereIndexFallbackTest.MissingAtxKeepsCorrectResults (3 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.DamagedAtxKeepsCorrectResults
+[       OK ] SpatialWhereIndexFallbackTest.DamagedAtxKeepsCorrectResults (3 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.DamagedAtxAttributeQueryFallsBackToSequentialScan
+[       OK ] SpatialWhereIndexFallbackTest.DamagedAtxAttributeQueryFallsBackToSequentialScan (3 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.MissingAtxAttributeQueryFallsBackToSequentialScan
+[       OK ] SpatialWhereIndexFallbackTest.MissingAtxAttributeQueryFallsBackToSequentialScan (3 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.InconsistentAtxTrailerCountKeepsCorrectResults
+[       OK ] SpatialWhereIndexFallbackTest.InconsistentAtxTrailerCountKeepsCorrectResults (3 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.CyclicAtxLeafChainKeepsCorrectResults
+[       OK ] SpatialWhereIndexFallbackTest.CyclicAtxLeafChainKeepsCorrectResults (3 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.MissingSpxStillUsesAtxCandidates
+[       OK ] SpatialWhereIndexFallbackTest.MissingSpxStillUsesAtxCandidates (3 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.OfficialSetFeatureRebuildsMissingSpxForFreshFastReader
+[       OK ] SpatialWhereIndexFallbackTest.OfficialSetFeatureRebuildsMissingSpxForFreshFastReader (5 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.MissingBothIndexesStillMatches
+[       OK ] SpatialWhereIndexFallbackTest.MissingBothIndexesStillMatches (4 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.NaNFloatKeyFallsBackToActualFieldsForEveryOperator
+[       OK ] SpatialWhereIndexFallbackTest.NaNFloatKeyFallsBackToActualFieldsForEveryOperator (4 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.NonFinitePublicAttributeProbesAreExplicitErrors
+[       OK ] SpatialWhereIndexFallbackTest.NonFinitePublicAttributeProbesAreExplicitErrors (3 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.FiniteWrongKeysDuplicateFidsAndMissingRowsUseCompleteFieldScan
+[       OK ] SpatialWhereIndexFallbackTest.FiniteWrongKeysDuplicateFidsAndMissingRowsUseCompleteFieldScan (45 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.ExactInt64EntryPointRechecksNativeFieldsAndSharesProof
+[       OK ] SpatialWhereIndexFallbackTest.ExactInt64EntryPointRechecksNativeFieldsAndSharesProof (8 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.ValidatedNumericDirectoryReportsColdProofAndWarmQueries
+[numeric-directory] rows=10000 nonnull=9896 cold_ms=1.09754 validation_ms=1.03175 validation_rows=19896 cold_pages=31 cache_bytes=3904 warm_queries=63 warm_pages=63 warm_keys=1133 warm_median_ms=0.126958 warm_p95_ms=0.130917 warm_p99_ms=0.149333 baseline_pages=126 baseline_keys=11007 baseline_median_ms=0.035375 baseline_p95_ms=0.037208 baseline_p99_ms=0.038792
+[       OK ] SpatialWhereIndexFallbackTest.ValidatedNumericDirectoryReportsColdProofAndWarmQueries (18 ms)
+[----------] 14 tests from SpatialWhereIndexFallbackTest (116 ms total)
+
+[----------] 5 tests from SpatialWhereUuidTest
+[ RUN      ] SpatialWhereUuidTest.SyntheticGuidIndexMatchesGdalRecordScanAcrossPages
+[       OK ] SpatialWhereUuidTest.SyntheticGuidIndexMatchesGdalRecordScanAcrossPages (23 ms)
+[ RUN      ] SpatialWhereUuidTest.DamagedGuidIndexFallsBackToValueScan
+[       OK ] SpatialWhereUuidTest.DamagedGuidIndexFallsBackToValueScan (15 ms)
+[ RUN      ] SpatialWhereUuidTest.CanonicalWrongGuidKeysFallBackToOriginalValues
+[       OK ] SpatialWhereUuidTest.CanonicalWrongGuidKeysFallBackToOriginalValues (18 ms)
+[ RUN      ] SpatialWhereUuidTest.DuplicateGuidFidsFallBackToCompleteValues
+[       OK ] SpatialWhereUuidTest.DuplicateGuidFidsFallBackToCompleteValues (18 ms)
+[ RUN      ] SpatialWhereUuidTest.MissingGuidEntryDoesNotLoseOriginalRecord
+[       OK ] SpatialWhereUuidTest.MissingGuidEntryDoesNotLoseOriginalRecord (18 ms)
+[----------] 5 tests from SpatialWhereUuidTest (94 ms total)
+
+[----------] 5 tests from SpatialWhereUnicodeTest
+[ RUN      ] SpatialWhereUnicodeTest.BmpTextUsesIndexAndRechecks
+[       OK ] SpatialWhereUnicodeTest.BmpTextUsesIndexAndRechecks (3 ms)
+[ RUN      ] SpatialWhereUnicodeTest.NonBmpEqualityUsesIndexWithoutFalseNegative
+[       OK ] SpatialWhereUnicodeTest.NonBmpEqualityUsesIndexWithoutFalseNegative (3 ms)
+[ RUN      ] SpatialWhereUnicodeTest.FullStringPredicatesRecheckPaddingTruncationAndUnicodeOrder
+[       OK ] SpatialWhereUnicodeTest.FullStringPredicatesRecheckPaddingTruncationAndUnicodeOrder (31 ms)
+[ RUN      ] SpatialWhereUnicodeTest.ValidatedDirectoryPrunesMultiPageQueriesAndRefreshesSnapshots
+[string-directory] rows=10000 field_width=256 long_values=1 cold_ms=3.57717 cold_pages=419 cache_bytes=54462 warm_queries=63 warm_pages=67 warm_entries=1600 warm_median_ms=0.13 warm_p95_ms=0.145583 warm_p99_ms=0.151625 baseline_pages=26397 baseline_entries=630000 baseline_median_ms=2.58125 baseline_p95_ms=2.65762 baseline_p99_ms=2.69892
+[       OK ] SpatialWhereUnicodeTest.ValidatedDirectoryPrunesMultiPageQueriesAndRefreshesSnapshots (220 ms)
+[ RUN      ] SpatialWhereUnicodeTest.ChangedIndexWithWrongKeysFallsBackAndCachesFailedProof
+[       OK ] SpatialWhereUnicodeTest.ChangedIndexWithWrongKeysFallsBackAndCachesFailedProof (4 ms)
+[----------] 5 tests from SpatialWhereUnicodeTest (264 ms total)
+
+[----------] Global test environment tear-down
+[==========] 42 tests from 7 test suites ran. (605 ms total)
+[  PASSED  ] 42 tests.

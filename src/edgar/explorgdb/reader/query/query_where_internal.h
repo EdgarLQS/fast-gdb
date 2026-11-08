@@ -12,6 +12,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace explorgdb {
@@ -112,6 +113,13 @@ bool evaluate_where(
 bool evaluate_where(
     const CompiledWhere& expression,
     const FeatureRecord& record);
+
+// Bound index predicates recheck field values directly, without reparsing names
+// or converting a physical OLE-day numeric request into a SQL temporal literal.
+bool evaluate_index_numeric(const FieldRef& value, double literal,
+    std::optional<int64_t> integer_literal, AttrOp op);
+bool evaluate_index_string(const FieldRef& value, std::string_view literal,
+    bool uuid, AttrOp op);
 
 /**
  * 对两个升序 FID 序列执行线性双指针交集。

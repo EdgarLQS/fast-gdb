@@ -1,0 +1,9 @@
+Test project /Users/edgarlqs/Downloads/fast-gdb/build-s4-release
+    Start 601: full.fixture-manifest.acceptance-metadata
+1/2 Test #601: full.fixture-manifest.acceptance-metadata ...   Passed    0.06 sec
+    Start 602: full.cli.typed-atx
+2/2 Test #602: full.cli.typed-atx ..........................   Passed    0.47 sec
+
+100% tests passed, 0 tests failed out of 2
+
+Total Test time (real) =   0.54 sec

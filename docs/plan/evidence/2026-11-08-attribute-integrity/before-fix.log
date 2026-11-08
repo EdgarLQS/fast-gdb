@@ -1,0 +1,11 @@
+baseline_binary_sha256 546c128067c5051f0355b6ab963680199640d57346a2857e93ec3b8961d58249
+integer GDAL full field reference [5.0, 10.0, 15.0]
+command ['/tmp/fast-gdb-linux-s52/bin/explorgdb_cli', 'query', '/tmp/fast_gdb_finite_integrity_integer.gdb', '9', 'attr', 'value_idx', '=', '10'] expected_fids [1] exit 0
+=== Query Result: table_id=9, type=attr ===
+Matched FIDs: 0
+
+
+floating GDAL full field reference [5.0, 10.0, 15.0]
+command ['/tmp/fast-gdb-linux-s52/bin/explorgdb_cli', 'query', '/tmp/fast_gdb_finite_integrity_floating.gdb', '9', 'attr', 'value_idx', '=', '10'] expected_fids [1] exit 0
+=== Query Result: table_id=9, type=attr ===
+Matched FIDs: 0

@@ -359,7 +359,7 @@ uint64_t GdbTableParser::scan_geometry_blobs(GeometryScanCallback callback) {
             fields_, geometry_field_index_, nullable_count,
             row_begin, row_begin + row_size);
         if (!located.accepted) {
-            if (!callback(fid, nullptr, 0, true)) return false;
+            if (!callback(fid, nullptr, 0, false)) return false;
         } else if (!callback(fid, located.geometry, located.geometry_size,
                              located.geometry_null)) {
             return false;
@@ -678,7 +678,7 @@ uint64_t GdbTableParser::scan_geometry_candidates(
             fields_, geometry_field_index_, nullable_count,
             row_begin, row_begin + row_size);
         if (!located.accepted) {
-            if (!callback(fid, nullptr, 0, true)) return false;
+            if (!callback(fid, nullptr, 0, false)) return false;
         } else if (!callback(fid, located.geometry, located.geometry_size,
                              located.geometry_null)) {
             return false;

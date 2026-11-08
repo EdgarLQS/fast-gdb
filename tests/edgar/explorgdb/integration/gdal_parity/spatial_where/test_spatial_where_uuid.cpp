@@ -26,7 +26,7 @@ using namespace explorgdb;
 
 class SpatialWhereUuidTest : public GdbTutorialFixture {
 protected:
-    void verifyQueries(bool damage_index) {
+    void verifyQueries(int damage_index) {
         const std::string path = spatial_where_test_utils::fixture_path(
             "fast_gdb_spatial_where_uuid").string();
         std::unique_ptr<GDALDataset, decltype(&GDALClose)> dataset(createGdb(path.c_str()), GDALClose);
@@ -138,6 +138,16 @@ protected:
         bytes[trailer] = 38;
         u32(trailer + 2, 1); u32(trailer + 6, 2);
         u32(trailer + 10, static_cast<uint32_t>(ordered.size())); u32(trailer + 18, 1);
+        if (damage_index == 2) {
+            store_key(page_size + values_offset, "ffffffff-ffff-ffff-ffff-ffffffffffff");
+        } else if (damage_index == 3) {
+            u32(page_size + 12, static_cast<uint32_t>(ordered[1].fid + 1));
+        } else if (damage_index == 4) {
+            const size_t count = ordered.size() - (leaf_count - 1) * capacity;
+            ASSERT_GT(count, 1U);
+            u32(leaf_count * page_size + 4, static_cast<uint32_t>(count - 1));
+            u32(trailer + 10, static_cast<uint32_t>(ordered.size() - 1));
+        }
         {
             std::ofstream output(index_path, std::ios::binary | std::ios::trunc);
             output.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
@@ -175,7 +185,7 @@ protected:
         ASSERT_TRUE(catalog.scan(path));
         const auto* atx = catalog.find_atx(table->id, "guid_idx");
         ASSERT_NE(atx, nullptr);
-        if (damage_index) {
+        if (damage_index == 1) {
             std::ofstream output(index_path, std::ios::binary | std::ios::trunc);
             output.write("bad", 3);
             ASSERT_TRUE(output.good());
@@ -250,4 +260,14 @@ TEST_F(SpatialWhereUuidTest, SyntheticGuidIndexMatchesGdalRecordScanAcrossPages)
 
 TEST_F(SpatialWhereUuidTest, DamagedGuidIndexFallsBackToValueScan) {
     verifyQueries(true);
+}
+
+TEST_F(SpatialWhereUuidTest, CanonicalWrongGuidKeysFallBackToOriginalValues) {
+    verifyQueries(2);
+}
+TEST_F(SpatialWhereUuidTest, DuplicateGuidFidsFallBackToCompleteValues) {
+    verifyQueries(3);
+}
+TEST_F(SpatialWhereUuidTest, MissingGuidEntryDoesNotLoseOriginalRecord) {
+    verifyQueries(4);
 }

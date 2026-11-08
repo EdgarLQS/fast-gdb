@@ -3,12 +3,18 @@
 
 #include <gtest/gtest.h>
 #include <filesystem>
+#include <algorithm>
+#include <chrono>
+#include <cstdlib>
+#include <iostream>
+#include <numeric>
 #include <fstream>
 #include <memory>
 #include <limits>
 #include <string>
 #include <vector>
 #include "cpl_error.h"
+#include "cpl_string.h"
 #include "gdal_priv.h"
 #include "ogrsf_frmts.h"
 #include "catalog_resolver.h"
@@ -464,5 +470,297 @@ TEST_F(SpatialWhereIndexFallbackTest, NonFinitePublicAttributeProbesAreExplicitE
             EXPECT_FALSE(result.error.empty());
             EXPECT_TRUE(result.matched_fids.empty());
         }
+    }
+}
+
+TEST_F(SpatialWhereIndexFallbackTest, FiniteWrongKeysDuplicateFidsAndMissingRowsUseCompleteFieldScan) {
+    const AttrOp ops[] = {AttrOp::Eq, AttrOp::Ne, AttrOp::Lt, AttrOp::Le, AttrOp::Gt, AttrOp::Ge};
+    const char* symbols[] = {"=", "!=", "<", "<=", ">", ">="};
+    const std::vector<std::vector<RowSlot>> expected = {{1}, {0, 2}, {0}, {0, 1}, {2}, {1, 2}};
+    for (bool floating : {false, true}) for (int damage = 0; damage < 5; ++damage) {
+        SCOPED_TRACE(std::to_string(floating) + ":" + std::to_string(damage));
+        const auto path = createFixture(floating);
+        GdbCatalog catalog;
+        ResolvedTable table;
+        ASSERT_TRUE(resolve(path, catalog, table));
+        const auto* atx = catalog.find_atx(table.id, "value_idx");
+        ASSERT_NE(atx, nullptr);
+        {
+            std::fstream file(entry_path(path, atx), std::ios::binary | std::ios::in | std::ios::out);
+            ASSERT_TRUE(file.good());
+            const size_t width = floating ? 8 : 4;
+            const size_t offset = 12 + ((GdbAttributeIndexParser::kPageSize - 12) / (4 + width)) * 4;
+            if (damage == 0 || damage == 3) {
+                file.seekp(static_cast<std::streamoff>(offset + (damage == 0 ? width : 0)));
+                if (floating) {
+                    const double value = damage == 0 ? 5 : 99;
+                    file.write(reinterpret_cast<const char*>(&value), sizeof(value));
+                } else {
+                    ASSERT_TRUE(write_u32_le(file, damage == 0 ? 5 : 99));
+                }
+            } else if (damage == 1 || damage == 4) {
+                file.seekp(16);
+                ASSERT_TRUE(write_u32_le(file, damage == 1 ? 1 : 99));
+            } else {
+                file.seekp(4);
+                ASSERT_TRUE(write_u32_le(file, 2));
+                file.seekp(-12, std::ios::end);
+                ASSERT_TRUE(write_u32_le(file, 2));
+            }
+            ASSERT_TRUE(file.good());
+        }
+        QueryEngine engine(catalog, table);
+        ASSERT_TRUE(engine.open());
+        for (size_t i = 0; i < 6; ++i) {
+            QueryRequest request;
+            request.kind = QueryKind::AttributeDouble;
+            request.index_name = "value_idx";
+            request.double_value = 10;
+            request.attr_op = ops[i];
+            const auto direct = engine.query(request);
+            ASSERT_EQ(direct.status, QueryStatus::Ok) << direct.error;
+            EXPECT_EQ(direct.execution_path, "attribute:sequential");
+            EXPECT_EQ(direct.matched_fids, expected[i]);
+            EXPECT_EQ(direct.attribute_index_metrics.validated_directory_hit, i != 0);
+            request.kind = QueryKind::SpatialWhere;
+            request.xmin = 0; request.ymin = 0; request.xmax = 10; request.ymax = 10;
+            request.where_clause = std::string("value ") + symbols[i] + " 10";
+            const auto combined = engine.query(request);
+            ASSERT_EQ(combined.status, QueryStatus::Ok) << combined.error;
+            EXPECT_FALSE(combined.combined_metrics.used_attribute_index);
+            EXPECT_EQ(combined.matched_fids, expected[i]);
+        }
+    }
+}
+
+TEST_F(SpatialWhereIndexFallbackTest, ExactInt64EntryPointRechecksNativeFieldsAndSharesProof) {
+    const auto path = spatial_where_test_utils::fixture_path("fast_gdb_exact_int64_integrity").string();
+    std::unique_ptr<GDALDataset, decltype(&GDALClose)> dataset(createGdb(path.c_str()), GDALClose);
+    ASSERT_NE(dataset, nullptr);
+    char** options = nullptr;
+    options = CSLSetNameValue(options, "TARGET_ARCGIS_VERSION", "ARCGIS_PRO_3_2_OR_LATER");
+    auto* layer = dataset->CreateLayer("integer_values", nullptr, wkbNone, options);
+    CSLDestroy(options);
+    ASSERT_NE(layer, nullptr);
+    OGRFieldDefn field("value", OFTInteger64);
+    ASSERT_EQ(layer->CreateField(&field), OGRERR_NONE);
+    const std::vector<int64_t> values = {std::numeric_limits<int64_t>::min(), -9007199254740993LL,
+        -1, 0, 9007199254740992LL, 9007199254740993LL, std::numeric_limits<int64_t>::max()};
+    for (auto value : values) {
+        std::unique_ptr<OGRFeature, decltype(&OGRFeature::DestroyFeature)> feature(
+            OGRFeature::CreateFeature(layer->GetLayerDefn()), OGRFeature::DestroyFeature);
+        feature->SetField("value", static_cast<GIntBig>(value));
+        ASSERT_EQ(layer->CreateFeature(feature.get()), OGRERR_NONE);
+    }
+    dataset.reset();
+    dataset.reset(static_cast<GDALDataset*>(GDALOpenEx(path.c_str(), GDAL_OF_VECTOR | GDAL_OF_UPDATE,
+        nullptr, nullptr, nullptr)));
+    ASSERT_NE(dataset, nullptr);
+    ASSERT_TRUE(sql(dataset.get(), "CREATE INDEX value_idx ON integer_values(value)"));
+    dataset.reset();
+    dataset.reset(static_cast<GDALDataset*>(GDALOpenEx(path.c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY,
+        nullptr, nullptr, nullptr)));
+    ASSERT_NE(dataset, nullptr);
+    layer = dataset->GetLayerByName("integer_values");
+    ASSERT_NE(layer, nullptr);
+    std::vector<int64_t> reference;
+    while (auto* raw = layer->GetNextFeature()) {
+        std::unique_ptr<OGRFeature, decltype(&OGRFeature::DestroyFeature)> feature(raw, OGRFeature::DestroyFeature);
+        reference.push_back(feature->GetFieldAsInteger64(0));
+    }
+    ASSERT_EQ(reference, values); // independently establish the actual written field values
+    dataset.reset();
+    GdbCatalog catalog;
+    ASSERT_TRUE(catalog.scan(path));
+    CatalogResolver resolver(catalog);
+    ASSERT_TRUE(resolver.load());
+    const auto table = resolver.resolve("integer_values");
+    ASSERT_TRUE(table.has_value());
+    ASSERT_NE(catalog.find_atx(table->id, "value_idx"), nullptr);
+    QueryEngine engine(catalog, *table);
+    ASSERT_TRUE(engine.open());
+    size_t queries = 0;
+    for (auto value : values) for (auto op : {AttrOp::Eq, AttrOp::Ne, AttrOp::Lt, AttrOp::Le, AttrOp::Gt, AttrOp::Ge}) {
+        std::vector<RowSlot> expected;
+        for (size_t i = 0; i < values.size(); ++i) {
+            const bool match = op == AttrOp::Eq ? values[i] == value : op == AttrOp::Ne ? values[i] != value :
+                op == AttrOp::Lt ? values[i] < value : op == AttrOp::Le ? values[i] <= value :
+                op == AttrOp::Gt ? values[i] > value : values[i] >= value;
+            if (match) expected.push_back(i);
+        }
+        auto result = engine.query_attribute_int64("value_idx", value, op);
+        ASSERT_EQ(result.status, QueryStatus::Ok) << result.error;
+        EXPECT_EQ(result.execution_path, "attribute:atx") << result.fallback_reason;
+        EXPECT_EQ(result.matched_fids, expected);
+        EXPECT_EQ(result.attribute_index_metrics.validated_directory_hit, queries++ != 0);
+    }
+}
+
+TEST_F(SpatialWhereIndexFallbackTest, ValidatedNumericDirectoryReportsColdProofAndWarmQueries) {
+    size_t rows = 10000;
+    if (const char* configured = std::getenv("FAST_GDB_ATTRIBUTE_BENCHMARK_ROWS")) {
+        const auto requested = std::strtoull(configured, nullptr, 10);
+        ASSERT_GE(requested, 1000U);
+        ASSERT_LE(requested, 10000000U);
+        rows = static_cast<size_t>(requested);
+    }
+    size_t factor = 65537;
+    while (std::gcd(factor, rows) != 1) ++factor;
+    const auto path = spatial_where_test_utils::fixture_path("fast_gdb_numeric_directory_scale").string();
+    std::unique_ptr<GDALDataset, decltype(&GDALClose)> dataset(createGdb(path.c_str()), GDALClose);
+    ASSERT_NE(dataset, nullptr);
+    auto* layer = dataset->CreateLayer("numeric_values", nullptr, wkbNone, nullptr);
+    ASSERT_NE(layer, nullptr);
+    OGRFieldDefn field("value", OFTReal);
+    ASSERT_EQ(layer->CreateField(&field), OGRERR_NONE);
+    for (size_t i = 0; i < rows; ++i) {
+        std::unique_ptr<OGRFeature, decltype(&OGRFeature::DestroyFeature)> feature(
+            OGRFeature::CreateFeature(layer->GetLayerDefn()), OGRFeature::DestroyFeature);
+        const double value = (static_cast<int64_t>((i * factor) % rows) - static_cast<int64_t>(rows / 2)) / 8.0 + 0.125;
+        if (i % 97 != 0) feature->SetField("value", value);
+        ASSERT_EQ(layer->CreateFeature(feature.get()), OGRERR_NONE);
+    }
+    ASSERT_TRUE(sql(dataset.get(), "CREATE INDEX value_idx ON numeric_values(value)"));
+    dataset.reset();
+    dataset.reset(static_cast<GDALDataset*>(GDALOpenEx(path.c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY,
+        nullptr, nullptr, nullptr)));
+    ASSERT_NE(dataset, nullptr);
+    layer = dataset->GetLayerByName("numeric_values");
+    ASSERT_NE(layer, nullptr);
+    std::vector<std::pair<RowSlot, double>> oracle;
+    while (auto* raw = layer->GetNextFeature()) {
+        std::unique_ptr<OGRFeature, decltype(&OGRFeature::DestroyFeature)> feature(raw, OGRFeature::DestroyFeature);
+        if (feature->IsFieldSetAndNotNull(0)) oracle.emplace_back(feature->GetFID() - 1, feature->GetFieldAsDouble(0));
+    }
+    dataset.reset();
+    ASSERT_EQ(oracle.size(), rows - (rows + 96) / 97);
+    GdbCatalog catalog;
+    ASSERT_TRUE(catalog.scan(path));
+    CatalogResolver resolver(catalog);
+    ASSERT_TRUE(resolver.load());
+    const auto table = resolver.resolve("numeric_values");
+    ASSERT_TRUE(table.has_value());
+    QueryEngine engine(catalog, *table);
+    ASSERT_TRUE(engine.open());
+    QueryRequest request;
+    request.kind = QueryKind::AttributeDouble;
+    request.index_name = "value_idx";
+    request.double_value = oracle[oracle.size() / 2].second;
+    const auto cold_begin = std::chrono::steady_clock::now();
+    const auto cold = engine.query(request);
+    const double cold_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - cold_begin).count();
+    ASSERT_EQ(cold.status, QueryStatus::Ok) << cold.error;
+    ASSERT_EQ(cold.execution_path, "attribute:atx") << cold.fallback_reason;
+    EXPECT_EQ(cold.matched_fids, (std::vector<RowSlot>{oracle[oracle.size() / 2].first}));
+    EXPECT_FALSE(cold.attribute_index_metrics.validated_directory_hit);
+    EXPECT_EQ(cold.attribute_index_metrics.index_validation_rows, rows + oracle.size());
+    const auto* atx = catalog.find_atx(table->id, "value_idx");
+    ASSERT_NE(atx, nullptr);
+    GdbAttributeIndexParser baseline_index(path + "/" + atx->filename, FieldType::Float64);
+    GdbTableParser baseline_table(table->table_path);
+    ASSERT_TRUE(baseline_table.open());
+    ASSERT_TRUE(baseline_table.load_tablx(table->tablx_path));
+    const auto value_field = std::find_if(baseline_table.fields().begin(), baseline_table.fields().end(),
+        [](const auto& candidate) { return candidate.name == "value"; });
+    ASSERT_NE(value_field, baseline_table.fields().end());
+    const size_t position = static_cast<size_t>(value_field - baseline_table.fields().begin());
+    std::vector<double> warm_ms, baseline_ms;
+    size_t warm_pages = 0, warm_keys = 0, baseline_pages = 0, baseline_keys = 0;
+    for (size_t i = 0; i < 63; ++i) {
+        const auto& target = oracle[(i * 15485863 + 17) % oracle.size()];
+        request.double_value = target.second;
+        const auto begin = std::chrono::steady_clock::now();
+        const auto result = engine.query(request);
+        warm_ms.push_back(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin).count());
+        ASSERT_EQ(result.status, QueryStatus::Ok) << result.error;
+        ASSERT_EQ(result.execution_path, "attribute:atx") << result.fallback_reason;
+        EXPECT_EQ(result.matched_fids, (std::vector<RowSlot>{target.first}));
+        EXPECT_TRUE(result.attribute_index_metrics.validated_directory_hit);
+        EXPECT_EQ(result.attribute_index_metrics.index_validation_rows, 0U);
+        EXPECT_LT(result.attribute_index_metrics.entries_scanned, std::max<size_t>(rows / 10, 500));
+        warm_pages += result.attribute_index_metrics.pages_visited;
+        warm_keys += result.attribute_index_metrics.entries_scanned;
+        std::vector<RowSlot> candidates, checked;
+        AttributeIndexQueryMetrics metrics;
+        const auto baseline_begin = std::chrono::steady_clock::now();
+        ASSERT_TRUE(baseline_index.query_double_direct(target.second, AttrOp::Eq, rows, candidates, &metrics));
+        ASSERT_EQ(baseline_table.scan_field_candidates(candidates, [&](RowSlot fid, const FieldRef* fields, int count) {
+            if (position < static_cast<size_t>(count) && !fields[position].is_null && fields[position].as_f64() == target.second)
+                checked.push_back(fid);
+            return true;
+        }), candidates.size());
+        baseline_ms.push_back(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - baseline_begin).count());
+        EXPECT_EQ(checked, result.matched_fids);
+        baseline_pages += metrics.pages_visited;
+        baseline_keys += metrics.entries_scanned;
+    }
+    std::sort(warm_ms.begin(), warm_ms.end());
+    std::sort(baseline_ms.begin(), baseline_ms.end());
+    std::cout << "[numeric-directory] rows=" << rows << " nonnull=" << oracle.size()
+              << " cold_ms=" << cold_ms << " validation_ms=" << cold.attribute_index_metrics.total_ms
+              << " validation_rows=" << cold.attribute_index_metrics.index_validation_rows
+              << " cold_pages=" << cold.attribute_index_metrics.pages_visited
+              << " cache_bytes=" << cold.attribute_index_metrics.validated_directory_bytes
+              << " warm_queries=63 warm_pages=" << warm_pages << " warm_keys=" << warm_keys
+              << " warm_median_ms=" << warm_ms[31] << " warm_p95_ms=" << warm_ms[59] << " warm_p99_ms=" << warm_ms[62]
+              << " baseline_pages=" << baseline_pages << " baseline_keys=" << baseline_keys
+              << " baseline_median_ms=" << baseline_ms[31] << " baseline_p95_ms=" << baseline_ms[59]
+              << " baseline_p99_ms=" << baseline_ms[62] << '\n';
+}
+
+TEST_F(SpatialWhereIndexFallbackTest, UnreadableAttributeRowCannotBecomePartialSpatialWhereSuccess) {
+    const auto path = createFixture(true);
+    GdbCatalog catalog;
+    ResolvedTable table;
+    ASSERT_TRUE(resolve(path, catalog, table));
+    // Dense GDAL v3 fixture: second logical slot's 5-byte tablx offset.
+    std::ifstream tablx(table.tablx_path, std::ios::binary);
+    ASSERT_TRUE(tablx.good());
+    tablx.seekg(16 + 5);
+    uint64_t offset = 0;
+    for (size_t i = 0; i < 5; ++i) {
+        const int byte = tablx.get();
+        ASSERT_NE(byte, EOF);
+        offset |= static_cast<uint64_t>(static_cast<unsigned char>(byte)) << (8 * i);
+    }
+    ASSERT_GT(offset, 0U);
+    {
+        std::fstream file(table.table_path, std::ios::binary | std::ios::in | std::ios::out);
+        ASSERT_TRUE(file.good());
+        file.seekg(static_cast<std::streamoff>(offset));
+        uint32_t length = 0;
+        for (size_t i = 0; i < 4; ++i) {
+            const int byte = file.get();
+            ASSERT_NE(byte, EOF);
+            length |= static_cast<uint32_t>(static_cast<unsigned char>(byte)) << (8 * i);
+        }
+        ASSERT_GT(length, 8U);
+        ASSERT_LT(length, 4096U);
+        file.seekp(static_cast<std::streamoff>(offset));
+        ASSERT_TRUE(write_u32_le(file, length - 1)); // truncate the row's fixed-width payload
+    }
+    GdbTableParser parser(table.table_path);
+    ASSERT_TRUE(parser.open());
+    ASSERT_TRUE(parser.load_tablx(table.tablx_path));
+    const uint8_t* geometry = nullptr;
+    size_t size = 0;
+    ASSERT_FALSE(parser.peek_geometry_blob(1, geometry, size));
+    FeatureRecord record;
+    ASSERT_FALSE(parser.read_record_by_fid(1, record));
+    QueryEngine engine(catalog, table);
+    ASSERT_TRUE(engine.open());
+    QueryRequest request;
+    request.kind = QueryKind::SpatialWhere;
+    request.xmin = 0; request.ymin = 0; request.xmax = 10; request.ymax = 10;
+    request.where_clause = "value >= 10";
+    for (auto kind : {QueryKind::SpatialWhere, QueryKind::SpatialBbox, QueryKind::AttributeDouble}) {
+        request.kind = kind;
+        request.index_name = "value_idx";
+        request.double_value = 10;
+        request.attr_op = AttrOp::Ge;
+        const auto result = engine.query(request);
+        EXPECT_EQ(result.status, QueryStatus::Unsupported);
+        EXPECT_FALSE(result.error.empty());
+        EXPECT_TRUE(result.matched_fids.empty());
     }
 }

@@ -26,7 +26,7 @@
 #include <vector>
 
 namespace explorgdb {
-namespace detail { struct AttributeStringQueryContext; }
+namespace detail { struct AttributeValueQueryContext; }
 
 // 比较操作符
 enum class AttrOp { Eq, Lt, Le, Gt, Ge, Ne };
@@ -35,8 +35,13 @@ struct AttributeIndexQueryMetrics {
     size_t file_bytes = 0;
     size_t page_count = 0;
     size_t pages_visited = 0;
+    // Leaf key/row visits; validated warm queries include binary-search probes.
     size_t entries_scanned = 0;
     size_t candidate_count = 0;
+    bool validated_directory_hit = false;
+    bool validated_directory_budget_exceeded = false;
+    size_t validated_directory_bytes = 0;
+    size_t index_validation_rows = 0;
     bool string_directory_hit = false;
     bool string_directory_budget_exceeded = false;
     size_t string_directory_bytes = 0;
@@ -151,12 +156,12 @@ public:
     bool query_string_candidates(const std::string& value, AttrOp op, size_t max_fid_count,
         std::vector<RowSlot>& result, AttributeIndexQueryMetrics* metrics = nullptr);
 
-    void set_string_context(std::shared_ptr<const detail::AttributeStringQueryContext> context) {
-        string_context_ = std::move(context);
+    void set_value_context(std::shared_ptr<const detail::AttributeValueQueryContext> context) {
+        value_context_ = std::move(context);
     }
 
 private:
-    std::shared_ptr<const detail::AttributeStringQueryContext> string_context_;
+    std::shared_ptr<const detail::AttributeValueQueryContext> value_context_;
     enum class NumericQueryKind { Floating, Int64, TemporalMilliseconds };
 
     bool parse_trailer();

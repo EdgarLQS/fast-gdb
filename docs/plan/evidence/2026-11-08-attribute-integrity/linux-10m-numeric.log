@@ -1,0 +1,12 @@
+Note: Google Test filter = SpatialWhereIndexFallbackTest.ValidatedNumericDirectoryReportsColdProofAndWarmQueries
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from SpatialWhereIndexFallbackTest
+[ RUN      ] SpatialWhereIndexFallbackTest.ValidatedNumericDirectoryReportsColdProofAndWarmQueries
+[numeric-directory] rows=10000000 nonnull=9896907 cold_ms=1111.58 validation_ms=1111.52 validation_rows=19896907 cold_pages=29111 cache_bytes=3676190 warm_queries=63 warm_pages=63 warm_keys=1138 warm_median_ms=0.025918 warm_p95_ms=0.028418 warm_p99_ms=0.045669 baseline_pages=189 baseline_keys=10710 baseline_median_ms=0.014334 baseline_p95_ms=0.016209 baseline_p99_ms=0.018376
+[       OK ] SpatialWhereIndexFallbackTest.ValidatedNumericDirectoryReportsColdProofAndWarmQueries (5061 ms)
+[----------] 1 test from SpatialWhereIndexFallbackTest (5061 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (5061 ms total)
+[  PASSED  ] 1 test.

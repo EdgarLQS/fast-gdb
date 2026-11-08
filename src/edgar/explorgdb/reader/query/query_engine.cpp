@@ -8,17 +8,14 @@
 #include "gdb_geometry.h"
 #include "gdb_indexes.h"
 #include "query_where_internal.h"
-#include "gdb_attribute_string_cache.h"
+#include "gdb_attribute_value_cache.h"
 
 #include <algorithm>
 #include <cctype>
 #include <cmath>
-#include <iomanip>
 #include <limits>
 #include <list>
-#include <locale>
 #include <mutex>
-#include <sstream>
 #include <unordered_map>
 #include <utility>
 
@@ -103,6 +100,29 @@ size_t scan_stop_after(const QueryRequest& request) {
     }
     return stop_after == std::numeric_limits<size_t>::max()
         ? 0 : stop_after;
+}
+
+template <class Matches>
+void scan_result_rows(GdbTableParser& parser, const QueryRequest& request, QueryResult& result, Matches matches) {
+    const size_t stop_after = scan_stop_after(request);
+    size_t received = 0;
+    bool cancelled = false, limited = false;
+    parser.sequential_scan([&](RowSlot fid, const FieldRef* fields, int count) {
+        ++received;
+        if (matches(fields, count)) result.matched_fids.push_back(fid);
+        cancelled = request.cancel_requested && request.cancel_requested();
+        limited = stop_after != 0 && result.matched_fids.size() >= stop_after;
+        return !cancelled && !limited;
+    });
+    if (cancelled) {
+        result.status = QueryStatus::Cancelled;
+        result.error = "query cancelled";
+        result.matched_fids.clear();
+    } else if (!limited && received != parser.active_feature_count()) {
+        result.status = QueryStatus::Unsupported;
+        result.error = "source field scan could not be completed";
+        result.matched_fids.clear();
+    }
 }
 
 void classify_query_status(const QueryRequest& request, QueryResult& result) {
@@ -348,6 +368,18 @@ bool QueryEngine::open() {
 
 // 方法实现：用途、参数和返回值契约见对应头文件或本文件声明。
 QueryResult QueryEngine::query(const QueryRequest& request) {
+    return query_impl(request, std::nullopt);
+}
+
+QueryResult QueryEngine::query_attribute_int64(const std::string& index_name, int64_t value, AttrOp op) {
+    QueryRequest request;
+    request.kind = QueryKind::AttributeDouble;
+    request.index_name = index_name;
+    request.attr_op = op;
+    return query_impl(request, value);
+}
+
+QueryResult QueryEngine::query_impl(const QueryRequest& request, std::optional<int64_t> integer_value) {
     // FeatureCursor 依赖底层映射和共享扫描状态，活动期间阻止旁路查询。
     if (feature_cursor_active()) {
         QueryResult result;
@@ -364,7 +396,8 @@ QueryResult QueryEngine::query(const QueryRequest& request) {
         result.fallback_reason = kFallbackTableNotOpen;
         return result;
     }
-    const bool check_string_sources = request.kind == QueryKind::AttributeString ||
+    const bool check_attribute_sources = request.kind == QueryKind::AttributeDouble ||
+                                      request.kind == QueryKind::AttributeString ||
                                       request.kind == QueryKind::SpatialWhere;
     const auto source_current = [&] {
         TablxCacheKey table, tablx;
@@ -378,7 +411,7 @@ QueryResult QueryEngine::query(const QueryRequest& request) {
         result.error = "query source changed; reopen the dataset";
         return result;
     };
-    if (check_string_sources && !source_current()) return changed_result();
+    if (check_attribute_sources && !source_current()) return changed_result();
     if (!projection_is_valid(request, parser_.get())) {
         QueryResult result;
         result.status = QueryStatus::InvalidRequest;
@@ -408,7 +441,7 @@ QueryResult QueryEngine::query(const QueryRequest& request) {
             break;
         case QueryKind::AttributeDouble:
         case QueryKind::AttributeString:
-            result = query_attribute(request);
+            result = query_attribute(request, integer_value);
             break;
         case QueryKind::WhereClause:
             result = query_where(request);
@@ -422,7 +455,7 @@ QueryResult QueryEngine::query(const QueryRequest& request) {
             result.fallback_reason = kFallbackInvalidQueryKind;
             break;
     }
-    if (check_string_sources && !source_current()) return changed_result();
+    if (check_attribute_sources && !source_current()) return changed_result();
     classify_query_status(request, result);
     return apply_request_options(std::move(result), request, parser_.get());
 }
@@ -447,15 +480,7 @@ QueryResult QueryEngine::query_sequential_scan(const QueryRequest& request) cons
         return result;
     }
 
-    const size_t stop_after = scan_stop_after(request);
-    parser_->sequential_scan(
-        [&](RowSlot fid, const FieldRef*, int) {
-            result.matched_fids.push_back(fid);
-            const bool cancelled = request.cancel_requested &&
-                request.cancel_requested();
-            return !cancelled &&
-                (stop_after == 0 || result.matched_fids.size() < stop_after);
-        });
+    scan_result_rows(*parser_, request, result, [](const FieldRef*, int) { return true; });
     return result;
 }
 
@@ -550,7 +575,7 @@ std::vector<RowSlot> QueryEngine::query_attribute_double(
     request.index_name = index_name;
     request.double_value = value;
     request.attr_op = op;
-    return query_attribute(request).matched_fids;
+    return query(request).matched_fids;
 }
 
 std::vector<RowSlot> QueryEngine::query_attribute_string(
@@ -561,34 +586,46 @@ std::vector<RowSlot> QueryEngine::query_attribute_string(
     request.index_name = index_name;
     request.string_value = value;
     request.attr_op = op;
-    return query_attribute(request).matched_fids;
+    return query(request).matched_fids;
 }
 
-std::shared_ptr<const detail::AttributeStringQueryContext>
-QueryEngine::make_string_context(size_t field) const {
-    if (!parser_ || !source_tablx_identity_ || field >= parser_->fields().size() ||
-        parser_->fields()[field].type != FieldType::String) return {};
-    auto context = std::make_shared<detail::AttributeStringQueryContext>();
-    context->cache = catalog_.string_index_cache();
+std::shared_ptr<const detail::AttributeValueQueryContext>
+QueryEngine::make_value_context(size_t field, bool temporal) const {
+    if (!parser_ || !source_tablx_identity_ || field >= parser_->fields().size()) return {};
+    auto context = std::make_shared<detail::AttributeValueQueryContext>();
+    context->cache = catalog_.attribute_value_cache();
     context->table_path = resolved_.table_path;
     context->tablx_path = resolved_.tablx_path;
     context->field = field;
+    const auto type = parser_->fields()[field].type;
+    context->domain = type == FieldType::String ? attribute_value::Domain::String :
+        (type == FieldType::UUID_1 || type == FieldType::UUID_2) ? attribute_value::Domain::Uuid :
+        temporal ? attribute_value::Domain::Temporal : type == FieldType::Int64 ?
+        attribute_value::Domain::Integer : attribute_value::Domain::Floating;
+    const auto domain = context->domain;
+    context->index_value = [type, domain](const uint8_t* data, size_t width, std::string& result) {
+        return attribute_value::index(data, width, type, domain, result);
+    };
     context->active_rows = parser_->active_feature_count();
     context->expected_table = parser_->source_identity();
     context->expected_tablx = *source_tablx_identity_;
-    detail::StringDirectoryKey current;
+    detail::AttributeDirectoryKey current;
     if (!context->key({}, current)) return {};
     auto* table = parser_.get();
-    context->read_values = [table, field](const std::vector<RowSlot>& fids,
-        const detail::AttributeStringQueryContext::ValueCallback& callback) {
+    context->read_values = [table, field, domain](const std::vector<RowSlot>& fids,
+        const detail::AttributeValueQueryContext::ValueCallback& callback) {
         bool ok = true;
         const auto count = table->scan_field_candidates(fids, [&](RowSlot fid, const FieldRef* fields, int size) {
-            if (field >= static_cast<size_t>(size) || fields[field].is_null ||
-                fields[field].type != FieldType::String || !callback(fid, fields[field].as_string_view())) {
+            if (field >= static_cast<size_t>(size) || fields[field].is_null) {
                 ok = false;
                 return false;
             }
-            return true;
+            std::string encoded;
+            const bool valid = domain == attribute_value::Domain::String ?
+                fields[field].type == FieldType::String && callback(fid, fields[field].as_string_view()) :
+                attribute_value::field(fields[field], domain, encoded) && callback(fid, encoded);
+            if (!valid) ok = false;
+            return valid;
         });
         return ok && count == fids.size();
     };
@@ -603,9 +640,9 @@ QueryEngine::make_string_context(size_t field) const {
     return context;
 }
 
-QueryResult QueryEngine::query_attribute(const QueryRequest& request) {
+QueryResult QueryEngine::query_attribute(const QueryRequest& request, std::optional<int64_t> integer_value) {
     QueryResult result;
-    if (request.kind == QueryKind::AttributeDouble && !std::isfinite(request.double_value)) {
+    if (request.kind == QueryKind::AttributeDouble && !integer_value && !std::isfinite(request.double_value)) {
         result.status = QueryStatus::InvalidRequest;
         result.error = "attribute query requires a finite numeric value";
         return result;
@@ -614,8 +651,7 @@ QueryResult QueryEngine::query_attribute(const QueryRequest& request) {
     const auto* atx =
         catalog_.find_atx(resolved_.id, request.index_name);
     std::vector<IndexEntry> index_metadata;
-    const bool has_index_metadata =
-        catalog_.read_index_metadata(resolved_.id, index_metadata);
+    (void)catalog_.read_index_metadata(resolved_.id, index_metadata);
     std::optional<FieldType> indexed_field_type;
     size_t indexed_field_position = 0;
     for (const auto& entry : index_metadata) {
@@ -634,46 +670,70 @@ QueryResult QueryEngine::query_attribute(const QueryRequest& request) {
             }
         }
     }
-    if (atx != nullptr && !indexed_field_type.has_value()) {
+    if (!indexed_field_type.has_value()) {
         result.status = QueryStatus::Unsupported;
         result.error = "direct indexed-field metadata unavailable; use an explicit WHERE predicate";
-        result.fallback_reason = result.error;
+        result.fallback_reason = atx ? result.error : kFallbackAttributeIndexMissing;
+        if (!atx) result.execution_path = kPathAttributeSequential;
         return result;
     }
-    std::optional<std::vector<RowSlot>> string_candidates;
+    const bool uuid = *indexed_field_type == FieldType::UUID_1 || *indexed_field_type == FieldType::UUID_2;
+    const bool textual = *indexed_field_type == FieldType::String || uuid;
+    const auto type = *indexed_field_type;
+    const bool numeric = type == FieldType::Int16 || type == FieldType::Int32 || type == FieldType::Int64 ||
+        type == FieldType::ObjectId || type == FieldType::Float32 || type == FieldType::Float64 ||
+        type == FieldType::DateTime || type == FieldType::Date || type == FieldType::Time ||
+        type == FieldType::DateTimeWithOffset;
+    if (!textual && !numeric) {
+        result.status = QueryStatus::Unsupported;
+        result.error = "unsupported indexed field type";
+        return result;
+    }
+    if ((request.kind == QueryKind::AttributeString) != textual ||
+        (integer_value && *indexed_field_type != FieldType::Int64)) {
+        result.status = QueryStatus::InvalidRequest;
+        result.error = "attribute predicate type does not match the indexed field";
+        return result;
+    }
+    std::string string_literal = request.string_value;
+    if (uuid && !attribute_value::uuid(request.string_value, string_literal)) {
+        result.status = QueryStatus::InvalidRequest;
+        result.error = "invalid UUID attribute literal";
+        return result;
+    }
+    std::optional<std::vector<RowSlot>> validated_candidates;
     const bool complete_string_query = request.kind == QueryKind::AttributeString &&
                                        indexed_field_type == FieldType::String;
     if (atx != nullptr) {
         try {
             GdbAttributeIndexParser index(
                 catalog_.path() + "/" + atx->filename, *indexed_field_type);
-            if (complete_string_query) {
-                auto context = make_string_context(indexed_field_position);
+            {
+                auto context = make_value_context(indexed_field_position);
                 if (!context) {
                     result.status = QueryStatus::SourceChanged;
-                    result.error = "string index source changed; reopen the dataset";
+                    result.error = "attribute index source changed; reopen the dataset";
                     return result;
                 }
-                index.set_string_context(std::move(context));
+                index.set_value_context(std::move(context));
             }
             std::vector<RowSlot> indexed_fids;
             const auto max_fid_count = static_cast<size_t>(std::min<RowSlot>(
                 parser_->feature_count(), std::numeric_limits<size_t>::max()));
-            const bool indexed = request.kind == QueryKind::AttributeDouble
+            const bool indexed = integer_value
+                ? index.query_int64_direct(*integer_value, request.attr_op, max_fid_count,
+                    indexed_fids, &result.attribute_index_metrics)
+                : request.kind == QueryKind::AttributeDouble
                 ? index.query_double_direct(
                       request.double_value, request.attr_op,
-                      max_fid_count, indexed_fids)
+                      max_fid_count, indexed_fids, &result.attribute_index_metrics)
                 : (complete_string_query
                     ? index.query_string_candidates(request.string_value, request.attr_op,
                         max_fid_count, indexed_fids, &result.attribute_index_metrics)
                     : index.query_string_direct(request.string_value, request.attr_op,
-                        max_fid_count, indexed_fids));
+                        max_fid_count, indexed_fids, &result.attribute_index_metrics));
             if (indexed) {
-                if (complete_string_query) string_candidates = std::move(indexed_fids);
-                else {
-                    result.matched_fids = std::move(indexed_fids);
-                    return result;
-                }
+                validated_candidates = std::move(indexed_fids);
             }
         } catch (...) {
             // A damaged or concurrently replaced ATX uses the same scan
@@ -681,88 +741,39 @@ QueryResult QueryEngine::query_attribute(const QueryRequest& request) {
         }
     }
 
-    if (!string_candidates.has_value()) {
+    if (!validated_candidates.has_value()) {
         result.execution_path = kPathAttributeSequential;
         result.fallback_reason = atx == nullptr
             ? kFallbackAttributeIndexMissing
             : "attribute index could not be parsed; sequential scan used";
     }
 
-    // An index name is not sufficient to infer a field. Only fall back when
-    // the catalog declares a direct-field index that can be compiled safely.
-    if (!has_index_metadata) return result;
-    const auto metadata = std::find_if(
-        index_metadata.begin(), index_metadata.end(),
-        [&](const IndexEntry& entry) {
-            return entry.name == request.index_name &&
-                   GdbIndexesParser::is_direct_field_expression(
-                       entry.column_name);
-        });
-    if (metadata == index_metadata.end()) {
-        if (atx != nullptr) {
-            result.fallback_reason +=
-                "; direct indexed-field metadata unavailable";
-        }
-        return result;
-    }
-
-    const char* operation = "=";
-    switch (request.attr_op) {
-        case AttrOp::Eq: operation = "="; break;
-        case AttrOp::Ne: operation = "!="; break;
-        case AttrOp::Lt: operation = "<"; break;
-        case AttrOp::Le: operation = "<="; break;
-        case AttrOp::Gt: operation = ">"; break;
-        case AttrOp::Ge: operation = ">="; break;
-    }
-
-    std::string literal;
-    if (request.kind == QueryKind::AttributeString) {
-        literal.reserve(request.string_value.size() + 2U);
-        literal.push_back('\'');
-        for (char character : request.string_value) {
-            literal.push_back(character);
-            if (character == '\'') literal.push_back('\'');
-        }
-        literal.push_back('\'');
-    } else {
-        std::ostringstream number;
-        number.imbue(std::locale::classic());
-        number << std::setprecision(
-                      std::numeric_limits<double>::max_digits10)
-               << request.double_value;
-        literal = number.str();
-    }
-
-    const CompiledWhere expression = prepare_where(
-        metadata->column_name + " " + operation + " " + literal,
-        &result.query_preparation_cache_hit);
-    if (!expression.valid()) {
-        result.status = QueryStatus::InvalidRequest;
-        result.error = expression.error();
-        result.fallback_reason +=
-            "; sequential scan predicate unsupported: " + result.error;
-        return result;
-    }
-
-    if (string_candidates.has_value()) {
-        const auto scanned = parser_->scan_field_candidates(*string_candidates,
-            [&](RowSlot fid, const FieldRef* fields, int field_count) {
-                if (evaluate_where(expression, fields, field_count)) result.matched_fids.push_back(fid);
+    const auto matches = [&](const FieldRef* fields, int count) {
+        if (indexed_field_position >= static_cast<size_t>(count)) return false;
+        const auto& field = fields[indexed_field_position];
+        return textual ? evaluate_index_string(field, string_literal, uuid, request.attr_op) :
+            evaluate_index_numeric(field, request.double_value, integer_value, request.attr_op);
+    };
+    if (validated_candidates) {
+        const auto scanned = parser_->scan_field_candidates(*validated_candidates,
+            [&](RowSlot fid, const FieldRef* fields, int count) {
+                if (matches(fields, count)) result.matched_fids.push_back(fid);
                 return true;
             });
-        if (scanned == string_candidates->size()) return result;
+        if (scanned == validated_candidates->size()) return result;
         result.matched_fids.clear();
         result.execution_path = kPathAttributeSequential;
         result.fallback_reason = "attribute candidate scan incomplete; sequential scan used";
     }
-
-    parser_->sequential_scan(
-        [&](RowSlot fid, const FieldRef* fields, int field_count) {
-            if (evaluate_where(expression, fields, field_count))
-                result.matched_fids.push_back(fid);
-            return true;
-        });
+    const auto scanned = parser_->sequential_scan([&](RowSlot fid, const FieldRef* fields, int count) {
+        if (matches(fields, count)) result.matched_fids.push_back(fid);
+        return true;
+    });
+    if (scanned != parser_->active_feature_count()) {
+        result.status = QueryStatus::Unsupported;
+        result.error = "attribute source field scan incomplete";
+        result.matched_fids.clear();
+    }
     return result;
 }
 
@@ -782,18 +793,9 @@ QueryResult QueryEngine::query_where(const QueryRequest& request) {
         return result;
     }
 
-    // FieldRef 只在当前扫描回调有效；求值器不得把底层指针保存到回调外。
-    const size_t stop_after = scan_stop_after(request);
-    parser_->sequential_scan(
-        [&](RowSlot fid, const FieldRef* fields, int field_count) {
-            if (evaluate_where(expression, fields, field_count)) {
-                result.matched_fids.push_back(fid);
-            }
-            const bool cancelled = request.cancel_requested &&
-                request.cancel_requested();
-            return !cancelled &&
-                (stop_after == 0 || result.matched_fids.size() < stop_after);
-        });
+    scan_result_rows(*parser_, request, result, [&](const FieldRef* fields, int count) {
+        return evaluate_where(expression, fields, count);
+    });
     return result;
 }
 

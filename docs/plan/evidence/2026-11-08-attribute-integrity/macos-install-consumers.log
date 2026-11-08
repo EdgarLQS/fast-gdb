@@ -1,0 +1,87 @@
+-- Install configuration: "Release"
+-- Installing: /private/tmp/fast-gdb-attribute-integrity-install/lib/gdalplugins/3.13/gdal_FastFileGDB.so
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/unified
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/unified/routing.h
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/unified/unified.h
+-- Installing: /private/tmp/fast-gdb-attribute-integrity-install/lib/libfast_gdb_geometry_core.a
+-- Installing: /private/tmp/fast-gdb-attribute-integrity-install/lib/libexplorgdb_common_lib.a
+-- Installing: /private/tmp/fast-gdb-attribute-integrity-install/lib/libexplorgdb_reader_lib.a
+ranlib: warning: 'libexplorgdb_reader_lib.a(windows_posix_compat.cpp.o)' has no symbols
+-- Installing: /private/tmp/fast-gdb-attribute-integrity-install/lib/libfast_gdb_runtime.0.2.0.dylib
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/lib/libfast_gdb_runtime.0.dylib
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/lib/libfast_gdb_runtime.dylib
+-- Installing: /private/tmp/fast-gdb-attribute-integrity-install/lib/libfast_gdb_curve_gdal.a
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/common
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/common/varint.h
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/common/uuid_value.h
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/common/binary_reader.h
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/common/ole_date.h
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/common/explorgdb_types.h
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/common/utf16.h
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/capability_report.h
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/reader.h
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/catalog_resolver.h
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/field_layout.h
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/gdb_catalog.h
+-- Installing: /private/tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/gdb_table.h
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/gdb_tablx.h
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/gdb_tablx_cache.h
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/metadata_reader.h
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/curve_geometry.h
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/gdb_geometry.h
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/geometry_model.h
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/polygon_topology.h
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/spatial_predicate.h
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/wkb_writer.h
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/wkt_writer.h
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/gdb_attribute_index.h
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/gdb_indexes.h
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/gdb_spatial_index.h
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/unistd.h
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/windows_posix_compat.h
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/windows_sliding_map.h
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/query_engine.h
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/sys/mman.h
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/reader/geometry/geometry_model.h
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/curve_gdal
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/curve_gdal/gdal_curve_backend.h
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/include/fast_gdb/curve_gdal/hybrid_geometry_reader.h
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/lib/cmake/fast_gdb/fast_gdbTargets.cmake
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/lib/cmake/fast_gdb/fast_gdbTargets-release.cmake
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/lib/cmake/fast_gdb/fast_gdbConfig.cmake
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/lib/cmake/fast_gdb/fast_gdbConfigVersion.cmake
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/share/fast_gdb/README.md
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/share/fast_gdb/README.en.md
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/share/fast_gdb/CHANGELOG.md
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/share/fast_gdb/LICENSE
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/share/fast_gdb/THIRD_PARTY_NOTICES.md
+-- Up-to-date: /private/tmp/fast-gdb-attribute-integrity-install/share/fast_gdb/release-notes.md
+[ 50%] Building CXX object CMakeFiles/fast_gdb_package_consumer.dir/main.cpp.o
+[100%] Linking CXX executable fast_gdb_package_consumer
+[100%] Built target fast_gdb_package_consumer
+Test project /private/tmp/fast-gdb-attribute-integrity-consumer-linear
+    Start 1: fast_gdb_package_consumer
+1/1 Test #1: fast_gdb_package_consumer ........   Passed    0.45 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) =   0.45 sec
+[ 50%] Building CXX object CMakeFiles/fast_gdb_package_consumer.dir/main.cpp.o
+[100%] Linking CXX executable fast_gdb_package_consumer
+[100%] Built target fast_gdb_package_consumer
+Test project /private/tmp/fast-gdb-attribute-integrity-consumer-hybrid
+    Start 1: fast_gdb_package_consumer
+1/1 Test #1: fast_gdb_package_consumer ........   Passed    0.58 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) =   0.59 sec
+[ 50%] Linking CXX executable fast_gdb_package_consumer
+[100%] Built target fast_gdb_package_consumer
+Test project /private/tmp/fast-gdb-attribute-integrity-consumer-unified
+    Start 1: fast_gdb_package_consumer
+1/1 Test #1: fast_gdb_package_consumer ........   Passed    0.73 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) =   0.73 sec

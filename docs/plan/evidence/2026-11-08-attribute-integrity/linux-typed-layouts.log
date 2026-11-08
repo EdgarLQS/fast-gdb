@@ -1,0 +1,20 @@
+Note: Google Test filter = AttributeValueKeyTest.*:SpatialWhereIndexFallbackTest.ExactInt64*
+[==========] Running 4 tests from 2 test suites.
+[----------] Global test environment set-up.
+[----------] 3 tests from AttributeValueKeyTest
+[ RUN      ] AttributeValueKeyTest.SortableKeysPreserveIntegerPrecisionAndIeeeOrder
+[       OK ] AttributeValueKeyTest.SortableKeysPreserveIntegerPrecisionAndIeeeOrder (0 ms)
+[ RUN      ] AttributeValueKeyTest.ComparisonDomainsCannotShareDifferentMeanings
+[       OK ] AttributeValueKeyTest.ComparisonDomainsCannotShareDifferentMeanings (0 ms)
+[ RUN      ] AttributeValueKeyTest.ValidatedTypedDirectoriesKeepExactV1V2ResultsAcrossUnorderedLeaves
+[       OK ] AttributeValueKeyTest.ValidatedTypedDirectoriesKeepExactV1V2ResultsAcrossUnorderedLeaves (6 ms)
+[----------] 3 tests from AttributeValueKeyTest (6 ms total)
+
+[----------] 1 test from SpatialWhereIndexFallbackTest
+[ RUN      ] SpatialWhereIndexFallbackTest.ExactInt64EntryPointRechecksNativeFieldsAndSharesProof
+[       OK ] SpatialWhereIndexFallbackTest.ExactInt64EntryPointRechecksNativeFieldsAndSharesProof (43 ms)
+[----------] 1 test from SpatialWhereIndexFallbackTest (43 ms total)
+
+[----------] Global test environment tear-down
+[==========] 4 tests from 2 test suites ran. (50 ms total)
+[  PASSED  ] 4 tests.

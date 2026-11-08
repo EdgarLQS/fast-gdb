@@ -1,4 +1,4 @@
-#include "gdb_attribute_string_cache.h"
+#include "gdb_attribute_value_cache.h"
 #include "gdb_attribute_string_key.h"
 #include <algorithm>
 #include <filesystem>
@@ -8,7 +8,7 @@
 
 namespace explorgdb::detail {
 namespace {
-int upper_compare(const StringLeafRange& range, std::string_view value) {
+int upper_compare(const AttributeLeafRange& range, std::string_view value) {
     const size_t shared = std::min(range.upper.size(), value.size());
     const int order = std::string_view(range.upper).substr(0, shared).compare(value.substr(0, shared));
     if (order != 0) return order;
@@ -17,7 +17,7 @@ int upper_compare(const StringLeafRange& range, std::string_view value) {
     return range.upper.size() == value.size() ? 0 : -1;
 }
 
-bool upper_less(const StringLeafRange& left, const StringLeafRange& right) {
+bool upper_less(const AttributeLeafRange& left, const AttributeLeafRange& right) {
     if (left.upper == right.upper) return !left.upper_truncated && right.upper_truncated;
     const size_t common = std::min(left.upper.size(), right.upper.size());
     const int order = std::string_view(left.upper).substr(0, common).compare(
@@ -30,18 +30,18 @@ bool upper_less(const StringLeafRange& left, const StringLeafRange& right) {
 }
 }
 
-size_t AttributeStringDirectory::bytes() const {
+size_t AttributeValueDirectory::bytes() const {
     if (retained_bytes_) return retained_bytes_;
-    size_t result = sizeof(*this) + leaves.capacity() * sizeof(StringLeafRange) +
+    size_t result = sizeof(*this) + leaves.capacity() * sizeof(AttributeLeafRange) +
                     prefix_upper.capacity() * sizeof(size_t);
     for (const auto& leaf : leaves) result += leaf.lower.capacity() + leaf.upper.capacity();
     return result;
 }
 
-void AttributeStringDirectory::finish() {
+void AttributeValueDirectory::finish() {
     retained_bytes_ = 0;
     prefix_upper.clear();
-    std::sort(leaves.begin(), leaves.end(), [](const StringLeafRange& a, const StringLeafRange& b) {
+    std::sort(leaves.begin(), leaves.end(), [](const AttributeLeafRange& a, const AttributeLeafRange& b) {
         return a.lower < b.lower || (a.lower == b.lower && a.page < b.page);
     });
     prefix_upper.reserve(leaves.size());
@@ -53,7 +53,7 @@ void AttributeStringDirectory::finish() {
     retained_bytes_ = bytes();
 }
 
-bool AttributeStringDirectory::possible(const StringLeafRange& range, std::string_view value, AttrOp op) {
+bool AttributeValueDirectory::possible(const AttributeLeafRange& range, std::string_view value, AttrOp op) {
     const int lower = std::string_view(range.lower).compare(value);
     const int upper = upper_compare(range, value);
     switch (op) {
@@ -67,7 +67,7 @@ bool AttributeStringDirectory::possible(const StringLeafRange& range, std::strin
     return true;
 }
 
-std::vector<size_t> AttributeStringDirectory::select(std::string_view value, AttrOp op) const {
+std::vector<size_t> AttributeValueDirectory::select(std::string_view value, AttrOp op) const {
     size_t begin = 0, end = leaves.size();
     if (op == AttrOp::Eq || op == AttrOp::Gt || op == AttrOp::Ge) {
         const bool strict = op == AttrOp::Gt;
@@ -80,7 +80,7 @@ std::vector<size_t> AttributeStringDirectory::select(std::string_view value, Att
     if (op == AttrOp::Eq || op == AttrOp::Lt || op == AttrOp::Le) {
         const bool strict = op == AttrOp::Lt;
         end = static_cast<size_t>(std::lower_bound(leaves.begin(), leaves.end(), value,
-            [&](const StringLeafRange& leaf, std::string_view query) {
+            [&](const AttributeLeafRange& leaf, std::string_view query) {
                 const int order = std::string_view(leaf.lower).compare(query);
                 return strict ? order < 0 : order <= 0;
             }) - leaves.begin());
@@ -93,7 +93,7 @@ std::vector<size_t> AttributeStringDirectory::select(std::string_view value, Att
     return result;
 }
 
-std::shared_ptr<const AttributeStringDirectory> AttributeStringCache::get(const StringDirectoryKey& key) {
+std::shared_ptr<const AttributeValueDirectory> AttributeValueCache::get(const AttributeDirectoryKey& key) {
     std::lock_guard<std::mutex> lock(mutex_);
     const auto found = entries_.find(key);
     if (found == entries_.end()) return {};
@@ -101,8 +101,8 @@ std::shared_ptr<const AttributeStringDirectory> AttributeStringCache::get(const 
     return found->second.directory;
 }
 
-void AttributeStringCache::put(const StringDirectoryKey& key,
-                                std::shared_ptr<const AttributeStringDirectory> directory) {
+void AttributeValueCache::put(const AttributeDirectoryKey& key,
+                                std::shared_ptr<const AttributeValueDirectory> directory) {
     if (!directory || directory->bytes() > kMaxBytes) return;
     std::lock_guard<std::mutex> lock(mutex_);
     const auto found = entries_.find(key);
@@ -122,30 +122,30 @@ void AttributeStringCache::put(const StringDirectoryKey& key,
     entries_.emplace(key, Entry{std::move(directory), ++clock_});
 }
 
-size_t AttributeStringCache::bytes() const { std::lock_guard<std::mutex> lock(mutex_); return bytes_; }
-size_t AttributeStringCache::entries() const { std::lock_guard<std::mutex> lock(mutex_); return entries_.size(); }
+size_t AttributeValueCache::bytes() const { std::lock_guard<std::mutex> lock(mutex_); return bytes_; }
+size_t AttributeValueCache::entries() const { std::lock_guard<std::mutex> lock(mutex_); return entries_.size(); }
 
-bool AttributeStringQueryContext::key(const TablxCacheKey& index, StringDirectoryKey& output) const {
+bool AttributeValueQueryContext::key(const TablxCacheKey& index, AttributeDirectoryKey& output) const {
     output.index = index;
     output.field = field;
+    output.domain = domain;
     return TablxCache::make_key(table_path, output.table) && output.table == expected_table &&
            TablxCache::make_key(tablx_path, output.tablx) && output.tablx == expected_tablx;
 }
 
-AttributeStringDirectoryBuilder::AttributeStringDirectoryBuilder(
-    std::shared_ptr<const AttributeStringQueryContext> context, size_t page_size,
+AttributeValueDirectoryBuilder::AttributeValueDirectoryBuilder(
+    std::shared_ptr<const AttributeValueQueryContext> context, size_t page_size,
     size_t value_size, size_t page_count, uint64_t value_count, size_t slots)
-    : context_(std::move(context)), directory_(std::make_shared<AttributeStringDirectory>()), slots_(slots) {
+    : context_(std::move(context)), directory_(std::make_shared<AttributeValueDirectory>()), slots_(slots) {
     directory_->page_size = page_size;
     directory_->value_size = value_size;
     directory_->page_count = page_count;
     directory_->value_count = value_count;
     constexpr size_t max_slots = 16U * 1024U * 1024U; // at most 2 MiB transient bitmap
-    constexpr size_t per_page = sizeof(StringLeafRange) + sizeof(size_t) +
-        2 * AttributeStringDirectory::kPrefixBytes;
+    constexpr size_t per_page = sizeof(AttributeLeafRange) + sizeof(size_t);
     if (slots > max_slots || (slots == 0 && value_count != 0) ||
-        page_count > (AttributeStringCache::kMaxBytes - sizeof(AttributeStringDirectory)) / per_page) {
-        fail(AttributeStringDirectory::State::BudgetExceeded);
+        page_count > (AttributeValueCache::kMaxBytes - sizeof(AttributeValueDirectory)) / per_page) {
+        fail(AttributeValueDirectory::State::BudgetExceeded);
         return;
     }
     directory_->leaves.reserve(page_count);
@@ -153,41 +153,56 @@ AttributeStringDirectoryBuilder::AttributeStringDirectoryBuilder(
     seen_.resize((slots + 63) / 64, 0);
 }
 
-void AttributeStringDirectoryBuilder::fail(AttributeStringDirectory::State state) {
+void AttributeValueDirectoryBuilder::fail(AttributeValueDirectory::State state) {
     directory_->state = state;
-    std::vector<StringLeafRange>().swap(directory_->leaves);
+    std::vector<AttributeLeafRange>().swap(directory_->leaves);
     std::vector<size_t>().swap(directory_->prefix_upper);
     std::vector<uint64_t>().swap(seen_);
 }
 
-bool AttributeStringDirectoryBuilder::observe(ObjectId page_id, const uint8_t* page,
+bool AttributeValueDirectoryBuilder::observe(ObjectId page_id, const uint8_t* page,
     uint32_t count, size_t oid_size, size_t leaf_header, size_t values_offset,
     std::string_view query, AttrOp op, std::vector<RowSlot>& matches) {
-    if (directory_->state != AttributeStringDirectory::State::Ready) return false;
+    if (directory_->state != AttributeValueDirectory::State::Ready) return false;
     if (count == 0) return true;
     std::vector<std::pair<RowSlot, size_t>> positions;
     positions.reserve(count);
+    const bool typed = context_->domain != attribute_value::Domain::String;
+    bool ordered_values = typed;
+    std::vector<std::string> physical_keys;
+    if (typed) physical_keys.reserve(count);
     for (size_t i = 0; i < count; ++i) {
         ObjectId oid = 0;
         for (size_t j = 0; j < oid_size; ++j)
             oid |= static_cast<ObjectId>(page[leaf_header + i * oid_size + j]) << (j * 8);
-        if (oid == 0 || oid > slots_) { fail(AttributeStringDirectory::State::Invalid); return false; }
+        if (oid == 0 || oid > slots_) { fail(AttributeValueDirectory::State::Invalid); return false; }
         const RowSlot fid = oid - 1;
         const auto bit = uint64_t{1} << (fid % 64);
         if (seen_[static_cast<size_t>(fid / 64)] & bit) {
-            fail(AttributeStringDirectory::State::Invalid); return false;
+            fail(AttributeValueDirectory::State::Invalid); return false;
         }
         seen_[static_cast<size_t>(fid / 64)] |= bit;
         directory_->max_fid = std::max(directory_->max_fid, oid);
         positions.emplace_back(fid, i);
+        if (typed) {
+            std::string physical;
+            if (!context_->index_value || !context_->index_value(
+                page + values_offset + i * directory_->value_size, directory_->value_size, physical)) {
+                fail(AttributeValueDirectory::State::Invalid);
+                return false;
+            }
+            if (i && physical_keys.back() > physical) ordered_values = false;
+            physical_keys.push_back(std::move(physical));
+        }
     }
     std::sort(positions.begin(), positions.end());
     std::vector<RowSlot> fids;
     fids.reserve(count);
     for (const auto& entry : positions) fids.push_back(entry.first);
-    StringLeafRange range;
+    AttributeLeafRange range;
     range.page = page_id;
     range.count = count;
+    range.ordered_values = ordered_values;
     bool first = true;
     const size_t units = directory_->value_size / 2;
     const bool ok = context_->read_values(fids, [&](RowSlot fid, std::string_view value) {
@@ -196,19 +211,23 @@ bool AttributeStringDirectoryBuilder::observe(ObjectId page_id, const uint8_t* p
             [](const auto& entry, RowSlot id) { return entry.first < id; });
         if (found == positions.end() || found->first != fid) return false;
         const auto* bytes = page + values_offset + found->second * directory_->value_size;
-        // Four UTF-8 bytes per retained scalar suffice for both encodings.
-        // Never allocate a copy of an unbounded field just to validate its key.
-        size_t end = std::min(value.size(), units * 4);
-        if (end < value.size()) {
-            while (end && (static_cast<unsigned char>(value[end]) & 0xc0) == 0x80) --end;
+        if (typed) {
+            if (physical_keys[found->second] != value) return false;
+        } else {
+            // Four UTF-8 bytes per retained scalar suffice for both encodings.
+            // Never allocate a copy of an unbounded field just to validate its key.
+            size_t end = std::min(value.size(), units * 4);
+            if (end < value.size()) {
+                while (end && (static_cast<unsigned char>(value[end]) & 0xc0) == 0x80) --end;
+            }
+            const std::string bounded(value.substr(0, end));
+            std::u16string utf16, legacy;
+            if (!attribute_string::prepare(bounded, units, utf16) ||
+                !attribute_string::prepare_legacy(bounded, units, legacy) ||
+                (attribute_string::compare(bytes, utf16) != 0 && attribute_string::compare(bytes, legacy) != 0))
+                return false;
         }
-        const std::string bounded(value.substr(0, end));
-        std::u16string utf16, legacy;
-        if (!attribute_string::prepare(bounded, units, utf16) ||
-            !attribute_string::prepare_legacy(bounded, units, legacy) ||
-            (attribute_string::compare(bytes, utf16) != 0 && attribute_string::compare(bytes, legacy) != 0))
-            return false;
-        const std::string prefix(value.substr(0, AttributeStringDirectory::kPrefixBytes));
+        const std::string prefix(value.substr(0, AttributeValueDirectory::kPrefixBytes));
         const bool truncated = value.size() > prefix.size();
         if (first || prefix < range.lower) range.lower = prefix;
         if (first || prefix > range.upper) {
@@ -219,24 +238,24 @@ bool AttributeStringDirectoryBuilder::observe(ObjectId page_id, const uint8_t* p
         if (attribute_string::matches(value.compare(query), op)) matches.push_back(fid);
         return true;
     });
-    if (!ok || first) { fail(AttributeStringDirectory::State::Invalid); return false; }
+    if (!ok || first) { fail(AttributeValueDirectory::State::Invalid); return false; }
     observed_ += count;
-    string_bytes_ += range.lower.capacity() + range.upper.capacity();
-    const size_t used = sizeof(AttributeStringDirectory) +
-        directory_->leaves.capacity() * sizeof(StringLeafRange) +
-        directory_->prefix_upper.capacity() * sizeof(size_t) + string_bytes_;
-    if (used > AttributeStringCache::kMaxBytes) {
-        fail(AttributeStringDirectory::State::BudgetExceeded); return false;
+    prefix_bytes_ += range.lower.capacity() + range.upper.capacity();
+    const size_t used = sizeof(AttributeValueDirectory) +
+        directory_->leaves.capacity() * sizeof(AttributeLeafRange) +
+        directory_->prefix_upper.capacity() * sizeof(size_t) + prefix_bytes_;
+    if (used > AttributeValueCache::kMaxBytes) {
+        fail(AttributeValueDirectory::State::BudgetExceeded); return false;
     }
     directory_->leaves.push_back(std::move(range));
     return true;
 }
 
-std::shared_ptr<const AttributeStringDirectory> AttributeStringDirectoryBuilder::finish() {
-    if (directory_->state == AttributeStringDirectory::State::Ready) {
+std::shared_ptr<const AttributeValueDirectory> AttributeValueDirectoryBuilder::finish() {
+    if (directory_->state == AttributeValueDirectory::State::Ready) {
         uint64_t values = 0;
         if (observed_ != directory_->value_count || !context_->count_values(values) ||
-            values != directory_->value_count) fail(AttributeStringDirectory::State::Invalid);
+            values != directory_->value_count) fail(AttributeValueDirectory::State::Invalid);
         else {
             validation_rows_ += context_->active_rows;
             directory_->finish();
@@ -246,16 +265,16 @@ std::shared_ptr<const AttributeStringDirectory> AttributeStringDirectoryBuilder:
 }
 // This path relies on validated source values rather than physical key ordering.
 // Build once per snapshot, then read only leaves whose actual-value bounds overlap.
-bool query_validated_string_directory(const std::string& path, const TablxCacheKey& identity,
+bool query_validated_attribute_directory(const std::string& path, const TablxCacheKey& identity,
     const BPlusTreeTrailer& trailer, size_t page_count, size_t slots,
-    std::shared_ptr<const AttributeStringQueryContext> context, std::string_view value, AttrOp op,
+    std::shared_ptr<const AttributeValueQueryContext> context, std::string_view value, AttrOp op,
     std::vector<RowSlot>& result, AttributeIndexQueryMetrics* metrics) {
     if (!context || !context->cache || !context->read_values || !context->count_values) return false;
-    StringDirectoryKey key;
+    AttributeDirectoryKey key;
     if (!context->key(identity, key)) return false;
     const auto stable = [&] {
         TablxCacheKey current_index;
-        StringDirectoryKey current;
+        AttributeDirectoryKey current;
         return TablxCache::make_key(path, current_index) && current_index == identity &&
             context->key(current_index, current) && current == key;
     };
@@ -265,17 +284,24 @@ bool query_validated_string_directory(const std::string& path, const TablxCacheK
         build_lock = context->cache->build_lock();
         directory = context->cache->get(key);
     }
-    if (metrics) metrics->string_directory_hit = static_cast<bool>(directory);
-    const auto record = [&](const AttributeStringDirectory& item) {
+    if (metrics) {
+        metrics->validated_directory_hit = static_cast<bool>(directory);
+        metrics->string_directory_hit = context->domain == attribute_value::Domain::String && directory;
+    }
+    const auto record = [&](const AttributeValueDirectory& item) {
         if (metrics) {
-            metrics->string_directory_bytes = item.bytes();
-            metrics->string_directory_budget_exceeded =
-                item.state == AttributeStringDirectory::State::BudgetExceeded;
+            metrics->validated_directory_bytes = item.bytes();
+            metrics->validated_directory_budget_exceeded =
+                item.state == AttributeValueDirectory::State::BudgetExceeded;
+            if (context->domain == attribute_value::Domain::String) {
+                metrics->string_directory_bytes = metrics->validated_directory_bytes;
+                metrics->string_directory_budget_exceeded = metrics->validated_directory_budget_exceeded;
+            }
         }
     };
     if (directory) {
         record(*directory);
-        if (directory->state != AttributeStringDirectory::State::Ready ||
+        if (directory->state != AttributeValueDirectory::State::Ready ||
             directory->page_size != trailer.page_size || directory->value_size != trailer.value_size ||
             directory->page_count != page_count || directory->value_count != trailer.total_value_count ||
             directory->max_fid > slots) return false;
@@ -311,21 +337,54 @@ bool query_validated_string_directory(const std::string& path, const TablxCacheK
             const auto& leaf = directory->leaves[selected];
             if (!read(leaf.page) || integer(page.data() + oid_size, 4) != leaf.count) return false;
             if (leaf.count > capacity) return false;
-            for (size_t i = 0; i < leaf.count; ++i) {
+            size_t begin = 0, end = leaf.count, visited = 0;
+            const auto key_at = [&](size_t i, std::string& encoded) {
+                ++visited;
+                return context->index_value && context->index_value(
+                    page.data() + values_offset + i * trailer.value_size, trailer.value_size, encoded);
+            };
+            const auto boundary = [&](bool strict, size_t& output) {
+                size_t low = 0, high = leaf.count;
+                while (low < high) {
+                    const size_t middle = low + (high - low) / 2;
+                    std::string key;
+                    if (!key_at(middle, key)) return false;
+                    const int order = std::string_view(key).compare(value);
+                    if (strict ? order <= 0 : order < 0) low = middle + 1;
+                    else high = middle;
+                }
+                output = low;
+                return true;
+            };
+            // Binary search is enabled only for pages whose actual, validated
+            // typed values were monotone. Unordered pages retain a safe scan.
+            const bool bounded = leaf.ordered_values && op != AttrOp::Ne;
+            if (bounded) {
+                if ((op == AttrOp::Eq || op == AttrOp::Ge || op == AttrOp::Gt) &&
+                    !boundary(op == AttrOp::Gt, begin)) return false;
+                if ((op == AttrOp::Eq || op == AttrOp::Le || op == AttrOp::Lt) &&
+                    !boundary(op != AttrOp::Lt, end)) return false;
+            }
+            for (size_t i = begin; i < end; ++i) {
                 const auto id = integer(page.data() + header + i * oid_size, oid_size);
                 if (!id || id > slots) return false;
+                if (!bounded && context->domain != attribute_value::Domain::String) {
+                    std::string key;
+                    if (!key_at(i, key)) return false;
+                    if (!attribute_string::matches(std::string_view(key).compare(value), op)) continue;
+                } else ++visited;
                 candidates.push_back(id - 1);
             }
-            if (metrics) metrics->entries_scanned += leaf.count;
+            if (metrics) metrics->entries_scanned += visited;
         }
     } else {
-        AttributeStringDirectoryBuilder builder(context, trailer.page_size, trailer.value_size,
+        AttributeValueDirectoryBuilder builder(context, trailer.page_size, trailer.value_size,
             page_count, trailer.total_value_count, slots);
-        if (builder.state() == AttributeStringDirectory::State::Ready) {
+        if (builder.state() == AttributeValueDirectory::State::Ready) {
             ObjectId id = trailer.tree_depth ? 1 : 0;
             if ((trailer.tree_depth == 0 && trailer.total_value_count != 0) ||
                 trailer.tree_depth > 4 || trailer.tree_depth > page_count) return false;
-            // Validate the leftmost route; string separator order is not trusted.
+            // Validate the leftmost route; separator order is not used.
             for (uint32_t depth = trailer.tree_depth; depth > 1; --depth) {
                 if (!read(id)) return false;
                 const auto count = integer(page.data() + oid_size, 4);
@@ -353,11 +412,15 @@ bool query_validated_string_directory(const std::string& path, const TablxCacheK
             }
         }
         directory = builder.finish();
-        if (metrics) metrics->string_validation_rows = builder.validation_rows();
+        if (metrics) {
+            metrics->index_validation_rows = builder.validation_rows();
+            if (context->domain == attribute_value::Domain::String)
+                metrics->string_validation_rows = metrics->index_validation_rows;
+        }
         record(*directory);
         if (!stable()) return false;
         context->cache->put(key, directory);
-        if (directory->state != AttributeStringDirectory::State::Ready) return false;
+        if (directory->state != AttributeValueDirectory::State::Ready) return false;
     }
     const auto order_start = metrics ? Clock::now() : Clock::time_point{};
     if (metrics) metrics->leaf_scan_ms = std::chrono::duration<double, std::milli>(order_start - scan_start).count();

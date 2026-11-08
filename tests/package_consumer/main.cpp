@@ -45,6 +45,7 @@ int main() {
 #include <query_engine.h>
 
 #include <cstdint>
+#include <limits>
 #include <utility>
 
 static_assert(!std::is_copy_constructible<explorgdb::FeatureCursor>::value,
@@ -66,6 +67,14 @@ int main() {
 
     explorgdb::GeometryValue empty_geometry;
     if (empty_geometry.to_wkt().has_value()) return 1;
+
+    explorgdb::GdbCatalog catalog;
+    explorgdb::ResolvedTable table;
+    explorgdb::QueryEngine engine(catalog, table);
+    const auto integral = engine.query_attribute_int64("value_idx", std::numeric_limits<int64_t>::max(),
+                                                      explorgdb::AttrOp::Eq);
+    if (integral.status != explorgdb::QueryStatus::EngineNotOpen || !integral.matched_fids.empty() ||
+        integral.attribute_index_metrics.index_validation_rows != 0) return 1;
 
     explorgdb::QueryRequest request;
     request.kind = explorgdb::QueryKind::SpatialWhere;

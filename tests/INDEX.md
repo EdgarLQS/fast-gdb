@@ -342,3 +342,13 @@ NaN probes without publishing candidates. `InfinitiesAndSignedZeroRetainOrderedI
 compares both FLOAT32/FLOAT64 layouts with IEEE expectations. The NaN tests in
 `SpatialWhereIndexFallbackTest` verify real-field scan fallback and explicit
 non-finite public-request errors. See [evidence and remaining integrity checks](../docs/plan/evidence/2026-11-08-numeric-special-values.md).
+
+## Bound attribute integrity and incomplete source rows
+
+`AttributeValueKeyTest` covers exact integer/IEEE keys, isolated temporal domains,
+and v1/v2 unordered-leaf directories. `SpatialWhereIndexFallbackTest` covers finite
+wrong keys, duplicate/missing FIDs, native Int64 values, numeric scale, and unreadable
+source rows. UUID corruption tests exercise full source fallback.
+`CorruptInputConformance.RejectedRowsNeverBecomePartialOrSyntheticNullCells` checks
+scan failure, intentional limits, and consumed cancellation without GDAL.
+See [validation and outstanding gates](../docs/plan/evidence/2026-11-08-attribute-integrity.md).

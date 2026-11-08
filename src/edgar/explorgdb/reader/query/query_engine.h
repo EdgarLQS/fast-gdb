@@ -136,6 +136,9 @@ struct CombinedQueryMetrics {
     bool used_attribute_index = false;
     bool attribute_index_bypassed = false;
     bool fused_spatial_attribute_scan = false;
+    bool attribute_validated_directory_hit = false;
+    size_t attribute_index_validation_rows = 0;
+    size_t attribute_validated_directory_bytes = 0;
     bool attribute_string_directory_hit = false;
     size_t attribute_string_validation_rows = 0;
     size_t attribute_string_directory_bytes = 0;
@@ -268,6 +271,8 @@ public:
      * @return 包含状态、记录和诊断指标的查询结果。
      */
     QueryResult query(const QueryRequest& request);
+    // Exact Int64 index predicate, with the same status/source/cursor guards as query().
+    QueryResult query_attribute_int64(const std::string& index_name, int64_t value, AttrOp op);
     /** 创建单活动游标以流式读取查询结果。
      * @param request 查询类型、过滤条件和结果限制。
      * @return 查询游标；请求无效或引擎未打开时返回失败游标。
@@ -356,7 +361,8 @@ private:
                             bool* skipped_unsupported_curve = nullptr);
     QueryResult query_sequential_scan(const QueryRequest& request) const;
     QueryResult query_spatial(const QueryRequest& request);
-    QueryResult query_attribute(const QueryRequest& request);
+    QueryResult query_impl(const QueryRequest& request, std::optional<int64_t> integer_value);
+    QueryResult query_attribute(const QueryRequest& request, std::optional<int64_t> integer_value = std::nullopt);
     QueryResult query_where(const QueryRequest& request);
     QueryResult query_spatial_where(const QueryRequest& request);
 
@@ -382,7 +388,7 @@ private:
     ResolvedTable resolved_;
     std::unique_ptr<GdbTableParser> parser_;
     std::optional<TablxCacheKey> source_tablx_identity_;
-    std::shared_ptr<const detail::AttributeStringQueryContext> make_string_context(size_t field) const;
+    std::shared_ptr<const detail::AttributeValueQueryContext> make_value_context(size_t field, bool temporal = false) const;
     std::unique_ptr<GdbSpatialIndexParser> spatial_index_;
     bool opened_ = false;
     bool spatial_index_initialized_ = false;

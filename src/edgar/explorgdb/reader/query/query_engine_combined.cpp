@@ -3,7 +3,7 @@
 
 #include "query_engine.h"
 #include "gdb_indexes.h"
-#include "gdb_attribute_string_cache.h"
+#include "gdb_attribute_value_cache.h"
 #include "query_where_internal.h"
 #include "spatial_predicate.h"
 #include "explorgdb_constants.h"
@@ -290,14 +290,14 @@ bool query_attribute_candidates(
     AttributeCandidatePlan& plan,
     size_t max_fid_count,
     const IndexableWherePredicate& predicate,
-    std::shared_ptr<const detail::AttributeStringQueryContext> string_context) {
-    if (predicate.field_type == FieldType::String && !string_context) {
-        plan.reason = "string source unavailable; spatial candidates evaluated";
+    std::shared_ptr<const detail::AttributeValueQueryContext> value_context) {
+    if (!value_context) {
+        plan.reason = "attribute source unavailable; spatial candidates evaluated";
         return false;
     }
     try {
         GdbAttributeIndexParser index(plan.atx_path, predicate.field_type);
-        index.set_string_context(std::move(string_context));
+        index.set_value_context(std::move(value_context));
         bool ok = false;
         if (predicate.temporal_milliseconds.has_value()) {
             ok = index.query_temporal_direct(
@@ -349,6 +349,9 @@ void record_attribute_index_metrics(
     metrics.attribute_index_scan_ms = plan.index_metrics.leaf_scan_ms;
     metrics.attribute_candidate_order_ms =
         plan.index_metrics.candidate_order_ms;
+    metrics.attribute_validated_directory_hit = plan.index_metrics.validated_directory_hit;
+    metrics.attribute_index_validation_rows = plan.index_metrics.index_validation_rows;
+    metrics.attribute_validated_directory_bytes = plan.index_metrics.validated_directory_bytes;
     metrics.attribute_string_directory_hit = plan.index_metrics.string_directory_hit;
     metrics.attribute_string_validation_rows = plan.index_metrics.string_validation_rows;
     metrics.attribute_string_directory_bytes = plan.index_metrics.string_directory_bytes;
@@ -583,6 +586,13 @@ QueryResult QueryEngine::query_spatial_where(const QueryRequest& request) {
         used_spx_path(spatial.execution_path);
     append_reason(result.fallback_reason, spatial.fallback_reason);
 
+    if (spatial.status != QueryStatus::Ok) {
+        result.status = spatial.status;
+        result.error = spatial.error;
+        result.execution_path = kPathSpatialWhereSequential;
+        result.combined_metrics.total_ms = elapsed_ms(total_start);
+        return result;
+    }
     if (spatial.execution_path == "bbox:model:invalid") {
         result.fallback_reason = "invalid query bbox";
         result.combined_metrics.total_ms = elapsed_ms(total_start);
@@ -618,7 +628,7 @@ QueryResult QueryEngine::query_spatial_where(const QueryRequest& request) {
         } else {
             (void)query_attribute_candidates(
                 attribute, parser_->feature_count(), *predicate,
-                predicate->field_type == FieldType::String ? make_string_context(predicate->field_index) : nullptr);
+                make_value_context(predicate->field_index, predicate->temporal_milliseconds.has_value()));
             record_attribute_index_metrics(
                 attribute, result.combined_metrics);
             result.combined_metrics.attribute_ms +=
@@ -672,7 +682,13 @@ QueryResult QueryEngine::query_spatial_where(const QueryRequest& request) {
                       "candidate field scan unavailable; canonical row reads used");
         for (RowSlot fid : evaluation_candidates) {
             FeatureRecord record;
-            if (!parser_->read_record_by_fid(fid, record)) continue;
+            if (!parser_->read_record_by_fid(fid, record)) {
+                result.status = QueryStatus::Unsupported;
+                result.error = "attribute candidate could not be read completely";
+                result.matched_fids.clear();
+                result.combined_metrics.total_ms = elapsed_ms(total_start);
+                return result;
+            }
             ++result.combined_metrics.attribute_tested;
             if (evaluate_where(expression, record))
                 result.matched_fids.push_back(fid);

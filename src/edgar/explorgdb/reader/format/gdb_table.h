@@ -273,6 +273,8 @@ public:
      * 验证完整物理行布局，但不物化 FieldRef 数组，也不暴露无关属性列；
      * mmap 路径使用稳定零拷贝视图，fd 路径使用有界物理窗口。
      */
+    // A null blob with is_null=false reports an unreadable physical row.
+    // Legitimate NULL geometries use is_null=true; empty blobs may have size zero.
     using GeometryScanCallback =
         std::function<bool(RowSlot fid,
                            const uint8_t* geometry_blob,

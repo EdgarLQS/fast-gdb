@@ -6,7 +6,7 @@
 #include "ole_date.h"
 #include "uuid_value.h"
 #include "gdb_attribute_string_key.h"
-#include "gdb_attribute_string_cache.h"
+#include "gdb_attribute_value_cache.h"
 
 #include <algorithm>
 #include <array>
@@ -336,9 +336,25 @@ bool GdbAttributeIndexParser::query_direct(
             !attribute_string::prepare_legacy(string_value, trailer_.value_size / 2U, legacy_key)) return false;
     }
 
-    if (full_string_scan && string_context_) {
-        const bool ok = detail::query_validated_string_directory(file_path_, source_before,
-            trailer_, page_count, max_fid_count, string_context_, string_value, op, result, metrics);
+    if (value_context_) {
+        std::string query_key;
+        const auto domain = value_context_->domain;
+        bool prepared = false;
+        if (domain == attribute_value::Domain::String) {
+            prepared = full_string_scan;
+            query_key = string_value;
+        } else if (domain == attribute_value::Domain::Uuid) {
+            prepared = is_string && uuid_field && attribute_value::uuid(string_value, query_key);
+        } else if (domain == attribute_value::Domain::Integer || domain == attribute_value::Domain::Temporal) {
+            prepared = numeric_is_int64 || numeric_is_temporal;
+            attribute_value::integer(integer_value, query_key);
+        } else {
+            prepared = !is_string && !numeric_is_int64 && !numeric_is_temporal &&
+                attribute_value::floating(numeric_value, query_key);
+        }
+        if (!prepared) return false;
+        const bool ok = detail::query_validated_attribute_directory(file_path_, source_before,
+            trailer_, page_count, max_fid_count, value_context_, query_key, op, result, metrics);
         if (metrics) metrics->total_ms = elapsed_ms(total_start);
         return ok;
     }

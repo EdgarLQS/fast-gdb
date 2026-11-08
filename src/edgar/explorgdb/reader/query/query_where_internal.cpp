@@ -728,7 +728,7 @@ bool compare_double_to_literal(double actual,
 }
 
 bool compare_string(std::string_view left,
-                    const std::string& right,
+                    std::string_view right,
                     AttrOp op) {
     const int comparison = left.compare(right);
     switch (op) {
@@ -857,14 +857,8 @@ TruthValue evaluate_literal(const FieldRef& value,
     if (literal.is_uuid) {
         if ((value.type != FieldType::UUID_1 && value.type != FieldType::UUID_2) ||
             value.data == nullptr || value.byte_len != 16) return TruthValue::False;
-        constexpr uint8_t order[] = {3, 2, 1, 0, 5, 4, 7, 6, 8, 9, 10, 11, 12, 13, 14, 15};
-        constexpr char hex[] = "0123456789abcdef";
         std::array<char, 32> actual;
-        for (size_t i = 0; i < 16; ++i) {
-            const uint8_t byte = value.data[order[i]];
-            actual[2 * i] = hex[byte >> 4];
-            actual[2 * i + 1] = hex[byte & 15];
-        }
+        if (!canonical_uuid_bytes(value.data, value.byte_len, actual)) return TruthValue::False;
         return truth_from_bool(compare_string(
             std::string_view(actual.data(), actual.size()), literal.string_value, op));
     }
@@ -1146,6 +1140,29 @@ bool evaluate_where(
     const FeatureRecord& record) {
     return expression.valid() &&
            evaluate_expr(*expression.impl_->root, record) == TruthValue::True;
+}
+
+bool evaluate_index_numeric(const FieldRef& value, double literal,
+    std::optional<int64_t> integer_literal, AttrOp op) {
+    if (value.is_null) return false;
+    int64_t integer = 0;
+    if (field_ref_as_int64(value, integer)) {
+        return comparison_matches(integer_literal ? compare_int64_to_int64(integer, *integer_literal) :
+            compare_int64_to_double(integer, literal), op);
+    }
+    double actual = 0;
+    return !integer_literal && field_ref_as_double(value, actual) && compare_numeric(actual, literal, op);
+}
+
+bool evaluate_index_string(const FieldRef& value, std::string_view literal, bool uuid, AttrOp op) {
+    if (value.is_null) return false;
+    if (uuid) {
+        if (value.type != FieldType::UUID_1 && value.type != FieldType::UUID_2) return false;
+        std::array<char, 32> actual;
+        return canonical_uuid_bytes(value.data, value.byte_len, actual) &&
+            compare_string(std::string_view(actual.data(), actual.size()), literal, op);
+    }
+    return value.type == FieldType::String && compare_string(value.as_string_view(), literal, op);
 }
 
 std::vector<RowSlot> intersect_sorted_fids(

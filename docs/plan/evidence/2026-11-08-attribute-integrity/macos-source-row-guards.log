@@ -1,0 +1,16 @@
+Note: Google Test filter = CorruptInputConformance.RejectedRows*:SpatialWhereIndexFallbackTest.UnreadableAttributeRow*
+[==========] Running 2 tests from 2 test suites.
+[----------] Global test environment set-up.
+[----------] 1 test from CorruptInputConformance
+[ RUN      ] CorruptInputConformance.RejectedRowsNeverBecomePartialOrSyntheticNullCells
+[       OK ] CorruptInputConformance.RejectedRowsNeverBecomePartialOrSyntheticNullCells (7 ms)
+[----------] 1 test from CorruptInputConformance (7 ms total)
+
+[----------] 1 test from SpatialWhereIndexFallbackTest
+[ RUN      ] SpatialWhereIndexFallbackTest.UnreadableAttributeRowCannotBecomePartialSpatialWhereSuccess
+[       OK ] SpatialWhereIndexFallbackTest.UnreadableAttributeRowCannotBecomePartialSpatialWhereSuccess (56 ms)
+[----------] 1 test from SpatialWhereIndexFallbackTest (56 ms total)
+
+[----------] Global test environment tear-down
+[==========] 2 tests from 2 test suites ran. (64 ms total)
+[  PASSED  ] 2 tests.

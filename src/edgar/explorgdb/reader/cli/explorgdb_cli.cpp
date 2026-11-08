@@ -111,6 +111,20 @@ static std::optional<explorgdb::AttrOp> parse_attr_op(const std::string& text) {
     return std::nullopt;
 }
 
+static bool parse_int64_key(const std::string& value, int64_t& integer) {
+    const char* begin = value.data();
+    const char* end = begin + value.size();
+    const bool leading_plus = begin != end && *begin == '+';
+    if (leading_plus) ++begin;
+    const auto parsed = std::from_chars(begin, end, integer);
+    if (parsed.ec != std::errc{} || parsed.ptr != end ||
+        (leading_plus && begin != end && *begin == '-')) {
+        std::cerr << "INT64 requires an in-range integer literal\n";
+        return false;
+    }
+    return true;
+}
+
 static bool query_typed_atx(const std::string& path, explorgdb::FieldType type,
                             const std::string& operation, const std::string& value,
                             std::vector<explorgdb::RowSlot>& result, size_t max_fids = 0) {
@@ -123,16 +137,7 @@ static bool query_typed_atx(const std::string& path, explorgdb::FieldType type,
         ok = parser.query_string_direct(value, *op, max_fids, result);
     } else if (type == FieldType::Int64) {
         int64_t integer = 0;
-        const char* begin = value.data();
-        const char* end = begin + value.size();
-        const bool leading_plus = begin != end && *begin == '+';
-        if (leading_plus) ++begin;
-        const auto parsed = std::from_chars(begin, end, integer);
-        if (parsed.ec != std::errc{} || parsed.ptr != end ||
-            (leading_plus && begin != end && *begin == '-')) {
-            std::cerr << "INT64 requires an in-range integer literal\n";
-            return false;
-        }
+        if (!parse_int64_key(value, integer)) return false;
         ok = parser.query_int64_direct(integer, *op, max_fids, result);
     } else if (type == FieldType::Int16 || type == FieldType::Int32 || type == FieldType::Float32 ||
                type == FieldType::Float64 || type == FieldType::DateTime ||
@@ -789,27 +794,39 @@ static bool cmd_query(const std::string& gdb_path, uint32_t table_id,
             std::cerr << "Indexed field type unavailable; use explicit query-atx for raw files\n";
             return false;
         }
-        if (*field_type == FieldType::String) {
-            const auto op = parse_attr_op(op_str);
-            if (!op) { std::cerr << "Invalid attribute operator\n"; return false; }
-            ResolvedTable resolved;
-            resolved.id = table_id;
-            resolved.table_path = table_path;
-            resolved.tablx_path = tablx_path;
-            QueryEngine engine(catalog, resolved);
-            if (!engine.open()) { std::cerr << "Cannot open attribute query engine\n"; return false; }
+        const auto op = parse_attr_op(op_str);
+        if (!op) { std::cerr << "Invalid attribute operator\n"; return false; }
+        ResolvedTable resolved;
+        resolved.id = table_id;
+        resolved.table_path = table_path;
+        resolved.tablx_path = tablx_path;
+        QueryEngine engine(catalog, resolved);
+        if (!engine.open()) { std::cerr << "Cannot open attribute query engine\n"; return false; }
+        QueryResult result;
+        if (*field_type == FieldType::Int64) {
+            int64_t integer = 0;
+            if (!parse_int64_key(value_str, integer)) return false;
+            result = engine.query_attribute_int64(index_name, integer, *op);
+        } else {
             QueryRequest request;
-            request.kind = QueryKind::AttributeString;
+            const bool textual = *field_type == FieldType::String ||
+                *field_type == FieldType::UUID_1 || *field_type == FieldType::UUID_2;
+            request.kind = textual ? QueryKind::AttributeString : QueryKind::AttributeDouble;
             request.index_name = index_name;
-            request.string_value = value_str;
             request.attr_op = *op;
-            auto result = engine.query(request);
-            if (result.status != QueryStatus::Ok) { std::cerr << result.error << '\n'; return false; }
-            result_fids = std::move(result.matched_fids);
-        } else if (!query_typed_atx(join_utf8_path(gdb_path, atx_entry->filename), *field_type,
-                             op_str, value_str, result_fids,
-                             static_cast<size_t>(std::min<RowSlot>(table_parser.feature_count(),
-                                 std::numeric_limits<size_t>::max())))) return false;
+            if (textual) request.string_value = value_str;
+            else {
+                size_t consumed = 0;
+                request.double_value = std::stod(value_str, &consumed);
+                if (consumed != value_str.size() || !std::isfinite(request.double_value)) {
+                    std::cerr << "Numeric ATX value must be finite and fully parsed\n";
+                    return false;
+                }
+            }
+            result = engine.query(request);
+        }
+        if (result.status != QueryStatus::Ok) { std::cerr << result.error << '\n'; return false; }
+        result_fids = std::move(result.matched_fids);
     } else {
         std::cerr << "Unknown query type: " << query_type << "\n";
         return false;

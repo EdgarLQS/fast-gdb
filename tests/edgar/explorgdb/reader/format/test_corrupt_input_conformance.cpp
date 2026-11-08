@@ -8,9 +8,12 @@
 #include "gdb_table.h"
 #include "gdb_tablx.h"
 #include "reader.h"
+#include "query_engine.h"
 #include "test_paths.h"
 
 #include <atomic>
+#include <algorithm>
+#include <fstream>
 #include <filesystem>
 #include <string>
 
@@ -93,4 +96,71 @@ TEST(CorruptInputConformance, ReaderDoesNotPublishCorruptSystemCatalog) {
     EXPECT_FALSE(reader.has_value());
     EXPECT_NE(error.status, ReaderStatus::Ok);
     EXPECT_FALSE(error.message.empty());
+}
+
+TEST(CorruptInputConformance, RejectedRowsNeverBecomePartialOrSyntheticNullCells) {
+    TemporaryFixture fixture("row_layout");
+    ASSERT_FALSE(fixture.path().empty());
+    const auto table_path = fixture.path() / "a00000009.gdbtable";
+    const auto tablx_path = fixture.path() / "a00000009.gdbtablx";
+    std::ifstream tablx(tablx_path, std::ios::binary);
+    ASSERT_TRUE(tablx.good());
+    tablx.seekg(21); // dense v3 fixture, logical slot 1
+    uint64_t offset = 0;
+    for (size_t i = 0; i < 5; ++i) {
+        const int byte = tablx.get();
+        ASSERT_NE(byte, EOF);
+        offset |= static_cast<uint64_t>(static_cast<uint8_t>(byte)) << (8*i);
+    }
+    ASSERT_GT(offset, 0U);
+    {
+        std::fstream file(table_path, std::ios::binary | std::ios::in | std::ios::out);
+        ASSERT_TRUE(file.good());
+        file.seekp(static_cast<std::streamoff>(offset));
+        const char length[4] = {16, 0, 0, 0};
+        file.write(length, 4);
+        const std::string invalid(16, static_cast<char>(0xff));
+        file.write(invalid.data(), invalid.size());
+        ASSERT_TRUE(file.good());
+    }
+    GdbTableParser parser(table_path.string());
+    ASSERT_TRUE(parser.open());
+    ASSERT_TRUE(parser.load_tablx(tablx_path.string()));
+    ASSERT_GT(parser.active_feature_count(), 2U);
+    FeatureRecord broken;
+    ASSERT_FALSE(parser.read_record_by_fid(1, broken));
+    size_t callbacks = 0;
+    EXPECT_EQ(parser.sequential_scan([&](RowSlot fid, const FieldRef*, int) {
+        EXPECT_EQ(fid, 0U);
+        ++callbacks;
+        return true;
+    }), 1U);
+    EXPECT_EQ(callbacks, 1U);
+    GdbCatalog catalog;
+    ASSERT_TRUE(catalog.scan(fixture.path().string()));
+    ResolvedTable table;
+    table.id = 9; table.table_path = table_path.string(); table.tablx_path = tablx_path.string();
+    QueryEngine engine(catalog, table);
+    ASSERT_TRUE(engine.open());
+    const auto oid = std::find_if(parser.fields().begin(), parser.fields().end(),
+        [](const auto& field) { return field.type == FieldType::ObjectId; });
+    ASSERT_NE(oid, parser.fields().end());
+    for (auto kind : {QueryKind::SequentialScan, QueryKind::WhereClause}) {
+        QueryRequest request;
+        request.kind = kind;
+        request.where_clause = oid->name + " >= 1";
+        auto result = engine.query(request);
+        EXPECT_EQ(result.status, QueryStatus::Unsupported);
+        EXPECT_TRUE(result.matched_fids.empty());
+        request.limit = 1;
+        result = engine.query(request);
+        EXPECT_EQ(result.status, QueryStatus::Ok);
+        EXPECT_EQ(result.matched_fids, (std::vector<RowSlot>{0}));
+        size_t calls = 0;
+        request.limit = 0;
+        request.cancel_requested = [&] { return ++calls == 1; }; // consumed cancellation signal
+        result = engine.query(request);
+        EXPECT_EQ(result.status, QueryStatus::Cancelled);
+        EXPECT_TRUE(result.matched_fids.empty());
+    }
 }

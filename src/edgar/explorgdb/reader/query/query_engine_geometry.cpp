@@ -243,6 +243,7 @@ QueryResult QueryEngine::query_bbox_unified(
         geom_field->morig, geom_field->mscale,
         has_z, has_m);
 
+    bool source_row_failed = false;
     auto evaluate_blob = [&](RowSlot fid,
                              const uint8_t* blob,
                              size_t blob_size) {
@@ -311,6 +312,16 @@ QueryResult QueryEngine::query_bbox_unified(
             result.matched_fids.push_back(fid);
     };
 
+    const auto evaluate_view = [&](RowSlot fid, const uint8_t* geometry, size_t size, bool is_null) {
+        if (!is_null && geometry == nullptr) source_row_failed = true;
+        if (is_null || geometry == nullptr || size == 0) {
+            ++result.spatial_metrics.invalid_geometries;
+            return true;
+        }
+        evaluate_blob(fid, geometry, size);
+        return true;
+    };
+
     auto ensure_all_candidates = [&]() {
         if (!candidates.empty()) return;
         candidates.reserve(feature_count);
@@ -325,18 +336,9 @@ QueryResult QueryEngine::query_bbox_unified(
         if (!candidates.empty()) {
             const SpatialQueryMetrics metrics_before = result.spatial_metrics;
             const size_t matched_before = result.matched_fids.size();
-            const uint64_t scanned = parser_->scan_geometry_candidates(
-                candidates,
-                [&](RowSlot fid, const uint8_t* geometry,
-                    size_t geometry_size, bool is_null) {
-                    if (is_null || geometry == nullptr || geometry_size == 0) {
-                        ++result.spatial_metrics.invalid_geometries;
-                        return true;
-                    }
-                    evaluate_blob(fid, geometry, geometry_size);
-                    return true;
-                });
-            if (scanned == candidates.size()) {
+            const bool failure_before = source_row_failed;
+            const uint64_t scanned = parser_->scan_geometry_candidates(candidates, evaluate_view);
+            if (scanned == candidates.size() && !source_row_failed) {
                 std::sort(result.matched_fids.begin(),
                           result.matched_fids.end());
                 result.execution_path = spx_parse_ok
@@ -346,25 +348,28 @@ QueryResult QueryEngine::query_bbox_unified(
             }
             result.matched_fids.resize(matched_before);
             result.spatial_metrics = metrics_before;
+            source_row_failed = failure_before;
         }
 
         for (RowSlot fid : candidates) {
             const uint8_t* blob = nullptr;
             size_t blob_size = 0;
             bool located = false;
+            bool is_null = false;
             if (profile_stages) {
                 const auto blob_start = SpatialClock::now();
-                located = parser_->peek_geometry_blob(fid, blob, blob_size);
+                located = parser_->peek_geometry_blob(fid, blob, blob_size, &is_null);
                 result.spatial_metrics.blob_lookup_ms +=
                     elapsed_ms(blob_start);
             } else {
-                located = parser_->peek_geometry_blob(fid, blob, blob_size);
+                located = parser_->peek_geometry_blob(fid, blob, blob_size, &is_null);
             }
             if (!located) {
+                source_row_failed = true;
                 ++result.spatial_metrics.invalid_geometries;
                 continue;
             }
-            evaluate_blob(fid, blob, blob_size);
+            evaluate_view(fid, blob, blob_size, is_null);
         }
         std::sort(result.matched_fids.begin(), result.matched_fids.end());
     };
@@ -373,20 +378,11 @@ QueryResult QueryEngine::query_bbox_unified(
         if (!planner_direct_scan && !sequential_fallback)
             result.execution_path = kPathBboxModelSequentialAdaptive;
         const auto scan_start = SpatialClock::now();
-        const uint64_t scanned = parser_->scan_geometry_blobs(
-            [&](RowSlot fid, const uint8_t* geometry,
-                size_t geometry_size, bool is_null) {
-                if (is_null || geometry == nullptr || geometry_size == 0) {
-                    ++result.spatial_metrics.invalid_geometries;
-                    return true;
-                }
-                evaluate_blob(fid, geometry, geometry_size);
-                return true;
-            });
+        const uint64_t scanned = parser_->scan_geometry_blobs(evaluate_view);
         result.spatial_metrics.geometry_scan_ms = elapsed_ms(scan_start);
         result.spatial_metrics.geometry_only_scan = scanned != 0;
 
-        if (scanned == 0 && feature_count != 0) {
+        if ((scanned != feature_count || source_row_failed) && feature_count != 0) {
             result.execution_path = spx_parse_ok
                 ? kPathBboxModelSpxCandidates
                 : kPathBboxModelCandidateFallback;
@@ -400,13 +396,46 @@ QueryResult QueryEngine::query_bbox_unified(
             result.spatial_metrics.geometry_scan_ms = 0.0;
             result.spatial_metrics.geometry_only_scan = false;
             result.spatial_metrics.spx_bypassed = false;
+            source_row_failed = false;
+            candidates.clear();
             ensure_all_candidates();
             evaluate_candidates();
+            result.execution_path = kPathBboxModelSequentialFallback;
+            result.spatial_metrics.spx_bypassed = true;
+            result.spatial_metrics.candidate_count = feature_count;
+            result.spatial_metrics.candidate_ratio = 1.0;
         }
     } else {
         if (spx_parse_ok)
             result.execution_path = kPathBboxModelSpxCandidates;
         evaluate_candidates();
+    }
+
+    if (source_row_failed && !use_sequential_scan) {
+        // An unreadable/stale SPX candidate is not proof that the table itself
+        // is corrupt. Retry all active rows so stale/deleted candidates can fall back safely.
+        result.matched_fids.clear();
+        result.spatial_metrics.bbox_rejected = 0;
+        result.spatial_metrics.bbox_contained = 0;
+        result.spatial_metrics.exact_tested = 0;
+        result.spatial_metrics.invalid_geometries = 0;
+        source_row_failed = false;
+        candidates.clear();
+        ensure_all_candidates();
+        evaluate_candidates();
+        result.execution_path = kPathBboxModelSequentialFallback;
+        result.spatial_metrics.spx_bypassed = true;
+        result.spatial_metrics.candidate_count = feature_count;
+        result.spatial_metrics.candidate_ratio = 1.0;
+        if (!result.fallback_reason.empty()) result.fallback_reason += "; ";
+        result.fallback_reason += "candidate row lookup failed; all active geometry rows evaluated";
+    }
+    if (source_row_failed) {
+        result.status = QueryStatus::Unsupported;
+        result.error = "source geometry row could not be read completely";
+        result.matched_fids.clear();
+        result.spatial_metrics.total_ms = elapsed_ms(total_start);
+        return result;
     }
 
     if (result.spatial_metrics.invalid_geometries != 0) {

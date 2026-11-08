@@ -5,7 +5,7 @@
 #include "binary_reader.h"
 #include "gdb_indexes.h"
 #include "gdb_tablx_cache.h"
-#include "gdb_attribute_string_cache.h"
+#include "gdb_attribute_value_cache.h"
 #include <algorithm>
 #include <cstring>
 #include <filesystem>
@@ -25,7 +25,7 @@ bool GdbCatalog::scan(const std::string& gdb_path) {
     const fs::path directory = fs::u8path(gdb_path);
     gdb_path_ = gdb_path;
     entries_.clear();
-    string_index_cache_ = std::make_shared<detail::AttributeStringCache>();
+    attribute_value_cache_ = std::make_shared<detail::AttributeValueCache>();
     index_metadata_cache_ = std::make_shared<IndexMetadataCacheState>();
     has_magic_ = false;
     has_timestamps_ = false;

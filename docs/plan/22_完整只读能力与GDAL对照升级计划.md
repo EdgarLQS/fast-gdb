@@ -100,7 +100,7 @@
 ### S4：百万至千万要素性能
 
 - [x] S4.1 统一入口 FID 读取走直接定位，避免顺序寻找记录；验证稀疏和删除 FID。（实现与稀疏 FID 证据见 [S4.1 验证记录](evidence/2026-11-05-S4.1-direct-fid-read.md)。）
-- [ ] S4.2 ATX 按页访问、按键下降和范围终止，设置有界缓存；异常索引安全回退，最终复核原值。数值/GUID 路径已实现；字符串新增原值验证后的有界叶页范围目录，复用限于同代快照，外部写后 refresh/完整重开重新验证。100K 长值和 1M 短值已对照；遇到的 NaN 叶/分隔键拒绝并回退，有限公开输入合同已补齐。数值/GUID 候选完整性与原值复核、真实 ArcGIS 大索引及百万长键/更大规模边界仍待验收。见 [原阶段记录](evidence/2026-11-06-S4.2-atx-paged-query.md)、[字符串正确性](evidence/2026-11-07-string-index-semantics.md) 与 [验证目录和规模证据](evidence/2026-11-08-string-directory.md)。
+- [ ] S4.2 ATX 按页访问、按键下降和范围终止，设置有界缓存；异常索引安全回退，最终复核原值。字符串、数值、Int64、GUID、日期现统一采用原值与候选完整性验证后的叶页范围目录，复用限于同代快照，外部写后 refresh/完整重开重新验证。100K 长值、1M 短值及 1M/10M 普通数值已对照；NaN、有限错键、重复/缺失 FID 和源坏行补充错误传播与回退测试。真实 ArcGIS 大索引、百万长键、非选择性条件及冷 I/O 等门禁仍待验收，不能据此宣称全面提速。见 [原阶段记录](evidence/2026-11-06-S4.2-atx-paged-query.md)、[字符串目录](evidence/2026-11-08-string-directory.md) 与 [本次属性完整性、提交范围和剩余项](evidence/2026-11-08-attribute-integrity.md)。
 - [x] S4.3 复用同一代目录、Schema 和查询准备结果；刷新后不复用旧代缓存。（Dataset 保留 Reader/catalog；图层 Schema 使用最多 64 项的代次内 LRU；WHERE 准备缓存最多 128 项且拒绝缓存超过 64 KiB 的键。刷新重建 Reader 和缓存。定向验证见 [S4.3 验证记录](evidence/2026-11-06-S4.3-generation-cache.md)。）
 - [x] S4.4 优化字段投影、几何按需解码和空间属性融合扫描，减少重复解析与物化。（未投影的定长字段只验证并跳过字节；`Query.include_geometry=false` 返回显式 `NotRequested`，空间谓词仍可解码所需几何；GDAL 无过滤条件时按能力请求忽略投影外字段/几何，带过滤器时不忽略筛选输入并在结果映射时投影。融合单行扫描的路径/候选断言与省略输出几何的空间 WHERE 回归通过；详见 [S4.4 验证记录](evidence/2026-11-06-S4.4-projection-lazy-geometry.md)。）
 - [x] S4.5 记录新/热句柄打开、随机读取、扫描和联合查询的 median/p95/p99、吞吐、峰值 RSS、磁盘读取量及索引访问量。（100K 完成 101 轮；1K/10K/1M/10M 空间矩阵正确。10M 的 1%、10%、30%、80%、全覆盖各跑 5 轮；另以同一 10M 夹具跑 5 轮随机 FID 和全量扫描，Fast/GDAL 的 FID/字段/WKB digest 一致。新增用户提供的 `testcurve.gdb` 曲线逐要素 GDAL 对照，详见 [曲线扫描](evidence/2026-11-07-testcurve-curve-sweep.md)。对基线 `67d4e31` 的历史两轮同机比较显示当时 Fast 全扫中位数约慢 14%、进程级峰值 RSS 约高 27%；本轮再优化后另以独立进程各跑 25 轮，Fast/GDAL 随机读与全扫 digest 一致，Fast RSS 419,463,168 B、GDAL RSS 48,316,416 B，Fast 两项 median 均低于 GDAL。密集 FID 直接由行槽得到，Tablx 偏移改为跨解析器、图层与缓存共享不可变数组。RSS 包含 mmap 文件驻留页；OS 文件缓存未清，冷启动 I/O 与相同优化前基线复测仍待测。分进程结果见 [S4.5 RSS 证据](evidence/2026-11-07-S4.5-backend-isolated-rss.md)，既有规模和基线边界见 [S4.5 基准记录](evidence/2026-11-06-S4.5-scale-benchmarks.md) 与 [基线对照补充](evidence/2026-11-06-S4.5-before-after-comparison.md)。）
@@ -291,3 +291,7 @@ CLI 自动绑定源字段类型、独立 ATX 接受显式类型、INT64 精确�
 ### 2026-11-08：数值索引 NaN 比较修复
 
 修复 NaN 键/探针被三路比较误判为相等的问题：访问到的 NaN 浮点键拒绝并回退原字段扫描，物化失败清空部分条目；公开 AttributeDouble 非有限参数返回 InvalidRequest，原始索引 API 保留无穷与有符号零的 IEEE 比较。macOS 专项 29/29，通过真实 GDAL 浮点字段、明确损坏的 NaN 索引与普通/联合六操作符对照；完整测试记录和后续原值/完整性审查见 [数值边界记录](evidence/2026-11-08-numeric-special-values.md)。S4.2 和总计划仍未完成。
+
+### 2026-11-08：属性完整性与坏源行处理提交
+
+将原值验证目录推广至数值/Int64/GUID/日期，补齐有限错误键、重复/缺失 FID 的完整性检查；新增精确 Int64 入口并接通 CLI。修复坏源行伪装 NULL 或导致成功但部分结果的问题，无法完整读取时明确 Unsupported。macOS Release 588 PASS / 18 SKIP，Linux Release 628 PASS / 19 SKIP，均零失败；百万/千万普通数值的冷热验证及开销已留证。详见 [本次提交内容、完整验证与后续事项](evidence/2026-11-08-attribute-integrity.md)。真实附件/高级对象、MultiPatch、高位稀疏 ObjectID、旧格式、ArcGIS 日期索引及 Windows 等验收仍按原计划执行；写入另行设计。

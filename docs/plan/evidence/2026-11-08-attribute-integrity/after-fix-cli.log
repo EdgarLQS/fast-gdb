@@ -1,0 +1,17 @@
+binary_sha256 8ffd25b4b788c03e004ffeb48c035efb2dd115e630125758e5677181903245f8
+command ['/tmp/fast-gdb-linux-s52/bin/explorgdb_cli', 'query', '/tmp/fast_gdb_finite_integrity_integer.gdb', '9', 'attr', 'value_idx', '=', '10'] expected_fids [1] exit 0
+=== Query Result: table_id=9, type=attr ===
+Matched FIDs: 1
+
+FID 1 (blob_len=5):
+  OBJECTID: 2
+  value: 10
+
+
+command ['/tmp/fast-gdb-linux-s52/bin/explorgdb_cli', 'query', '/tmp/fast_gdb_finite_integrity_floating.gdb', '9', 'attr', 'value_idx', '=', '10'] expected_fids [1] exit 0
+=== Query Result: table_id=9, type=attr ===
+Matched FIDs: 1
+
+FID 1 (blob_len=9):
+  OBJECTID: 2
+  value: 10.000000
