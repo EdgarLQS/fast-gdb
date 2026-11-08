@@ -39,6 +39,7 @@ struct AttributeIndexQueryMetrics {
     size_t entries_scanned = 0;
     size_t candidate_count = 0;
     bool validated_directory_hit = false;
+    bool validated_directory_scan_preferred = false;
     bool validated_directory_budget_exceeded = false;
     size_t validated_directory_bytes = 0;
     size_t index_validation_rows = 0;

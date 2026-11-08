@@ -388,7 +388,7 @@ private:
     ResolvedTable resolved_;
     std::unique_ptr<GdbTableParser> parser_;
     std::optional<TablxCacheKey> source_tablx_identity_;
-    std::shared_ptr<const detail::AttributeValueQueryContext> make_value_context(size_t field, bool temporal = false) const;
+    std::shared_ptr<const detail::AttributeValueQueryContext> make_value_context(size_t field, bool temporal = false, bool allow_full_scan = false) const;
     std::unique_ptr<GdbSpatialIndexParser> spatial_index_;
     bool opened_ = false;
     bool spatial_index_initialized_ = false;

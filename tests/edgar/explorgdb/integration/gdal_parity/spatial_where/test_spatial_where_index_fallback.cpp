@@ -728,6 +728,12 @@ TEST_F(SpatialWhereIndexFallbackTest, ValidatedNumericDirectoryReportsColdProofA
             indexed_times.push_back(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin).count());
             ASSERT_EQ(indexed.status, QueryStatus::Ok) << indexed.error;
             EXPECT_EQ(indexed.matched_fids, expected);
+            if (rows >= 4096 && operation != 0) {
+                EXPECT_EQ(indexed.execution_path, "attribute:sequential");
+                EXPECT_TRUE(indexed.attribute_index_metrics.validated_directory_scan_preferred);
+                EXPECT_EQ(indexed.attribute_index_metrics.pages_visited, 0U);
+                EXPECT_NE(indexed.fallback_reason.find("nonselective"), std::string::npos);
+            }
             const auto scan_begin = std::chrono::steady_clock::now();
             const auto scanned = engine.query(scan);
             scan_times.push_back(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - scan_begin).count());

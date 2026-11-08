@@ -590,7 +590,7 @@ std::vector<RowSlot> QueryEngine::query_attribute_string(
 }
 
 std::shared_ptr<const detail::AttributeValueQueryContext>
-QueryEngine::make_value_context(size_t field, bool temporal) const {
+QueryEngine::make_value_context(size_t field, bool temporal, bool allow_full_scan) const {
     if (!parser_ || !source_tablx_identity_ || field >= parser_->fields().size()) return {};
     auto context = std::make_shared<detail::AttributeValueQueryContext>();
     context->cache = catalog_.attribute_value_cache();
@@ -602,6 +602,9 @@ QueryEngine::make_value_context(size_t field, bool temporal) const {
         (type == FieldType::UUID_1 || type == FieldType::UUID_2) ? attribute_value::Domain::Uuid :
         temporal ? attribute_value::Domain::Temporal : type == FieldType::Int64 ?
         attribute_value::Domain::Integer : attribute_value::Domain::Floating;
+    context->allow_full_field_scan = allow_full_scan &&
+        (type == FieldType::Int16 || type == FieldType::Int32 || type == FieldType::Int64 ||
+         type == FieldType::Float32 || type == FieldType::Float64);
     const auto domain = context->domain;
     context->index_value = [type, domain](const uint8_t* data, size_t width, std::string& result) {
         return attribute_value::index(data, width, type, domain, result);
@@ -709,7 +712,7 @@ QueryResult QueryEngine::query_attribute(const QueryRequest& request, std::optio
             GdbAttributeIndexParser index(
                 catalog_.path() + "/" + atx->filename, *indexed_field_type);
             {
-                auto context = make_value_context(indexed_field_position);
+                auto context = make_value_context(indexed_field_position, false, true);
                 if (!context) {
                     result.status = QueryStatus::SourceChanged;
                     result.error = "attribute index source changed; reopen the dataset";
@@ -745,7 +748,9 @@ QueryResult QueryEngine::query_attribute(const QueryRequest& request, std::optio
         result.execution_path = kPathAttributeSequential;
         result.fallback_reason = atx == nullptr
             ? kFallbackAttributeIndexMissing
-            : "attribute index could not be parsed; sequential scan used";
+            : result.attribute_index_metrics.validated_directory_scan_preferred
+                ? "validated attribute range is nonselective; sequential scan preferred"
+                : "attribute index could not be parsed; sequential scan used";
     }
 
     const auto matches = [&](const FieldRef* fields, int count) {

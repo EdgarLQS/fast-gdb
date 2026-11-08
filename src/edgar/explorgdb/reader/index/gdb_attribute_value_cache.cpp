@@ -306,6 +306,25 @@ bool query_validated_attribute_directory(const std::string& path, const TablxCac
             directory->page_count != page_count || directory->value_count != trailer.total_value_count ||
             directory->max_fid > slots) return false;
     }
+    std::vector<size_t> selected_leaves;
+    if (directory) {
+        selected_leaves = directory->select(value, op);
+        // A conservative leaf-count estimate avoids materializing broad FID sets.
+        // Only callers able to evaluate the complete field predicate may opt in.
+        if (context->allow_full_field_scan && context->active_rows >= 4096) {
+            size_t possible_rows = 0;
+            const size_t threshold = context->active_rows / 4;
+            for (size_t selected : selected_leaves) {
+                const auto count = directory->leaves[selected].count;
+                if (count > threshold - possible_rows) {
+                    if (!stable()) return false;
+                    if (metrics) metrics->validated_directory_scan_preferred = true;
+                    return false;
+                }
+                possible_rows += count;
+            }
+        }
+    }
     const size_t oid_size = trailer.object_id_size;
     const size_t header = trailer.version == 1 ? 12 : 20;
     if ((oid_size != 4 && oid_size != 8) || trailer.page_size < header || !trailer.value_size) return false;
@@ -333,7 +352,7 @@ bool query_validated_attribute_directory(const std::string& path, const TablxCac
     const auto scan_start = metrics ? Clock::now() : Clock::time_point{};
     std::vector<RowSlot> candidates;
     if (directory) {
-        for (size_t selected : directory->select(value, op)) {
+        for (size_t selected : selected_leaves) {
             const auto& leaf = directory->leaves[selected];
             if (!read(leaf.page) || integer(page.data() + oid_size, 4) != leaf.count) return false;
             if (leaf.count > capacity) return false;

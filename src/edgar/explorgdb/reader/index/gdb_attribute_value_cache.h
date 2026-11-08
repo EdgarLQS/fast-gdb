@@ -87,6 +87,7 @@ struct AttributeValueQueryContext {
     std::string table_path, tablx_path;
     size_t field = 0;
     size_t active_rows = 0;
+    bool allow_full_field_scan = false;
     attribute_value::Domain domain = attribute_value::Domain::String;
     std::function<bool(const uint8_t*, size_t, std::string&)> index_value;
     TablxCacheKey expected_table, expected_tablx;

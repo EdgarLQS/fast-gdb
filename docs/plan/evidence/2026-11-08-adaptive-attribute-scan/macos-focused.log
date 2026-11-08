@@ -1,0 +1,76 @@
+Note: Google Test filter = SpatialWhereIndexFallbackTest.*:AttributeValueKeyTest.*:AttributeStringCacheTest.*
+[==========] Running 27 tests from 3 test suites.
+[----------] Global test environment set-up.
+[----------] 8 tests from AttributeStringCacheTest
+[ RUN      ] AttributeStringCacheTest.BoundsNeverExcludeMatchingLeavesIncludingLongPrefixes
+[       OK ] AttributeStringCacheTest.BoundsNeverExcludeMatchingLeavesIncludingLongPrefixes (15 ms)
+[ RUN      ] AttributeStringCacheTest.ColdProofAndWarmDifferentProbesSelectOnlyMatchingRanges
+[       OK ] AttributeStringCacheTest.ColdProofAndWarmDifferentProbesSelectOnlyMatchingRanges (11 ms)
+[ RUN      ] AttributeStringCacheTest.RejectsDuplicateMissingAndMismatchedIndexEntries
+[       OK ] AttributeStringCacheTest.RejectsDuplicateMissingAndMismatchedIndexEntries (1 ms)
+[ RUN      ] AttributeStringCacheTest.EmptyIndexRequiresEmptyNonNullSourceProof
+[       OK ] AttributeStringCacheTest.EmptyIndexRequiresEmptyNonNullSourceProof (0 ms)
+[ RUN      ] AttributeStringCacheTest.ChangedSourceIdentitiesCannotReuseProof
+[       OK ] AttributeStringCacheTest.ChangedSourceIdentitiesCannotReuseProof (2 ms)
+[ RUN      ] AttributeStringCacheTest.ConcurrentBuildersShareOneProof
+[       OK ] AttributeStringCacheTest.ConcurrentBuildersShareOneProof (1 ms)
+[ RUN      ] AttributeStringCacheTest.BudgetAndLruBoundMemoryWithoutPublishingCandidates
+[       OK ] AttributeStringCacheTest.BudgetAndLruBoundMemoryWithoutPublishingCandidates (0 ms)
+[ RUN      ] AttributeStringCacheTest.SourceChangeDuringValidationPublishesNeitherProofNorCandidates
+[       OK ] AttributeStringCacheTest.SourceChangeDuringValidationPublishesNeitherProofNorCandidates (0 ms)
+[----------] 8 tests from AttributeStringCacheTest (33 ms total)
+
+[----------] 3 tests from AttributeValueKeyTest
+[ RUN      ] AttributeValueKeyTest.SortableKeysPreserveIntegerPrecisionAndIeeeOrder
+[       OK ] AttributeValueKeyTest.SortableKeysPreserveIntegerPrecisionAndIeeeOrder (0 ms)
+[ RUN      ] AttributeValueKeyTest.ComparisonDomainsCannotShareDifferentMeanings
+[       OK ] AttributeValueKeyTest.ComparisonDomainsCannotShareDifferentMeanings (0 ms)
+[ RUN      ] AttributeValueKeyTest.ValidatedTypedDirectoriesKeepExactV1V2ResultsAcrossUnorderedLeaves
+[       OK ] AttributeValueKeyTest.ValidatedTypedDirectoriesKeepExactV1V2ResultsAcrossUnorderedLeaves (27 ms)
+[----------] 3 tests from AttributeValueKeyTest (27 ms total)
+
+[----------] 16 tests from SpatialWhereIndexFallbackTest
+[ RUN      ] SpatialWhereIndexFallbackTest.MissingAtxKeepsCorrectResults
+[       OK ] SpatialWhereIndexFallbackTest.MissingAtxKeepsCorrectResults (56 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.DamagedAtxKeepsCorrectResults
+[       OK ] SpatialWhereIndexFallbackTest.DamagedAtxKeepsCorrectResults (3 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.DamagedAtxAttributeQueryFallsBackToSequentialScan
+[       OK ] SpatialWhereIndexFallbackTest.DamagedAtxAttributeQueryFallsBackToSequentialScan (4 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.MissingAtxAttributeQueryFallsBackToSequentialScan
+[       OK ] SpatialWhereIndexFallbackTest.MissingAtxAttributeQueryFallsBackToSequentialScan (4 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.InconsistentAtxTrailerCountKeepsCorrectResults
+[       OK ] SpatialWhereIndexFallbackTest.InconsistentAtxTrailerCountKeepsCorrectResults (3 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.CyclicAtxLeafChainKeepsCorrectResults
+[       OK ] SpatialWhereIndexFallbackTest.CyclicAtxLeafChainKeepsCorrectResults (3 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.MissingSpxStillUsesAtxCandidates
+[       OK ] SpatialWhereIndexFallbackTest.MissingSpxStillUsesAtxCandidates (5 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.OfficialSetFeatureRebuildsMissingSpxForFreshFastReader
+[       OK ] SpatialWhereIndexFallbackTest.OfficialSetFeatureRebuildsMissingSpxForFreshFastReader (4 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.MissingBothIndexesStillMatches
+[       OK ] SpatialWhereIndexFallbackTest.MissingBothIndexesStillMatches (3 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.NaNFloatKeyFallsBackToActualFieldsForEveryOperator
+[       OK ] SpatialWhereIndexFallbackTest.NaNFloatKeyFallsBackToActualFieldsForEveryOperator (4 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.NonFinitePublicAttributeProbesAreExplicitErrors
+[       OK ] SpatialWhereIndexFallbackTest.NonFinitePublicAttributeProbesAreExplicitErrors (4 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.FiniteWrongKeysDuplicateFidsAndMissingRowsUseCompleteFieldScan
+[       OK ] SpatialWhereIndexFallbackTest.FiniteWrongKeysDuplicateFidsAndMissingRowsUseCompleteFieldScan (50 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.ExactInt64EntryPointRechecksNativeFieldsAndSharesProof
+[       OK ] SpatialWhereIndexFallbackTest.ExactInt64EntryPointRechecksNativeFieldsAndSharesProof (9 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.ValidatedNumericDirectoryReportsColdProofAndWarmQueries
+[numeric-wide] rows=10000 op== matches=1 rounds=3 indexed_median_ms=0.133792 where_scan_median_ms=0.271375
+[numeric-wide] rows=10000 op=!= matches=9895 rounds=3 indexed_median_ms=0.393792 where_scan_median_ms=0.28625
+[numeric-wide] rows=10000 op=< matches=4947 rounds=3 indexed_median_ms=0.397208 where_scan_median_ms=0.297417
+[numeric-wide] rows=10000 op=<= matches=4948 rounds=3 indexed_median_ms=0.399916 where_scan_median_ms=0.298917
+[numeric-wide] rows=10000 op=> matches=4948 rounds=3 indexed_median_ms=0.427167 where_scan_median_ms=0.338
+[numeric-wide] rows=10000 op=>= matches=4949 rounds=3 indexed_median_ms=0.524084 where_scan_median_ms=0.4625
+[numeric-directory] rows=10000 nonnull=9896 cold_ms=1.211 validation_ms=1.14046 validation_rows=19896 cold_pages=31 cache_bytes=3904 warm_queries=63 warm_pages=63 warm_keys=1133 warm_median_ms=0.134042 warm_p95_ms=0.139167 warm_p99_ms=0.15975 baseline_pages=126 baseline_keys=11007 baseline_median_ms=0.03725 baseline_p95_ms=0.040375 baseline_p99_ms=0.068375
+[       OK ] SpatialWhereIndexFallbackTest.ValidatedNumericDirectoryReportsColdProofAndWarmQueries (32 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.UnreadableAttributeRowCannotBecomePartialSpatialWhereSuccess
+[       OK ] SpatialWhereIndexFallbackTest.UnreadableAttributeRowCannotBecomePartialSpatialWhereSuccess (4 ms)
+[ RUN      ] SpatialWhereIndexFallbackTest.UnsupportedGeometryCannotBecomeSuccessfulPartialResult
+[       OK ] SpatialWhereIndexFallbackTest.UnsupportedGeometryCannotBecomeSuccessfulPartialResult (36 ms)
+[----------] 16 tests from SpatialWhereIndexFallbackTest (232 ms total)
+
+[----------] Global test environment tear-down
+[==========] 27 tests from 3 test suites ran. (294 ms total)
+[  PASSED  ] 27 tests.

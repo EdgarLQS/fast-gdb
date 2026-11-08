@@ -44,6 +44,8 @@ INT64 使用范围内的整数文本，不经过 double。日期/时间类型的
 
 绑定 Int64 字段时 `query ... attr` 使用精确整数入口，可查询 `9007199254740993` 等超出 double 精确范围的值。C++ 对应 `QueryEngine::query_attribute_int64(index_name, value, op)`，仅接受 Int64 字段；普通数值入口仍要求有限 double。
 
+同一快照已有验证目录时，大表的宽范围数值条件可能主动选择完整字段扫描，并报告 `nonselective` 原因。这是执行计划选择，不表示索引损坏；CLI 独立进程的首次冷查询不保证受益。见[选择性策略与实测](../plan/evidence/2026-11-08-adaptive-attribute-scan.md)。
+
 ## 输出和错误
 
 `dump-atx` 的 FID 是索引存储的 1-based ObjectID；`query-atx` 和 `query` 的 FID 是 Reader 使用的 0-based row slot。INT64 dump 以十进制整数完整输出，FLOAT64 dump 使用 17 位有效数字；FLOAT32/FLOAT64/日期索引的 `0x60` 标志按数值解码。

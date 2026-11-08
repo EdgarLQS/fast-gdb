@@ -348,6 +348,9 @@ non-finite public-request errors. See [evidence and remaining integrity checks](
 The native numeric scale test now checks six wide predicates against independent
 GDAL field-scan FIDs and the public WHERE scan, three rounds per operator.
 See [wide query evidence](../docs/plan/evidence/2026-11-08-wide-attribute-queries.md).
+For warmed numeric tables with at least 4096 rows it also asserts broad predicates
+select the full field scan, report the choice and read no index leaves; selective
+equality probes retain the index path. See [adaptive scan evidence](../docs/plan/evidence/2026-11-08-adaptive-attribute-scan.md).
 
 `GdbIndexesExpressionTest.FailedReadCannotExposeStaleOrPartialMetadata` covers
 reusing a successful parser after file removal, a later negative name length,
