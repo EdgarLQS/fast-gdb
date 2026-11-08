@@ -345,6 +345,10 @@ non-finite public-request errors. See [evidence and remaining integrity checks](
 
 ## Bound attribute integrity and incomplete source rows
 
+`GeometryLengthConformance.OverflowingVaruintCannotWrapIntoEmptyGeometry` rejects
+tenth-byte overflow in mapped field and geometry scans, consistent with canonical
+record reads. See [scan length boundaries](../docs/plan/evidence/2026-11-08-scan-varuint.md).
+
 Raw ATX explicit schema/width mismatches are rejected by
 `AttributeIndexSafetyTest.ExplicitSchemaCannotReinterpretIncompatibleKeyWidth`;
 `AttributeIndexTest.DecodeNumericUnknownSize` rejects invented zero values.

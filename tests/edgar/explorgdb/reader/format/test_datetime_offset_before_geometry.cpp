@@ -157,3 +157,33 @@ TEST(DateTimeWithOffsetBeforeGeometry_GeometryOnlyScan,
     parser.mapped_data_ = nullptr;
     EXPECT_EQ(scanned, 0u);
 }
+
+TEST(GeometryLengthConformance, OverflowingVaruintCannotWrapIntoEmptyGeometry) {
+    for (uint8_t final_byte : {0x02, 0x04, 0x7e, 0x80, 0x81}) {
+        GdbTableParser parser("unused");
+        prepare_datetime_before_geometry(parser);
+        parser.fields_ = {parser.fields_[0], parser.fields_[2]};
+        parser.geometry_field_index_ = 1;
+        parser.file_data_ = {0xff};
+        append_u32(parser.file_data_, 10);
+        parser.file_data_.insert(parser.file_data_.end(), 9, 0x80);
+        parser.file_data_.push_back(final_byte);
+        parser.file_size_ = parser.file_data_.size();
+        parser.mapped_data_ = parser.file_data_.data();
+        FeatureRecord record;
+        EXPECT_FALSE(parser.read_record_by_fid(0, record));
+        size_t callbacks = 0;
+        EXPECT_EQ(parser.scan_field_candidates({0}, [&](RowSlot, const FieldRef*, int) {
+            ++callbacks; return true;
+        }), 0U);
+        EXPECT_EQ(callbacks, 0U);
+        const auto check = [](RowSlot, const uint8_t* data, size_t size, bool is_null) {
+            EXPECT_EQ(data, nullptr);
+            EXPECT_EQ(size, 0U);
+            EXPECT_FALSE(is_null);
+            return true;
+        };
+        EXPECT_EQ(parser.scan_geometry_blobs(check), 1U);
+        parser.mapped_data_ = nullptr;
+    }
+}

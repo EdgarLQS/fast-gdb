@@ -25,6 +25,8 @@ bool read_varuint_checked(const uint8_t*& cursor,
     unsigned shift = 0;
     while (cursor < end && shift <= 63U) {
         const uint8_t byte = *cursor++;
+        // Only bit 63 remains in the tenth byte; reject overflow before shifting.
+        if (shift == 63U && (byte & 0xfeU) != 0) return false;
         value |= static_cast<uint64_t>(byte & 0x7fU) << shift;
         if ((byte & 0x80U) == 0) return true;
         shift += 7U;

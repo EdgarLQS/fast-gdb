@@ -1,0 +1,68 @@
+Note: Google Test filter = GeometryLengthConformance.*:DateTimeWithOffsetBeforeGeometry*.*:CorruptInputConformance.*:NullableBitmapCompatTest.*
+[==========] Running 17 tests from 7 test suites.
+[----------] Global test environment set-up.
+[----------] 3 tests from CorruptInputConformance
+[ RUN      ] CorruptInputConformance.TruncatedCoreFilesFailClosed
+Failed to parse table header: BinaryReader: read past end
+[       OK ] CorruptInputConformance.TruncatedCoreFilesFailClosed (4 ms)
+[ RUN      ] CorruptInputConformance.ReaderDoesNotPublishCorruptSystemCatalog
+Failed to parse table header: BinaryReader: read past end
+[       OK ] CorruptInputConformance.ReaderDoesNotPublishCorruptSystemCatalog (4 ms)
+[ RUN      ] CorruptInputConformance.RejectedRowsNeverBecomePartialOrSyntheticNullCells
+[       OK ] CorruptInputConformance.RejectedRowsNeverBecomePartialOrSyntheticNullCells (3 ms)
+[----------] 3 tests from CorruptInputConformance (12 ms total)
+
+[----------] 1 test from DateTimeWithOffsetBeforeGeometry_ReadRecord
+[ RUN      ] DateTimeWithOffsetBeforeGeometry_ReadRecord.ConsumesOffsetBeforeGeometry
+[       OK ] DateTimeWithOffsetBeforeGeometry_ReadRecord.ConsumesOffsetBeforeGeometry (0 ms)
+[----------] 1 test from DateTimeWithOffsetBeforeGeometry_ReadRecord (0 ms total)
+
+[----------] 1 test from DateTimeWithOffsetBeforeGeometry_PeekGeometry
+[ RUN      ] DateTimeWithOffsetBeforeGeometry_PeekGeometry.UsesCanonicalTenByteSkip
+[       OK ] DateTimeWithOffsetBeforeGeometry_PeekGeometry.UsesCanonicalTenByteSkip (0 ms)
+[----------] 1 test from DateTimeWithOffsetBeforeGeometry_PeekGeometry (0 ms total)
+
+[----------] 1 test from DateTimeWithOffsetBeforeGeometry_SequentialScan
+[ RUN      ] DateTimeWithOffsetBeforeGeometry_SequentialScan.KeepsGeometryFieldAligned
+[       OK ] DateTimeWithOffsetBeforeGeometry_SequentialScan.KeepsGeometryFieldAligned (0 ms)
+[----------] 1 test from DateTimeWithOffsetBeforeGeometry_SequentialScan (0 ms total)
+
+[----------] 1 test from DateTimeWithOffsetBeforeGeometry_GeometryOnlyScan
+[ RUN      ] DateTimeWithOffsetBeforeGeometry_GeometryOnlyScan.ReturnsZeroWhenAnyRowIsTruncated
+[       OK ] DateTimeWithOffsetBeforeGeometry_GeometryOnlyScan.ReturnsZeroWhenAnyRowIsTruncated (0 ms)
+[----------] 1 test from DateTimeWithOffsetBeforeGeometry_GeometryOnlyScan (0 ms total)
+
+[----------] 1 test from GeometryLengthConformance
+[ RUN      ] GeometryLengthConformance.OverflowingVaruintCannotWrapIntoEmptyGeometry
+[       OK ] GeometryLengthConformance.OverflowingVaruintCannotWrapIntoEmptyGeometry (0 ms)
+[----------] 1 test from GeometryLengthConformance (0 ms total)
+
+[----------] 9 tests from NullableBitmapCompatTest
+[ RUN      ] NullableBitmapCompatTest.ReadRecordTreatsMissingAddedNullableFieldsAsNull
+[       OK ] NullableBitmapCompatTest.ReadRecordTreatsMissingAddedNullableFieldsAsNull (0 ms)
+[ RUN      ] NullableBitmapCompatTest.ZeroLengthRowHasConsistentObjectIdNullAndGeometryAcrossReadPaths
+[       OK ] NullableBitmapCompatTest.ZeroLengthRowHasConsistentObjectIdNullAndGeometryAcrossReadPaths (0 ms)
+[ RUN      ] NullableBitmapCompatTest.ZeroLengthRowWithRequiredAttributeFailsClosedAcrossScans
+[       OK ] NullableBitmapCompatTest.ZeroLengthRowWithRequiredAttributeFailsClosedAcrossScans (0 ms)
+[ RUN      ] NullableBitmapCompatTest.ParseRecordsUsesSameCompatLayout
+[       OK ] NullableBitmapCompatTest.ParseRecordsUsesSameCompatLayout (0 ms)
+[ RUN      ] NullableBitmapCompatTest.SequentialScanKeepsOldFieldsAligned
+[       OK ] NullableBitmapCompatTest.SequentialScanKeepsOldFieldsAligned (0 ms)
+[ RUN      ] NullableBitmapCompatTest.CurrentTwoByteBitmapStillReadsAllFields
+[       OK ] NullableBitmapCompatTest.CurrentTwoByteBitmapStillReadsAllFields (0 ms)
+[ RUN      ] NullableBitmapCompatTest.WideCurrentBitmapsKeepOriginalValuesAndNullNewFields
+[       OK ] NullableBitmapCompatTest.WideCurrentBitmapsKeepOriginalValuesAndNullNewFields (0 ms)
+[ RUN      ] NullableBitmapCompatTest.LargeCurrentBitmapReadBenchmark
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/reader/format/test_nullable_bitmap_compat.cpp:489: Skipped
+Set FAST_GDB_RUN_NULLABLE_BITMAP_BENCHMARK=1 to run
+
+[  SKIPPED ] NullableBitmapCompatTest.LargeCurrentBitmapReadBenchmark (0 ms)
+[ RUN      ] NullableBitmapCompatTest.PeekGeometryUsesCompatBitmapWidth
+[       OK ] NullableBitmapCompatTest.PeekGeometryUsesCompatBitmapWidth (0 ms)
+[----------] 9 tests from NullableBitmapCompatTest (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 17 tests from 7 test suites ran. (12 ms total)
+[  PASSED  ] 16 tests.
+[  SKIPPED ] 1 test, listed below:
+[  SKIPPED ] NullableBitmapCompatTest.LargeCurrentBitmapReadBenchmark
