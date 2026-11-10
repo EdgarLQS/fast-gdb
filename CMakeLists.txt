@@ -404,6 +404,7 @@ if(BUILD_TESTING)
         tests/edgar/explorgdb/integration/gdal_parity/benchmark/test_feature_cursor_benchmark.cpp
         tests/edgar/explorgdb/integration/gdal_parity/benchmark/test_spatial_benchmark.cpp
         tests/edgar/explorgdb/integration/gdal_parity/benchmark/test_spatial_where_benchmark.cpp
+        tests/edgar/explorgdb/integration/gdal_parity/benchmark/test_spatial_source_proof_benchmark.cpp
         tests/edgar/explorgdb/integration/gdal_parity/benchmark/test_runtime_benchmark.cpp
         tests/edgar/explorgdb/integration/gdal_parity/feature_cursor/test_feature_cursor_empty_geometry.cpp
         tests/edgar/explorgdb/integration/gdal_parity/feature_cursor/test_feature_cursor_gdal.cpp
@@ -418,6 +419,7 @@ if(BUILD_TESTING)
         tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_fused_geometry.cpp
         tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_geometry.cpp
         tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_index_fallback.cpp
+        tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_source_budget.cpp
         tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_integration.cpp
         tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_null.cpp
         tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_where_uuid.cpp

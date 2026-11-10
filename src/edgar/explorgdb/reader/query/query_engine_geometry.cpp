@@ -126,11 +126,25 @@ bool QueryEngine::spatial_candidates(const GdbBbox& box, std::vector<RowSlot>& o
     if (!key || !cache) return fail("spatial source proof unavailable; sequential scan used");
     const auto stable = [this] { return source_current(); };
     const auto input = detail::make_table_spatial_source_input(*parser_, stable);
+    const auto build_start = SpatialClock::now();
     const auto built = cache->get_or_build(path, *key, input, &metrics.source_directory_hit);
+    if (!metrics.source_directory_hit)
+        metrics.source_directory_build_ms = elapsed_ms(build_start);
     if (!built.index) return fail("spatial source proof failed: " + built.reason + "; sequential scan used");
     metrics.source_directory_bytes = built.index->bytes();
-    if (!built.index->query(box, stable, output))
-        return fail("spatial source candidate read, identity or budget check failed; sequential scan used");
+    metrics.source_directory_leaves = built.index->leaves();
+    metrics.source_directory_entries = built.index->entries();
+    metrics.source_index_pages_read = built.pages_read;
+    size_t candidate_pages = 0;
+    std::string candidate_reason;
+    if (!built.index->query(box, stable, output,
+            detail::SpatialSourceIndex::kMaxCandidateBytes / sizeof(RowSlot),
+            &candidate_pages, &candidate_reason)) {
+        metrics.source_index_pages_read += candidate_pages;
+        return fail("spatial source candidate selection failed: " + candidate_reason +
+            "; sequential scan used");
+    }
+    metrics.source_index_pages_read += candidate_pages;
     capabilities_.spatial_index = {CapabilityState::Supported, "source geometry coverage validated"};
     return true;
 }

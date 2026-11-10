@@ -109,6 +109,47 @@ TEST(SpatialSourceIndexTest, CandidateBudgetAndChangedSourcePreserveCallerOutput
     EXPECT_EQ(output, (std::vector<RowSlot>{999}));
 }
 
+TEST(SpatialSourceIndexTest, BuildAndQueryReportDirectoryShapeAndPageReads) {
+    Fixture fixture;
+    const auto built = SpatialSourceIndex::build(fixture.path.string(), fixture.input);
+    ASSERT_NE(built.index, nullptr) << built.reason;
+    // Branch page 1 plus leaf pages 2 and 3; the directory retains two leaves
+    // whose entries total three active source rows.
+    EXPECT_EQ(built.pages_read, 3U);
+    EXPECT_EQ(built.index->leaves(), 2U);
+    EXPECT_EQ(built.index->entries(), 3U);
+    std::vector<RowSlot> output;
+    size_t pages = 0;
+    std::string reason = "unset";
+    ASSERT_TRUE(built.index->query({75, 75, 76, 76}, fixture.input.source_stable,
+        output, 4096, &pages, &reason));
+    EXPECT_EQ(output, (std::vector<RowSlot>{0, 1}));
+    EXPECT_EQ(pages, 1U);
+    EXPECT_TRUE(reason.empty());
+}
+
+TEST(SpatialSourceIndexTest, QueryFailureReasonsAreSpecific) {
+    Fixture fixture;
+    const auto built = SpatialSourceIndex::build(fixture.path.string(), fixture.input);
+    ASSERT_NE(built.index, nullptr) << built.reason;
+    std::vector<RowSlot> output{999};
+    size_t pages = 0;
+    std::string reason;
+    EXPECT_FALSE(built.index->query({75, 75, 76, 76}, fixture.input.source_stable,
+        output, 1, &pages, &reason));
+    EXPECT_EQ(output, (std::vector<RowSlot>{999}));
+    EXPECT_EQ(pages, 1U);
+    EXPECT_EQ(reason, "spatial source candidate budget exceeded");
+    EXPECT_FALSE(built.index->query(
+        {std::numeric_limits<double>::quiet_NaN(), 0, 1, 1},
+        fixture.input.source_stable, output, 4096, &pages, &reason));
+    EXPECT_EQ(reason, "invalid spatial query bbox");
+    { std::ofstream file(fixture.path, std::ios::binary | std::ios::app); file.put(1); }
+    EXPECT_FALSE(built.index->query({75, 75, 76, 76}, fixture.input.source_stable,
+        output, 4096, &pages, &reason));
+    EXPECT_EQ(reason, "spatial source index identity changed");
+}
+
 TEST(SpatialSourceIndexTest, IndexChangeDuringSourceReadRejectsProof) {
     Fixture fixture;
     const auto scan = fixture.input.scan_source;

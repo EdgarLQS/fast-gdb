@@ -164,6 +164,43 @@ protected:
  * 输入与前置条件：由测试体构造；无显式方法参数。
  * 预期结果：断言全部通过；测试方法无返回值。
  */
+TEST_F(SpatialWhereIndexFallbackTest,
+       SpatialBboxReportsSourceProofBuildAndQueryDiagnostics) {
+    const std::string path = createFixture();
+    ASSERT_FALSE(path.empty());
+    GdbCatalog catalog;
+    ResolvedTable table;
+    ASSERT_TRUE(resolve(path, catalog, table));
+    QueryEngine engine(catalog, table);
+    ASSERT_TRUE(engine.open());
+    QueryRequest request;
+    request.kind = QueryKind::SpatialBbox;
+    request.xmin = 0;
+    request.ymin = 0;
+    request.xmax = 2;
+    request.ymax = 2;
+
+    const QueryResult cold = engine.query(request);
+    ASSERT_EQ(cold.status, QueryStatus::Ok) << cold.error;
+    EXPECT_EQ(cold.execution_path, "bbox:model:spx-candidates");
+    EXPECT_FALSE(cold.spatial_metrics.source_directory_hit);
+    EXPECT_GT(cold.spatial_metrics.source_directory_bytes, 0U);
+    EXPECT_GE(cold.spatial_metrics.source_directory_build_ms, 0.0);
+    EXPECT_EQ(cold.spatial_metrics.source_directory_leaves, 1U);
+    EXPECT_EQ(cold.spatial_metrics.source_directory_entries, 3U);
+    EXPECT_GT(cold.spatial_metrics.source_index_pages_read, 0U);
+    EXPECT_EQ(cold.matched_fids, (std::vector<explorgdb::RowSlot>{0, 1}));
+
+    const QueryResult warm = engine.query(request);
+    ASSERT_EQ(warm.status, QueryStatus::Ok) << warm.error;
+    EXPECT_TRUE(warm.spatial_metrics.source_directory_hit);
+    EXPECT_EQ(warm.spatial_metrics.source_directory_build_ms, 0.0);
+    EXPECT_EQ(warm.spatial_metrics.source_directory_bytes,
+              cold.spatial_metrics.source_directory_bytes);
+    EXPECT_GT(warm.spatial_metrics.source_index_pages_read, 0U);
+    EXPECT_EQ(warm.matched_fids, cold.matched_fids);
+}
+
 TEST_F(SpatialWhereIndexFallbackTest, MissingAtxKeepsCorrectResults) {
     const std::string path = createFixture();
     ASSERT_FALSE(path.empty());

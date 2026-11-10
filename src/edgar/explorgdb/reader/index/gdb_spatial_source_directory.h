@@ -27,6 +27,7 @@ public:
     const std::vector<Leaf>& leaves() const { return leaves_; }
     std::vector<size_t> select(const GdbBbox& query) const;
     size_t bytes() const;
+    size_t entries() const;
 private:
     friend class SpatialSourceDirectoryBuilder;
     std::vector<Leaf> leaves_;

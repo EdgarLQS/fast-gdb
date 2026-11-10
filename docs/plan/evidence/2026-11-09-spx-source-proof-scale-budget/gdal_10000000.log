@@ -1,0 +1,21 @@
+
+=== Source-proof spatial benchmark: 10000000_point (fresh-open (OS cache not cleared)) ===
+case                 cands    ratio path                             total_ms   build_ms  dir_bytes   leaves  entries    pages
+coverage_01pct      100118       - gdal:spatial-filter                  52.1          -          -        -        -        -
+coverage_01pct      100118       - gdal:spatial-filter                  51.6          -          -        -        -        -
+coverage_01pct      100118       - gdal:spatial-filter                  52.5          -          -        -        -        -
+coverage_10pct     1000825       - gdal:spatial-filter                 198.2          -          -        -        -        -
+coverage_10pct     1000825       - gdal:spatial-filter                 196.8          -          -        -        -        -
+coverage_10pct     1000825       - gdal:spatial-filter                 192.2          -          -        -        -        -
+coverage_25pct     2501008       - gdal:spatial-filter                 400.9          -          -        -        -        -
+coverage_25pct     2501008       - gdal:spatial-filter                 390.3          -          -        -        -        -
+coverage_25pct     2501008       - gdal:spatial-filter                 391.7          -          -        -        -        -
+coverage_80pct     8000548       - gdal:spatial-filter                1129.8          -          -        -        -        -
+coverage_80pct     8000548       - gdal:spatial-filter                1117.5          -          -        -        -        -
+coverage_80pct     8000548       - gdal:spatial-filter                1115.9          -          -        -        -        -
+coverage_full     10000000       - gdal:spatial-filter                1081.1          -          -        -        -        -
+coverage_full     10000000       - gdal:spatial-filter                1069.8          -          -        -        -        -
+coverage_full     10000000       - gdal:spatial-filter                1064.5          -          -        -        -        -
+peak_rss_bytes=411975680
+[==========] 1 test from 1 test suite ran. (11403 ms total)
+[  PASSED  ] 1 test.

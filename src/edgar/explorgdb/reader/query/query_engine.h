@@ -99,6 +99,10 @@ struct SpatialQueryMetrics {
     bool geometry_only_scan = false;
     bool source_directory_hit = false;
     size_t source_directory_bytes = 0;
+    double source_directory_build_ms = 0.0;
+    size_t source_directory_leaves = 0;
+    size_t source_directory_entries = 0;
+    size_t source_index_pages_read = 0;
     double candidate_ratio = 0.0;
     double candidate_lookup_ms = 0.0;
     double geometry_scan_ms = 0.0;

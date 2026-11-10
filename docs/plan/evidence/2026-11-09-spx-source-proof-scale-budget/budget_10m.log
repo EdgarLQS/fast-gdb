@@ -1,0 +1,4 @@
+[budget] features=10000000 coverage=25.00% cold_path=bbox:model:sequential-fallback cold_candidates=10000000 build_ms=3177.3 dir_bytes=1653470 leaves=29412 entries=10000000 pages=35583 matched=2501007 warm_hit=true warm_path=bbox:model:sequential-fallback reason=spatial source candidate selection failed: spatial source candidate budget exceeded; sequential scan used
+[selective] features=10000000 coverage=0.100% path=bbox:model:spx-candidates candidates=78540 ratio=0.785% dir_bytes=1653470 pages=29645 matched=9880 reason=
+[==========] 2 tests from 1 test suite ran. (6165 ms total)
+[  PASSED  ] 2 tests.

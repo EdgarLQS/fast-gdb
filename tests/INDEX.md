@@ -369,6 +369,27 @@ budget rejection without publishing partial output. Source bounds are synthetic
 callbacks; actual-table and QueryEngine coverage is listed above.
 See [I/O adapter scope](../docs/plan/evidence/2026-11-08-spx-source-index-io.md).
 
+## Source-proof scale and candidate budget
+
+`SpatialSourceProofBenchmark.ColdBuildMatrix` and `WarmQueryMatrix` report
+source-directory build time, retained bytes/leaves/entries, SPX page reads,
+candidate counts and warm-query latency while asserting Fast/GDAL FID equality.
+They are gated by `FAST_GDB_RUN_SPATIAL_BENCHMARKS=1` plus
+`FAST_GDB_BENCHMARK_PATH`; optional variables are `FAST_GDB_BENCHMARK_CASE`,
+`FAST_GDB_BENCHMARK_TRIALS`, `FAST_GDB_BENCHMARK_LAYER`,
+`FAST_GDB_BENCHMARK_BACKEND` (`fast`/`gdal`/`both`) and the strict-cold pair
+`FAST_GDB_BENCHMARK_STRICT_COLD=1` +
+`FAST_GDB_BENCHMARK_CACHE_CLEAR_COMMAND`. See
+[scale and budget evidence](../docs/plan/evidence/2026-11-09-spx-source-proof-scale-budget.md).
+
+`SpatialSourceBudgetTest` requires `FAST_GDB_RUN_BUDGET_TESTS=1` and a
+`FAST_GDB_BENCHMARK_PATH` fixture with at least ~8.4M uniform rows. It verifies
+that a 25% window exceeds the 2,097,152-candidate budget, falls back to a full
+scan with no partial candidates, keeps the same behavior on a warm cached
+proof, and that a 0.1% window still uses proven candidates. Both paths compare
+FIDs with GDAL. The directory 16M-slot/16MB budget remains unit-tested rather
+than end-to-end generated.
+
 `SpatialSourceDirectoryTest` exercises the bounded source-bounds directory core:
 random-window candidate coverage, sparse/deleted slots, duplicate versus missing
 FIDs, NULL/Empty, resource rejection and immutable publication. It remains a component test;

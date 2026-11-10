@@ -21,6 +21,7 @@ struct SpatialSourceBuildResult {
     std::shared_ptr<const SpatialSourceIndex> index;
     SpatialSourceDirectoryBuilder::State state = SpatialSourceDirectoryBuilder::State::Invalid;
     std::string reason;
+    size_t pages_read = 0;
 };
 // Owns a pinned SPX handle; warm queries use bounded pread, not raw key lookup.
 // Catalog caches complete proofs; QueryEngine integration is still pending.
@@ -31,8 +32,11 @@ public:
     ~SpatialSourceIndex();
     bool query(const GdbBbox& box, const std::function<bool()>& source_stable,
                std::vector<RowSlot>& output,
-               size_t max_candidates = kMaxCandidateBytes / sizeof(RowSlot)) const;
+               size_t max_candidates = kMaxCandidateBytes / sizeof(RowSlot),
+               size_t* pages_read = nullptr, std::string* reason = nullptr) const;
     size_t bytes() const;
+    size_t leaves() const;
+    size_t entries() const;
 private:
     SpatialSourceIndex() = default;
     bool stable() const;

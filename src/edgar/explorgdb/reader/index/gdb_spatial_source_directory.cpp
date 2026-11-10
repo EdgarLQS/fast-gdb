@@ -22,6 +22,12 @@ size_t SpatialSourceDirectory::bytes() const {
         prefix_max_x_.capacity() * sizeof(double);
 }
 
+size_t SpatialSourceDirectory::entries() const {
+    size_t total = 0;
+    for (const auto& leaf : leaves_) total += leaf.entries;
+    return total;
+}
+
 std::vector<size_t> SpatialSourceDirectory::select(const GdbBbox& query) const {
     if (!valid(query)) return {};
     const size_t begin = std::lower_bound(prefix_max_x_.begin(), prefix_max_x_.end(), query.xmin) - prefix_max_x_.begin();

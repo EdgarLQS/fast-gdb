@@ -1,0 +1,50 @@
+
+=== Source-proof spatial benchmark: 10000_point (fresh-open (OS cache not cleared)) ===
+case                 cands    ratio path                             total_ms   build_ms  dir_bytes   leaves  entries    pages
+coverage_01pct        1360   13.60% bbox:model:spx-candidates             4.8       1.88       3206       30    10000       35
+coverage_01pct        1360   13.60% bbox:model:spx-candidates             1.7       1.27       3206       30    10000       35
+coverage_01pct        1360   13.60% bbox:model:spx-candidates             1.6       1.23       3206       30    10000       35
+coverage_01pct        1360   13.60% bbox:model:spx-candidates             1.6       1.22       3206       30    10000       35
+coverage_01pct        1360   13.60% bbox:model:spx-candidates             1.6       1.20       3206       30    10000       35
+coverage_01pct          99       - gdal:spatial-filter                  34.3          -          -        -        -        -
+coverage_10pct        3400   34.00% bbox:model:spx-candidates             1.7       1.18       3206       30    10000       41
+coverage_10pct        3400   34.00% bbox:model:spx-candidates             1.7       1.19       3206       30    10000       41
+coverage_10pct        3400   34.00% bbox:model:spx-candidates             1.7       1.17       3206       30    10000       41
+coverage_10pct        3400   34.00% bbox:model:spx-candidates             1.7       1.17       3206       30    10000       41
+coverage_10pct        3400   34.00% bbox:model:spx-candidates             1.6       1.16       3206       30    10000       41
+coverage_10pct        1008       - gdal:spatial-filter                   0.6          -          -        -        -        -
+coverage_25pct        5440   54.40% bbox:model:sequential-adaptive        1.8       1.16       3206       30    10000       47
+coverage_25pct        5440   54.40% bbox:model:sequential-adaptive        1.8       1.19       3206       30    10000       47
+coverage_25pct        5440   54.40% bbox:model:sequential-adaptive        1.8       1.18       3206       30    10000       47
+coverage_25pct        5440   54.40% bbox:model:sequential-adaptive        1.8       1.20       3206       30    10000       47
+coverage_25pct        5440   54.40% bbox:model:sequential-adaptive        1.8       1.19       3206       30    10000       47
+coverage_25pct        2581       - gdal:spatial-filter                   0.8          -          -        -        -        -
+coverage_80pct       10000  100.00% bbox:model:sequential-planned         0.5       0.00          0        0        0        0
+coverage_80pct       10000  100.00% bbox:model:sequential-planned         0.5       0.00          0        0        0        0
+coverage_80pct       10000  100.00% bbox:model:sequential-planned         0.5       0.00          0        0        0        0
+coverage_80pct       10000  100.00% bbox:model:sequential-planned         0.5       0.00          0        0        0        0
+coverage_80pct       10000  100.00% bbox:model:sequential-planned         0.5       0.00          0        0        0        0
+coverage_80pct        7994       - gdal:spatial-filter                   1.6          -          -        -        -        -
+coverage_full        10000  100.00% bbox:model:sequential-planned         0.5       0.00          0        0        0        0
+coverage_full        10000  100.00% bbox:model:sequential-planned         0.5       0.00          0        0        0        0
+coverage_full        10000  100.00% bbox:model:sequential-planned         0.5       0.00          0        0        0        0
+coverage_full        10000  100.00% bbox:model:sequential-planned         0.5       0.00          0        0        0        0
+coverage_full        10000  100.00% bbox:model:sequential-planned         0.5       0.00          0        0        0        0
+coverage_full        10000       - gdal:spatial-filter                   1.4          -          -        -        -        -
+peak_rss_bytes=51593216
+
+=== Source-proof spatial benchmark: 10000_point (warm-steady-state) ===
+case                 cands    ratio path                             total_ms   build_ms  dir_bytes   leaves  entries    pages
+coverage_01pct        1360   13.60% bbox:model:spx-candidates             0.2       0.00       3206       30    10000        4
+  warm median=0.18ms p95=0.18ms hit=true
+coverage_10pct        3400   34.00% bbox:model:spx-candidates             0.3       0.00       3206       30    10000       10
+  warm median=0.26ms p95=0.28ms hit=true
+coverage_25pct        5440   54.40% bbox:model:sequential-adaptive        0.4       0.00       3206       30    10000       16
+  warm median=0.39ms p95=0.47ms hit=true
+coverage_80pct       10000  100.00% bbox:model:sequential-planned         0.2       0.00          0        0        0        0
+  warm median=0.23ms p95=0.23ms hit=false
+coverage_full        10000  100.00% bbox:model:sequential-planned         0.2       0.00          0        0        0        0
+  warm median=0.22ms p95=0.22ms hit=false
+peak_rss_bytes=51691520
+[==========] 2 tests from 1 test suite ran. (121 ms total)
+[  PASSED  ] 2 tests.

@@ -1,0 +1,35 @@
+
+=== Source-proof spatial benchmark: 10000000_point (fresh-open (OS cache not cleared)) ===
+case                 cands    ratio path                             total_ms   build_ms  dir_bytes   leaves  entries    pages
+coverage_01pct      314500    3.15% bbox:model:spx-candidates          3312.5    3239.51    1653470    29412 10000000    30339
+coverage_01pct      314500    3.15% bbox:model:spx-candidates          2165.1    2117.33    1653470    29412 10000000    30339
+coverage_01pct      314500    3.15% bbox:model:spx-candidates          2064.9    2019.83    1653470    29412 10000000    30339
+coverage_10pct     1677560   16.78% bbox:model:spx-candidates          2153.4    2036.78    1653470    29412 10000000    34348
+coverage_10pct     1677560   16.78% bbox:model:spx-candidates          2134.9    2028.04    1653470    29412 10000000    34348
+coverage_10pct     1677560   16.78% bbox:model:spx-candidates          2152.6    2050.20    1653470    29412 10000000    34348
+coverage_25pct    10000000  100.00% bbox:model:sequential-fallback     2297.6    2041.90    1653470    29412 10000000    35583
+coverage_25pct    10000000  100.00% bbox:model:sequential-fallback     2271.0    2028.18    1653470    29412 10000000    35583
+coverage_25pct    10000000  100.00% bbox:model:sequential-fallback     2291.7    2050.68    1653470    29412 10000000    35583
+coverage_80pct    10000000  100.00% bbox:model:sequential-planned       218.6       0.00          0        0        0        0
+coverage_80pct    10000000  100.00% bbox:model:sequential-planned       215.9       0.00          0        0        0        0
+coverage_80pct    10000000  100.00% bbox:model:sequential-planned       218.1       0.00          0        0        0        0
+coverage_full     10000000  100.00% bbox:model:sequential-planned       203.0       0.00          0        0        0        0
+coverage_full     10000000  100.00% bbox:model:sequential-planned       197.4       0.00          0        0        0        0
+coverage_full     10000000  100.00% bbox:model:sequential-planned       196.2       0.00          0        0        0        0
+peak_rss_bytes=486457344
+
+=== Source-proof spatial benchmark: 10000000_point (warm-steady-state) ===
+case                 cands    ratio path                             total_ms   build_ms  dir_bytes   leaves  entries    pages
+coverage_01pct      314500    3.15% bbox:model:spx-candidates            23.8       0.00    1653470    29412 10000000      925
+  warm median=23.83ms p95=24.74ms hit=true
+coverage_10pct     1677560   16.78% bbox:model:spx-candidates            87.4       0.00    1653470    29412 10000000     4934
+  warm median=87.43ms p95=87.64ms hit=true
+coverage_25pct    10000000  100.00% bbox:model:sequential-fallback      221.8       0.00    1653470    29412 10000000     6169
+  warm median=221.79ms p95=226.83ms hit=true
+coverage_80pct    10000000  100.00% bbox:model:sequential-planned       195.5       0.00          0        0        0        0
+  warm median=195.49ms p95=198.10ms hit=false
+coverage_full     10000000  100.00% bbox:model:sequential-planned       176.6       0.00          0        0        0        0
+  warm median=176.61ms p95=177.59ms hit=false
+peak_rss_bytes=570064896
+[==========] 2 tests from 1 test suite ran. (26988 ms total)
+[  PASSED  ] 2 tests.

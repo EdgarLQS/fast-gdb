@@ -21,6 +21,14 @@ size_t SpatialSourceIndex::bytes() const {
         parser_->file_path_.capacity() + directory_->bytes();
 }
 
+size_t SpatialSourceIndex::leaves() const {
+    return directory_ ? directory_->leaves().size() : 0;
+}
+
+size_t SpatialSourceIndex::entries() const {
+    return directory_ ? directory_->entries() : 0;
+}
+
 bool SpatialSourceIndex::stable() const {
     TablxCacheKey handle, path;
     return parser_ && TablxCache::make_key_from_fd(parser_->fd_, handle) &&
@@ -67,9 +75,11 @@ SpatialSourceBuildResult SpatialSourceIndex::build(const std::string& path, cons
         }
         std::vector<bool> visited(parser.page_count_, false);
         std::vector<uint8_t> page;
+        size_t pages_read = 0;
         const auto visit = [&](ObjectId id) {
             if (!id || id > parser.page_count_ || visited[id - 1] || !index->read(id, page)) return false;
             visited[id - 1] = true;
+            ++pages_read;
             return true;
         };
         ObjectId id = 1;
@@ -103,9 +113,18 @@ SpatialSourceBuildResult SpatialSourceIndex::build(const std::string& path, cons
                 return builder.observe_source(fid, bounds);
             })) { result.reason = "complete source scan failed"; return result; }
         index->directory_ = builder.finish();
-        if (!index->directory_) { result.reason = "source coverage proof failed"; return result; }
-        if (!index->stable() || !source.source_stable()) { result.reason = "source identity changed during proof"; return result; }
+        if (!index->directory_) {
+            result.pages_read = pages_read;
+            result.reason = "source coverage proof failed";
+            return result;
+        }
+        if (!index->stable() || !source.source_stable()) {
+            result.pages_read = pages_read;
+            result.reason = "source identity changed during proof";
+            return result;
+        }
         result.state = SpatialSourceDirectoryBuilder::State::Ready;
+        result.pages_read = pages_read;
         result.index = std::move(index);
     } catch (const std::bad_alloc&) {
         result.state = SpatialSourceDirectoryBuilder::State::BudgetExceeded;
@@ -117,12 +136,23 @@ SpatialSourceBuildResult SpatialSourceIndex::build(const std::string& path, cons
 }
 
 bool SpatialSourceIndex::query(const GdbBbox& box, const std::function<bool()>& source_stable,
-    std::vector<RowSlot>& output, size_t max_candidates) const {
+    std::vector<RowSlot>& output, size_t max_candidates, size_t* pages_read,
+    std::string* reason) const {
+    if (pages_read) *pages_read = 0;
+    if (reason) reason->clear();
+    size_t pages = 0;
+    const auto fail = [&](std::string message) {
+        if (pages_read) *pages_read = pages;
+        if (reason) *reason = std::move(message);
+        return false;
+    };
     if (!source_stable || !std::isfinite(box.xmin) || !std::isfinite(box.ymin) ||
         !std::isfinite(box.xmax) || !std::isfinite(box.ymax) ||
-        box.xmin > box.xmax || box.ymin > box.ymax) return false;
+        box.xmin > box.xmax || box.ymin > box.ymax)
+        return fail("invalid spatial query bbox");
     try {
-        if (!stable() || !source_stable()) return false;
+        if (!stable()) return fail("spatial source index identity changed");
+        if (!source_stable()) return fail("spatial source changed");
         std::vector<RowSlot> candidates;
         max_candidates = std::min(max_candidates, kMaxCandidateBytes / sizeof(RowSlot));
         std::vector<bool> seen(slots_, false);
@@ -131,22 +161,31 @@ bool SpatialSourceIndex::query(const GdbBbox& box, const std::function<bool()>& 
         const size_t header = trailer.version == 1 ? 12 : 20;
         for (size_t selected : directory_->select(box)) {
             const auto& leaf = directory_->leaves()[selected];
-            if (!read(leaf.page, page) || integer(page.data() + trailer.object_id_size, 4) != leaf.entries) return false;
+            if (!read(leaf.page, page)) return fail("spatial source index page read failed");
+            ++pages;
+            if (integer(page.data() + trailer.object_id_size, 4) != leaf.entries)
+                return fail("spatial source index leaf count changed");
             for (size_t i = 0; i < leaf.entries; ++i) {
                 const ObjectId oid = integer(page.data() + header + i * trailer.object_id_size, trailer.object_id_size);
-                if (!oid || oid - 1 >= slots_) return false;
+                if (!oid || oid - 1 >= slots_)
+                    return fail("spatial source index row slot out of range");
                 const RowSlot fid = oid - 1;
                 if (!seen[fid]) {
-                    if (candidates.size() >= max_candidates) return false;
+                    if (candidates.size() >= max_candidates)
+                        return fail("spatial source candidate budget exceeded");
                     seen[fid] = true;
                     candidates.push_back(fid);
                 }
             }
         }
-        if (!stable() || !source_stable()) return false;
+        if (!stable()) return fail("spatial source index identity changed");
+        if (!source_stable()) return fail("spatial source changed during candidate read");
         std::sort(candidates.begin(), candidates.end());
         output = std::move(candidates);
+        if (pages_read) *pages_read = pages;
         return true;
-    } catch (const std::exception&) { return false; }
+    } catch (const std::exception&) {
+        return fail("spatial source candidate read exception");
+    }
 }
 } // namespace explorgdb::detail

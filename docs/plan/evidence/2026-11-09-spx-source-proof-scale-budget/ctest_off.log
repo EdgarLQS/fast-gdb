@@ -1,0 +1,302 @@
+Test project /Users/edgarlqs/Downloads/fast-gdb/build-off
+        Start   1: unified.UnifiedSourceTest.NormalizesS3ToVsiS3
+  1/147 Test   #1: unified.UnifiedSourceTest.NormalizesS3ToVsiS3 ................................................   Passed    0.01 sec
+        Start   2: unified.UnifiedSourceTest.RejectsUnsupportedVsiAndCredentialUris
+  2/147 Test   #2: unified.UnifiedSourceTest.RejectsUnsupportedVsiAndCredentialUris .............................   Passed    0.00 sec
+        Start   3: unified.UnifiedSourceTest.RemoteConsistencyDefaultsToUnverified
+  3/147 Test   #3: unified.UnifiedSourceTest.RemoteConsistencyDefaultsToUnverified ..............................   Passed    0.00 sec
+        Start   4: unified.UnifiedRouteTest.AutoUsesFastForLocalSource
+  4/147 Test   #4: unified.UnifiedRouteTest.AutoUsesFastForLocalSource ..........................................   Passed    0.00 sec
+        Start   5: unified.UnifiedRouteTest.S3AlwaysUsesGdalUnlessFastOnly
+  5/147 Test   #5: unified.UnifiedRouteTest.S3AlwaysUsesGdalUnlessFastOnly ......................................   Passed    0.00 sec
+        Start   6: unified.UnifiedRouteTest.OnlyWhitelistedCapabilityFailuresFallback
+  6/147 Test   #6: unified.UnifiedRouteTest.OnlyWhitelistedCapabilityFailuresFallback ...........................   Passed    0.00 sec
+        Start   7: unified.UnifiedRouteTest.GdalOffReturnsBackendUnavailable
+  7/147 Test   #7: unified.UnifiedRouteTest.GdalOffReturnsBackendUnavailable ....................................   Passed    0.00 sec
+        Start   8: unified.UnifiedFastFacadeTest.OpensDatasetFromGdalStylePath
+  8/147 Test   #8: unified.UnifiedFastFacadeTest.OpensDatasetFromGdalStylePath ..................................   Passed    0.01 sec
+        Start   9: unified.UnifiedFastFacadeTest.OpensUtf8PathWithChineseDirectoryAndReadsFeature
+  9/147 Test   #9: unified.UnifiedFastFacadeTest.OpensUtf8PathWithChineseDirectoryAndReadsFeature ...............   Passed    0.06 sec
+        Start  10: unified.UnifiedFastFacadeTest.FreezesSchemaAndStreamsOwnedFeatures
+ 10/147 Test  #10: unified.UnifiedFastFacadeTest.FreezesSchemaAndStreamsOwnedFeatures ...........................   Passed    0.01 sec
+        Start  11: unified.UnifiedFastFacadeTest.ProjectsAttributesAndSkipsOutputGeometryDecode
+ 11/147 Test  #11: unified.UnifiedFastFacadeTest.ProjectsAttributesAndSkipsOutputGeometryDecode .................   Passed    0.03 sec
+        Start  12: unified.UnifiedFastFacadeTest.ReusesCatalogSchemaAndQueryPreparationWithinGeneration
+ 12/147 Test  #12: unified.UnifiedFastFacadeTest.ReusesCatalogSchemaAndQueryPreparationWithinGeneration .........   Passed    0.03 sec
+        Start  13: unified.UnifiedFastFacadeTest.ReadAllPublishesWithinLimits
+ 13/147 Test  #13: unified.UnifiedFastFacadeTest.ReadAllPublishesWithinLimits ...................................   Passed    0.01 sec
+        Start  14: unified.UnifiedFastFacadeTest.RejectsInvalidPublicFid
+ 14/147 Test  #14: unified.UnifiedFastFacadeTest.RejectsInvalidPublicFid ........................................   Passed    0.01 sec
+        Start  15: unified.UnifiedFastFacadeTest.DeadlineFailsBeforeCursorPublication
+ 15/147 Test  #15: unified.UnifiedFastFacadeTest.DeadlineFailsBeforeCursorPublication ...........................   Passed    0.01 sec
+        Start  16: unified.UnifiedFastFacadeTest.CancellationBeforeFirstPublicationIsAtomic
+ 16/147 Test  #16: unified.UnifiedFastFacadeTest.CancellationBeforeFirstPublicationIsAtomic .....................   Passed    0.01 sec
+        Start  17: unified.UnifiedFastFacadeTest.RejectsInvalidQueryBeforeBackendSelection
+ 17/147 Test  #17: unified.UnifiedFastFacadeTest.RejectsInvalidQueryBeforeBackendSelection ......................   Passed    0.01 sec
+        Start  18: unified.UnifiedFastFacadeTest.BoundsFidAscendingCandidateMemory
+ 18/147 Test  #18: unified.UnifiedFastFacadeTest.BoundsFidAscendingCandidateMemory ..............................   Passed    0.01 sec
+        Start  19: unified.UnifiedFastFacadeTest.ExposesFeatureDatasetGroups
+ 19/147 Test  #19: unified.UnifiedFastFacadeTest.ExposesFeatureDatasetGroups ....................................   Passed    0.04 sec
+        Start  20: unified.UnifiedFastFacadeTest.ReadByFidHandlesSparseAndDeletedRows
+ 20/147 Test  #20: unified.UnifiedFastFacadeTest.ReadByFidHandlesSparseAndDeletedRows ...........................   Passed    0.06 sec
+        Start  21: unified.UnifiedFastFacadeTest.ReadsDenseV4GdalReferenceThroughUnifiedApi
+ 21/147 Test  #21: unified.UnifiedFastFacadeTest.ReadsDenseV4GdalReferenceThroughUnifiedApi .....................   Passed    0.02 sec
+        Start  22: unified.UnifiedFastFacadeTest.ExposesWorkspaceAndLayerMetadataSnapshots
+ 22/147 Test  #22: unified.UnifiedFastFacadeTest.ExposesWorkspaceAndLayerMetadataSnapshots ......................   Passed    0.03 sec
+        Start  23: unified.UnifiedFastFacadeTest.ReadsBinaryFieldsUnderPayloadBudget
+ 23/147 Test  #23: unified.UnifiedFastFacadeTest.ReadsBinaryFieldsUnderPayloadBudget ............................   Passed    0.06 sec
+        Start  24: unified.UnifiedFastFacadeTest.ReadsArcGisAttachmentPayloadsWhenConfigured
+ 24/147 Test  #24: unified.UnifiedFastFacadeTest.ReadsArcGisAttachmentPayloadsWhenConfigured ....................***Skipped   0.00 sec
+        Start  25: unified.UnifiedFastFacadeTest.NativeExtensionsAreFastOnlyAndBounded
+ 25/147 Test  #25: unified.UnifiedFastFacadeTest.NativeExtensionsAreFastOnlyAndBounded ..........................   Passed    0.01 sec
+        Start  26: unified.UnifiedFastFacadeTest.ReportsCapabilitiesAndQueryPlan
+ 26/147 Test  #26: unified.UnifiedFastFacadeTest.ReportsCapabilitiesAndQueryPlan ................................   Passed    0.01 sec
+        Start  27: unified.UnifiedFastFacadeTest.SharesCoordinatorAndFailsClosedDuringWriter
+ 27/147 Test  #27: unified.UnifiedFastFacadeTest.SharesCoordinatorAndFailsClosedDuringWriter ....................   Passed    0.02 sec
+        Start  28: unified.UnifiedFastFacadeTest.RefreshBlocksActiveCursorAndExpiresOldHandles
+ 28/147 Test  #28: unified.UnifiedFastFacadeTest.RefreshBlocksActiveCursorAndExpiresOldHandles ..................   Passed    0.02 sec
+        Start  29: unified.UnifiedFastFacadeTest.FailedRefreshLeavesDatasetExpired
+ 29/147 Test  #29: unified.UnifiedFastFacadeTest.FailedRefreshLeavesDatasetExpired ..............................   Passed    0.01 sec
+        Start  30: geometry.CurveGeometryContract.LinearizesThreePointCircularArc
+ 30/147 Test  #30: geometry.CurveGeometryContract.LinearizesThreePointCircularArc ...............................   Passed    0.01 sec
+        Start  31: geometry.CurveGeometryContract.LinearizesFullCircleAndPreservesClosure
+ 31/147 Test  #31: geometry.CurveGeometryContract.LinearizesFullCircleAndPreservesClosure .......................   Passed    0.00 sec
+        Start  32: geometry.CurveGeometryContract.LinearizesBezierAndInterpolatesZAndM
+ 32/147 Test  #32: geometry.CurveGeometryContract.LinearizesBezierAndInterpolatesZAndM ..........................   Passed    0.00 sec
+        Start  33: geometry.CurveGeometryContract.LinearizesMinorMajorAndCompleteEllipse
+ 33/147 Test  #33: geometry.CurveGeometryContract.LinearizesMinorMajorAndCompleteEllipse ........................   Passed    0.00 sec
+        Start  34: geometry.CurveGeometryContract.UsesConventionalRotationAfterDescriptorNormalization
+ 34/147 Test  #34: geometry.CurveGeometryContract.UsesConventionalRotationAfterDescriptorNormalization ..........   Passed    0.00 sec
+        Start  35: geometry.CurveGeometryContract.ReconstructsMixedLinearAndCurveSegments
+ 35/147 Test  #35: geometry.CurveGeometryContract.ReconstructsMixedLinearAndCurveSegments .......................   Passed    0.00 sec
+        Start  36: geometry.CurveGeometryContract.RejectsInvalidOptionsAndDescriptors
+ 36/147 Test  #36: geometry.CurveGeometryContract.RejectsInvalidOptionsAndDescriptors ...........................   Passed    0.00 sec
+        Start  37: geometry.GeometryTest.Point2D
+ 37/147 Test  #37: geometry.GeometryTest.Point2D ................................................................   Passed    0.00 sec
+        Start  38: geometry.GeometryTest.PointZ
+ 38/147 Test  #38: geometry.GeometryTest.PointZ .................................................................   Passed    0.00 sec
+        Start  39: geometry.GeometryTest.EmptyPoint
+ 39/147 Test  #39: geometry.GeometryTest.EmptyPoint .............................................................   Passed    0.00 sec
+        Start  40: geometry.GeometryTest.MultiPoint2D
+ 40/147 Test  #40: geometry.GeometryTest.MultiPoint2D ...........................................................   Passed    0.00 sec
+        Start  41: geometry.GeometryTest.Polyline2D
+ 41/147 Test  #41: geometry.GeometryTest.Polyline2D .............................................................   Passed    0.00 sec
+        Start  42: geometry.GeometryTest.Polygon2D
+ 42/147 Test  #42: geometry.GeometryTest.Polygon2D ..............................................................   Passed    0.00 sec
+        Start  43: geometry.GeometryTest.DecodeFromField
+ 43/147 Test  #43: geometry.GeometryTest.DecodeFromField ........................................................   Passed    0.00 sec
+        Start  44: geometry.GeometryTest.NullGeometry
+ 44/147 Test  #44: geometry.GeometryTest.NullGeometry ...........................................................   Passed    0.00 sec
+        Start  45: geometry.GeometryTest.WKTFormat
+ 45/147 Test  #45: geometry.GeometryTest.WKTFormat ..............................................................   Passed    0.00 sec
+        Start  46: geometry.GeometryTest.MultiPointZ
+ 46/147 Test  #46: geometry.GeometryTest.MultiPointZ ............................................................   Passed    0.00 sec
+        Start  47: geometry.GeometryTest.MultiPointM
+ 47/147 Test  #47: geometry.GeometryTest.MultiPointM ............................................................   Passed    0.00 sec
+        Start  48: geometry.GeometryTest.GeneralMultiPoint2DDecode
+ 48/147 Test  #48: geometry.GeometryTest.GeneralMultiPoint2DDecode ..............................................   Passed    0.00 sec
+        Start  49: geometry.GeometryTest.GeneralMultiPointZDecode
+ 49/147 Test  #49: geometry.GeometryTest.GeneralMultiPointZDecode ...............................................   Passed    0.00 sec
+        Start  50: geometry.GeometryTest.GeneralMultiPointMDecode
+ 50/147 Test  #50: geometry.GeometryTest.GeneralMultiPointMDecode ...............................................   Passed    0.00 sec
+        Start  51: geometry.GeometryTest.GeneralMultiPointZMDecode
+ 51/147 Test  #51: geometry.GeometryTest.GeneralMultiPointZMDecode ..............................................   Passed    0.00 sec
+        Start  52: geometry.GeometryTest.PolylineZ
+ 52/147 Test  #52: geometry.GeometryTest.PolylineZ ..............................................................   Passed    0.00 sec
+        Start  53: geometry.GeometryTest.PolygonZ
+ 53/147 Test  #53: geometry.GeometryTest.PolygonZ ...............................................................   Passed    0.00 sec
+        Start  54: geometry.GeometryTest.EmptyMultiPoint
+ 54/147 Test  #54: geometry.GeometryTest.EmptyMultiPoint ........................................................   Passed    0.00 sec
+        Start  55: geometry.GeometryTest.EmptyPolyline
+ 55/147 Test  #55: geometry.GeometryTest.EmptyPolyline ..........................................................   Passed    0.00 sec
+        Start  56: geometry.GeometryTest.EmptyPolygon
+ 56/147 Test  #56: geometry.GeometryTest.EmptyPolygon ...........................................................   Passed    0.00 sec
+        Start  57: geometry.GeometryTest.UnknownType
+ 57/147 Test  #57: geometry.GeometryTest.UnknownType ............................................................   Passed    0.00 sec
+        Start  58: geometry.GeometryTest.DecodeFromFieldEmpty
+ 58/147 Test  #58: geometry.GeometryTest.DecodeFromFieldEmpty ...................................................   Passed    0.00 sec
+        Start  59: geometry.GeometryTest.PointM
+ 59/147 Test  #59: geometry.GeometryTest.PointM .................................................................   Passed    0.00 sec
+        Start  60: geometry.GeometryTest.PointZM
+ 60/147 Test  #60: geometry.GeometryTest.PointZM ................................................................   Passed    0.00 sec
+        Start  61: geometry.GeometryTest.GeneralPoint2DDecode
+ 61/147 Test  #61: geometry.GeometryTest.GeneralPoint2DDecode ...................................................   Passed    0.00 sec
+        Start  62: geometry.GeometryTest.GeneralPointZDecode
+ 62/147 Test  #62: geometry.GeometryTest.GeneralPointZDecode ....................................................   Passed    0.00 sec
+        Start  63: geometry.GeometryTest.GeneralPointMDecode
+ 63/147 Test  #63: geometry.GeometryTest.GeneralPointMDecode ....................................................   Passed    0.00 sec
+        Start  64: geometry.GeometryTest.GeneralPointZMDecode
+ 64/147 Test  #64: geometry.GeometryTest.GeneralPointZMDecode ...................................................   Passed    0.00 sec
+        Start  65: geometry.GeometryTest.MultiPatch
+ 65/147 Test  #65: geometry.GeometryTest.MultiPatch .............................................................   Passed    0.00 sec
+        Start  66: geometry.GeometryTest.MultiPatchM
+ 66/147 Test  #66: geometry.GeometryTest.MultiPatchM ............................................................   Passed    0.00 sec
+        Start  67: geometry.GeometryTest.MultiPatchEmpty
+ 67/147 Test  #67: geometry.GeometryTest.MultiPatchEmpty ........................................................   Passed    0.00 sec
+        Start  68: geometry.GeometryTest.MultiPatchLegacyWktFailsClosedForUnknownPartTypes
+ 68/147 Test  #68: geometry.GeometryTest.MultiPatchLegacyWktFailsClosedForUnknownPartTypes ......................   Passed    0.00 sec
+        Start  69: geometry.GeometryTest.GeneralPolyline
+ 69/147 Test  #69: geometry.GeometryTest.GeneralPolyline ........................................................   Passed    0.00 sec
+        Start  70: geometry.GeometryTest.GeneralPolygon
+ 70/147 Test  #70: geometry.GeometryTest.GeneralPolygon .........................................................   Passed    0.00 sec
+        Start  71: geometry.GeometryTest.GeneralPolylineWithZ
+ 71/147 Test  #71: geometry.GeometryTest.GeneralPolylineWithZ ...................................................   Passed    0.00 sec
+        Start  72: geometry.GeometryTest.GeneralPolylineWithCurvesIsExplicitlyUnsupported
+ 72/147 Test  #72: geometry.GeometryTest.GeneralPolylineWithCurvesIsExplicitlyUnsupported .......................   Passed    0.00 sec
+        Start  73: geometry.GeometryTest.GeneralPolygonWithCurvesIsExplicitlyUnsupported
+ 73/147 Test  #73: geometry.GeometryTest.GeneralPolygonWithCurvesIsExplicitlyUnsupported ........................   Passed    0.00 sec
+        Start  74: geometry.GeometryTest.GeneralWithoutCurveFlagIsNotUnsupportedCurve
+ 74/147 Test  #74: geometry.GeometryTest.GeneralWithoutCurveFlagIsNotUnsupportedCurve ...........................   Passed    0.00 sec
+        Start  75: geometry.GeometryTest.GeneralCurveSpatialFilterFailsClosed
+ 75/147 Test  #75: geometry.GeometryTest.GeneralCurveSpatialFilterFailsClosed ...................................   Passed    0.00 sec
+        Start  76: geometry.GeometryTest.GeneralPolylineCurveFlagWithZeroCurvesBehavesLikeNormalPolyline
+ 76/147 Test  #76: geometry.GeometryTest.GeneralPolylineCurveFlagWithZeroCurvesBehavesLikeNormalPolyline ........   Passed    0.00 sec
+        Start  77: geometry.GeometryTest.GeneralPolygonCurveFlagWithZeroCurvesBehavesLikeNormalPolygon
+ 77/147 Test  #77: geometry.GeometryTest.GeneralPolygonCurveFlagWithZeroCurvesBehavesLikeNormalPolygon ..........   Passed    0.00 sec
+        Start  78: geometry.GeometryTest.GeneralPolygonCurveSpatialFilterFailsClosed
+ 78/147 Test  #78: geometry.GeometryTest.GeneralPolygonCurveSpatialFilterFailsClosed ............................   Passed    0.00 sec
+        Start  79: geometry.GeometryTest.PeekBbox_Point
+ 79/147 Test  #79: geometry.GeometryTest.PeekBbox_Point .........................................................   Passed    0.00 sec
+        Start  80: geometry.GeometryTest.PeekBbox_MultiPoint
+ 80/147 Test  #80: geometry.GeometryTest.PeekBbox_MultiPoint ....................................................   Passed    0.00 sec
+        Start  81: geometry.GeometryTest.PeekBbox_MultiPointReadsNPointsThenBbox
+ 81/147 Test  #81: geometry.GeometryTest.PeekBbox_MultiPointReadsNPointsThenBbox ................................   Passed    0.00 sec
+        Start  82: geometry.GeometryTest.PeekBbox_GeneralMultiPointReadsNPointsThenBboxWithoutNParts
+ 82/147 Test  #82: geometry.GeometryTest.PeekBbox_GeneralMultiPointReadsNPointsThenBboxWithoutNParts ............   Passed    0.00 sec
+        Start  83: geometry.GeometryTest.PeekBbox_Polyline
+ 83/147 Test  #83: geometry.GeometryTest.PeekBbox_Polyline ......................................................   Passed    0.00 sec
+        Start  84: geometry.GeometryTest.PeekBbox_Polygon
+ 84/147 Test  #84: geometry.GeometryTest.PeekBbox_Polygon .......................................................   Passed    0.00 sec
+        Start  85: geometry.GeometryTest.IntersectsWithPeek_PointInside
+ 85/147 Test  #85: geometry.GeometryTest.IntersectsWithPeek_PointInside .........................................   Passed    0.00 sec
+        Start  86: geometry.GeometryTest.PointBoundaryUsesRawMinusOneCoordinateFormula
+ 86/147 Test  #86: geometry.GeometryTest.PointBoundaryUsesRawMinusOneCoordinateFormula ..........................   Passed    0.00 sec
+        Start  87: geometry.GeometryTest.IntersectsWithPeek_PointOutside
+ 87/147 Test  #87: geometry.GeometryTest.IntersectsWithPeek_PointOutside ........................................   Passed    0.00 sec
+        Start  88: geometry.GeometryTest.IntersectsWithPeek_MultiPointInside
+ 88/147 Test  #88: geometry.GeometryTest.IntersectsWithPeek_MultiPointInside ....................................   Passed    0.00 sec
+        Start  89: geometry.GeometryTest.IntersectsWithPeek_PolylineInside
+ 89/147 Test  #89: geometry.GeometryTest.IntersectsWithPeek_PolylineInside ......................................   Passed    0.00 sec
+        Start  90: geometry.GeometryTest.IntersectsWithPeek_PolygonInside
+ 90/147 Test  #90: geometry.GeometryTest.IntersectsWithPeek_PolygonInside .......................................   Passed    0.00 sec
+        Start  91: geometry.GeometryTest.GeometryIntersectsBbox_Point
+ 91/147 Test  #91: geometry.GeometryTest.GeometryIntersectsBbox_Point ...........................................   Passed    0.00 sec
+        Start  92: geometry.GeometryTest.GeometryIntersectsBbox_Polyline
+ 92/147 Test  #92: geometry.GeometryTest.GeometryIntersectsBbox_Polyline ........................................   Passed    0.00 sec
+        Start  93: geometry.GeometryTest.GeometryIntersectsBbox_Polygon
+ 93/147 Test  #93: geometry.GeometryTest.GeometryIntersectsBbox_Polygon .........................................   Passed    0.00 sec
+        Start  94: geometry.GeometryTest.GeometryIntersectsBbox_MultiPoint
+ 94/147 Test  #94: geometry.GeometryTest.GeometryIntersectsBbox_MultiPoint ......................................   Passed    0.00 sec
+        Start  95: geometry.GeometryTest.PeekBbox_MultiPatch
+ 95/147 Test  #95: geometry.GeometryTest.PeekBbox_MultiPatch ....................................................   Passed    0.00 sec
+        Start  96: geometry.GeometryTest.GeometryIntersectsBbox_MultiPatch
+ 96/147 Test  #96: geometry.GeometryTest.GeometryIntersectsBbox_MultiPatch ......................................   Passed    0.00 sec
+        Start  97: geometry.GeometryTest.IntersectsWithPeek_MultiPatch
+ 97/147 Test  #97: geometry.GeometryTest.IntersectsWithPeek_MultiPatch ..........................................   Passed    0.00 sec
+        Start  98: geometry.GeometryTest.PeekBbox_GeneralPolyline
+ 98/147 Test  #98: geometry.GeometryTest.PeekBbox_GeneralPolyline ...............................................   Passed    0.00 sec
+        Start  99: geometry.GeometryTest.PeekBbox_GeneralPolygon
+ 99/147 Test  #99: geometry.GeometryTest.PeekBbox_GeneralPolygon ................................................   Passed    0.00 sec
+        Start 100: geometry.GeometryTest.GeometryIntersectsBbox_GeneralPolyline
+100/147 Test #100: geometry.GeometryTest.GeometryIntersectsBbox_GeneralPolyline .................................   Passed    0.00 sec
+        Start 101: geometry.GeometryTest.GeometryIntersectsBbox_GeneralPolygon
+101/147 Test #101: geometry.GeometryTest.GeometryIntersectsBbox_GeneralPolygon ..................................   Passed    0.00 sec
+        Start 102: geometry.GeometryTest.IntersectsWithPeek_GeneralPolyline
+102/147 Test #102: geometry.GeometryTest.IntersectsWithPeek_GeneralPolyline .....................................   Passed    0.00 sec
+        Start 103: geometry.GeometryTest.IntersectsWithPeek_GeneralPolygon
+103/147 Test #103: geometry.GeometryTest.IntersectsWithPeek_GeneralPolygon ......................................   Passed    0.00 sec
+        Start 104: geometry.GeometryTest.IntersectsWithPeek_PolygonPipFallback
+104/147 Test #104: geometry.GeometryTest.IntersectsWithPeek_PolygonPipFallback ..................................   Passed    0.00 sec
+        Start 105: geometry.GeometryTest.GeometryIntersectsBbox_PolygonPipFallback
+105/147 Test #105: geometry.GeometryTest.GeometryIntersectsBbox_PolygonPipFallback ..............................   Passed    0.00 sec
+        Start 106: geometry.GeometryOutputContract.WritesIsoZmTypeCodesAndCoordinates
+106/147 Test #106: geometry.GeometryOutputContract.WritesIsoZmTypeCodesAndCoordinates ...........................   Passed    0.00 sec
+        Start 107: geometry.GeometryOutputContract.WktUsesOrganizedPolygonTopology
+107/147 Test #107: geometry.GeometryOutputContract.WktUsesOrganizedPolygonTopology ..............................   Passed    0.00 sec
+        Start 108: geometry.GeometryTopologySafety.OrientationHandlesFullInt64Range
+108/147 Test #108: geometry.GeometryTopologySafety.OrientationHandlesFullInt64Range .............................   Passed    0.00 sec
+        Start 109: geometry.GeometryTopologySafety.OrientationHandlesNegativeExtremeProducts
+109/147 Test #109: geometry.GeometryTopologySafety.OrientationHandlesNegativeExtremeProducts ....................   Passed    0.00 sec
+        Start 110: geometry.GeometryTopologySafety.SegmentRelationsRemainStableAtInt64Bounds
+110/147 Test #110: geometry.GeometryTopologySafety.SegmentRelationsRemainStableAtInt64Bounds ....................   Passed    0.00 sec
+        Start 111: geometry.GeometrySpatialSafety.ContinuousGridBboxCrossesSegment
+111/147 Test #111: geometry.GeometrySpatialSafety.ContinuousGridBboxCrossesSegment ..............................   Passed    0.00 sec
+        Start 112: geometry.GeometryCurveDecoder.ParsesArcgisMissingMMarkerBeforeNativeCurveDescriptors
+112/147 Test #112: geometry.GeometryCurveDecoder.ParsesArcgisMissingMMarkerBeforeNativeCurveDescriptors .........   Passed    0.00 sec
+        Start 113: geometry.GeometryCurveDecoder.PreservesCanonicalMArrayBeforeDescriptors
+113/147 Test #113: geometry.GeometryCurveDecoder.PreservesCanonicalMArrayBeforeDescriptors ......................   Passed    0.00 sec
+        Start 114: geometry.GeometryCurveDecoder.MissingMMarkerStillFailsClosedOnTruncation
+114/147 Test #114: geometry.GeometryCurveDecoder.MissingMMarkerStillFailsClosedOnTruncation .....................   Passed    0.00 sec
+        Start 115: geometry.GeometryDecoderSafety.EveryNonEmptyTruncatedPrefixFailsWithoutThrowing
+115/147 Test #115: geometry.GeometryDecoderSafety.EveryNonEmptyTruncatedPrefixFailsWithoutThrowing ..............   Passed    0.00 sec
+        Start 116: geometry.GeometryDecoderSafety.DeterministicGarbageNeverThrows
+116/147 Test #116: geometry.GeometryDecoderSafety.DeterministicGarbageNeverThrows ...............................   Passed    0.00 sec
+        Start 117: geometry.PolygonTopologyContract.OrganizesHoleAndIslandIndependentOfOrderAndDirection
+117/147 Test #117: geometry.PolygonTopologyContract.OrganizesHoleAndIslandIndependentOfOrderAndDirection ........   Passed    0.00 sec
+        Start 118: geometry.PolygonTopologyContract.RejectsSelfIntersectionDuplicateAndDegenerateRings
+118/147 Test #118: geometry.PolygonTopologyContract.RejectsSelfIntersectionDuplicateAndDegenerateRings ..........   Passed    0.00 sec
+        Start 119: geometry.PolygonTopologyContract.KeepsZAndMAttachedWhenOrientationIsReversed
+119/147 Test #119: geometry.PolygonTopologyContract.KeepsZAndMAttachedWhenOrientationIsReversed .................   Passed    0.00 sec
+        Start 120: geometry.WkbContract.WritesValidStableMultiPolygonStructure
+120/147 Test #120: geometry.WkbContract.WritesValidStableMultiPolygonStructure ..................................   Passed    0.00 sec
+        Start 121: geometry.GeometryModelDecoder.DecodesPointAndProducesWkbWithoutWktRoundTrip
+121/147 Test #121: geometry.GeometryModelDecoder.DecodesPointAndProducesWkbWithoutWktRoundTrip ..................   Passed    0.00 sec
+        Start 122: geometry.GeometryModelDecoder.PolygonWkbAndSpatialFilterShareTopology
+122/147 Test #122: geometry.GeometryModelDecoder.PolygonWkbAndSpatialFilterShareTopology ........................   Passed    0.00 sec
+        Start 123: geometry.GeometryModelDecoder.ReportsTruncationAndSupportsExplicitCurveModes
+123/147 Test #123: geometry.GeometryModelDecoder.ReportsTruncationAndSupportsExplicitCurveModes .................   Passed    0.00 sec
+        Start 124: geometry.GeometryModelDecoder.GeometryReadOptionsPreserveOrExplicitlyLinearizeCurvePayload
+124/147 Test #124: geometry.GeometryModelDecoder.GeometryReadOptionsPreserveOrExplicitlyLinearizeCurvePayload ...   Passed    0.00 sec
+        Start 125: geometry.GeometryModelDecoder.MultipatchPreservesStructureDimensionsAndRawPayload
+125/147 Test #125: geometry.GeometryModelDecoder.MultipatchPreservesStructureDimensionsAndRawPayload ............   Passed    0.00 sec
+        Start 126: geometry.GeometryModelDecoder.MultipatchParsesAllPartTypesFacesAndRingGroups
+126/147 Test #126: geometry.GeometryModelDecoder.MultipatchParsesAllPartTypesFacesAndRingGroups .................   Passed    0.00 sec
+        Start 127: geometry.GeometryModelDecoder.MultipatchMapsRingGroupsAndMixedPartsToStandardWkb
+127/147 Test #127: geometry.GeometryModelDecoder.MultipatchMapsRingGroupsAndMixedPartsToStandardWkb .............   Passed    0.00 sec
+        Start 128: geometry.GeometryModelDecoder.MultipatchConnectedOuterRingsMatchGdalTinHeuristic
+128/147 Test #128: geometry.GeometryModelDecoder.MultipatchConnectedOuterRingsMatchGdalTinHeuristic .............   Passed    0.00 sec
+        Start 129: geometry.GeometryModelDecoder.MultipatchSpatialFilterChecksProjectedSurfaces
+129/147 Test #129: geometry.GeometryModelDecoder.MultipatchSpatialFilterChecksProjectedSurfaces .................   Passed    0.00 sec
+        Start 130: geometry.GeometryModelDecoder.MultipatchRetainsUnknownTypesAndRejectsInvalidTriangleGroups
+130/147 Test #130: geometry.GeometryModelDecoder.MultipatchRetainsUnknownTypesAndRejectsInvalidTriangleGroups ...   Passed    0.00 sec
+        Start 131: geometry.GeometryModelDecoder.EmptyMultipatchKeepsEmptyStatusWithoutWkb
+131/147 Test #131: geometry.GeometryModelDecoder.EmptyMultipatchKeepsEmptyStatusWithoutWkb ......................   Passed    0.00 sec
+        Start 132: geometry.GeometryModelDecoder.GeneralMultipatchUsesZAndMTypeFlags
+132/147 Test #132: geometry.GeometryModelDecoder.GeneralMultipatchUsesZAndMTypeFlags ............................   Passed    0.00 sec
+        Start 133: geometry.QueryGridBboxTest.IncludesDecodedVertexAtExactWorldBoundary
+133/147 Test #133: geometry.QueryGridBboxTest.IncludesDecodedVertexAtExactWorldBoundary .........................   Passed    0.00 sec
+        Start 134: geometry.QueryGridBboxTest.KeepsSubGridWindowsContinuous
+134/147 Test #134: geometry.QueryGridBboxTest.KeepsSubGridWindowsContinuous .....................................   Passed    0.00 sec
+        Start 135: geometry.QueryGridBboxTest.IncludesAllIntegersSharingAnOutputDouble
+135/147 Test #135: geometry.QueryGridBboxTest.IncludesAllIntegersSharingAnOutputDouble ..........................   Passed    0.00 sec
+        Start 136: geometry.QueryGridBboxTest.RoundTripsDecodedVerticesAcrossCoordinateScales
+136/147 Test #136: geometry.QueryGridBboxTest.RoundTripsDecodedVerticesAcrossCoordinateScales ...................   Passed    0.00 sec
+        Start 137: geometry.GeometryWriterExactTest.PointZmOutputRemainsByteAndTextCompatible
+137/147 Test #137: geometry.GeometryWriterExactTest.PointZmOutputRemainsByteAndTextCompatible ...................   Passed    0.00 sec
+        Start 138: geometry.GeometryWriterExactTest.InvalidWkbFailsClosedForOnDemandWkt
+138/147 Test #138: geometry.GeometryWriterExactTest.InvalidWkbFailsClosedForOnDemandWkt .........................   Passed    0.00 sec
+        Start 139: geometry.GeometryValueToWkt.ConvertsPointAndBigEndianPoint
+139/147 Test #139: geometry.GeometryValueToWkt.ConvertsPointAndBigEndianPoint ...................................   Passed    0.00 sec
+        Start 140: geometry.GeometryValueToWkt.ConvertsDimensionsAndEmptyPoint
+140/147 Test #140: geometry.GeometryValueToWkt.ConvertsDimensionsAndEmptyPoint ..................................   Passed    0.00 sec
+        Start 141: geometry.GeometryValueToWkt.ConvertsLinePolygonAndCollections
+141/147 Test #141: geometry.GeometryValueToWkt.ConvertsLinePolygonAndCollections ................................   Passed    0.00 sec
+        Start 142: geometry.GeometryValueToWkt.ConvertsIsoSurfaceTypesAndHeterogeneousCollections
+142/147 Test #142: geometry.GeometryValueToWkt.ConvertsIsoSurfaceTypesAndHeterogeneousCollections ...............   Passed    0.00 sec
+        Start 143: geometry.GeometryValueToWkt.ConvertsEmptyNonPointTypes
+143/147 Test #143: geometry.GeometryValueToWkt.ConvertsEmptyNonPointTypes .......................................   Passed    0.00 sec
+        Start 144: geometry.GeometryValueToWkt.ConvertsEmptyMembersInCollections
+144/147 Test #144: geometry.GeometryValueToWkt.ConvertsEmptyMembersInCollections ................................   Passed    0.00 sec
+        Start 145: geometry.GeometryValueToWkt.RejectsMissingTruncatedAndUnsupportedWkb
+145/147 Test #145: geometry.GeometryValueToWkt.RejectsMissingTruncatedAndUnsupportedWkb .........................   Passed    0.00 sec
+        Start 146: geometry.GeometryValueToWkt.RejectsInvalidNestedTypeAndDimensions
+146/147 Test #146: geometry.GeometryValueToWkt.RejectsInvalidNestedTypeAndDimensions ............................   Passed    0.00 sec
+        Start 147: geometry.GeometryValueToWkt.RejectsInvalidCountsAndUnclosedRings
+147/147 Test #147: geometry.GeometryValueToWkt.RejectsInvalidCountsAndUnclosedRings .............................   Passed    0.00 sec
+
+100% tests passed, 0 tests failed out of 147
+
+Total Test time (real) =   0.67 sec
+
+The following tests did not run:
+	 24 - unified.UnifiedFastFacadeTest.ReadsArcGisAttachmentPayloadsWhenConfigured (Skipped)
