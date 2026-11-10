@@ -5,6 +5,7 @@
 #include "explorgdb_types.h"
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace explorgdb::detail {
@@ -48,9 +49,12 @@ public:
     bool observe_source(RowSlot fid, const std::optional<GdbBbox>& bounds);
     std::shared_ptr<const SpatialSourceDirectory> finish();
     State state() const { return state_; }
+    // First failing invariant, for diagnostics; empty for an unfailed builder.
+    const std::string& failure_reason() const { return failure_reason_; }
 private:
-    bool fail(State state = State::Invalid);
+    bool fail(State state = State::Invalid, const char* reason = nullptr);
     State state_ = State::Building;
+    std::string failure_reason_;
     size_t slots_, active_rows_, pages_, source_rows_ = 0;
     uint64_t expected_entries_, entries_ = 0;
     size_t unique_indexed_ = 0, indexed_active_ = 0;

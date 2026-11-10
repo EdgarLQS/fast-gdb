@@ -1237,6 +1237,38 @@ TEST_F(SpatialWhereIndexFallbackTest, SourceProofRecoversWrongKeysAndFullyScansM
     }
 }
 
+TEST_F(SpatialWhereIndexFallbackTest,
+       MissingIndexEntryReportsCoverageProofFailure) {
+    const auto path = createFixture(false, 10000, false);
+    GdbCatalog catalog;
+    ResolvedTable table;
+    ASSERT_TRUE(resolve(path, catalog, table));
+    const CatalogEntry* spx = catalog.find_spx(table.id);
+    ASSERT_NE(spx, nullptr);
+    // Drop the index entry for the second row while keeping page/total counts
+    // self-consistent enough to parse. The source coverage proof must refuse
+    // the incomplete directory and report that specific reason.
+    ASSERT_TRUE(damage_native_source_spx(entry_path(path, spx), 2, 10000));
+    QueryEngine engine(catalog, table);
+    ASSERT_TRUE(engine.open());
+    QueryRequest request;
+    request.kind = QueryKind::SpatialBbox;
+    request.xmin = 1.9;
+    request.ymin = 0.9;
+    request.xmax = 2.1;
+    request.ymax = 1.1;
+    const QueryResult result = engine.query(request);
+    ASSERT_EQ(result.status, QueryStatus::Ok) << result.error;
+    EXPECT_EQ(result.execution_path, "bbox:model:sequential-fallback");
+    EXPECT_NE(result.fallback_reason.find("source coverage missing"),
+              std::string::npos)
+        << result.fallback_reason;
+    EXPECT_EQ(result.spatial_metrics.source_directory_bytes, 0U);
+    EXPECT_FALSE(result.spatial_metrics.source_directory_hit);
+    std::printf("[missing-entry] path=%s reason=%s\n",
+                result.execution_path.c_str(), result.fallback_reason.c_str());
+}
+
 TEST_F(SpatialWhereIndexFallbackTest, WarmSourceDirectoryRejectsReplacedTableAndTablxUntilReopen) {
     for (bool replace_table : {false, true}) {
         const auto path = createFixture(false, 10000);

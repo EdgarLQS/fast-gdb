@@ -1,0 +1,3 @@
+[missing-entry] path=bbox:model:sequential-fallback reason=spatial source proof failed: complete source scan failed: source coverage missing for active geometry; sequential scan used
+[==========] 1 test from 1 test suite ran. (91 ms total)
+[  PASSED  ] 1 test.

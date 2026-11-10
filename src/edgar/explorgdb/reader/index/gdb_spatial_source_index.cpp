@@ -106,16 +106,28 @@ SpatialSourceBuildResult SpatialSourceIndex::build(const std::string& path, cons
             for (size_t i = 0; i < count; ++i) {
                 if (entries[i].fid != fids[i]) { result.reason = "source bounds FID differs"; return result; }
             }
-            if (!builder.add_leaf(id, entries)) { result.reason = "source leaf validation failed"; return result; }
+            if (!builder.add_leaf(id, entries)) {
+                result.reason = "source leaf validation failed";
+                if (!builder.failure_reason().empty())
+                    result.reason += ": " + builder.failure_reason();
+                return result;
+            }
             id = integer(page.data(), trailer.object_id_size);
         }
         if (!source.scan_source([&](RowSlot fid, const std::optional<GdbBbox>& bounds) {
                 return builder.observe_source(fid, bounds);
-            })) { result.reason = "complete source scan failed"; return result; }
+            })) {
+            result.reason = "complete source scan failed";
+            if (!builder.failure_reason().empty())
+                result.reason += ": " + builder.failure_reason();
+            return result;
+        }
         index->directory_ = builder.finish();
         if (!index->directory_) {
             result.pages_read = pages_read;
             result.reason = "source coverage proof failed";
+            if (!builder.failure_reason().empty())
+                result.reason += ": " + builder.failure_reason();
             return result;
         }
         if (!index->stable() || !source.source_stable()) {

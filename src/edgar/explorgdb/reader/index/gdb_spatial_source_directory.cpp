@@ -45,21 +45,27 @@ SpatialSourceDirectoryBuilder::SpatialSourceDirectoryBuilder(size_t slots, size_
     size_t pages, uint64_t index_entries)
     : slots_(slots), active_rows_(active_rows), pages_(pages), expected_entries_(index_entries),
       directory_(std::make_shared<SpatialSourceDirectory>()) {
-    if (active_rows > slots) { fail(); return; }
+    if (active_rows > slots) { fail(State::Invalid, "active rows exceed row slots"); return; }
     if (slots > kMaxSlots || pages > (kMaxBytes - sizeof(SpatialSourceDirectory)) /
-        (sizeof(SpatialSourceDirectory::Leaf) + sizeof(double))) { fail(State::BudgetExceeded); return; }
+        (sizeof(SpatialSourceDirectory::Leaf) + sizeof(double))) {
+        fail(State::BudgetExceeded, "source directory limits exceeded");
+        return;
+    }
     indexed_.resize((slots + 63) / 64);
     covered_.resize((slots + 63) / 64);
     source_seen_.resize((slots + 63) / 64);
     pages_seen_.resize((pages + 63) / 64);
     directory_->leaves_.reserve(pages);
     directory_->prefix_max_x_.reserve(pages);
-    if (directory_->bytes() > kMaxBytes) fail(State::BudgetExceeded);
+    if (directory_->bytes() > kMaxBytes)
+        fail(State::BudgetExceeded, "source directory limits exceeded");
 }
 
-bool SpatialSourceDirectoryBuilder::fail(State state) {
+bool SpatialSourceDirectoryBuilder::fail(State state, const char* reason) {
     if (state_ == State::Ready) return false;
     state_ = state;
+    if (reason != nullptr && failure_reason_.empty())
+        failure_reason_ = reason;
     directory_.reset();
     std::vector<uint64_t>().swap(indexed_);
     std::vector<uint64_t>().swap(covered_);
@@ -70,12 +76,23 @@ bool SpatialSourceDirectoryBuilder::fail(State state) {
 
 bool SpatialSourceDirectoryBuilder::add_leaf(ObjectId page, const std::vector<SpatialSourceEntry>& entries) {
     if (state_ != State::Building) return false;
-    if (source_started_ || page == 0 || page > pages_ || contains(pages_seen_, page - 1) ||
-        entries.size() > 4096 || entries.size() > expected_entries_ - entries_) return fail();
+    if (source_started_)
+        return fail(State::Invalid, "leaf added after source scan started");
+    if (page == 0 || page > pages_)
+        return fail(State::Invalid, "leaf page out of range");
+    if (contains(pages_seen_, page - 1))
+        return fail(State::Invalid, "duplicate leaf page");
+    if (entries.size() > 4096)
+        return fail(State::Invalid, "leaf entry count exceeds per-page limit");
+    if (entries.size() > expected_entries_ - entries_)
+        return fail(State::Invalid, "leaf entries exceed index total");
     mark(pages_seen_, page - 1);
     std::optional<GdbBbox> union_box;
     for (const auto& entry : entries) {
-        if (entry.fid >= slots_ || (entry.bounds && !valid(*entry.bounds))) return fail();
+        if (entry.fid >= slots_)
+            return fail(State::Invalid, "indexed FID out of range");
+        if (entry.bounds && !valid(*entry.bounds))
+            return fail(State::Invalid, "indexed bounds non-finite or inverted");
         if (!contains(indexed_, entry.fid)) { mark(indexed_, entry.fid); ++unique_indexed_; }
         if (!entry.bounds) continue;
         mark(covered_, entry.fid);
@@ -95,21 +112,37 @@ bool SpatialSourceDirectoryBuilder::add_leaf(ObjectId page, const std::vector<Sp
 bool SpatialSourceDirectoryBuilder::observe_source(RowSlot fid, const std::optional<GdbBbox>& bounds) {
     if (state_ != State::Building) return false;
     source_started_ = true;
-    if (fid >= slots_ || source_rows_ >= active_rows_ || contains(source_seen_, fid) ||
-        (bounds && !valid(*bounds))) return fail();
+    if (fid >= slots_) return fail(State::Invalid, "source FID out of range");
+    if (source_rows_ >= active_rows_)
+        return fail(State::Invalid, "source rows exceed active count");
+    if (contains(source_seen_, fid))
+        return fail(State::Invalid, "duplicate source row");
+    if (bounds && !valid(*bounds))
+        return fail(State::Invalid, "source bounds non-finite or inverted");
     mark(source_seen_, fid);
     ++source_rows_;
     const bool indexed = contains(indexed_, fid);
     if (indexed) ++indexed_active_;
-    if (bounds && !contains(covered_, fid)) return fail();
+    if (bounds && !contains(covered_, fid))
+        return fail(State::Invalid,
+                    "source coverage missing for active geometry");
     return true;
 }
 
 std::shared_ptr<const SpatialSourceDirectory> SpatialSourceDirectoryBuilder::finish() {
     if (state_ == State::Ready) return directory_;
     if (state_ != State::Building) return {};
-    if (entries_ != expected_entries_ || source_rows_ != active_rows_ || unique_indexed_ != indexed_active_) {
-        fail(); return {};
+    if (entries_ != expected_entries_) {
+        fail(State::Invalid, "index entry count differs from trailer");
+        return {};
+    }
+    if (source_rows_ != active_rows_) {
+        fail(State::Invalid, "source row count differs from active count");
+        return {};
+    }
+    if (unique_indexed_ != indexed_active_) {
+        fail(State::Invalid, "indexed active rows differ from source");
+        return {};
     }
     auto& leaves = directory_->leaves_;
     std::sort(leaves.begin(), leaves.end(), [](const auto& a, const auto& b) {

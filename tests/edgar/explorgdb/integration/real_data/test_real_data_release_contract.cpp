@@ -2038,6 +2038,18 @@ TEST(RealDataReleaseContractTest,
                 continue;
             }
             if (layer_name.rfind("CRS_", 0) == 0) {
+                std::printf(
+                    "[crs-proof] %s/%s path=%s reason=%s hit=%s bytes=%zu "
+                    "leaves=%zu entries=%zu pages=%zu\n",
+                    layer_name.c_str(), window.label,
+                    fast_result.execution_path.c_str(),
+                    fast_result.fallback_reason.c_str(),
+                    fast_result.spatial_metrics.source_directory_hit
+                        ? "true" : "false",
+                    fast_result.spatial_metrics.source_directory_bytes,
+                    fast_result.spatial_metrics.source_directory_leaves,
+                    fast_result.spatial_metrics.source_directory_entries,
+                    fast_result.spatial_metrics.source_index_pages_read);
                 EXPECT_EQ(fast_result.execution_path,
                           kPathBboxModelSequentialFallback);
                 EXPECT_NE(fast_result.fallback_reason.find("spatial source proof failed"), std::string::npos);

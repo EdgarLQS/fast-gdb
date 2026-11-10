@@ -351,6 +351,13 @@ source-row truth. The six native geometry types also compare interior windows
 against GDAL read-back geometries; file replacement and the Unified synthetic
 index-declaration refresh test cover stale proofs. See [query proof evidence](../docs/plan/evidence/2026-11-08-spx-query-source-proof.md).
 
+`SpatialWhereIndexFallbackTest.MissingIndexEntryReportsCoverageProofFailure`
+removes one native SPX entry while keeping page/total counts self-consistent;
+the builder must report `source coverage missing for active geometry`, publish
+no directory cache and fall back to a complete scan. The real-data CRS test
+prints `[crs-proof]` reason/metrics for each CRS layer and window. See
+[CRS diagnosis entry](../docs/plan/evidence/2026-11-10-crs-proof-diagnosis.md).
+
 `SpatialSourceCacheTest` covers positive-proof snapshot identity, retryable
 failures, concurrent cold builds, byte/count LRU limits, and catalog rescan
 invalidation without metadata changes. Real GDAL layers also exercise cached
