@@ -3,6 +3,7 @@
 
 #include "query_engine.h"
 
+#include "attribute_index_binding.h"
 #include "catalog_resolver.h"
 #include "explorgdb_constants.h"
 #include "gdb_geometry.h"
@@ -654,34 +655,29 @@ QueryResult QueryEngine::query_attribute(const QueryRequest& request, std::optio
         catalog_.find_atx(resolved_.id, request.index_name);
     std::vector<IndexEntry> index_metadata;
     (void)catalog_.read_index_metadata(resolved_.id, index_metadata);
-    std::optional<FieldType> indexed_field_type;
+    FieldType indexed_field_type = FieldType::Int32;
     size_t indexed_field_position = 0;
-    for (const auto& entry : index_metadata) {
-        if (entry.name != request.index_name ||
-            !GdbIndexesParser::is_direct_field_expression(entry.column_name)) continue;
-        const auto column = GdbIndexesParser::field_name_from_expression(entry.column_name);
-        for (const auto& field : parser_->fields()) {
-            if (field.name.size() == column.size() &&
-                std::equal(field.name.begin(), field.name.end(), column.begin(),
-                    [](unsigned char left, unsigned char right) {
-                        return std::tolower(left) == std::tolower(right);
-                    })) {
-                indexed_field_type = field.type;
-                indexed_field_position = static_cast<size_t>(&field - parser_->fields().data());
-                break;
-            }
-        }
+    const auto binding = detail::resolve_direct_index_field(
+        index_metadata, request.index_name, parser_->fields(),
+        indexed_field_type, indexed_field_position);
+    if (binding == detail::DirectIndexBinding::Ambiguous) {
+        result.status = QueryStatus::Unsupported;
+        result.error =
+            "index name is declared for multiple fields; use a unique index "
+            "or an explicit WHERE predicate";
+        result.fallback_reason = result.error;
+        return result;
     }
-    if (!indexed_field_type.has_value()) {
+    if (binding != detail::DirectIndexBinding::Bound) {
         result.status = QueryStatus::Unsupported;
         result.error = "direct indexed-field metadata unavailable; use an explicit WHERE predicate";
         result.fallback_reason = atx ? result.error : kFallbackAttributeIndexMissing;
         if (!atx) result.execution_path = kPathAttributeSequential;
         return result;
     }
-    const bool uuid = *indexed_field_type == FieldType::UUID_1 || *indexed_field_type == FieldType::UUID_2;
-    const bool textual = *indexed_field_type == FieldType::String || uuid;
-    const auto type = *indexed_field_type;
+    const bool uuid = indexed_field_type == FieldType::UUID_1 || indexed_field_type == FieldType::UUID_2;
+    const bool textual = indexed_field_type == FieldType::String || uuid;
+    const auto type = indexed_field_type;
     const bool numeric = type == FieldType::Int16 || type == FieldType::Int32 || type == FieldType::Int64 ||
         type == FieldType::ObjectId || type == FieldType::Float32 || type == FieldType::Float64 ||
         type == FieldType::DateTime || type == FieldType::Date || type == FieldType::Time ||
@@ -692,7 +688,7 @@ QueryResult QueryEngine::query_attribute(const QueryRequest& request, std::optio
         return result;
     }
     if ((request.kind == QueryKind::AttributeString) != textual ||
-        (integer_value && *indexed_field_type != FieldType::Int64)) {
+        (integer_value && indexed_field_type != FieldType::Int64)) {
         result.status = QueryStatus::InvalidRequest;
         result.error = "attribute predicate type does not match the indexed field";
         return result;
@@ -709,7 +705,7 @@ QueryResult QueryEngine::query_attribute(const QueryRequest& request, std::optio
     if (atx != nullptr) {
         try {
             GdbAttributeIndexParser index(
-                catalog_.path() + "/" + atx->filename, *indexed_field_type);
+                catalog_.path() + "/" + atx->filename, indexed_field_type);
             {
                 auto context = make_value_context(indexed_field_position, false, true);
                 if (!context) {

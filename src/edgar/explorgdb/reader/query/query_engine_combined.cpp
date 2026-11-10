@@ -263,27 +263,34 @@ AttributeCandidatePlan resolve_attribute_index(
             "attribute index metadata could not be parsed; spatial candidates evaluated");
     }
 
-    std::string index_name;
+    std::vector<std::string> index_names;
     bool functional_index_found = false;
     const std::string target = lower_copy(predicate.field_name);
     for (const IndexEntry& entry : metadata_entries) {
         const std::string indexed_field =
             GdbIndexesParser::field_name_from_expression(entry.column_name);
         if (lower_copy(indexed_field) != target) continue;
-        if (GdbIndexesParser::is_direct_field_expression(
-                entry.column_name)) {
-            index_name = entry.name;
-            break;
+        if (!GdbIndexesParser::is_direct_field_expression(entry.column_name)) {
+            functional_index_found = true;
+            continue;
         }
-        functional_index_found = true;
+        if (std::find(index_names.begin(), index_names.end(), entry.name) ==
+            index_names.end())
+            index_names.push_back(entry.name);
     }
 
-    if (index_name.empty()) {
+    if (index_names.empty()) {
         return fail(functional_index_found
             ? "functional attribute index is not semantically equivalent to the direct WHERE comparison; spatial candidates evaluated"
             : "attribute field has no .atx index; spatial candidates evaluated");
     }
-    const CatalogEntry* atx = catalog.find_atx(table_id, index_name);
+    // Multiple declarations for one field are legitimate; use the first one
+    // that has an actual index file instead of failing on a missing first name.
+    const CatalogEntry* atx = nullptr;
+    for (const std::string& candidate : index_names) {
+        atx = catalog.find_atx(table_id, candidate);
+        if (atx != nullptr) break;
+    }
     if (atx == nullptr) {
         return fail(
             "attribute index file missing; spatial candidates evaluated");

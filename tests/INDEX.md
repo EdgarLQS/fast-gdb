@@ -351,6 +351,12 @@ source-row truth. The six native geometry types also compare interior windows
 against GDAL read-back geometries; file replacement and the Unified synthetic
 index-declaration refresh test cover stale proofs. See [query proof evidence](../docs/plan/evidence/2026-11-08-spx-query-source-proof.md).
 
+`AttributeIndexBindingTest` pins deterministic `.gdbindexes` binding: index
+names match exactly, column names match case-insensitively, duplicate names for
+different fields are `Ambiguous` (the query fails closed as `Unsupported`), and
+the combined planner tries all direct index names for a field before reporting a
+missing file. See [binding evidence](../docs/plan/evidence/2026-11-10-index-name-binding.md).
+
 `SpatialWhereIndexFallbackTest.MissingIndexEntryReportsCoverageProofFailure`
 removes one native SPX entry while keeping page/total counts self-consistent;
 the builder must report `source coverage missing for active geometry`, publish
