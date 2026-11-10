@@ -10,7 +10,7 @@
 
 I/O 阶段：[有界 SPX I/O 与身份适配层](evidence/2026-11-08-spx-source-index-io.md)已接通 SPX 页读取、路径/句柄身份、源稳定回调及事务式候选发布。规范源解码、实际 transform 绑定、全局缓存/失效和 QueryEngine 接入仍未完成。
 
-源解码阶段：[实际表规范源回调](evidence/2026-11-08-spx-table-source.md)已固定 Geometry 字段与变换，接入实际表批量/全扫和规范模型包络，GDAL 六类图层与 NULL/Empty 对照通过；曲线安全包络和真实 MultiPatch 仍待验收。全局缓存/失效及普通/融合 QueryEngine 接入继续未完成。
+源解码阶段：[实际表规范源回调](evidence/2026-11-08-spx-table-source.md)已固定 Geometry 字段与变换，接入实际表批量/全扫和规范模型包络，GDAL 六类图层与 NULL/Empty 对照通过；曲线保守原包络已于 2026-11-10 实现并接入源证明（Bezier 控制点凸包、圆弧解析极值、椭圆保守范围），见[曲线包络记录](evidence/2026-11-10-curve-source-bounds.md)；真实曲线语料 parity 与真实 MultiPatch 仍待验收。全局缓存/失效及普通/融合 QueryEngine 接入已完成。
 
 缓存阶段：[Catalog 同代缓存](evidence/2026-11-08-spx-source-cache.md)已绑定文件/字段/变换身份，设置成功证明的有界 LRU，scan 新建空缓存；构建失败保持可重试，原始 SPX 映射及页缓冲不再保留。普通/融合 QueryEngine 及实际 refresh 端到端合同继续未完成。
 
@@ -35,7 +35,7 @@ I/O 阶段：[有界 SPX I/O 与身份适配层](evidence/2026-11-08-spx-source-
 
 ## 验收顺序
 
-先验证单点/多点及 source 变化，再验证长线、孔洞多面、曲线、非空 MultiPatch 的已支持结构；每类都检查多个内部窗口，而不是只查整体 extent。未知或不可求值结构按已有 Unsupported 合同处理。
+先验证单点/多点及 source 变化，再验证长线、孔洞多面、曲线、非空 MultiPatch 的已支持结构；每类都检查多个内部窗口，而不是只查整体 extent。未知或不可求值结构按已有 Unsupported 合同处理。曲线原包络已由保守计算与逐点包含性测试覆盖（2026-11-10）；真实曲线图层的内部窗口 FID parity 仍待恢复 `testcurve.gdb`。
 
 1K/10K/100K/1M/10M 冷热成本、低/高选择性、隔离 RSS 及 10M 候选预算已在本机合成 uniform Point 夹具完成（2026-11-09）；真实多级 ArcGIS 索引仍是独立外部验收项，现有 125 个真实 SPX 仅含 level 0，不能替代该门禁。物理冷 I/O（清 OS 缓存）和安装 consumer 在本次规模证据中未重测。
 

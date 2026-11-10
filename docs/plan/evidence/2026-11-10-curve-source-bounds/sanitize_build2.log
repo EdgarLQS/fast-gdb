@@ -1,0 +1,7 @@
+[1/7] Building CXX object CMakeFiles/fast_gdb_geometry_core.dir/src/edgar/explorgdb/reader/geometry/curve_geometry.cpp.o
+[2/7] Linking CXX static library libfast_gdb_geometry_core.a
+[3/7] Linking CXX shared library libfast_gdb_runtime.0.2.0.dylib
+[4/7] Creating library symlink libfast_gdb_runtime.0.dylib libfast_gdb_runtime.dylib
+[5/7] Linking CXX executable bin/fast_gdb_geometry_test_runner
+[6/7] Linking CXX executable bin/gdb_tutorial_test_runner
+[7/7] Linking CXX executable bin/fast_gdb_unified_test_runner

@@ -153,6 +153,16 @@ struct CurveLinearizationResult {
  */
 CurveLinearizationResult linearize_curves(const CurveRequest& request);
 
+/**
+ * 计算原始曲线载荷的保守实数包围盒，不进行采样。
+ *
+ * Bezier 使用控制点凸包；圆弧使用扫掠区间内的解析极值；椭圆使用完整旋转
+ * 椭圆的轴对齐包围盒（对任意子弧保守）。非法/不支持的表式返回 nullopt，
+ * 调用方必须完整回退，不能用线性化采样点替代。
+ */
+std::optional<GeometryBounds> conservative_curve_bounds(
+    const CurveRequest& request);
+
 /** 曲线几何后端接口；输出必须归一化为共享 GeometryModel。 */
 class CurveGeometryBackend {
 public:

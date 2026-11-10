@@ -328,6 +328,20 @@ TEST(GeometryModelDecoder,
     EXPECT_EQ(builtin.backend, GeometryBackend::BuiltinCurve);
     ASSERT_EQ(builtin.lines.size(), 1u);
     EXPECT_GT(builtin.lines.front().size(), 3u);
+    ASSERT_TRUE(builtin.conservative_source_bounds.has_value());
+    const GeometryBounds& bounds = *builtin.conservative_source_bounds;
+    EXPECT_LE(bounds.xmin, -1.0);
+    EXPECT_GE(bounds.xmax, 1.0);
+    EXPECT_LE(bounds.ymin, 0.0);
+    EXPECT_GE(bounds.ymax, 1.0);
+    for (const auto& point : builtin.lines.front()) {
+        const double x = builtin.transform.decode_x(point.x);
+        const double y = builtin.transform.decode_y(point.y);
+        EXPECT_GE(x, bounds.xmin - 1e-9);
+        EXPECT_LE(x, bounds.xmax + 1e-9);
+        EXPECT_GE(y, bounds.ymin - 1e-9);
+        EXPECT_LE(y, bounds.ymax + 1e-9);
+    }
     EXPECT_TRUE(decoder.model_intersects_bbox(
         curve.data(), curve.size(), -0.1, 0.9, 0.1, 1.1));
 

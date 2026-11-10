@@ -6,6 +6,7 @@
 #include "test_paths.h"
 #include <filesystem>
 #include <fstream>
+#include <cstring>
 #include <atomic>
 #include <future>
 #include <chrono>
@@ -54,6 +55,65 @@ struct Fixture {
     }
     ~Fixture() { std::error_code ignored; std::filesystem::remove(path, ignored); }
 };
+
+void write_varuint(std::vector<uint8_t>& out, uint64_t value) {
+    do {
+        uint8_t byte = static_cast<uint8_t>(value & 0x7f);
+        value >>= 7;
+        if (value) byte |= 0x80;
+        out.push_back(byte);
+    } while (value);
+}
+
+void write_varint(std::vector<uint8_t>& out, int64_t value) {
+    uint64_t magnitude = value < 0 ? static_cast<uint64_t>(-value)
+                                   : static_cast<uint64_t>(value);
+    uint8_t first = static_cast<uint8_t>(magnitude & 0x3f);
+    magnitude >>= 6;
+    if (value < 0) first |= 0x40;
+    if (magnitude) first |= 0x80;
+    out.push_back(first);
+    while (magnitude) {
+        uint8_t byte = static_cast<uint8_t>(magnitude & 0x7f);
+        magnitude >>= 7;
+        if (magnitude) byte |= 0x80;
+        out.push_back(byte);
+    }
+}
+
+void write_u32_le(std::vector<uint8_t>& out, uint32_t value) {
+    for (unsigned i = 0; i < 4; ++i)
+        out.push_back(static_cast<uint8_t>((value >> (8 * i)) & 0xff));
+}
+
+void write_double_le(std::vector<uint8_t>& out, double value) {
+    uint64_t raw = 0;
+    std::memcpy(&raw, &value, sizeof(value));
+    for (unsigned i = 0; i < 8; ++i)
+        out.push_back(static_cast<uint8_t>((raw >> (8 * i)) & 0xff));
+}
+
+// Same 3-point circular arc payload used by the geometry decoder tests:
+// vertices (1,0) and (-1,0), intermediate point (0,1), radius 1000 grid units.
+std::vector<uint8_t> build_curve_payload() {
+    std::vector<uint8_t> out;
+    write_varuint(out, 50 | 0x20000000ULL);
+    write_varuint(out, 2);
+    write_varuint(out, 1);
+    write_varuint(out, 1);
+    write_varuint(out, 0); write_varuint(out, 0);
+    write_varuint(out, 2000); write_varuint(out, 1000);
+    write_varint(out, 1000);
+    write_varint(out, 0);
+    write_varint(out, -2000);
+    write_varint(out, 0);
+    write_varuint(out, 0);
+    write_varuint(out, 1);
+    write_double_le(out, 0.0);
+    write_double_le(out, 1.0);
+    write_u32_le(out, 0x80);
+    return out;
+}
 }
 
 TEST(SpatialSourceIndexTest, SourceBoundsRecoverCandidatesDespiteWrongGridKeysAndSeparators) {
@@ -206,6 +266,24 @@ TEST(SpatialSourceTableTest, FixedFixtureBatchAndFullScanAgreeWithoutGdalRuntime
     EXPECT_EQ(key->geometry_type, table.header().geom_type_full);
     EXPECT_EQ(key->transform, (std::array<double, 7>{geometry.xorig, geometry.yorig, geometry.xyscale,
         geometry.zorig, geometry.zscale, geometry.morig, geometry.mscale}));
+}
+
+TEST(SpatialSourceTableTest, CurvePayloadUsesConservativeSourceBounds) {
+    const auto payload = build_curve_payload();
+    FieldRef geometry;
+    geometry.type = FieldType::Geometry;
+    geometry.data = payload.data();
+    geometry.byte_len = payload.size();
+    GdbGeomDecoder decoder(0.0, 0.0, 1000.0, 0.0, 1000.0,
+                           0.0, 1000.0, false, false);
+    std::optional<GdbBbox> bounds;
+    ASSERT_TRUE(decode_spatial_source_bounds(geometry, decoder, bounds));
+    ASSERT_TRUE(bounds.has_value());
+    // The arc spans x [-1, 1] and y [0, 1] in decoded coordinates.
+    EXPECT_LE(bounds->xmin, -1.0);
+    EXPECT_GE(bounds->xmax, 1.0);
+    EXPECT_LE(bounds->ymin, 0.0);
+    EXPECT_GE(bounds->ymax, 1.0);
 }
 
 namespace {

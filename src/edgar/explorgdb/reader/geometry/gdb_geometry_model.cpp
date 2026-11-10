@@ -580,9 +580,14 @@ GeometryModel GdbGeomDecoder::decode_model(
 
             if (curve_backend_mode_ == CurveBackendMode::Reject)
                 return RejectCurveBackend().read_geometry(request);
-            if (curve_backend_mode_ == CurveBackendMode::Builtin)
-                return BuiltinLinearizingCurveBackend().read_geometry(
-                    request);
+            if (curve_backend_mode_ == CurveBackendMode::Builtin) {
+                auto builtin =
+                    BuiltinLinearizingCurveBackend().read_geometry(request);
+                if (builtin.valid())
+                    builtin.conservative_source_bounds =
+                        conservative_curve_bounds(request);
+                return builtin;
+            }
 
             model.backend = GeometryBackend::Gdal;
             model.status = GeometryStatus::UnsupportedCurve;

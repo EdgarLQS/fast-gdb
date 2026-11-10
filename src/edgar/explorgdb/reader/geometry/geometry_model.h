@@ -239,6 +239,14 @@ struct GridBbox {
 
 using PointSequence = std::vector<GridPoint>;
 
+/** 源几何在解码实数坐标下的保守包围盒；仅用于索引预筛证明。 */
+struct GeometryBounds {
+    double xmin = 0.0;
+    double ymin = 0.0;
+    double xmax = 0.0;
+    double ymax = 0.0;
+};
+
 /** 归一化后的开放环；写出 WKB/WKT 时再补首点闭合。 */
 struct RingModel {
     PointSequence points;
@@ -276,6 +284,8 @@ struct GeometryModel {
     bool has_m = false;
     bool source_was_curve = false;
     bool linearized = false;
+    // 原始曲线载荷的保守实数包围盒；缺失时必须回退，不能用线性化采样代替。
+    std::optional<GeometryBounds> conservative_source_bounds;
     double linearization_max_chord_error = 0.0;
     double linearization_max_angle_step_degrees = 0.0;
     size_t linearization_max_segments_per_curve = 0;

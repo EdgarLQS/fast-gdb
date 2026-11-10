@@ -1,0 +1,15 @@
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/integration/gdal_parity/benchmark/test_spatial_source_proof_benchmark.cpp:343: Skipped
+Set FAST_GDB_RUN_SPATIAL_BENCHMARKS=1 and FAST_GDB_BENCHMARK_PATH
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/integration/gdal_parity/benchmark/test_spatial_source_proof_benchmark.cpp:350: Skipped
+Set FAST_GDB_RUN_SPATIAL_BENCHMARKS=1 and FAST_GDB_BENCHMARK_PATH
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_source_budget.cpp:113: Skipped
+Set FAST_GDB_RUN_BUDGET_TESTS=1
+
+/Users/edgarlqs/Downloads/fast-gdb/tests/edgar/explorgdb/integration/gdal_parity/spatial_where/test_spatial_source_budget.cpp:113: Skipped
+Set FAST_GDB_RUN_BUDGET_TESTS=1
+
+[==========] 29 tests from 6 test suites ran. (9 ms total)
+[  PASSED  ] 25 tests.
+[  SKIPPED ] 4 tests.

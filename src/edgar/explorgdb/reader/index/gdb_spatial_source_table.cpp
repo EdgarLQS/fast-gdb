@@ -4,9 +4,9 @@
 #include <cmath>
 
 namespace explorgdb::detail {
-namespace {
-bool source_bounds(const FieldRef& geometry, GdbGeomDecoder& decoder,
-                   std::optional<GdbBbox>& bounds) {
+bool decode_spatial_source_bounds(const FieldRef& geometry,
+                                  GdbGeomDecoder& decoder,
+                                  std::optional<GdbBbox>& bounds) {
     bounds.reset();
     if (geometry.is_null || geometry.byte_len == 0) return true;
     if (!geometry.data) return false;
@@ -14,8 +14,21 @@ bool source_bounds(const FieldRef& geometry, GdbGeomDecoder& decoder,
     if (!model.valid()) return false;
     if (model.status == GeometryStatus::Null || model.status == GeometryStatus::Empty) return true;
     // A linearized curve's sampled vertices are not a proof of the original
-    // curve envelope. Until conservative curve bounds are supplied, fall back.
-    if (model.source_was_curve || model.linearized) return false;
+    // curve envelope. Use the decoder's conservative source bounds instead.
+    if (model.source_was_curve || model.linearized) {
+        if (!model.conservative_source_bounds) return false;
+        const auto& curve_bounds = *model.conservative_source_bounds;
+        if (!std::isfinite(curve_bounds.xmin) ||
+            !std::isfinite(curve_bounds.ymin) ||
+            !std::isfinite(curve_bounds.xmax) ||
+            !std::isfinite(curve_bounds.ymax) ||
+            curve_bounds.xmin > curve_bounds.xmax ||
+            curve_bounds.ymin > curve_bounds.ymax)
+            return false;
+        bounds = GdbBbox{curve_bounds.xmin, curve_bounds.ymin,
+                         curve_bounds.xmax, curve_bounds.ymax};
+        return true;
+    }
     const auto add = [&](double x, double y) {
         if (!std::isfinite(x) || !std::isfinite(y)) return false;
         if (!bounds) bounds = GdbBbox{x, y, x, y};
@@ -53,7 +66,6 @@ bool source_bounds(const FieldRef& geometry, GdbGeomDecoder& decoder,
         }
     }
     return bounds.has_value(); // unknown/degenerate nonempty models cannot become NULL
-}
 }
 
 std::optional<SpatialSourceKey> make_table_spatial_source_key(GdbTableParser& table,
@@ -100,7 +112,7 @@ SpatialSourceInput make_table_spatial_source_input(GdbTableParser& table,
         bool ok = true;
         const auto rows = table.scan_field_candidates(unique, [&](RowSlot fid, const FieldRef* values, int count) {
             std::optional<GdbBbox> box;
-            if (position >= static_cast<size_t>(count) || !source_bounds(values[position], *decoder, box)) {
+            if (position >= static_cast<size_t>(count) || !decode_spatial_source_bounds(values[position], *decoder, box)) {
                 ok = false; return false;
             }
             decoded.push_back({fid, box});
@@ -122,7 +134,7 @@ SpatialSourceInput make_table_spatial_source_input(GdbTableParser& table,
         bool ok = true;
         const auto rows = table.sequential_scan([&](RowSlot fid, const FieldRef* values, int count) {
             std::optional<GdbBbox> box;
-            if (position >= static_cast<size_t>(count) || !source_bounds(values[position], *decoder, box) ||
+            if (position >= static_cast<size_t>(count) || !decode_spatial_source_bounds(values[position], *decoder, box) ||
                 !callback(fid, box)) { ok = false; return false; }
             return true;
         });

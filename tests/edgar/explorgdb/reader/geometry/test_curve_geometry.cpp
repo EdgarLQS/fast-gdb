@@ -203,6 +203,182 @@ TEST(CurveGeometryContract, ReconstructsMixedLinearAndCurveSegments) {
                             }));
 }
 
+namespace {
+void expect_conservative_bounds_contain_linearization(
+    const CurveRequest& request) {
+    const auto bounds = conservative_curve_bounds(request);
+    ASSERT_TRUE(bounds.has_value());
+    const auto linearized = linearize_curves(request);
+    ASSERT_TRUE(linearized.valid()) << linearized.diagnostic;
+    for (const auto& part : linearized.parts) {
+        for (const auto& point : part) {
+            const double x = request.transform.decode_x(point.x);
+            const double y = request.transform.decode_y(point.y);
+            EXPECT_GE(x, bounds->xmin - 1e-9);
+            EXPECT_LE(x, bounds->xmax + 1e-9);
+            EXPECT_GE(y, bounds->ymin - 1e-9);
+            EXPECT_LE(y, bounds->ymax + 1e-9);
+        }
+    }
+}
+} // namespace
+
+TEST(CurveGeometryContract, ConservativeBoundsContainAllLinearizedSamples) {
+    {
+        auto request = base_request({1000, 0}, {-1000, 0});
+        CurveDescriptor curve;
+        curve.kind = CurveSegmentKind::CircularArc;
+        curve.values[0] = 0.0;
+        curve.values[1] = 1.0;
+        curve.flags = 0x80;
+        request.curves = {curve};
+        expect_conservative_bounds_contain_linearization(request);
+    }
+    {
+        auto request = base_request({1000, 0}, {1000, 0});
+        CurveDescriptor curve;
+        curve.kind = CurveSegmentKind::CircularArc;
+        curve.values[0] = -1.0;
+        curve.values[1] = 0.0;
+        curve.flags = 0x80;
+        request.curves = {curve};
+        expect_conservative_bounds_contain_linearization(request);
+    }
+    {
+        // Center-form CCW arc crossing the +Y quadrant.
+        auto request = base_request({1000, 0}, {0, 1000});
+        CurveDescriptor curve;
+        curve.kind = CurveSegmentKind::CircularArc;
+        curve.values[0] = 0.0;
+        curve.values[1] = 0.0;
+        curve.flags = 0x8;
+        request.curves = {curve};
+        expect_conservative_bounds_contain_linearization(request);
+    }
+    {
+        auto request = base_request({0, 0}, {1000, 0});
+        CurveDescriptor curve;
+        curve.kind = CurveSegmentKind::CubicBezier;
+        curve.values[0] = 0.0;
+        curve.values[1] = 1.0;
+        curve.values[2] = 1.0;
+        curve.values[3] = 1.0;
+        request.curves = {curve};
+        expect_conservative_bounds_contain_linearization(request);
+    }
+    {
+        auto request = base_request({2000, 0}, {-2000, 0});
+        CurveDescriptor minor;
+        minor.kind = CurveSegmentKind::EllipticArc;
+        minor.values[0] = 0.0;
+        minor.values[1] = 0.0;
+        minor.values[2] = 0.0;
+        minor.values[3] = 2.0;
+        minor.values[4] = 0.5;
+        minor.flags = 0x1000;
+        request.curves = {minor};
+        expect_conservative_bounds_contain_linearization(request);
+        request.points[1] = request.points[0];
+        request.curves[0].flags = 0x2000;
+        expect_conservative_bounds_contain_linearization(request);
+    }
+    {
+        auto request = base_request({0, 2000}, {0, -2000});
+        CurveDescriptor ellipse;
+        ellipse.kind = CurveSegmentKind::EllipticArc;
+        ellipse.values[0] = 0.0;
+        ellipse.values[1] = 0.0;
+        ellipse.values[2] = kPi / 2.0;
+        ellipse.values[3] = 2.0;
+        ellipse.values[4] = 0.5;
+        ellipse.flags = 0x1000;
+        request.curves = {ellipse};
+        expect_conservative_bounds_contain_linearization(request);
+    }
+    {
+        // Line-form descriptors contribute their endpoints and no arc sweep.
+        auto request = base_request({0, 0}, {1000, 1000});
+        CurveDescriptor arc;
+        arc.kind = CurveSegmentKind::CircularArc;
+        arc.flags = 0x20;
+        request.curves = {arc};
+        expect_conservative_bounds_contain_linearization(request);
+        request.curves[0].kind = CurveSegmentKind::EllipticArc;
+        request.curves[0].flags = 0x40;
+        expect_conservative_bounds_contain_linearization(request);
+    }
+    {
+        CurveRequest request;
+        request.transform.xy_scale = 1000.0;
+        request.points = {{0, 0}, {1000, 0}, {2000, 0}, {3000, 0}};
+        request.part_sizes = {4};
+        CurveDescriptor curve;
+        curve.start_vertex = 1;
+        curve.kind = CurveSegmentKind::CubicBezier;
+        curve.values[0] = 1.25;
+        curve.values[1] = 1.0;
+        curve.values[2] = 1.75;
+        curve.values[3] = 1.0;
+        request.curves = {curve};
+        expect_conservative_bounds_contain_linearization(request);
+    }
+}
+
+TEST(CurveGeometryContract, ConservativeBoundsRejectInvalidOrUnsupportedDescriptors) {
+    auto request = base_request({1000, 0}, {-1000, 0});
+    CurveDescriptor curve;
+    curve.kind = CurveSegmentKind::CircularArc;
+    curve.flags = 0x1; // empty/point arc
+    request.curves = {curve};
+    EXPECT_FALSE(conservative_curve_bounds(request).has_value());
+    request.curves[0].flags = 0x40; // point arc
+    EXPECT_FALSE(conservative_curve_bounds(request).has_value());
+
+    request.curves[0].flags = 0x200; // endpoint-vector ellipse
+    request.curves[0].kind = CurveSegmentKind::EllipticArc;
+    EXPECT_FALSE(conservative_curve_bounds(request).has_value());
+    request.curves[0].flags = 0x80; // point ellipse
+    EXPECT_FALSE(conservative_curve_bounds(request).has_value());
+
+    request.curves[0].kind = CurveSegmentKind::CircularArc;
+    request.curves[0].flags = 0; // center equals endpoint
+    request.points = {{0, 0}, {0, 0}};
+    request.curves[0].values[0] = 0.0;
+    request.curves[0].values[1] = 0.0;
+    EXPECT_FALSE(conservative_curve_bounds(request).has_value());
+
+    auto valid = base_request({0, 0}, {1000, 0});
+    CurveDescriptor duplicate;
+    duplicate.kind = CurveSegmentKind::CubicBezier;
+    duplicate.values[0] = 0.0;
+    duplicate.values[1] = 1.0;
+    duplicate.values[2] = 1.0;
+    duplicate.values[3] = 1.0;
+    valid.curves = {duplicate, duplicate};
+    EXPECT_FALSE(conservative_curve_bounds(valid).has_value());
+
+    valid.curves = {duplicate};
+    valid.points.push_back({2000, 0});
+    valid.part_sizes = {2, 2};
+    valid.curves[0].start_vertex = 1; // crosses a part boundary
+    EXPECT_FALSE(conservative_curve_bounds(valid).has_value());
+
+    valid.points = {{0, 0}, {1000, 0}};
+    valid.part_sizes = {3};
+    valid.curves[0].start_vertex = 0;
+    EXPECT_FALSE(conservative_curve_bounds(valid).has_value());
+
+    auto nonfinite = base_request({0, 0}, {1000, 0});
+    CurveDescriptor bezier;
+    bezier.kind = CurveSegmentKind::CubicBezier;
+    bezier.values[0] = std::numeric_limits<double>::quiet_NaN();
+    bezier.values[1] = 1.0;
+    bezier.values[2] = 1.0;
+    bezier.values[3] = 1.0;
+    nonfinite.curves = {bezier};
+    EXPECT_FALSE(conservative_curve_bounds(nonfinite).has_value());
+}
+
 /**
  * 测试方法：验证测试套件和测试名称所表达的功能、边界或失败语义。
  * 输入与前置条件：由测试体构造；无显式方法参数。

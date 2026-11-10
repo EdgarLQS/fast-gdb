@@ -390,6 +390,20 @@ proof, and that a 0.1% window still uses proven candidates. Both paths compare
 FIDs with GDAL. The directory 16M-slot/16MB budget remains unit-tested rather
 than end-to-end generated.
 
+## Curve source bounds
+
+`CurveGeometryContract.ConservativeBoundsContainAllLinearizedSamples` verifies
+that the conservative bounds computed from the original curve payload contain
+every linearized sample for three-point/full/circle-center arcs, Bezier,
+axis-aligned/complete/rotated ellipses, line-form descriptors and mixed
+linear+curve parts. `ConservativeBoundsRejectInvalidOrUnsupportedDescriptors`
+covers empty/point descriptors, endpoint-vector ellipses, zero radius, duplicate
+or cross-part curve starts and non-finite control points.
+`GeometryModelDecoder` checks the decoder attaches the bounds to the builtin
+curve model, and `SpatialSourceTableTest.CurvePayloadUsesConservativeSourceBounds`
+checks the actual table callback consumes them. See
+[curve bounds evidence](../docs/plan/evidence/2026-11-10-curve-source-bounds.md).
+
 `SpatialSourceDirectoryTest` exercises the bounded source-bounds directory core:
 random-window candidate coverage, sparse/deleted slots, duplicate versus missing
 FIDs, NULL/Empty, resource rejection and immutable publication. It remains a component test;

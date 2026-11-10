@@ -418,6 +418,169 @@ bool sample_ellipse(const CurveDescriptor& curve,
     return true;
 }
 
+bool add_bound_point(std::optional<GeometryBounds>& bounds,
+                     double x, double y) {
+    if (!std::isfinite(x) || !std::isfinite(y)) return false;
+    if (!bounds) {
+        bounds = GeometryBounds{x, y, x, y};
+        return true;
+    }
+    bounds->xmin = std::min(bounds->xmin, x);
+    bounds->ymin = std::min(bounds->ymin, y);
+    bounds->xmax = std::max(bounds->xmax, x);
+    bounds->ymax = std::max(bounds->ymax, y);
+    return true;
+}
+
+bool add_circle_bounds(std::optional<GeometryBounds>& bounds,
+                       double cx, double cy, double radius,
+                       double start_angle, double sweep) {
+    if (!std::isfinite(cx) || !std::isfinite(cy) ||
+        !std::isfinite(radius) || !(radius > 0.0) ||
+        !std::isfinite(start_angle) || !std::isfinite(sweep))
+        return false;
+    if (!add_bound_point(bounds,
+            cx + radius * std::cos(start_angle),
+            cy + radius * std::sin(start_angle)))
+        return false;
+    if (!add_bound_point(bounds,
+            cx + radius * std::cos(start_angle + sweep),
+            cy + radius * std::sin(start_angle + sweep)))
+        return false;
+    const double length = std::fabs(sweep);
+    for (int quadrant = 0; quadrant < 4; ++quadrant) {
+        const double angle = static_cast<double>(quadrant) * kPi / 2.0;
+        const double traveled = sweep >= 0.0
+            ? normalize_positive(angle - start_angle)
+            : normalize_positive(start_angle - angle);
+        if (traveled > 1e-12 && traveled < length - 1e-12 &&
+            !add_bound_point(bounds,
+                cx + radius * std::cos(angle),
+                cy + radius * std::sin(angle)))
+            return false;
+    }
+    return true;
+}
+
+bool circular_descriptor_bounds(const CurveDescriptor& curve,
+                                const GridPoint& start,
+                                const GridPoint& end,
+                                const CurveRequest& request,
+                                std::optional<GeometryBounds>& bounds) {
+    const double x0 = request.transform.decode_x(start.x);
+    const double y0 = request.transform.decode_y(start.y);
+    const double x1 = request.transform.decode_x(end.x);
+    const double y1 = request.transform.decode_y(end.y);
+    if (!add_bound_point(bounds, x0, y0) ||
+        !add_bound_point(bounds, x1, y1))
+        return false;
+    if ((curve.flags & (kArcEmpty | kArcPoint)) != 0) return false;
+    if ((curve.flags & kArcLine) != 0) return true;
+
+    double cx = 0.0, cy = 0.0, radius = 0.0;
+    double start_angle = 0.0, sweep = 0.0;
+    if ((curve.flags & kArcIntermediatePoint) != 0) {
+        const double xm = curve.values[0];
+        const double ym = curve.values[1];
+        if (!add_bound_point(bounds, xm, ym)) return false;
+        if (x0 == x1 && y0 == y1) {
+            cx = (x0 + xm) / 2.0;
+            cy = (y0 + ym) / 2.0;
+            radius = std::hypot(x0 - cx, y0 - cy);
+            if (!(radius > 0.0)) return false;
+            start_angle = std::atan2(y0 - cy, x0 - cx);
+            sweep = 2.0 * kPi;
+        } else {
+            if (!circle_from_three(x0, y0, xm, ym, x1, y1,
+                                   cx, cy, radius))
+                return false;
+            start_angle = std::atan2(y0 - cy, x0 - cx);
+            const double mid_angle = std::atan2(ym - cy, xm - cx);
+            const double end_angle = std::atan2(y1 - cy, x1 - cx);
+            const double ccw_mid =
+                normalize_positive(mid_angle - start_angle);
+            const double ccw_end =
+                normalize_positive(end_angle - start_angle);
+            sweep = ccw_mid <= ccw_end + 1e-12
+                ? ccw_end : ccw_end - 2.0 * kPi;
+        }
+    } else {
+        cx = curve.values[0];
+        cy = curve.values[1];
+        radius = std::hypot(x1 - cx, y1 - cy);
+        if (!(radius > 0.0)) return false;
+        start_angle = std::atan2(y0 - cy, x0 - cx);
+        const double end_angle = std::atan2(y1 - cy, x1 - cx);
+        if (x0 == x1 && y0 == y1) {
+            sweep = (curve.flags & kArcCcw)
+                ? 2.0 * kPi : -2.0 * kPi;
+        } else if ((curve.flags & kArcCcw) != 0) {
+            sweep = normalize_positive(end_angle - start_angle);
+        } else {
+            sweep = -normalize_positive(start_angle - end_angle);
+        }
+    }
+    return add_circle_bounds(bounds, cx, cy, radius, start_angle, sweep);
+}
+
+bool bezier_descriptor_bounds(const CurveDescriptor& curve,
+                              const GridPoint& start,
+                              const GridPoint& end,
+                              const CurveRequest& request,
+                              std::optional<GeometryBounds>& bounds) {
+    if (!add_bound_point(bounds,
+            request.transform.decode_x(start.x),
+            request.transform.decode_y(start.y)) ||
+        !add_bound_point(bounds,
+            request.transform.decode_x(end.x),
+            request.transform.decode_y(end.y)))
+        return false;
+    // The two interior control points complete the convex hull with the
+    // start/end vertices added above.
+    for (size_t i = 0; i < 2; ++i) {
+        if (!add_bound_point(bounds, curve.values[2 * i],
+                             curve.values[2 * i + 1]))
+            return false;
+    }
+    return true;
+}
+
+bool ellipse_descriptor_bounds(const CurveDescriptor& curve,
+                               const GridPoint& start,
+                               const GridPoint& end,
+                               const CurveRequest& request,
+                               std::optional<GeometryBounds>& bounds) {
+    if ((curve.flags & (kEllipseCenterTo | kEllipseCenterFrom)) != 0)
+        return false;
+    const double cx = curve.values[0];
+    const double cy = curve.values[1];
+    const double rotation = curve.values[2];
+    const double semi_major = std::fabs(curve.values[3]);
+    const double semi_minor = semi_major * std::fabs(curve.values[4]);
+    if ((curve.flags & kEllipsePoint) != 0) return false;
+    if (!add_bound_point(bounds,
+            request.transform.decode_x(start.x),
+            request.transform.decode_y(start.y)) ||
+        !add_bound_point(bounds,
+            request.transform.decode_x(end.x),
+            request.transform.decode_y(end.y)))
+        return false;
+    if ((curve.flags & kEllipseLine) != 0) return true;
+    if (!std::isfinite(cx) || !std::isfinite(cy) ||
+        !std::isfinite(rotation) || !(semi_major > 0.0) ||
+        !(semi_minor > 0.0))
+        return false;
+    // A rotated ellipse's axis-aligned extent bounds every arc of that ellipse.
+    const double cos_rotation = std::cos(rotation);
+    const double sin_rotation = std::sin(rotation);
+    const double half_x = std::hypot(
+        semi_major * cos_rotation, semi_minor * sin_rotation);
+    const double half_y = std::hypot(
+        semi_major * sin_rotation, semi_minor * cos_rotation);
+    return add_bound_point(bounds, cx - half_x, cy - half_y) &&
+        add_bound_point(bounds, cx + half_x, cy + half_y);
+}
+
 GeometryStatus topology_status(TopologyStatus status) {
     switch (status) {
         case TopologyStatus::Valid: return GeometryStatus::Valid;
@@ -545,6 +708,69 @@ CurveLinearizationResult linearize_curves(const CurveRequest& request) {
         offset = part_end;
     }
     return result;
+}
+
+std::optional<GeometryBounds> conservative_curve_bounds(
+    const CurveRequest& request) {
+    if (request.part_sizes.empty() || request.points.empty())
+        return std::nullopt;
+    if (!std::isfinite(request.transform.xy_scale) ||
+        !(request.transform.xy_scale > 0.0))
+        return std::nullopt;
+
+    size_t total = 0;
+    std::vector<size_t> part_ends;
+    part_ends.reserve(request.part_sizes.size());
+    for (size_t part_size : request.part_sizes) {
+        if (part_size == 0 || part_size > request.points.size() - total)
+            return std::nullopt;
+        total += part_size;
+        part_ends.push_back(total);
+    }
+    if (total != request.points.size()) return std::nullopt;
+
+    std::map<size_t, const CurveDescriptor*> by_start;
+    for (const auto& curve : request.curves) {
+        if (curve.start_vertex >= request.points.size() - 1 ||
+            !by_start.emplace(curve.start_vertex, &curve).second)
+            return std::nullopt;
+        const auto part_end = *std::upper_bound(
+            part_ends.begin(), part_ends.end(), curve.start_vertex);
+        if (curve.start_vertex >= part_end - 1) return std::nullopt;
+    }
+
+    std::optional<GeometryBounds> bounds;
+    for (const auto& point : request.points) {
+        if (!add_bound_point(bounds,
+                request.transform.decode_x(point.x),
+                request.transform.decode_y(point.y)))
+            return std::nullopt;
+    }
+    for (size_t i = 0; i + 1 < request.points.size(); ++i) {
+        const auto found = by_start.find(i);
+        if (found == by_start.end()) continue;
+        const CurveDescriptor& curve = *found->second;
+        bool ok = false;
+        switch (curve.kind) {
+            case CurveSegmentKind::CircularArc:
+                ok = circular_descriptor_bounds(
+                    curve, request.points[i], request.points[i + 1],
+                    request, bounds);
+                break;
+            case CurveSegmentKind::CubicBezier:
+                ok = bezier_descriptor_bounds(
+                    curve, request.points[i], request.points[i + 1],
+                    request, bounds);
+                break;
+            case CurveSegmentKind::EllipticArc:
+                ok = ellipse_descriptor_bounds(
+                    curve, request.points[i], request.points[i + 1],
+                    request, bounds);
+                break;
+        }
+        if (!ok) return std::nullopt;
+    }
+    return bounds;
 }
 
 GeometryModel RejectCurveBackend::read_geometry(
