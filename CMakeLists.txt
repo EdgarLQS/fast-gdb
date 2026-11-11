@@ -405,6 +405,7 @@ if(BUILD_TESTING)
         tests/edgar/explorgdb/integration/gdal_parity/benchmark/test_spatial_benchmark.cpp
         tests/edgar/explorgdb/integration/gdal_parity/benchmark/test_spatial_where_benchmark.cpp
         tests/edgar/explorgdb/integration/gdal_parity/benchmark/test_spatial_source_proof_benchmark.cpp
+        tests/edgar/explorgdb/integration/gdal_parity/benchmark/test_attribute_plan_benchmark.cpp
         tests/edgar/explorgdb/integration/gdal_parity/benchmark/test_runtime_benchmark.cpp
         tests/edgar/explorgdb/integration/gdal_parity/feature_cursor/test_feature_cursor_empty_geometry.cpp
         tests/edgar/explorgdb/integration/gdal_parity/feature_cursor/test_feature_cursor_gdal.cpp

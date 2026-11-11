@@ -386,14 +386,33 @@ See [I/O adapter scope](../docs/plan/evidence/2026-11-08-spx-source-index-io.md)
 
 `SpatialSourceProofBenchmark.ColdBuildMatrix` and `WarmQueryMatrix` report
 source-directory build time, retained bytes/leaves/entries, SPX page reads,
-candidate counts and warm-query latency while asserting Fast/GDAL FID equality.
-They are gated by `FAST_GDB_RUN_SPATIAL_BENCHMARKS=1` plus
+candidate counts and warm-query latency while asserting the Fast FID set equals
+an independent GDAL full geometry scan. The GDAL spatial filter is printed as a
+timing reference only and its divergence from geometry truth is reported, since
+it disagrees with a scan on some real indexes. They are gated by
+`FAST_GDB_RUN_SPATIAL_BENCHMARKS=1` plus
 `FAST_GDB_BENCHMARK_PATH`; optional variables are `FAST_GDB_BENCHMARK_CASE`,
 `FAST_GDB_BENCHMARK_TRIALS`, `FAST_GDB_BENCHMARK_LAYER`,
 `FAST_GDB_BENCHMARK_BACKEND` (`fast`/`gdal`/`both`) and the strict-cold pair
 `FAST_GDB_BENCHMARK_STRICT_COLD=1` +
 `FAST_GDB_BENCHMARK_CACHE_CLEAR_COMMAND`. See
-[scale and budget evidence](../docs/plan/evidence/2026-11-09-spx-source-proof-scale-budget.md).
+[scale and budget evidence](../docs/plan/evidence/2026-11-09-spx-source-proof-scale-budget.md)
+and [real multi-level SPX evidence](../docs/plan/evidence/2026-11-11-real-multilevel-spx-matrix.md).
+
+## Attribute-index plan benchmark
+
+`AttributePlanBenchmark.ConfiguredPredicate` compares one bound attribute
+predicate against a full field scan. It measures a cold path (fresh catalog and
+first query per trial) and a warm path (warm-up query, then repeated trials),
+prints the execution path, candidate count, pages visited, directory hit and
+whether the nonselective plan switched to a full scan, verifies the matched FIDs
+against an independent GDAL full scan, and times the same predicate through the
+`WHERE` entry point. It is gated by `FAST_GDB_RUN_ATTRIBUTE_BENCHMARKS=1` plus
+`FAST_GDB_ATTR_BENCHMARK_PATH`, `_LAYER`, `_FIELD` and `_VALUE`; optional
+variables are `_OP` (`=`, `!=`, `<`, `<=`, `>`, `>=`) and `_TRIALS`. Numeric and
+string fields are supported; Int64 uses the exact integer entry point. The
+benchmark does not clear the OS file cache, so "cold" means a fresh Reader graph,
+not physical cold I/O.
 
 `SpatialSourceBudgetTest` requires `FAST_GDB_RUN_BUDGET_TESTS=1` and a
 `FAST_GDB_BENCHMARK_PATH` fixture with at least ~8.4M uniform rows. It verifies

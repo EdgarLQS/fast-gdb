@@ -1,0 +1,30 @@
+##### field=road_id op=>= value=1
+
+[attr] path=attribute:atx reason=
+[attr] predicate=road_id >= 1 matches=6 truth=6
+[attr] candidates=6 pages=1 directory=hit scan_preferred=false
+[attr] cold_median=0.603ms warm_median=0.093ms warm_p95=0.114ms
+[attr] peak_rss_bytes=49971200
+[attr] where_median=0.001ms where_path=where:sequential
+[==========] 1 test from 1 test suite ran. (59 ms total)
+[  PASSED  ] 1 test.
+##### field=name op=>= value=A
+
+[attr] path=attribute:atx reason=
+[attr] predicate=name >= A matches=6 truth=6
+[attr] candidates=6 pages=1 directory=hit scan_preferred=false
+[attr] cold_median=0.778ms warm_median=0.092ms warm_p95=0.114ms
+[attr] peak_rss_bytes=50053120
+[attr] where_median=0.001ms where_path=where:sequential
+[==========] 1 test from 1 test suite ran. (18 ms total)
+[  PASSED  ] 1 test.
+##### field=status op== value=active
+
+[attr] path=attribute:atx reason=
+[attr] predicate=status = active matches=0 truth=0
+[attr] candidates=0 pages=0 directory=hit scan_preferred=false
+[attr] cold_median=0.828ms warm_median=0.101ms warm_p95=0.115ms
+[attr] peak_rss_bytes=49889280
+[attr] where_median=0.001ms where_path=where:sequential
+[==========] 1 test from 1 test suite ran. (17 ms total)
+[  PASSED  ] 1 test.
