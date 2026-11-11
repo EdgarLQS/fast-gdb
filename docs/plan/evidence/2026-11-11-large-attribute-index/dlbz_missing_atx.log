@@ -1,0 +1,10 @@
+
+[attr] atx=missing index=dlbz_index
+[attr] path=attribute:sequential reason=attribute index missing
+[attr] predicate=dlbz = K matches=133346 truth=133346
+[attr] candidates=0 pages=0/0 directory=miss budget_exceeded=false scan_preferred=false validation_rows=0
+[attr] cold_median=490.609ms open_median=3.699ms first_query_median=486.873ms warm_median=460.981ms warm_p95=475.963ms
+[attr] peak_rss_bytes=1556545536
+[attr] where_median=432.185ms where_path=where:sequential
+[==========] 1 test from 1 test suite ran. (13504 ms total)
+[  PASSED  ] 1 test.

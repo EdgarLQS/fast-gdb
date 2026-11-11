@@ -1,0 +1,66 @@
+##### bsm = 10591
+
+[attr] atx=present index=bsm_index
+[attr] path=attribute:atx reason=
+[attr] predicate=bsm = 10591 matches=2 truth=2
+[attr] candidates=2 pages=1/3931 directory=hit budget_exceeded=false scan_preferred=false validation_rows=0
+[attr] cold_median=910.070ms open_median=3.113ms first_query_median=906.957ms warm_median=0.100ms warm_p95=0.119ms
+[attr] peak_rss_bytes=1570177024
+[attr] where_median=427.853ms where_path=where:sequential
+[==========] 1 test from 1 test suite ran. (14973 ms total)
+[  PASSED  ] 1 test.
+##### bsm >= 1629000
+
+[attr] atx=present index=bsm_index
+[attr] path=attribute:atx reason=
+[attr] predicate=bsm >= 1629000 matches=9242 truth=9242
+[attr] candidates=9242 pages=19/3931 directory=hit budget_exceeded=false scan_preferred=false validation_rows=0
+[attr] cold_median=905.360ms open_median=3.010ms first_query_median=901.843ms warm_median=1.425ms warm_p95=1.464ms
+[attr] peak_rss_bytes=1570799616
+[attr] where_median=433.659ms where_path=where:sequential
+[==========] 1 test from 1 test suite ran. (13102 ms total)
+[  PASSED  ] 1 test.
+##### bsm >= 1500000
+
+[attr] atx=present index=bsm_index
+[attr] path=attribute:atx reason=
+[attr] predicate=bsm >= 1500000 matches=64632 truth=64632
+[attr] candidates=64632 pages=128/3931 directory=hit budget_exceeded=false scan_preferred=false validation_rows=0
+[attr] cold_median=915.707ms open_median=3.118ms first_query_median=912.180ms warm_median=9.820ms warm_p95=10.077ms
+[attr] peak_rss_bytes=1570668544
+[attr] where_median=429.981ms where_path=where:sequential
+[==========] 1 test from 1 test suite ran. (13116 ms total)
+[  PASSED  ] 1 test.
+##### bsm >= 1200000
+
+[attr] atx=present index=bsm_index
+[attr] path=attribute:sequential reason=validated attribute range is nonselective; sequential scan preferred
+[attr] predicate=bsm >= 1200000 matches=504936 truth=504936
+[attr] candidates=0 pages=0/3931 directory=hit budget_exceeded=false scan_preferred=true validation_rows=0
+[attr] cold_median=1003.716ms open_median=3.476ms first_query_median=1000.406ms warm_median=431.464ms warm_p95=442.562ms
+[attr] peak_rss_bytes=1584873472
+[attr] where_median=437.153ms where_path=where:sequential
+[==========] 1 test from 1 test suite ran. (14770 ms total)
+[  PASSED  ] 1 test.
+##### bsm >= 800000
+
+[attr] atx=present index=bsm_index
+[attr] path=attribute:sequential reason=validated attribute range is nonselective; sequential scan preferred
+[attr] predicate=bsm >= 800000 matches=1510660 truth=1510660
+[attr] candidates=0 pages=0/3931 directory=hit budget_exceeded=false scan_preferred=true validation_rows=0
+[attr] cold_median=1158.506ms open_median=3.269ms first_query_median=1154.973ms warm_median=434.278ms warm_p95=434.354ms
+[attr] peak_rss_bytes=1609891840
+[attr] where_median=443.185ms where_path=where:sequential
+[==========] 1 test from 1 test suite ran. (15386 ms total)
+[  PASSED  ] 1 test.
+##### bsm >= 0
+
+[attr] atx=present index=bsm_index
+[attr] path=attribute:sequential reason=validated attribute range is nonselective; sequential scan preferred
+[attr] predicate=bsm >= 0 matches=1999998 truth=1999998
+[attr] candidates=0 pages=0/3931 directory=hit budget_exceeded=false scan_preferred=true validation_rows=0
+[attr] cold_median=1212.343ms open_median=3.306ms first_query_median=1209.038ms warm_median=427.379ms warm_p95=427.458ms
+[attr] peak_rss_bytes=1620590592
+[attr] where_median=429.865ms where_path=where:sequential
+[==========] 1 test from 1 test suite ran. (15509 ms total)
+[  PASSED  ] 1 test.

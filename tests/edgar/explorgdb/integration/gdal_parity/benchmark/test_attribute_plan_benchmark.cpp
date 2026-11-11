@@ -150,6 +150,7 @@ struct Probe {
     size_t field_index = 0;
     FieldType field_type = FieldType::Int32;
     std::string index_name;
+    bool has_atx = false;
     bool string_field = false;
     bool int64_field = false;
     double double_value = 0.0;
@@ -230,11 +231,14 @@ bool resolve_index(GdbCatalog& catalog, uint32_t table_id, Probe& probe) {
     if (!catalog.read_index_metadata(table_id, metadata)) return false;
     for (const auto& entry : metadata) {
         if (!same_field_name(entry.column_name, probe.field)) continue;
-        if (catalog.find_atx(table_id, entry.name) == nullptr) continue;
-        probe.index_name = entry.name;
-        return true;
+        if (probe.index_name.empty()) probe.index_name = entry.name;
+        if (catalog.find_atx(table_id, entry.name) != nullptr) {
+            probe.index_name = entry.name;
+            probe.has_atx = true;
+            return true;
+        }
     }
-    return false;
+    return !probe.index_name.empty();
 }
 
 QueryResult run_query(QueryEngine& engine, const Probe& probe) {
@@ -318,20 +322,24 @@ TEST(AttributePlanBenchmark, ConfiguredPredicate) {
     ASSERT_NE(cold_state, nullptr) << "cannot open " << probe->path << "/" << probe->layer;
     ASSERT_TRUE(resolve_probe(*cold_state, *probe)) << "unknown or invalid field " << probe->field;
     ASSERT_TRUE(resolve_index(*cold_state->catalog, cold_state->table_id, *probe))
-        << "no usable .atx for field " << probe->field;
+        << "no declared index for field " << probe->field;
 
     const size_t trials = static_cast<size_t>(trial_count());
-    std::vector<double> cold_ms, warm_ms;
+    std::vector<double> cold_ms, open_ms, first_ms, warm_ms;
     QueryResult cold_result;
     for (size_t trial = 0; trial < trials; ++trial) {
-        const auto start = Clock::now();
+        const auto open_start = Clock::now();
         auto state = open_engine(probe->path, probe->layer);
         ASSERT_NE(state, nullptr);
+        const auto query_start = Clock::now();
         Probe current = *probe;
         ASSERT_TRUE(resolve_probe(*state, current));
         ASSERT_TRUE(resolve_index(*state->catalog, state->table_id, current));
         cold_result = run_query(*state->engine, current);
-        cold_ms.push_back(std::chrono::duration<double, std::milli>(Clock::now() - start).count());
+        const auto end = Clock::now();
+        open_ms.push_back(std::chrono::duration<double, std::milli>(query_start - open_start).count());
+        first_ms.push_back(std::chrono::duration<double, std::milli>(end - query_start).count());
+        cold_ms.push_back(std::chrono::duration<double, std::milli>(end - open_start).count());
     }
 
     auto warm_state = open_engine(probe->path, probe->layer);
@@ -339,7 +347,9 @@ TEST(AttributePlanBenchmark, ConfiguredPredicate) {
     Probe warm_probe = *probe;
     ASSERT_TRUE(resolve_probe(*warm_state, warm_probe));
     ASSERT_TRUE(resolve_index(*warm_state->catalog, warm_state->table_id, warm_probe));
-    QueryResult warm_result;
+    // Warm-up: the first query builds the validated directory, so it must not be
+    // charged to the timed warm samples.
+    QueryResult warm_result = run_query(*warm_state->engine, warm_probe);
     for (size_t trial = 0; trial < trials; ++trial) {
         const auto start = Clock::now();
         warm_result = run_query(*warm_state->engine, warm_probe);
@@ -353,17 +363,24 @@ TEST(AttributePlanBenchmark, ConfiguredPredicate) {
         << " reason=" << warm_result.fallback_reason;
 
     const auto& metrics = warm_result.attribute_index_metrics;
-    std::printf("\n[attr] path=%s reason=%s\n", warm_result.execution_path.c_str(),
+    std::printf("\n[attr] atx=%s index=%s\n", probe->has_atx ? "present" : "missing",
+                probe->index_name.c_str());
+    std::printf("[attr] path=%s reason=%s\n", warm_result.execution_path.c_str(),
                 warm_result.fallback_reason.c_str());
     std::printf("[attr] predicate=%s %s %s matches=%zu truth=%zu\n", probe->field.c_str(),
                 probe->op_text.c_str(), probe->value.c_str(), warm_result.matched_fids.size(),
                 truth.size());
-    std::printf("[attr] candidates=%zu pages=%zu directory=%s scan_preferred=%s\n",
-                metrics.candidate_count, metrics.pages_visited,
+    std::printf("[attr] candidates=%zu pages=%zu/%zu directory=%s budget_exceeded=%s "
+                "scan_preferred=%s validation_rows=%zu\n",
+                metrics.candidate_count, metrics.pages_visited, metrics.page_count,
                 metrics.validated_directory_hit ? "hit" : "miss",
-                metrics.validated_directory_scan_preferred ? "true" : "false");
-    std::printf("[attr] cold_median=%.3fms warm_median=%.3fms warm_p95=%.3fms\n",
-                percentile(cold_ms, 0.5), percentile(warm_ms, 0.5),
+                metrics.validated_directory_budget_exceeded ? "true" : "false",
+                metrics.validated_directory_scan_preferred ? "true" : "false",
+                metrics.index_validation_rows);
+    std::printf("[attr] cold_median=%.3fms open_median=%.3fms first_query_median=%.3fms"
+                " warm_median=%.3fms warm_p95=%.3fms\n",
+                percentile(cold_ms, 0.5), percentile(open_ms, 0.5),
+                percentile(first_ms, 0.5), percentile(warm_ms, 0.5),
                 percentile(warm_ms, 0.95));
     std::printf("[attr] peak_rss_bytes=%llu\n",
                 static_cast<unsigned long long>(peak_rss_bytes()));
