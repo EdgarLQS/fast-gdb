@@ -1,0 +1,112 @@
+##### Perf_Point_100k
+
+=== Source-proof spatial benchmark: testcurve-Perf_Point_100k (fresh-open (OS cache not cleared)) ===
+case                 cands    ratio path                             total_ms   build_ms  dir_bytes   leaves  entries    pages
+coverage_01pct        1360    1.36% bbox:model:spx-candidates            15.4      13.02      18078      295   100000      300
+coverage_01pct        1360    1.36% bbox:model:spx-candidates            13.2      11.55      18078      295   100000      300
+coverage_01pct        1360    1.36% bbox:model:spx-candidates            13.1      11.43      18078      295   100000      300
+coverage_01pct        1360    1.36% bbox:model:spx-candidates            13.0      11.28      18078      295   100000      300
+coverage_01pct        1360    1.36% bbox:model:spx-candidates            13.0      11.28      18078      295   100000      300
+coverage_01pct           0       - gdal:spatial-filter                  16.3          -          -        -        -        -
+  [gdal-filter] coverage_01pct differs from geometry truth: filter=0 truth=15
+coverage_10pct        3740    3.74% bbox:model:spx-candidates            13.6      11.89      18078      295   100000      307
+coverage_10pct        3740    3.74% bbox:model:spx-candidates            13.1      11.42      18078      295   100000      307
+coverage_10pct        3740    3.74% bbox:model:spx-candidates            12.7      11.12      18078      295   100000      307
+coverage_10pct        3740    3.74% bbox:model:spx-candidates            13.2      11.34      18078      295   100000      307
+coverage_10pct        3740    3.74% bbox:model:spx-candidates            13.3      11.63      18078      295   100000      307
+coverage_10pct           0       - gdal:spatial-filter                   4.7          -          -        -        -        -
+  [gdal-filter] coverage_10pct differs from geometry truth: filter=0 truth=112
+coverage_25pct        5780    5.78% bbox:model:spx-candidates            13.5      11.70      18078      295   100000      313
+coverage_25pct        5780    5.78% bbox:model:spx-candidates            13.1      11.35      18078      295   100000      313
+coverage_25pct        5780    5.78% bbox:model:spx-candidates            13.2      11.33      18078      295   100000      313
+coverage_25pct        5780    5.78% bbox:model:spx-candidates            12.8      11.13      18078      295   100000      313
+coverage_25pct        5780    5.78% bbox:model:spx-candidates            13.0      11.51      18078      295   100000      313
+coverage_25pct           0       - gdal:spatial-filter                   4.7          -          -        -        -        -
+  [gdal-filter] coverage_25pct differs from geometry truth: filter=0 truth=262
+coverage_80pct        9520    9.52% bbox:model:spx-candidates            13.7      11.81      18078      295   100000      324
+coverage_80pct        9520    9.52% bbox:model:spx-candidates            13.5      11.62      18078      295   100000      324
+coverage_80pct        9520    9.52% bbox:model:spx-candidates            13.2      11.33      18078      295   100000      324
+coverage_80pct        9520    9.52% bbox:model:spx-candidates            13.1      11.23      18078      295   100000      324
+coverage_80pct        9520    9.52% bbox:model:spx-candidates            13.3      11.35      18078      295   100000      324
+coverage_80pct           0       - gdal:spatial-filter                   4.9          -          -        -        -        -
+  [gdal-filter] coverage_80pct differs from geometry truth: filter=0 truth=805
+coverage_full        10200   10.20% bbox:model:spx-candidates            13.4      11.25      18078      295   100000      326
+coverage_full        10200   10.20% bbox:model:spx-candidates            13.4      11.52      18078      295   100000      326
+coverage_full        10200   10.20% bbox:model:spx-candidates            13.4      11.50      18078      295   100000      326
+coverage_full        10200   10.20% bbox:model:spx-candidates            13.2      11.40      18078      295   100000      326
+coverage_full        10200   10.20% bbox:model:spx-candidates            13.1      11.27      18078      295   100000      326
+coverage_full           33       - gdal:spatial-filter                   5.1          -          -        -        -        -
+  [gdal-filter] coverage_full differs from geometry truth: filter=33 truth=1013
+peak_rss_bytes=56066048
+
+=== Source-proof spatial benchmark: testcurve-Perf_Point_100k (warm-steady-state) ===
+case                 cands    ratio path                             total_ms   build_ms  dir_bytes   leaves  entries    pages
+coverage_01pct        1360    1.36% bbox:model:spx-candidates             0.2       0.00      18078      295   100000        4
+  warm median=0.19ms p95=0.29ms hit=true
+coverage_10pct        3740    3.74% bbox:model:spx-candidates             0.3       0.00      18078      295   100000       11
+  warm median=0.27ms p95=0.52ms hit=true
+coverage_25pct        5780    5.78% bbox:model:spx-candidates             0.4       0.00      18078      295   100000       17
+  warm median=0.37ms p95=0.59ms hit=true
+coverage_80pct        9520    9.52% bbox:model:spx-candidates             0.5       0.00      18078      295   100000       28
+  warm median=0.47ms p95=0.70ms hit=true
+coverage_full        10200   10.20% bbox:model:spx-candidates             0.5       0.00      18078      295   100000       30
+  warm median=0.48ms p95=0.56ms hit=true
+peak_rss_bytes=56115200
+[==========] 2 tests from 1 test suite ran. (598 ms total)
+[  PASSED  ] 2 tests.
+##### Perf_Point_1M
+
+=== Source-proof spatial benchmark: testcurve-Perf_Point_1M (fresh-open (OS cache not cleared)) ===
+case                 cands    ratio path                             total_ms   build_ms  dir_bytes   leaves  entries    pages
+coverage_01pct        4420    0.44% bbox:model:spx-candidates           169.3     164.42     166814     2942  1000000     2957
+coverage_01pct        4420    0.44% bbox:model:spx-candidates           163.3     160.07     166814     2942  1000000     2957
+coverage_01pct        4420    0.44% bbox:model:spx-candidates           165.5     161.70     166814     2942  1000000     2957
+coverage_01pct        4420    0.44% bbox:model:spx-candidates           163.9     160.41     166814     2942  1000000     2957
+coverage_01pct        4420    0.44% bbox:model:spx-candidates           163.1     159.85     166814     2942  1000000     2957
+coverage_01pct           0       - gdal:spatial-filter                   9.0          -          -        -        -        -
+  [gdal-filter] coverage_01pct differs from geometry truth: filter=0 truth=113
+coverage_10pct       13940    1.39% bbox:model:spx-candidates           166.1     161.57     166814     2942  1000000     2985
+coverage_10pct       13940    1.39% bbox:model:spx-candidates           163.4     159.31     166814     2942  1000000     2985
+coverage_10pct       13940    1.39% bbox:model:spx-candidates           165.0     160.45     166814     2942  1000000     2985
+coverage_10pct       13940    1.39% bbox:model:spx-candidates           165.1     160.66     166814     2942  1000000     2985
+coverage_10pct       13940    1.39% bbox:model:spx-candidates           165.5     161.29     166814     2942  1000000     2985
+coverage_10pct           0       - gdal:spatial-filter                   5.1          -          -        -        -        -
+  [gdal-filter] coverage_10pct differs from geometry truth: filter=0 truth=985
+coverage_25pct       20400    2.04% bbox:model:spx-candidates           166.3     160.95     166814     2942  1000000     3004
+coverage_25pct       20400    2.04% bbox:model:spx-candidates           166.8     161.94     166814     2942  1000000     3004
+coverage_25pct       20400    2.04% bbox:model:spx-candidates           163.9     158.86     166814     2942  1000000     3004
+coverage_25pct       20400    2.04% bbox:model:spx-candidates           164.9     160.15     166814     2942  1000000     3004
+coverage_25pct       20400    2.04% bbox:model:spx-candidates           166.9     161.84     166814     2942  1000000     3004
+coverage_25pct           0       - gdal:spatial-filter                   5.3          -          -        -        -        -
+  [gdal-filter] coverage_25pct differs from geometry truth: filter=0 truth=2536
+coverage_80pct       39100    3.91% bbox:model:spx-candidates           166.3     161.77     166814     2942  1000000     3059
+coverage_80pct       39100    3.91% bbox:model:spx-candidates           167.2     162.43     166814     2942  1000000     3059
+coverage_80pct       39100    3.91% bbox:model:spx-candidates           166.1     161.70     166814     2942  1000000     3059
+coverage_80pct       39100    3.91% bbox:model:spx-candidates           166.6     162.12     166814     2942  1000000     3059
+coverage_80pct       39100    3.91% bbox:model:spx-candidates           166.0     161.56     166814     2942  1000000     3059
+coverage_80pct           0       - gdal:spatial-filter                   5.1          -          -        -        -        -
+  [gdal-filter] coverage_80pct differs from geometry truth: filter=0 truth=7964
+coverage_full        47600    4.76% bbox:model:spx-candidates           167.4     162.20     166814     2942  1000000     3084
+coverage_full        47600    4.76% bbox:model:spx-candidates           166.2     160.99     166814     2942  1000000     3084
+coverage_full        47600    4.76% bbox:model:spx-candidates           164.7     159.56     166814     2942  1000000     3084
+coverage_full        47600    4.76% bbox:model:spx-candidates           165.3     160.20     166814     2942  1000000     3084
+coverage_full        47600    4.76% bbox:model:spx-candidates           165.2     160.33     166814     2942  1000000     3084
+coverage_full          111       - gdal:spatial-filter                   5.2          -          -        -        -        -
+  [gdal-filter] coverage_full differs from geometry truth: filter=111 truth=10209
+peak_rss_bytes=89276416
+
+=== Source-proof spatial benchmark: testcurve-Perf_Point_1M (warm-steady-state) ===
+case                 cands    ratio path                             total_ms   build_ms  dir_bytes   leaves  entries    pages
+coverage_01pct        4420    0.44% bbox:model:spx-candidates             0.3       0.00     166814     2942  1000000       13
+  warm median=0.28ms p95=0.75ms hit=true
+coverage_10pct       13940    1.39% bbox:model:spx-candidates             0.7       0.00     166814     2942  1000000       41
+  warm median=0.73ms p95=1.80ms hit=true
+coverage_25pct       20400    2.04% bbox:model:spx-candidates             1.0       0.00     166814     2942  1000000       60
+  warm median=1.04ms p95=2.22ms hit=true
+coverage_80pct       39100    3.91% bbox:model:spx-candidates             1.7       0.00     166814     2942  1000000      115
+  warm median=1.71ms p95=1.98ms hit=true
+coverage_full        47600    4.76% bbox:model:spx-candidates             2.0       0.00     166814     2942  1000000      140
+  warm median=2.02ms p95=2.20ms hit=true
+peak_rss_bytes=89292800
+[==========] 2 tests from 1 test suite ran. (5594 ms total)
+[  PASSED  ] 2 tests.

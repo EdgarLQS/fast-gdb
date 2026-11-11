@@ -210,6 +210,44 @@ GdalSample run_gdal(const std::string& path, const std::string& layer,
     return sample;
 }
 
+// Independent truth: scan every source geometry and test its envelope against
+// the query window. GDAL's own spatial filter consults the .spx index and has
+// been observed to disagree with a geometry scan on windows that extend to
+// negative coordinates, so the filter is only used as a timing reference.
+GdalSample run_gdal_geometry_truth(const std::string& path,
+                                   const std::string& layer,
+                                   const BenchmarkCase& benchmark) {
+    GdalSample sample;
+    GDALDataset* dataset = static_cast<GDALDataset*>(GDALOpenEx(
+        path.c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY, nullptr, nullptr,
+        nullptr));
+    if (dataset == nullptr) return sample;
+    if (OGRLayer* source = dataset->GetLayerByName(layer.c_str())) {
+        source->ResetReading();
+        while (OGRFeature* feature = source->GetNextFeature()) {
+            const OGRGeometry* geometry = feature->GetGeometryRef();
+            if (geometry != nullptr) {
+                OGREnvelope envelope{};
+                geometry->getEnvelope(&envelope);
+                if (envelope.MinX <= benchmark.xmax &&
+                    envelope.MaxX >= benchmark.xmin &&
+                    envelope.MinY <= benchmark.ymax &&
+                    envelope.MaxY >= benchmark.ymin) {
+                    const GIntBig fid = feature->GetFID();
+                    if (fid >= 1)
+                        sample.fids.push_back(static_cast<RowSlot>(fid - 1));
+                }
+            }
+            OGRFeature::DestroyFeature(feature);
+        }
+    }
+    GDALClose(dataset);
+    std::sort(sample.fids.begin(), sample.fids.end());
+    sample.fids.erase(std::unique(sample.fids.begin(), sample.fids.end()),
+                      sample.fids.end());
+    return sample;
+}
+
 void print_header(const std::string& label, const char* mode) {
     std::printf("\n=== Source-proof spatial benchmark: %s (%s) ===\n",
                 label.c_str(), mode);
@@ -230,10 +268,15 @@ void print_fast_row(const BenchmarkCase& benchmark, const FastSample& sample) {
                 metrics.source_index_pages_read);
 }
 
-void print_gdal_row(const BenchmarkCase& benchmark, const GdalSample& sample) {
+void print_gdal_row(const BenchmarkCase& benchmark, const GdalSample& sample,
+                    size_t truth_count) {
     std::printf("%-16s %9zu %7s %-30s %10.1f %10s %10s %8s %8s %8s\n",
                 benchmark.name, sample.fids.size(), "-", "gdal:spatial-filter",
                 sample.wall_ms, "-", "-", "-", "-", "-");
+    if (sample.fids.size() != truth_count)
+        std::printf("  [gdal-filter] %s differs from geometry truth: "
+                    "filter=%zu truth=%zu\n",
+                    benchmark.name, sample.fids.size(), truth_count);
 }
 
 bool verify_fast(const BenchmarkCase& benchmark, const FastSample& fast,
@@ -256,18 +299,23 @@ void run_cold_matrix(const std::string& path, const std::string& layer,
                             : "fresh-open (OS cache not cleared)");
     for (const auto& benchmark : cases) {
         GdalSample oracle;
-        if (backend != Backend::Fast) oracle = run_gdal(path, layer, benchmark);
         if (backend == Backend::Gdal) {
+            oracle = run_gdal_geometry_truth(path, layer, benchmark);
             for (int trial = 0; trial < benchmark_trials(); ++trial)
-                print_gdal_row(benchmark, run_gdal(path, layer, benchmark));
+                print_gdal_row(benchmark, run_gdal(path, layer, benchmark),
+                               oracle.fids.size());
             continue;
         }
+        if (backend == Backend::Both)
+            oracle = run_gdal_geometry_truth(path, layer, benchmark);
         for (int trial = 0; trial < benchmark_trials(); ++trial) {
             const FastSample sample = run_fast(path, layer, benchmark);
             verify_fast(benchmark, sample, oracle, backend == Backend::Both);
             print_fast_row(benchmark, sample);
         }
-        if (backend == Backend::Both) print_gdal_row(benchmark, oracle);
+        if (backend == Backend::Both)
+            print_gdal_row(benchmark, run_gdal(path, layer, benchmark),
+                           oracle.fids.size());
     }
     std::printf("peak_rss_bytes=%llu\n",
                 static_cast<unsigned long long>(process_peak_rss_bytes()));
@@ -293,7 +341,7 @@ void run_warm_matrix(const std::string& path, const std::string& layer,
     print_header(label, "warm-steady-state");
     for (const auto& benchmark : cases) {
         const GdalSample oracle = backend == Backend::Both
-            ? run_gdal(path, layer, benchmark) : GdalSample{};
+            ? run_gdal_geometry_truth(path, layer, benchmark) : GdalSample{};
         std::vector<double> wall_ms;
         QueryResult last;
         for (int trial = 0; trial < benchmark_trials(); ++trial) {
