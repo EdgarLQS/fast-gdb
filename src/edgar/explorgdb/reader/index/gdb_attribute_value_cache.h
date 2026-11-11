@@ -83,6 +83,7 @@ private:
 // Cached directories never retain this context or any parser/mapped field view.
 struct AttributeValueQueryContext {
     using ValueCallback = std::function<bool(RowSlot, std::string_view)>;
+    using RowScanCallback = std::function<bool(RowSlot, std::string_view)>;
     std::shared_ptr<AttributeValueCache> cache;
     std::string table_path, tablx_path;
     size_t field = 0;
@@ -93,6 +94,10 @@ struct AttributeValueQueryContext {
     TablxCacheKey expected_table, expected_tablx;
     std::function<bool(const std::vector<RowSlot>&, const ValueCallback&)> read_values;
     std::function<bool(uint64_t&)> count_values;
+    // Streams every non-null source value once, in table order, with the same
+    // encoding used by the index keys. Lets large numeric indexes validate
+    // entries and count rows in a single sequential pass.
+    std::function<bool(const RowScanCallback&)> scan_values;
     bool key(const TablxCacheKey& index, AttributeDirectoryKey& output) const;
 };
 

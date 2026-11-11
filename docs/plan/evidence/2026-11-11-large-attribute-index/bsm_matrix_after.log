@@ -1,0 +1,72 @@
+##### bsm = 10591
+
+[attr] atx=present index=bsm_index
+[attr] path=attribute:atx reason=
+[attr] predicate=bsm = 10591 matches=2 truth=2
+[attr] candidates=2 pages=1/3931 directory=hit budget_exceeded=false scan_preferred=false validation_rows=0
+[attr] cold_median=624.764ms open_median=2.998ms first_query_median=621.797ms warm_median=0.134ms warm_p95=0.135ms
+[attr] build_ms page_read=4.9 row_validation=496.2 count_scan=0.0 validation_rows=3999996
+[attr] peak_rss_bytes=1618706432
+[attr] where_median=431.080ms where_path=where:sequential
+[==========] 1 test from 1 test suite ran. (13066 ms total)
+[  PASSED  ] 1 test.
+##### bsm >= 1629000
+
+[attr] atx=present index=bsm_index
+[attr] path=attribute:atx reason=
+[attr] predicate=bsm >= 1629000 matches=9242 truth=9242
+[attr] candidates=9242 pages=19/3931 directory=hit budget_exceeded=false scan_preferred=false validation_rows=0
+[attr] cold_median=640.436ms open_median=3.321ms first_query_median=637.115ms warm_median=1.667ms warm_p95=1.853ms
+[attr] build_ms page_read=4.8 row_validation=514.7 count_scan=0.0 validation_rows=3999996
+[attr] peak_rss_bytes=1633910784
+[attr] where_median=434.267ms where_path=where:sequential
+[==========] 1 test from 1 test suite ran. (11874 ms total)
+[  PASSED  ] 1 test.
+##### bsm >= 1500000
+
+[attr] atx=present index=bsm_index
+[attr] path=attribute:atx reason=
+[attr] predicate=bsm >= 1500000 matches=64632 truth=64632
+[attr] candidates=64632 pages=128/3931 directory=hit budget_exceeded=false scan_preferred=false validation_rows=0
+[attr] cold_median=634.561ms open_median=3.047ms first_query_median=631.513ms warm_median=9.736ms warm_p95=10.055ms
+[attr] build_ms page_read=4.8 row_validation=507.1 count_scan=0.0 validation_rows=3999996
+[attr] peak_rss_bytes=1634385920
+[attr] where_median=435.743ms where_path=where:sequential
+[==========] 1 test from 1 test suite ran. (11978 ms total)
+[  PASSED  ] 1 test.
+##### bsm >= 1200000
+
+[attr] atx=present index=bsm_index
+[attr] path=attribute:sequential reason=validated attribute range is nonselective; sequential scan preferred
+[attr] predicate=bsm >= 1200000 matches=504936 truth=504936
+[attr] candidates=0 pages=0/3931 directory=hit budget_exceeded=false scan_preferred=true validation_rows=0
+[attr] cold_median=731.103ms open_median=3.384ms first_query_median=726.917ms warm_median=424.401ms warm_p95=468.863ms
+[attr] build_ms page_read=4.9 row_validation=536.0 count_scan=0.0 validation_rows=3999996
+[attr] peak_rss_bytes=1649704960
+[attr] where_median=429.319ms where_path=where:sequential
+[==========] 1 test from 1 test suite ran. (13609 ms total)
+[  PASSED  ] 1 test.
+##### bsm >= 800000
+
+[attr] atx=present index=bsm_index
+[attr] path=attribute:sequential reason=validated attribute range is nonselective; sequential scan preferred
+[attr] predicate=bsm >= 800000 matches=1510660 truth=1510660
+[attr] candidates=0 pages=0/3931 directory=hit budget_exceeded=false scan_preferred=true validation_rows=0
+[attr] cold_median=867.920ms open_median=3.091ms first_query_median=864.828ms warm_median=431.487ms warm_p95=443.423ms
+[attr] build_ms page_read=4.8 row_validation=507.5 count_scan=0.0 validation_rows=3999996
+[attr] peak_rss_bytes=1684701184
+[attr] where_median=433.910ms where_path=where:sequential
+[==========] 1 test from 1 test suite ran. (14128 ms total)
+[  PASSED  ] 1 test.
+##### bsm >= 0
+
+[attr] atx=present index=bsm_index
+[attr] path=attribute:sequential reason=validated attribute range is nonselective; sequential scan preferred
+[attr] predicate=bsm >= 0 matches=1999998 truth=1999998
+[attr] candidates=0 pages=0/3931 directory=hit budget_exceeded=false scan_preferred=true validation_rows=0
+[attr] cold_median=933.845ms open_median=3.283ms first_query_median=930.562ms warm_median=420.438ms warm_p95=420.960ms
+[attr] build_ms page_read=4.8 row_validation=501.1 count_scan=0.0 validation_rows=3999996
+[attr] peak_rss_bytes=1700773888
+[attr] where_median=429.812ms where_path=where:sequential
+[==========] 1 test from 1 test suite ran. (14367 ms total)
+[  PASSED  ] 1 test.

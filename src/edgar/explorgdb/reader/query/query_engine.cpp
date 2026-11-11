@@ -640,6 +640,20 @@ QueryEngine::make_value_context(size_t field, bool temporal, bool allow_full_sca
         });
         return rows == table->active_feature_count();
     };
+    context->scan_values = [table, field, domain](
+        const detail::AttributeValueQueryContext::RowScanCallback& callback) {
+        bool ok = true;
+        const auto rows = table->sequential_scan([&](RowSlot fid, const FieldRef* fields, int size) {
+            if (field >= static_cast<size_t>(size) || fields[field].is_null) return true;
+            std::string encoded;
+            if (!attribute_value::field(fields[field], domain, encoded) || !callback(fid, encoded)) {
+                ok = false;
+                return false;
+            }
+            return true;
+        });
+        return ok && rows == table->active_feature_count();
+    };
     return context;
 }
 

@@ -349,7 +349,8 @@ TEST(AttributePlanBenchmark, ConfiguredPredicate) {
     ASSERT_TRUE(resolve_index(*warm_state->catalog, warm_state->table_id, warm_probe));
     // Warm-up: the first query builds the validated directory, so it must not be
     // charged to the timed warm samples.
-    QueryResult warm_result = run_query(*warm_state->engine, warm_probe);
+    const QueryResult build_result = run_query(*warm_state->engine, warm_probe);
+    QueryResult warm_result;
     for (size_t trial = 0; trial < trials; ++trial) {
         const auto start = Clock::now();
         warm_result = run_query(*warm_state->engine, warm_probe);
@@ -382,6 +383,13 @@ TEST(AttributePlanBenchmark, ConfiguredPredicate) {
                 percentile(cold_ms, 0.5), percentile(open_ms, 0.5),
                 percentile(first_ms, 0.5), percentile(warm_ms, 0.5),
                 percentile(warm_ms, 0.95));
+    const auto& build_metrics = build_result.attribute_index_metrics;
+    std::printf("[attr] build_ms page_read=%.1f row_validation=%.1f count_scan=%.1f"
+                " validation_rows=%zu\n",
+                build_metrics.directory_page_read_ms,
+                build_metrics.directory_row_validation_ms,
+                build_metrics.directory_count_scan_ms,
+                build_metrics.index_validation_rows);
     std::printf("[attr] peak_rss_bytes=%llu\n",
                 static_cast<unsigned long long>(peak_rss_bytes()));
 

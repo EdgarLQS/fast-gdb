@@ -50,6 +50,11 @@ struct AttributeIndexQueryMetrics {
     double file_load_ms = 0.0;
     double trailer_ms = 0.0;
     double tree_navigation_ms = 0.0;
+    // First-query directory build breakdown: index page reads, source-row
+    // validation, and the final non-null value count scan.
+    double directory_page_read_ms = 0.0;
+    double directory_row_validation_ms = 0.0;
+    double directory_count_scan_ms = 0.0;
     double leaf_scan_ms = 0.0;
     double candidate_order_ms = 0.0;
     double total_ms = 0.0;

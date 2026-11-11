@@ -1,6 +1,8 @@
 #include "gdb_attribute_value_cache.h"
 #include "gdb_attribute_string_key.h"
 #include <algorithm>
+#include <array>
+#include <cstring>
 #include <filesystem>
 #include <chrono>
 #include <fstream>
@@ -339,16 +341,21 @@ bool query_validated_attribute_directory(const std::string& path, const TablxCac
     std::ifstream input(std::filesystem::u8path(path), std::ios::binary);
     if (!input) return false;
     std::vector<uint8_t> page(trailer.page_size);
+    using Clock = std::chrono::steady_clock;
+    double page_read_ms = 0.0;
     const auto read = [&](ObjectId id) {
         if (!id || id > page_count || id - 1 >
             static_cast<uint64_t>(std::numeric_limits<std::streamoff>::max()) / trailer.page_size) return false;
+        const auto read_start = Clock::now();
         input.clear();
         input.seekg(static_cast<std::streamoff>((id - 1) * trailer.page_size));
         input.read(reinterpret_cast<char*>(page.data()), static_cast<std::streamsize>(page.size()));
-        if (metrics) ++metrics->pages_visited;
+        if (metrics) {
+            ++metrics->pages_visited;
+            page_read_ms += std::chrono::duration<double, std::milli>(Clock::now() - read_start).count();
+        }
         return static_cast<bool>(input);
     };
-    using Clock = std::chrono::steady_clock;
     const auto scan_start = metrics ? Clock::now() : Clock::time_point{};
     std::vector<RowSlot> candidates;
     if (directory) {
@@ -396,7 +403,160 @@ bool query_validated_attribute_directory(const std::string& path, const TablxCac
             }
             if (metrics) metrics->entries_scanned += visited;
         }
+    } else if (context->scan_values &&
+               context->domain != attribute_value::Domain::String &&
+               trailer.value_size <= 8U) {
+        // Large numeric/temporal indexes: collect leaf ranges and (fid, key)
+        // entries while walking the tree, then validate every entry and count
+        // non-null rows in ONE sequential source pass. This replaces the two
+        // separate full-table passes (per-leaf random reads plus the final
+        // count scan) that dominated the first query on multi-million indexes.
+        const auto build_start = Clock::now();
+        // A failed build is cached in the same generation so later queries
+        // short-circuit instead of re-walking a known-bad index.
+        const auto fail_build = [&](AttributeValueDirectory::State state) {
+            auto item = std::make_shared<AttributeValueDirectory>();
+            item->state = state;
+            directory = item;
+            record(*directory);
+            if (!stable()) return false;
+            context->cache->put(key, directory);
+            return false;
+        };
+        if ((trailer.tree_depth == 0 && trailer.total_value_count != 0) ||
+            trailer.tree_depth > 4 || trailer.tree_depth > page_count) return false;
+        ObjectId id = trailer.tree_depth ? 1 : 0;
+        for (uint32_t depth = trailer.tree_depth; depth > 1; --depth) {
+            if (!read(id)) return false;
+            const auto count = integer(page.data() + oid_size, 4);
+            if (!count || count > capacity) return false;
+            const size_t nonleaf_header = trailer.version == 1 ? 8 : 12;
+            const auto last_child = integer(page.data() + nonleaf_header + count * oid_size, oid_size);
+            if (count > 1 && last_child == 0) return false;
+            const size_t children = count + (last_child != 0 ? 1U : 0U);
+            for (size_t i = 0; i < children; ++i) {
+                const auto child = integer(page.data() + nonleaf_header + i * oid_size, oid_size);
+                if (!child || child > page_count) return false;
+            }
+            id = integer(page.data() + nonleaf_header, oid_size);
+        }
+        std::vector<AttributeLeafRange> leaves;
+        std::vector<std::pair<RowSlot, std::string>> entries;
+        entries.reserve(static_cast<size_t>(std::min<uint64_t>(
+            trailer.total_value_count, static_cast<uint64_t>(slots))));
+        std::vector<uint64_t> seen((slots + 63) / 64, 0);
+        size_t leaves_seen = 0, prefix_bytes = 0;
+        uint64_t entries_seen = 0;
+        ObjectId max_oid = 0;
+        while (id) {
+            if (++leaves_seen > page_count || !read(id)) return fail_build(AttributeValueDirectory::State::Invalid);
+            const auto next = integer(page.data(), oid_size);
+            const auto count = integer(page.data() + oid_size, 4);
+            if (next > page_count || count > capacity ||
+                count > trailer.total_value_count - entries_seen) return fail_build(AttributeValueDirectory::State::Invalid);
+            AttributeLeafRange range;
+            range.page = id;
+            range.count = static_cast<uint32_t>(count);
+            range.ordered_values = true;
+            std::string previous;
+            for (size_t i = 0; i < count; ++i) {
+                const auto oid = integer(page.data() + header + i * oid_size, oid_size);
+                if (!oid || oid > slots) return fail_build(AttributeValueDirectory::State::Invalid);
+                const RowSlot fid = oid - 1;
+                const auto bit = uint64_t{1} << (fid % 64);
+                if (seen[static_cast<size_t>(fid / 64)] & bit) return fail_build(AttributeValueDirectory::State::Invalid);
+                seen[static_cast<size_t>(fid / 64)] |= bit;
+                max_oid = std::max(max_oid, oid);
+                std::string key;
+                if (!context->index_value || !context->index_value(
+                        page.data() + values_offset + i * trailer.value_size,
+                        trailer.value_size, key)) return fail_build(AttributeValueDirectory::State::Invalid);
+                if (i) {
+                    const int order = std::string_view(key).compare(previous);
+                    if (order < 0) range.ordered_values = false;
+                }
+                const std::string prefix(key.substr(0, AttributeValueDirectory::kPrefixBytes));
+                const bool truncated = key.size() > prefix.size();
+                if (i == 0 || prefix < range.lower) range.lower = prefix;
+                if (i == 0 || prefix > range.upper) {
+                    range.upper = prefix;
+                    range.upper_truncated = truncated;
+                } else if (prefix == range.upper) {
+                    range.upper_truncated = range.upper_truncated || truncated;
+                }
+                previous = key;
+                entries.emplace_back(fid, std::move(key));
+            }
+            prefix_bytes += range.lower.capacity() + range.upper.capacity();
+            if (sizeof(AttributeValueDirectory) +
+                    leaves.capacity() * sizeof(AttributeLeafRange) + prefix_bytes >
+                AttributeValueCache::kMaxBytes) {
+                return fail_build(AttributeValueDirectory::State::BudgetExceeded);
+            }
+            leaves.push_back(std::move(range));
+            entries_seen += count;
+            if (metrics) metrics->entries_scanned += count;
+            id = next;
+        }
+        if (entries_seen != trailer.total_value_count)
+            return fail_build(AttributeValueDirectory::State::Invalid);
+        std::sort(entries.begin(), entries.end(),
+                  [](const auto& left, const auto& right) { return left.first < right.first; });
+
+        const auto scan_start = Clock::now();
+        size_t cursor = 0;
+        uint64_t non_null = 0, validated = 0;
+        std::vector<RowSlot> matches;
+        if (!context->scan_values([&](RowSlot fid, std::string_view source_value) {
+                ++non_null;
+                if (cursor >= entries.size() || entries[cursor].first != fid) return false;
+                if (entries[cursor].second != source_value) return false;
+                ++cursor;
+                ++validated;
+                if (attribute_string::matches(source_value.compare(value), op))
+                    matches.push_back(fid);
+                return true;
+            })) {
+            return fail_build(AttributeValueDirectory::State::Invalid);
+        }
+        if (cursor != entries.size() || validated != trailer.total_value_count ||
+            non_null != trailer.total_value_count) {
+            return fail_build(AttributeValueDirectory::State::Invalid);
+        }
+        auto built = std::make_shared<AttributeValueDirectory>();
+        built->state = AttributeValueDirectory::State::Ready;
+        built->page_size = trailer.page_size;
+        built->value_size = trailer.value_size;
+        built->page_count = page_count;
+        built->value_count = trailer.total_value_count;
+        built->max_fid = max_oid;
+        built->leaves = std::move(leaves);
+        built->finish();
+        if (built->bytes() > AttributeValueCache::kMaxBytes)
+            return fail_build(AttributeValueDirectory::State::BudgetExceeded);
+        if (metrics) {
+            metrics->index_validation_rows = validated + context->active_rows;
+            metrics->directory_page_read_ms = page_read_ms;
+            metrics->directory_row_validation_ms =
+                std::chrono::duration<double, std::milli>(Clock::now() - scan_start).count();
+            metrics->directory_count_scan_ms = 0.0;
+        }
+        directory = built;
+        record(*directory);
+        if (!stable()) return false;
+        context->cache->put(key, directory);
+        std::sort(matches.begin(), matches.end());
+        matches.erase(std::unique(matches.begin(), matches.end()), matches.end());
+        result = std::move(matches);
+        if (metrics) {
+            metrics->candidate_count = result.size();
+            metrics->leaf_scan_ms =
+                std::chrono::duration<double, std::milli>(Clock::now() - build_start).count();
+        }
+        return true;
     } else {
+        double validation_ms = 0.0;
+        double count_ms = 0.0;
         AttributeValueDirectoryBuilder builder(context, trailer.page_size, trailer.value_size,
             page_count, trailer.total_value_count, slots);
         if (builder.state() == AttributeValueDirectory::State::Ready) {
@@ -426,16 +586,25 @@ bool query_validated_attribute_directory(const std::string& path, const TablxCac
                 const auto count = integer(page.data() + oid_size, 4);
                 if (next > page_count || count > capacity ||
                     count > trailer.total_value_count - entries) return false;
-                if (!builder.observe(id, page.data(), static_cast<uint32_t>(count), oid_size,
-                    header, values_offset, value, op, candidates)) break;
+                const auto observe_start = Clock::now();
+                const bool keep_going = builder.observe(id, page.data(), static_cast<uint32_t>(count),
+                    oid_size, header, values_offset, value, op, candidates);
+                validation_ms += std::chrono::duration<double, std::milli>(
+                    Clock::now() - observe_start).count();
+                if (!keep_going) break;
                 entries += count;
                 if (metrics) metrics->entries_scanned += count;
                 id = next;
             }
         }
+        const auto finish_start = Clock::now();
         directory = builder.finish();
+        count_ms += std::chrono::duration<double, std::milli>(Clock::now() - finish_start).count();
         if (metrics) {
             metrics->index_validation_rows = builder.validation_rows();
+            metrics->directory_page_read_ms = page_read_ms;
+            metrics->directory_row_validation_ms = validation_ms;
+            metrics->directory_count_scan_ms = count_ms;
             if (context->domain == attribute_value::Domain::String)
                 metrics->string_validation_rows = metrics->index_validation_rows;
         }
